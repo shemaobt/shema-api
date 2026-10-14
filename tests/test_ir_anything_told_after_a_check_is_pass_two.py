@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import httpx
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSegment
+from app.services.internalization_room.hard_stretches import capture_and_note_a_hard_stretch
 from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import back_translation_of, get_session
@@ -243,3 +245,7 @@ async def test_a_frase_told_again_before_any_check_is_the_first_pass_in_its_reco
         "a gravação da frase contada de novo antes de qualquer conferência ficava na segunda"
     )
     assert answered.json()["pass_number"] == 1
+
+
+def test_the_capture_takes_no_pass_because_the_telling_decides_it() -> None:
+    assert "pass_number" not in inspect.signature(capture_and_note_a_hard_stretch).parameters

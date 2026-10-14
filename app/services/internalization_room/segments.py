@@ -24,6 +24,7 @@ from app.core.exceptions import (
     ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
     ERROR_CODE_PAUSE_PAST_THE_END,
     NotFoundError,
+    OverlapsAStandingFrase,
     PauseCannotMove,
     StretchNoLongerCounts,
     ValidationError,
@@ -164,6 +165,26 @@ def refuse_a_slice_that_is_not_one(starts_ms: int, ends_ms: int) -> None:
         )
 
 
+def refuse_a_telling_over_part_of_a_frase(
+    told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
+) -> None:
+    if any(sits_at(one, take_id, starts_ms, ends_ms) for one in told):
+        return
+    over = next(
+        (
+            one
+            for one in told
+            if one.take_id == take_id and one.starts_ms < ends_ms and starts_ms < one.ends_ms
+        ),
+        None,
+    )
+    if over is not None:
+        raise OverlapsAStandingFrase(
+            f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} falls over the frase "
+            f"standing from {over.starts_ms} ms to {over.ends_ms} ms without being it"
+        )
+
+
 async def capture_segment(
     db: AsyncSession,
     session: IRSession,
@@ -190,11 +211,12 @@ async def capture_segment(
     count for the reason they keep the pass: born on the default, a stretch already told twice
     would hand the team a fresh count on each piece.
 
-    **A version keeps the slice of the stretch it replaces**:
+    **A version keeps the recording and the start of the stretch it replaces**:
     `refuse_a_slice_the_stretch_does_not_sit_on`. A stretch is one slice of one recording, so a
-    version naming other audio is not another telling of it. The recording the team performed
-    is the one that travels (ADR 0025), and a recording that was wrong is answered by recording
-    the **Part** again, which is an upload and not a version.
+    version naming other audio is not another telling of it. Only its end may move, and only on
+    the last frase of its part (`refuse_a_slice_a_version_cannot_take`). The recording the team
+    performed is the one that travels (ADR 0025), and a recording that was wrong is answered by
+    recording the **Part** again, which is an upload and not a version.
 
     What may be replaced at all — not a retired row, not one the team divided — is
     `refuse_a_stretch_that_is_not_a_unit`.
@@ -224,6 +246,9 @@ async def capture_segment(
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = parent.tellings
     else:
+        refuse_a_telling_over_part_of_a_frase(
+            await final_segments(db, session.id), take_id, starts_ms, ends_ms
+        )
         parent_id = None
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = 1
@@ -619,8 +644,8 @@ async def current_stretch_at(
     rather than a stretch nobody has told yet: the tablet sends the stretch's own address back.
 
     Read off the leaves, which is what the room reads. A stretch that was divided is no longer
-    a unit — its audio belongs to its pieces — so a chunk over its old slice is a stretch of its
-    own, and replacing it is refused anyway.
+    a unit — its audio belongs to its pieces — so a chunk over its old slice finds nothing here,
+    and the chunks door refuses it for falling over those pieces.
     """
     return next(
         (

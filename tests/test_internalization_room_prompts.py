@@ -6,6 +6,7 @@ import pytest
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import _default_prompts
 from app.services.internalization_room.prompts import get_prompt_text
+from tests.canon_harness import forget_the_prompts
 
 _APP_ROOT = Path(__file__).resolve().parent.parent / "app"
 
@@ -94,11 +95,11 @@ def test_the_guide_prompt_is_read_from_its_file_between_her_markers_and_nowhere_
         encoding="utf-8",
     )
     monkeypatch.setattr(_default_prompts, "_PROMPTS_DIR", tmp_path)
-    _default_prompts.load_prompt.cache_clear()
+    forget_the_prompts()
 
     text = get_prompt_text(IRPromptKey.GUIDE)
 
-    _default_prompts.load_prompt.cache_clear()
+    forget_the_prompts()
     assert text == literal, (
         "o modelo recebia o arquivo inteiro, com as notas e decisões datadas dela"
     )

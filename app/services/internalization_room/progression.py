@@ -71,15 +71,16 @@ still below the floor. Turning that into someone being *told* is ENG-482 (CS-06)
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
-from app.models.internalization_room import PericopePosition, PericopeStanding
+from app.models.internalization_room import PassageRelease, PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
 from app.services.internalization_room.live import live
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
@@ -112,7 +113,13 @@ def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
     return None
 
 
-def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[PericopeStanding]:
+def standing(
+    finished: Collection[str],
+    *,
+    releases: Mapping[str, PassageRelease],
+    findings: Mapping[str, int],
+    book: str = ROOM_BOOK,
+) -> list[PericopeStanding]:
     """All fourteen with their position already resolved — closed, current, or future.
 
     Resolved here rather than left to be derived from the active passage, because a screen
@@ -126,6 +133,10 @@ def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[Perico
     Closed reads the same fact the resolution reads, and it has to: a passage the resolution
     still offers and this panel calls closed is one screen telling a facilitator the team is
     past work the room is about to hand them again.
+
+    Approved is a different fact again: a passage with a release (ENG-1228). A finished session
+    without one approves nothing, so `closed` and `approved` are both served and never derived
+    from each other.
     """
     here = resolve(finished, book=book)
     return [
@@ -134,6 +145,9 @@ def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[Perico
             reference=meaning_map.reference,
             title=meaning_map.title,
             position=_position(meaning_map.pericope_num, finished, here),
+            release=releases.get(meaning_map.pericope_num),
+            open_findings=findings.get(meaning_map.pericope_num, 0),
+            approved=meaning_map.pericope_num in releases,
         )
         for meaning_map in load_book(book)
     ]
@@ -237,6 +251,11 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
 async def team_standing(
     db: AsyncSession, project_id: str, *, book: str = ROOM_BOOK
 ) -> list[PericopeStanding]:
-    """The fourteen as this team stands on them."""
+    """The fourteen as this team stands on them, each with its latest release and open findings."""
     finished = await finished_passages(db, project_ids=[project_id])
-    return standing(finished.get(project_id, set()), book=book)
+    return standing(
+        finished.get(project_id, set()),
+        releases=await latest_releases(db, project_id),
+        findings=await open_findings(db, project_id),
+        book=book,
+    )

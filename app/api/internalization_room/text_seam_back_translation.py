@@ -282,7 +282,6 @@ async def _capture(
         ends_ms=ends_ms,
         bridge_take_id=None,
         transcript=words,
-        pass_number=2 if retold is not None else 1,
         replaces=retold,
         state=state,
     )

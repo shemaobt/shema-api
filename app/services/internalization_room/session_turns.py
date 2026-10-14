@@ -9,6 +9,7 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import (
     SessionTurn,
     SessionTurnsResponse,
+    TurnMomentStep,
     TurnOutcomeCode,
     TurnTeamSide,
     TurnTraceStep,
@@ -163,4 +164,5 @@ def _voice_side(
         model=guide.get("model"),
         text=text,
         audio_url=turn_audio_url(session_id, number),
+        moment=TurnMomentStep.model_validate(guide["moment"]) if "moment" in guide else None,
     )

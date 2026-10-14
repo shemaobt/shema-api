@@ -455,8 +455,8 @@ async def applied_database(tmp_path) -> str:
         await conn.execute(
             text(
                 "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
-                " coverage_state, kept_takes, back_translation, comprehension, language,"
-                " created_at) VALUES (:id, 'P03', 'in_progress', '[]', 0, '{}', '{}', '{}',"
+                " coverage_state, back_translation, comprehension, language,"
+                " created_at) VALUES (:id, 'P03', 'in_progress', '[]', 0, '{}', '{}',"
                 " '{}', 'pt', '2026-09-10 09:00:00')"
             ),
             {"id": SEEDED_SESSION},

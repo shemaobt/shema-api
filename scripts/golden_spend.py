@@ -13,7 +13,8 @@ from __future__ import annotations
 import argparse
 import os
 from collections.abc import Iterable
-from typing import NamedTuple
+from dataclasses import dataclass
+from typing import Any, NamedTuple
 
 from app.services.internalization_room.usage import LIST_PRICES
 
@@ -26,6 +27,40 @@ def budget_of(args: argparse.Namespace) -> float:
     if args.budget_usd is not None:
         return float(args.budget_usd)
     return float(os.environ.get(BUDGET_ENV, DEFAULT_BUDGET_USD))
+
+
+@dataclass
+class Usage:
+    """One model call as this room's seam reports it; her app reports none."""
+
+    role: str
+    rung: str
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int | None
+    cache_write_tokens: int | None
+    latency_ms: int | None
+    cost_usd: float | None
+
+    @classmethod
+    def from_wire(cls, call: dict[str, Any]) -> Usage:
+        """The seam's `ModelCall` at this commit, every field; her app sends no `usage` at all.
+
+        Read by key and not by `.get`, so a room that reports usage in another shape — a
+        deployment older than the seam's `role` and `cost_usd` — is a `KeyError` on turn 0 and
+        not a README that silently prices the run wrong. The runner and the room it tallies
+        move together.
+        """
+        return cls(
+            role=call["role"],
+            rung=call["rung"],
+            input_tokens=call["input_tokens"],
+            output_tokens=call["output_tokens"],
+            cache_read_tokens=call["cache_read_tokens"],
+            cache_write_tokens=call["cache_write_tokens"],
+            latency_ms=call["latency_ms"],
+            cost_usd=call["cost_usd"],
+        )
 
 
 class Call(NamedTuple):
@@ -70,6 +105,11 @@ def budgeted(calls: list[Call]) -> float:
         if call.cost_usd is None
     )
     return sum(by_role.values()) + guessed
+
+
+def what_killed(dead: BaseException) -> str:
+    named = type(dead).__name__
+    return f"{named}: {dead}" if str(dead) else named
 
 
 def split(by_role: dict[str, float]) -> str:

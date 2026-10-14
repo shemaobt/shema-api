@@ -77,7 +77,6 @@ class IRSession(Base):
     #: stored on the opening (ADR 0054). Null while nothing is prepared.
     prepared_attempts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     #: Whose conversation this was. Null when the room app did not identify itself with a
     #: device credential, which is every session until ENG-454 ships that half — see the
@@ -242,7 +241,7 @@ class IRCoverageEvent(Base):
     turn and mostly reports beads that are already where it says.
 
     ``project_id`` and ``pericope`` are copied off the session instead of joined for.
-    Element keys come from the canon: ``being:B3`` is Naomi in every project that works
+    Element keys come from the canon: ``being:S1:B3`` is Naomi in every project that works
     this passage, and the same key repeats across the passages she appears in. A key alone
     therefore does not name a bead, and the question the Desk asks of this table — which
     session touched this one last — needs all three in one index to be a single lookup.
@@ -414,6 +413,118 @@ class IRTake(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRSceneSaid(enum.StrEnum):
+    """When the team said a scene rehearsal's scene: as they recorded it, or afterwards."""
+
+    RECORDING = "recording"
+    LATER = "later"
+
+
+class IRSceneRehearsal(Base):
+    """One **Scene rehearsal**: the scene recorded whole in the mother tongue, and its record.
+
+    The recording is stored as sent and never reaches the recognizer or the voice; only its
+    **Scene frases** are heard. Its own table rather than a third take kind, because every
+    reader of ``ir_takes`` would read it as a passage **Part** (ADR 0059).
+    """
+
+    __tablename__ = "ir_scene_rehearsals"
+    __table_args__ = (
+        UniqueConstraint("session_id", "sha256", name="uq_ir_scene_rehearsals_session_sha256"),
+        UniqueConstraint("session_id", "n", name="uq_ir_scene_rehearsals_session_n"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    pericope: Mapped[str] = mapped_column(String(120))
+    n: Mapped[int] = mapped_column(Integer)
+    device_id: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The team's own label, one of the passage's scenes, and when they said it. The
+    #: classifier's guess never writes it.
+    scene: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    scene_said: Mapped[IRSceneSaid | None] = mapped_column(
+        Enum(
+            IRSceneSaid,
+            native_enum=False,
+            length=16,
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=True,
+    )
+    scene_guess: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    sent_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRSceneFrase(Base):
+    """One **Scene frase**: a piece of the scene told in the bridge language, with its place.
+
+    ``starts_ms`` and ``ends_ms`` are relative to the scene recording. A replaced frase stays,
+    and the frase that replaced it names it in ``replaces_id``. ``restart_id`` is the
+    **Restart** that set it aside; null while it counts.
+    """
+
+    __tablename__ = "ir_scene_frases"
+    __table_args__ = (
+        UniqueConstraint("rehearsal_id", "sha256", name="uq_ir_scene_frases_rehearsal_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rehearsal_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    starts_ms: Mapped[int] = mapped_column(Integer)
+    ends_ms: Mapped[int] = mapped_column(Integer)
+    replaces_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    transcript: Mapped[str] = mapped_column(Text)
+    #: The attempt the frase was recorded in: the restart it follows, or none before the first.
+    attempt: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    restart_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRSceneRestart(Base):
+    """One **Restart** of a scene rehearsal's translation, numbered, with the record as it was."""
+
+    __tablename__ = "ir_scene_restarts"
+    __table_args__ = (
+        UniqueConstraint("rehearsal_id", "n", name="uq_ir_scene_restarts_rehearsal_n"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rehearsal_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    n: Mapped[int] = mapped_column(Integer)
+    restarted_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 

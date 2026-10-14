@@ -11,6 +11,7 @@ Ruth alone, and the run has to say so and go on.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -629,6 +630,248 @@ def _export(directory: Path, name: str, *, refused: str | None = None) -> None:
     )
 
 
+async def test_a_rejudge_over_a_truncated_export_names_the_file_and_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    truncated = earlier / "P01-b.2026-09-16T21-13-26.json"
+    truncated.write_text('{"name": "P01-b", "pericopeId": "P01"', encoding="utf-8")
+
+    exit_code = await golden_runner.run(_args(earlier, tmp_path / "again", rejudge=str(earlier)))
+
+    assert exit_code == 2, "um export cortado não é uma sessão reprovada: a re-julgação nem começa"
+    assert capsys.readouterr().err.startswith(f"golden: {truncated}: JSONDecodeError: "), (
+        "o JSON cortado derrubava a re-julgação num traceback que não dizia qual arquivo era"
+    )
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+
+
+async def test_a_rejudge_over_an_export_missing_a_turns_key_names_the_first_such_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    _export(earlier, "P01-c")
+    headless = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(headless.read_text(encoding="utf-8"))
+    del exported["turns"][0]["guide"]
+    headless.write_text(json.dumps(exported), encoding="utf-8")
+    cut = earlier / "P01-c.2026-09-16T21-13-26.json"
+    cut.write_text('{"name": "P01-c"', encoding="utf-8")
+
+    exit_code = await golden_runner.run(_args(earlier, tmp_path / "again", rejudge=str(earlier)))
+
+    stderr = capsys.readouterr().err
+    assert exit_code == 2, "um export sem a fala do guia não é uma sessão reprovada"
+    assert stderr.startswith(f"golden: {headless}: KeyError: 'guide'\n"), (
+        "a chave que faltava no turno estourava num KeyError que não dizia de qual arquivo"
+    )
+    assert str(cut) not in stderr, "com dois exports ruins, o primeiro na ordem é o nomeado"
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+
+
+async def test_a_rejudge_over_an_export_that_cannot_be_read_names_the_file_and_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    garbled = earlier / "P01-b.2026-09-16T21-13-26.json"
+    garbled.write_bytes(b"\xff\xfe{")
+
+    exit_code = await golden_runner.run(_args(earlier, tmp_path / "again", rejudge=str(earlier)))
+
+    assert exit_code == 2, "um export ilegível não é uma sessão reprovada: a re-julgação nem começa"
+    assert capsys.readouterr().err.startswith(f"golden: {garbled}: UnicodeDecodeError: "), (
+        "os bytes que não eram texto derrubavam a re-julgação sem dizer qual arquivo era"
+    )
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+
+
+@pytest.mark.parametrize(
+    ("mistype", "named"),
+    [
+        (
+            lambda export: export["turns"][0].update(mechanical="x"),
+            "turns[0].mechanical is str, not list",
+        ),
+        (
+            lambda export: export["turns"][0].update(mechanical=["a", 3]),
+            "turns[0].mechanical[1] is int, not str",
+        ),
+        (
+            lambda export: export["turns"][0].update(guide=None),
+            "turns[0].guide is NoneType, not str",
+        ),
+        (lambda export: export.update(turns=[None]), "turns[0] is NoneType, not dict"),
+        (lambda export: export.update(refused=502), "refused is int, not str or NoneType"),
+    ],
+)
+async def test_a_rejudge_over_an_export_with_a_wrong_typed_field_names_file_and_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, mistype: Any, named: str
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    mistyped = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(mistyped.read_text(encoding="utf-8"))
+    mistype(exported)
+    mistyped.write_text(json.dumps(exported), encoding="utf-8")
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert exit_code == 2, "um export com um campo do tipo errado não é uma sessão reprovada"
+    assert capsys.readouterr().err == f"golden: {mistyped}: TypeError: {named}\n", (
+        "o campo de tipo errado passava na leitura e estourava depois, sem dizer qual arquivo era"
+    )
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+    assert not again.exists(), "a recusa vem antes de escrever qualquer coisa"
+
+
+@pytest.mark.parametrize(
+    ("text", "held"),
+    [("[]", "list"), ('"x"', "str"), ("3", "int"), ("null", "NoneType")],
+)
+async def test_a_rejudge_over_a_json_file_that_is_not_an_export_names_the_file_and_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, text: str, held: str
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    stray = earlier / "notes.json"
+    stray.write_text(text, encoding="utf-8")
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert exit_code == 2, "um JSON que não é export não é uma sessão reprovada"
+    assert capsys.readouterr().err == (
+        f"golden: {stray}: TypeError: not an export object, it is {held}\n"
+    ), "o arquivo solto era lido como export e a mensagem era a do interpretador, sem dizer isso"
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um arquivo solto não gasta nada"
+    assert not again.exists(), "a recusa vem antes de escrever qualquer coisa"
+
+
+@pytest.mark.parametrize(
+    ("file_name", "verdict_name"),
+    [
+        (
+            "P01-renamed.2026-09-16T21-13-26.json",
+            "P01-a.P01-renamed.2026-09-16T21-13-26.verdict.json",
+        ),
+        (
+            "P01-a.2026-09-16T21-13-26.5.json",
+            "P01-a.2026-09-16T21-13-26.5.verdict.json",
+        ),
+    ],
+)
+async def test_a_rejudge_names_the_verdict_from_the_exports_name_and_keeps_the_whole_stamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_name: str, verdict_name: str
+) -> None:
+    the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    (earlier / "P01-a.2026-09-16T21-13-26.json").rename(earlier / file_name)
+    again = tmp_path / "again"
+
+    await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert [verdict.name for verdict in again.glob("*.verdict.json")] == [verdict_name], (
+        "o carimbo era cortado pelo tamanho do nome de dentro do JSON, e não do que o arquivo diz"
+    )
+
+
+async def test_a_rejudge_over_a_directory_that_does_not_exist_says_so_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    missing = tmp_path / "2026-09-16"
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(missing, again, rejudge=str(missing)))
+
+    assert exit_code == 2
+    assert capsys.readouterr().err == f"golden: {missing}: no such directory\n", (
+        "a pasta que não existe dizia «nothing exported», como se estivesse lá e vazia"
+    )
+    assert judge.asked == [] and not again.exists()
+
+
+async def test_a_rejudge_reads_an_export_with_no_turns_and_no_mark_as_empty_and_never_judges_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    bare = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(bare.read_text(encoding="utf-8"))
+    exported["turns"] = []
+    bare.write_text(json.dumps(exported), encoding="utf-8")
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert len(judge.asked) == 1 and GUIDE_LINE in judge.asked[0]["user_content"], (
+        "um export sem turnos e sem marca era julgado inteiro, com o transcript vazio"
+    )
+    assert not list(again.glob("P01-b*.verdict.json"))
+    assert "| P01-b | — | vazia | nenhum turno a jogar; nada a julgar |" in (
+        again / "README.md"
+    ).read_text(encoding="utf-8"), "o export antigo sem marca ficava como uma sessão inteira"
+    assert exit_code == 1, "a sessão vazia fecha o portão, como a que a rodada de hoje marca"
+
+
+@pytest.mark.parametrize(
+    ("mark", "reason", "row"),
+    [
+        (
+            "refused",
+            "502 o modelo não respondeu",
+            "| P01-b | — | recusada | 502 o modelo não respondeu |",
+        ),
+        (
+            "killed",
+            "ReadTimeout: the room did not answer",
+            "| P01-b | — | 0 | interrompida por ReadTimeout: the room did not answer |",
+        ),
+    ],
+)
+async def test_a_rejudge_keeps_a_refusal_or_a_death_that_left_no_turns_as_what_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mark: str, reason: str, row: str
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    cut = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(cut.read_text(encoding="utf-8"))
+    exported["turns"] = []
+    exported[mark] = reason
+    cut.write_text(json.dumps(exported), encoding="utf-8")
+    again = tmp_path / "again"
+
+    await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    readme = (again / "README.md").read_text(encoding="utf-8")
+    assert row in readme, "a sessão que a sala recusou ou que morreu sem turnos virava «vazia»"
+    assert len(judge.asked) == 1, "só o P01-a é julgado: a outra já tinha o motivo dela"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -656,6 +899,73 @@ async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_pa
         "o export recusado não é julgado, então o outro fica sozinho na passagem e não escreve "
         "no cache para ninguém ler"
     )
+
+
+async def test_a_rejudge_killed_by_an_error_still_leaves_the_readme_and_the_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    the_room_agent_is(monkeypatch, judge=llm.call_agent)
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: _Wire(json.dumps(A_VERDICT)))
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    out = tmp_path / "again"
+    (out / "P01-b.2026-09-16T21-13-26.verdict.json").mkdir(parents=True)
+
+    with pytest.raises(IsADirectoryError):
+        await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P01-a | FAIL |" in readme and "| P01-b | FAIL |" in readme, (
+        "o P01-a foi julgado e o P01-b morreu ao gravar o veredito: as duas linhas existem"
+    )
+    assert "judge US$ 0.51." in readme, (
+        "2 x 0,256 da tabela, à mão: a chamada do juiz que morreu foi paga e entra na conta"
+    )
+    assert "Rodada interrompida em P01-b por IsADirectoryError: " in readme
+    assert "\ncost US$ 0.51 — judge US$ 0.51\n" in capsys.readouterr().out
+
+
+async def test_a_rejudge_cancelled_midway_still_leaves_the_readme_and_the_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    silent = asyncio.Event()
+
+    class _SilentOnTheSecondCall(_Wire):
+        calls = 0
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.calls += 1
+            if self.calls == 2:
+                silent.set()
+                await asyncio.Event().wait()
+            return await super().create(**kwargs)
+
+    wire = _SilentOnTheSecondCall(json.dumps(A_VERDICT))
+    the_room_agent_is(monkeypatch, judge=llm.call_agent)
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: wire)
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    out = tmp_path / "again"
+    playing = asyncio.create_task(golden_runner.run(_args(earlier, out, rejudge=str(earlier))))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P01-a | FAIL |" in readme and "| P01-b | — |" in readme, (
+        "o P01-a foi julgado e o juiz do P01-b foi cancelado: as duas linhas existem"
+    )
+    assert "judge US$ 0.26." in readme, "0,256 da tabela, à mão: só a chamada que terminou é paga"
+    assert "Rodada interrompida em P01-b por CancelledError.\n" in readme
+    assert "\ncost US$ 0.26 — judge US$ 0.26\n" in capsys.readouterr().out
 
 
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:

@@ -20,7 +20,7 @@ PREVIOUS_REVISION = "20261002_open01"
 
 SESSION = "a0000000-0000-0000-0000-000000000001"
 STORED = (
-    "SELECT pericope, language, status, messages, coverage_state, kept_takes,"
+    "SELECT pericope, language, status, messages, coverage_state,"
     " back_translation FROM ir_sessions WHERE id = :id"
 )
 AS_STORED = (
@@ -29,7 +29,6 @@ AS_STORED = (
     "in_progress",
     '[{"role": "team", "text": "Noemi voltou com Rute"}]',
     '{"P03-S1": "engaged"}',
-    '{"S1": "take-1"}',
     '{"round": 1}',
 )
 
@@ -48,13 +47,13 @@ async def _stored(url: str) -> None:
         await conn.execute(
             text(
                 "INSERT INTO ir_sessions (id, pericope, language, status, messages,"
-                " after_panorama, coverage_state, kept_takes, back_translation, created_at,"
+                " after_panorama, coverage_state, back_translation, created_at,"
                 " updated_at) VALUES (:id, :pericope, :language, :status, :messages, 0,"
-                " :coverage, :kept, :bt, '2026-10-01 08:00:00', '2026-10-01 08:00:00')"
+                " :coverage, :bt, '2026-10-01 08:00:00', '2026-10-01 08:00:00')"
             ),
             dict(
                 zip(
-                    ("pericope", "language", "status", "messages", "coverage", "kept", "bt"),
+                    ("pericope", "language", "status", "messages", "coverage", "bt"),
                     AS_STORED,
                     strict=True,
                 ),

@@ -6,14 +6,14 @@ an upstream commit and is overwritten wholesale by `scripts/sync_internalization
 
 They are keyed by `(pericope_num, element_key)`, never by the key alone. Measured over the
 pilot's four pericopes: of the keys appearing in more than one, sixteen carry different text
-in each — `scene:N`, `absence:N` and `preserved:RN` are numbered within the passage, and
-`place:PL2` names a different phrasing in P01 and P05.
+in each — `scene:S1`, `absence:S1` and `preserved:R10` are numbered within the passage, and
+`place:S4:PL2` names a different phrasing in P01 and P05.
 
 A label is short new writing over the canon text, not a translation of it. `Element.label`
 stays as it is: it is what the classifier prompts read, and repurposing it for the screen
 would change what the model sees.
 
-One entry is provisional. `P02 / being:B2` is the three dead men collectively, but the canon
+One entry is provisional. `P02 / being:S2:B2` is the three dead men collectively, but the canon
 keys it as Elimelech because `elements._label()` splits on the first `]]` and drops the first
 of three links. Correcting that changes the key, and coverage is persisted under these keys —
 so it is a data migration and it is Henok's decision. Until then the label is written by

@@ -32,8 +32,8 @@ async def _row(url: str, status: str, ended_at: str | None) -> str:
         await conn.execute(
             text(
                 "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
-                " coverage_state, kept_takes, back_translation, ended_at, created_at,"
-                " updated_at) VALUES (:id, 'P01', :status, '[]', 0, '{}', '{}', '{}',"
+                " coverage_state, back_translation, ended_at, created_at,"
+                " updated_at) VALUES (:id, 'P01', :status, '[]', 0, '{}', '{}',"
                 " :ended_at, :opened, :opened)"
             ),
             {"id": session_id, "status": status, "ended_at": ended_at, "opened": OPENED},

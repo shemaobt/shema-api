@@ -81,8 +81,8 @@ async def _session(url: str, coverage: str) -> str:
     await _execute(
         url,
         "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
-        " coverage_state, kept_takes, back_translation, created_at, updated_at)"
-        " VALUES (:id, 'P01', 'in_progress', '[]', 0, :coverage, '{}', '{}', :now, :now)",
+        " coverage_state, back_translation, created_at, updated_at)"
+        " VALUES (:id, 'P01', 'in_progress', '[]', 0, :coverage, '{}', :now, :now)",
         {"id": session_id, "coverage": coverage, "now": WHEN},
     )
     return session_id

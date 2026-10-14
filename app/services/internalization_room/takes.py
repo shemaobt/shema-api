@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake, IRTakeKind
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
@@ -52,6 +53,15 @@ def _store(settings: Settings | None = None) -> TakeStore:
     return GcsPlatformStore(settings or get_settings())
 
 
+def take_store() -> TakeStore:
+    """The store a route hands the recordings it keeps; a case overrides it as a dependency."""
+    return _store()
+
+
+def extension(content_type: str) -> str:
+    return "wav" if is_wav(content_type) else "m4a"
+
+
 def storage_key(session_id: str, kind: IRTakeKind, sha256: str, content_type: str) -> str:
     """Content-addressed, so a failed upload can only ever leave an orphan.
 
@@ -67,10 +77,53 @@ def storage_key(session_id: str, kind: IRTakeKind, sha256: str, content_type: st
     The last segment is the name the take downloads under, so it follows the content type: a
     WAV take is ``.wav`` and anything else keeps the ``.m4a`` it always had.
     """
-    extension = "wav" if is_wav(content_type) else "m4a"
     return (
         f"internalization-room/takes/{session_id}/{kind.value}/{sha256}/"
-        f"{FILENAMES[kind]}.{extension}"
+        f"{FILENAMES[kind]}.{extension(content_type)}"
+    )
+
+
+def recording_digest(audio: bytes) -> str:
+    """The recording's sha256, once it is one the room keeps: some audio, at most 25 MB."""
+    if not audio:
+        raise ValidationError("A recording with no audio is not a recording")
+    if len(audio) > MAX_TAKE_BYTES:
+        raise ValidationError("Audio payload exceeds 25 MB limit")
+    return hashlib.sha256(audio).hexdigest()
+
+
+@dataclass(frozen=True)
+class StoredRecording:
+    """What the bucket holds under a key, described by the bytes that were stored."""
+
+    storage_key: str
+    size_bytes: int
+    sha256: str
+    crc32c: str
+    content_type: str
+    verified_at: datetime | None
+
+
+async def store_recording(
+    audio: bytes,
+    *,
+    key: str,
+    sha256: str,
+    content_type: str,
+    store: TakeStore | None = None,
+) -> StoredRecording:
+    """Put the bytes in the bucket and read the bucket's own accounting of them back."""
+    speech_store = store or _store()
+    await speech_store.put(key, audio, content_type)
+    crc32c = _crc32c(audio)
+    landed = await speech_store.stat(key)
+    return StoredRecording(
+        storage_key=key,
+        size_bytes=len(audio),
+        sha256=sha256,
+        crc32c=crc32c,
+        content_type=content_type,
+        verified_at=_verified(landed, size=len(audio), crc32c=crc32c),
     )
 
 
@@ -104,12 +157,7 @@ async def store_take(
     The checksums describe the bytes that were stored, not the bytes that were promised, so
     they are computed here rather than trusted from the request.
     """
-    if not audio:
-        raise ValidationError("A take with no audio is not a take")
-    if len(audio) > MAX_TAKE_BYTES:
-        raise ValidationError("Audio payload exceeds 25 MB limit")
-
-    digest = hashlib.sha256(audio).hexdigest()
+    digest = recording_digest(audio)
     key = storage_key(session_id, kind, digest, content_type)
 
     existing = await db.execute(
@@ -122,10 +170,9 @@ async def store_take(
         return already
     await db.commit()
 
-    speech_store = store or _store()
-    await speech_store.put(key, audio, content_type)
-    crc32c = _crc32c(audio)
-    landed = await speech_store.stat(key)
+    stored = await store_recording(
+        audio, key=key, sha256=digest, content_type=content_type, store=store
+    )
     take = IRTake(
         id=str(uuid.uuid4()),
         project_id=project_id,
@@ -136,12 +183,12 @@ async def store_take(
         scope=scope,
         pass_number=pass_number,
         ordinal=ordinal,
-        storage_key=key,
-        size_bytes=len(audio),
-        sha256=digest,
-        crc32c=crc32c,
-        content_type=content_type,
-        verified_at=_verified(landed, size=len(audio), crc32c=crc32c),
+        storage_key=stored.storage_key,
+        size_bytes=stored.size_bytes,
+        sha256=stored.sha256,
+        crc32c=stored.crc32c,
+        content_type=stored.content_type,
+        verified_at=stored.verified_at,
     )
     db.add(take)
     await db.commit()
@@ -207,7 +254,7 @@ async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IR
     return take
 
 
-async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
+async def listen_url(take: IRTake | IRSceneRehearsal, *, settings: Settings | None = None) -> str:
     """A short-lived signed URL, so the bytes never pass through the API.
 
     A rehearsal take is the whole passage; proxying minutes of audio through the

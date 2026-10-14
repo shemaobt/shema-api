@@ -17,7 +17,7 @@ from app.db.models.internalization_room import IRSegment, IRTake
 from app.models.internalization_room import PlayedTake
 from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, room_language
+from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES, room_language
 from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import validator_map_block
@@ -305,7 +305,7 @@ class BackTranslationState(BaseModel):
         and keeping the verdict left the team hearing *too little to check* on every press,
         about a frase the room no longer has anything to say about, until they recorded
         something. Without it the next press decides again on what the row still holds: no
-        finding left is the checked closing, and a `missing` that survived the drop is
+        finding left is a clean verdict, and a `missing` that survived the drop is
         voiced instead. The analyst is not asked again — the reading it already did stands.
         """
         without = _without_the_retired_evidence_kind(data)
@@ -461,7 +461,7 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 
 
 def segments_block(
-    segments: list[IRSegment], addresses: Addresses, language_code: str = FLOOR
+    segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
 ) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
@@ -748,8 +748,8 @@ async def analyse_telling_back(
     pericope_num: str,
     analyst_prompt: str,
     addresses: Addresses,
-    session_language: str = LANGUAGE_NAMES[FLOOR],
-    language_code: str = FLOOR,
+    session_language: str = LANGUAGE_NAMES[AUTHORED],
+    language_code: str = AUTHORED,
     settings: Settings | None = None,
     session_id: str = "",
 ) -> BtAnalysis | None:
@@ -970,9 +970,9 @@ def current_findings(state: BackTranslationState) -> list[Finding]:
     again for the missing element.
 
     The addition leads, whichever of the two the analyst listed first: it is the half that
-    names the stretch where the swap happened, so the closing, the request for the whole
-    stretch and the stretch the screen puts up all name the same one. Led by a missing
-    element placed after that frase, they would name the stretch after the swap instead.
+    names the stretch where the swap happened, so the voice and the stretch the screen puts up
+    name the same one. Led by a missing element placed after that frase, they would name the
+    stretch after the swap instead.
     """
     return [state.findings[at] for at in _the_current_swap(state.findings)]
 
@@ -980,9 +980,8 @@ def current_findings(state: BackTranslationState) -> list[Finding]:
 def the_finding_that_leads(state: BackTranslationState) -> Finding | None:
     """The half of this turn that carries its address, or None when there is nothing to say.
 
-    The one finding, or the addition of a swap. It is what the closing, the request for the
-    whole stretch and the stretch the screen puts up are all decided by, so that the three of
-    them name the same one.
+    The one finding, or the addition of a swap. It is what the voice and the stretch the
+    screen puts up are both decided by, so that the two of them name the same one.
     """
     leading = current_findings(state)
     return leading[0] if leading else None

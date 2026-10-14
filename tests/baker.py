@@ -929,7 +929,6 @@ async def open_ir_session(
         messages=[],
         after_panorama=False,
         coverage_state=initial_state(pericope),
-        kept_takes={},
         back_translation={},
         comprehension={},
     )

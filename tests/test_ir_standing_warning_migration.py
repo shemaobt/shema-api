@@ -51,9 +51,9 @@ async def _row(
         await conn.execute(
             text(
                 "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
-                " coverage_state, kept_takes, back_translation, halt_kind, ended_at,"
+                " coverage_state, back_translation, halt_kind, ended_at,"
                 " attended_at, attended_by, lifted_halt, created_at, updated_at) VALUES (:id,"
-                " 'P01', :status, '[]', 0, '{}', '{}', '{}', :halt_kind, :ended_at, :visited,"
+                " 'P01', :status, '[]', 0, '{}', '{}', :halt_kind, :ended_at, :visited,"
                 " :visitor, :lifted, :opened, :opened)"
             ),
             {

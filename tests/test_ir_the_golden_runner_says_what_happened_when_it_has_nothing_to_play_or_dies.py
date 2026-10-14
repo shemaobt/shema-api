@@ -7,7 +7,9 @@ room is a wire this test owns, so the money and the failure are its own arithmet
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -21,7 +23,7 @@ from tests.golden_spend_harness import (
     golden_shelf,
     the_room_answers,
 )
-from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, the_judge_answers
+from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, Judge, the_judge_answers
 
 
 async def test_a_session_asked_for_by_name_that_the_shelf_does_not_hold_is_named_back(
@@ -49,6 +51,45 @@ async def test_an_empty_sessions_directory_names_the_directory_and_not_a_session
     assert exit_code == 2
     assert capsys.readouterr().err == f"golden: no sessions under {sessions}\n", (
         "a pasta vazia dizia «no session named None», como se alguém tivesse pedido uma sessão"
+    )
+
+
+async def test_a_script_that_cannot_be_read_is_named_and_the_run_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    asked: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(500)
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 1))
+    broken = sessions / "P02-b.json"
+    broken.write_text('{"name": "P02-b", "pericopeId": "P02"', encoding="utf-8")
+
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
+
+    assert exit_code == 2, "um roteiro ilegível não é uma sessão reprovada: a rodada nem começa"
+    assert capsys.readouterr().err.startswith(f"golden: {broken}: JSONDecodeError: "), (
+        "o JSON cortado derrubava a rodada inteira num traceback que não dizia qual arquivo era"
+    )
+    assert asked == [], "o P01 estava bom, mas a rodada com um roteiro ruim não gasta nada"
+
+
+async def test_a_script_named_by_a_path_that_does_not_exist_is_named_back(
+    tmp_path: Path, capsys
+) -> None:
+    sessions = golden_shelf(tmp_path)
+    gone = tmp_path / "gone.json"
+
+    exit_code = await golden_runner.run(
+        golden_args(sessions, tmp_path / "reports", script=str(gone))
+    )
+
+    assert exit_code == 2
+    assert capsys.readouterr().err.startswith(f"golden: {gone}: FileNotFoundError: "), (
+        "quem passou --script com o caminho errado levava um traceback sem o caminho de volta"
     )
 
 
@@ -153,3 +194,339 @@ async def test_a_run_that_dies_never_replaces_the_readme_a_finished_run_left_the
     assert f"README.{STAMP}.md" in capsys.readouterr().out, (
         "a tela diz onde ficou o relatório da rodada que morreu"
     )
+
+
+async def _a_session_killed_on_its_second_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out: Path
+) -> None:
+    turns: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 2:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2))
+    with pytest.raises(httpx.ReadTimeout):
+        await golden_runner.run(golden_args(sessions, out))
+
+
+async def test_a_session_killed_midway_is_exported_marked_as_cut_short(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "reports"
+
+    await _a_session_killed_on_its_second_turn(tmp_path, monkeypatch, out)
+
+    exported = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
+    assert exported["killed"] == "ReadTimeout: the room did not answer", (
+        "a sessão morreu no segundo turno e o JSON exportado não dizia que ela ficou pela metade"
+    )
+    assert len(exported["turns"]) == 1
+
+
+async def test_a_rejudge_does_not_judge_a_session_that_was_cut_short_as_a_whole_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    earlier = tmp_path / "earlier"
+    await _a_session_killed_on_its_second_turn(tmp_path, monkeypatch, earlier)
+    judge = the_judge_answers(monkeypatch)
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(
+        golden_args(tmp_path / "sessions", again, rejudge=str(earlier))
+    )
+
+    assert judge.asked == [], (
+        "a sessão morreu no segundo turno e o --rejudge a julgava como se tivesse sido inteira"
+    )
+    assert not list(again.glob("*.verdict.json"))
+    assert "| P01-a | — | 0 | interrompida por ReadTimeout: the room did not answer |" in (
+        again / "README.md"
+    ).read_text(encoding="utf-8"), "a linha diz por que a sessão ficou sem juiz"
+    assert exit_code == 1
+
+
+async def test_a_session_cancelled_midway_is_exported_marked_as_cut_short(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    turns: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 2:
+            silent.set()
+            await asyncio.Event().wait()
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2))
+    out = tmp_path / "reports"
+    playing = asyncio.create_task(golden_runner.run(golden_args(sessions, out)))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    exported = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
+    assert exported["killed"] == "CancelledError", (
+        "o Ctrl-C cancelou a sessão no segundo turno e o JSON exportado dizia que ela foi inteira"
+    )
+    assert len(exported["turns"]) == 1
+
+
+async def test_a_run_cancelled_midway_still_leaves_the_readme_and_the_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    turns: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 3:
+            silent.set()
+            await asyncio.Event().wait()
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+    out = tmp_path / "reports"
+    playing = asyncio.create_task(golden_runner.run(golden_args(sessions, out)))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P01-a | PASS |" in readme and "| P02-b | — |" in readme, (
+        "o P01 foi jogado e julgado, o P02 foi cancelado no segundo turno sem juiz: as duas linhas"
+    )
+    assert "≈ US$ 6.00 — guide US$ 4.00 · validator US$ 2.00." in readme, (
+        "dois turnos foram pagos, um em cada sessão, e a sessão cancelada entra na conta"
+    )
+    assert "Rodada interrompida em P02-b por CancelledError.\n" in readme, (
+        "o Ctrl-C não deixava relatório, e quem o lia não sabia onde a rodada parou"
+    )
+    assert "\ncost US$ 6.00 — guide US$ 4.00 · validator US$ 2.00\n" in capsys.readouterr().out
+
+
+async def test_a_session_cancelled_while_the_room_is_opening_it_is_a_row_and_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    opened: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            opened.append(json.loads(request.content)["pericopeId"])
+            if len(opened) == 2:
+                silent.set()
+                await asyncio.Event().wait()
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
+    out = tmp_path / "reports"
+    playing = asyncio.create_task(golden_runner.run(golden_args(sessions, out)))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P02-b | — |" in readme, (
+        "o Ctrl-C cancelou a porta da segunda sessão, e a que não chegou a abrir ficava fora"
+    )
+    assert "Rodada interrompida em P02-b por CancelledError.\n" in readme
+    assert opened == ["P01", "P02"], "a rodada cancelada não tenta a terceira sessão"
+
+
+async def test_a_script_with_no_turns_is_not_judged_and_its_row_says_it_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    the_room_answers(monkeypatch, lambda request: httpx.Response(200, json={"sessionId": "s-1"}))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    assert judge.asked == [], (
+        "um roteiro sem turnos chegava ao juiz com o transcript vazio, e a rodada pagava por nada"
+    )
+    assert not list(out.glob("*.verdict.json"))
+    assert "| P01-a | — | vazia | nenhum turno a jogar; nada a julgar |" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), "a sessão vazia é uma linha com o nome dela, não um PASS"
+
+
+async def test_a_script_with_no_turns_never_opens_a_room_session_and_is_exported_marked_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    asked: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(200, json={"sessionId": "s-1"})
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    assert asked == [], "a sessão sem turnos abria uma sessão na sala só para não jogar nada nela"
+    exported = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
+    assert (exported["empty"], exported["turns"], exported["sessionId"]) == (True, [], None), (
+        "um export sem turnos e sem marca seria remontado como sessão inteira por um --rejudge"
+    )
+    assert not list(out.glob("*.verdict.json"))
+
+
+def _a_room_that_plays_and_a_judge_that_approves(monkeypatch: pytest.MonkeyPatch) -> Judge:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    judge = the_judge_answers(monkeypatch, json.dumps(approving))
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    return judge
+
+
+async def test_an_empty_session_is_counted_apart_and_is_neither_an_approval_nor_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    assert (
+        "**1/1 aprovadas pelo juiz, 0 avisos mecânicos, 0 fail-safes em 1 turnos reais, "
+        "1 sessões vazias.**"
+    ) in (out / "README.md").read_text(encoding="utf-8"), (
+        "a sessão vazia entrava no denominador e a rodada dizia 1/2, como se uma sessão tivesse "
+        "sido reprovada"
+    )
+
+
+async def test_an_empty_session_has_its_own_line_on_the_console_and_is_left_out_of_the_pass_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    printed = capsys.readouterr().out
+    assert "\n  EMPTY · P02-b · judge=n/a · mechanical=0 · cost US$ 0.00\n" in printed, (
+        "a sessão vazia saía como FAIL na tela, e a sala não tinha sido sequer tocada"
+    )
+    assert f"\n1/1 golden sessions pass, 1 empty · {out / 'README.md'}\n" in printed, (
+        "a contagem de aprovadas dizia 1/2 e não dizia que a segunda não teve turno nenhum"
+    )
+
+
+async def test_a_run_with_an_empty_session_does_not_exit_zero_even_when_every_other_one_passed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
+
+    assert exit_code == 1, (
+        "um roteiro que não foi jogado não pode fechar o portão do release como se tivesse passado"
+    )
+
+
+@pytest.mark.parametrize("turns", ["0", "-1"])
+def test_turns_below_one_is_refused_with_a_sentence_before_anything_is_read_or_opened(
+    turns: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    asked: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(500)
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1))
+    (sessions / "P02-b.json").write_text("{", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "golden_runner.py",
+            "--base-url=http://room/api/internalization-room",
+            f"--sessions={sessions}",
+            f"--out={tmp_path / 'reports'}",
+            f"--turns={turns}",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as refused:
+        golden_runner.main()
+
+    assert refused.value.code == 2
+    assert capsys.readouterr().err.endswith(
+        "error: --turns must be at least 1, a session with no turn has nothing for the judge\n"
+    ), "--turns 0 passava pelo parser, tocava zero turnos e entregava ao juiz um transcript vazio"
+    assert asked == [], "a recusa vem antes de ler os roteiros e antes de abrir qualquer sessão"
+    assert not (tmp_path / "reports").exists()
+
+
+async def test_a_rejudge_keeps_the_row_of_a_session_that_was_empty_and_never_judges_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+    earlier = tmp_path / "earlier"
+    await golden_runner.run(golden_args(sessions, earlier))
+    judge = _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(golden_args(sessions, again, rejudge=str(earlier)))
+
+    assert len(judge.asked) == 1 and GUIDE_LINE in judge.asked[0]["user_content"], (
+        "o --rejudge julgava a sessão vazia junto, ou julgava só a vazia"
+    )
+    readme = (again / "README.md").read_text(encoding="utf-8")
+    assert "| P02-b | — | vazia | nenhum turno a jogar; nada a julgar |" in readme, (
+        "o --rejudge só lê exports, e a sessão vazia não deixava nenhum: a linha sumia"
+    )
+    assert "**1/1 aprovadas pelo juiz, " in readme and "1 sessões vazias.**" in readme
+    assert exit_code == 1, "a rodada julgada de novo fechava o portão como se a vazia não existisse"
