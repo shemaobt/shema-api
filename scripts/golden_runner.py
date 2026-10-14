@@ -824,6 +824,52 @@ def finish(
     return gate or OVER_BUDGET
 
 
+_ABSENT: Any = object()
+
+
+def _read(
+    raw: dict[str, Any],
+    key: str,
+    kinds: tuple[type, ...],
+    where: str = "",
+    *,
+    default: Any = _ABSENT,
+) -> Any:
+    if key not in raw and default is not _ABSENT:
+        return default
+    value = raw[key]
+    if not isinstance(value, kinds):
+        raise TypeError(
+            f"{where}{key} is {type(value).__name__}, not "
+            + " or ".join(kind.__name__ for kind in kinds)
+        )
+    return value
+
+
+def _strings(raw: dict[str, Any], key: str, where: str, *, default: Any = _ABSENT) -> list[str]:
+    values: list[str] = _read(raw, key, (list,), where, default=default)
+    for at, value in enumerate(values):
+        if not isinstance(value, str):
+            raise TypeError(f"{where}{key}[{at}] is {type(value).__name__}, not str")
+    return values
+
+
+def _played(turn: dict[str, Any], at: int) -> Played:
+    where = f"turns[{at}]."
+    if not isinstance(turn, dict):
+        raise TypeError(f"turns[{at}] is {type(turn).__name__}, not dict")
+    return Played(
+        idx=_read(turn, "idx", (int,), where),
+        team=_read(turn, "team", (str,), where),
+        guide=_read(turn, "guide", (str,), where),
+        outcome=_read(turn, "outcome", (str,), where),
+        interrupted=_read(turn, "interrupted", (bool,), where),
+        turnMs=_read(turn, "turnMs", (int,), where),
+        mechanical=_strings(turn, "mechanical", where),
+        appStatus=_strings(turn, "appStatus", where, default=[]),
+    )
+
+
 def exported(path: Path) -> tuple[Script, SessionResult, str]:
     """A session as a run left it: the script's head, the turns played, the room it was played on.
 
@@ -831,32 +877,31 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
     exported them and are already in its README, and a re-judgement's money is the judge's.
     A refusal, a death and an empty script come back with the session, so a run cut short by
     the room or by an error, or one that had nothing to play, is not rebuilt as a whole one;
-    an export older than the fields is read as played whole, which is what those runs were.
+    an export older than the fields is read as played whole when it has turns, and as empty
+    when it has none and neither refused nor killed.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
-    script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
-    played = [
-        Played(
-            idx=turn["idx"],
-            team=turn["team"],
-            guide=turn["guide"],
-            outcome=turn["outcome"],
-            interrupted=turn["interrupted"],
-            turnMs=turn["turnMs"],
-            mechanical=turn["mechanical"],
-            appStatus=turn.get("appStatus", []),
-        )
-        for turn in raw["turns"]
-    ]
+    if not isinstance(raw, dict):
+        raise TypeError(f"not an export object, it is {type(raw).__name__}")
+    script = Script(
+        _read(raw, "name", (str,)),
+        _read(raw, "pericopeId", (str,)),
+        _read(raw, "language", (str,)),
+        turns=[],
+    )
+    played = [_played(turn, at) for at, turn in enumerate(_read(raw, "turns", (list,)))]
+    refused = _read(raw, "refused", (str, type(None)), default=None)
+    killed = _read(raw, "killed", (str, type(None)), default=None)
     result = SessionResult(
         script.name,
-        raw["sessionId"],
+        _read(raw, "sessionId", (str, type(None))),
         played,
-        refused=raw.get("refused"),
-        killed=raw.get("killed"),
-        empty=raw.get("empty", False),
+        refused=refused,
+        killed=killed,
+        empty=_read(raw, "empty", (bool,), default=False)
+        or (not played and refused is None and killed is None),
     )
-    return script, result, raw["baseUrl"]
+    return script, result, _read(raw, "baseUrl", (str,))
 
 
 async def rejudge(args: argparse.Namespace) -> int:
@@ -880,6 +925,9 @@ async def rejudge(args: argparse.Namespace) -> int:
             "what that run cost and a re-judgement would write over it — name another --out",
             file=sys.stderr,
         )
+        return 2
+    if not Path(args.rejudge).exists():
+        print(f"golden: {args.rejudge}: no such directory", file=sys.stderr)
         return 2
     earlier = []
     for path in sorted(Path(args.rejudge).glob("*.json")):
@@ -913,7 +961,7 @@ async def rejudge(args: argparse.Namespace) -> int:
                     script,
                     result,
                     out=out,
-                    stamp=path.stem[len(script.name) + 1 :],
+                    stamp=path.stem.removeprefix(f"{script.name}."),
                     prompt_repeats=shares_judge_prompt(script, to_judge),
                 )
     except BaseException as killed:
