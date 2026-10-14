@@ -37,7 +37,8 @@ earlier run again, without playing the room.
 
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
 mechanical check tripped. 1 when any session failed or was refused, 2 when there was
-nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
+nothing to play or a script could not be read — named on stderr before any session is
+played or paid for — and 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
 
 A run stops before the next session once what it has spent reaches `--budget-usd`, or
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
@@ -46,9 +47,9 @@ unless a session failed, which keeps its 1.
 
 An error that kills the run — a timeout, a reply that is not JSON — still leaves its README and
 its cost total, the session that died among the rows and its paid turns in the sum, with a line
-saying what killed it; the error is then raised as it was. Where `--out` already holds a
-README, a finished run's, the dead run's goes beside it as `README.<stamp>.md` and the first is
-left as it was.
+saying what killed it; the error is then raised as it was, and a `--rejudge` that an error
+kills leaves the same. Where `--out` already holds a README, a finished run's, the dead
+run's goes beside it as `README.<stamp>.md` and the first is left as it was.
 """
 
 from __future__ import annotations
@@ -86,6 +87,7 @@ from scripts.golden_checks import (
 from scripts.golden_spend import (
     OVER_BUDGET,
     Call,
+    Usage,
     budget_of,
     budgeted,
     priced,
@@ -121,40 +123,6 @@ class Script:
 
 
 @dataclass
-class Usage:
-    """One model call as this room's seam reports it; her app reports none."""
-
-    role: str
-    rung: str
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int | None
-    cache_write_tokens: int | None
-    latency_ms: int | None
-    cost_usd: float | None
-
-    @classmethod
-    def from_wire(cls, call: dict[str, Any]) -> Usage:
-        """The seam's `ModelCall` at this commit, every field; her app sends no `usage` at all.
-
-        Read by key and not by `.get`, so a room that reports usage in another shape — a
-        deployment older than the seam's `role` and `cost_usd` — is a `KeyError` on turn 0 and
-        not a README that silently prices the run wrong. The runner and the room it tallies
-        move together.
-        """
-        return cls(
-            role=call["role"],
-            rung=call["rung"],
-            input_tokens=call["input_tokens"],
-            output_tokens=call["output_tokens"],
-            cache_read_tokens=call["cache_read_tokens"],
-            cache_write_tokens=call["cache_write_tokens"],
-            latency_ms=call["latency_ms"],
-            cost_usd=call["cost_usd"],
-        )
-
-
-@dataclass
 class Played:
     idx: int
     team: str
@@ -178,6 +146,11 @@ class SessionResult:
     verdict: dict[str, Any] | None = None
     unjudged: str | None = None
     judge_usage: list[Usage] = field(default_factory=list)
+    killed: str | None = None
+
+    @property
+    def whole(self) -> bool:
+        return self.refused is None and self.killed is None
 
     @property
     def faults(self) -> list[str]:
@@ -476,6 +449,7 @@ def export(
     out: Path,
     stamp: str,
     refused: str | None = None,
+    killed: str | None = None,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     report = out / f"{script.name}.{stamp}.json"
@@ -489,6 +463,7 @@ def export(
                 "baseUrl": base_url,
                 "sessionId": session_id,
                 "refused": refused,
+                "killed": killed,
                 "turns": [asdict(turn) for turn in played],
             },
             ensure_ascii=False,
@@ -545,6 +520,9 @@ async def play_session(
     except httpx.HTTPStatusError as refused:
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         result.refused = _refusal(refused)
+    except Exception as dead:
+        result.killed = f"{type(dead).__name__}: {dead}"
+        raise
     finally:
         report, transcript = export(
             script,
@@ -554,6 +532,7 @@ async def play_session(
             out=out,
             stamp=stamp,
             refused=result.refused,
+            killed=result.killed,
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
@@ -703,7 +682,10 @@ def summary(
         if result.refused and result.faults:
             column = f"recusada · {len(result.faults)}"
         noted = "; ".join(
-            ([result.refused] if result.refused else []) + result.faults + result.objections
+            ([result.refused] if result.refused else [])
+            + ([f"interrompida por {result.killed}"] if result.killed else [])
+            + result.faults
+            + result.objections
         )
         lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
@@ -734,7 +716,13 @@ def summary(
 async def run(args: argparse.Namespace) -> int:
     if args.rejudge:
         return await rejudge(args)
-    scripts = [load_script(path) for path in scripts_to_play(args)]
+    scripts: list[Script] = []
+    for path in scripts_to_play(args):
+        try:
+            scripts.append(load_script(path))
+        except Exception as unreadable:
+            print(f"golden: {path}: {type(unreadable).__name__}: {unreadable}", file=sys.stderr)
+            return 2
     if not scripts:
         asked = f"session named {args.only}" if args.only else f"sessions under {args.sessions}"
         print(f"golden: no {asked}", file=sys.stderr)
@@ -765,9 +753,7 @@ async def run(args: argparse.Namespace) -> int:
                     results=results,
                 )
     except Exception as killed:
-        halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
-        readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
-        close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
+        close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
         raise
     return finish(
         results,
@@ -777,6 +763,20 @@ async def run(args: argparse.Namespace) -> int:
         budget=budget,
         not_started=not_started,
     )
+
+
+def close_dead(
+    results: list[SessionResult],
+    killed: Exception,
+    *,
+    playing: str,
+    out: Path,
+    base_url: str,
+    stamp: str,
+) -> None:
+    halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
+    readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
+    close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
 
 
 def finish(
@@ -809,9 +809,9 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
 
     The turns' usage is left out on purpose: those calls were paid for by the run that
     exported them and are already in its README, and a re-judgement's money is the judge's.
-    A refusal comes back with the session, so a run cut short by the room is not rebuilt
-    as a whole one; an export older than the field is read as played whole, which is what
-    those runs were.
+    A refusal and a death come back with the session, so a run cut short by the room or by
+    an error is not rebuilt as a whole one; an export older than the fields is read as
+    played whole, which is what those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
@@ -828,7 +828,13 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
         )
         for turn in raw["turns"]
     ]
-    result = SessionResult(script.name, raw["sessionId"], played, refused=raw.get("refused"))
+    result = SessionResult(
+        script.name,
+        raw["sessionId"],
+        played,
+        refused=raw.get("refused"),
+        killed=raw.get("killed"),
+    )
     return script, result, raw["baseUrl"]
 
 
@@ -840,10 +846,11 @@ async def rejudge(args: argparse.Namespace) -> int:
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the
-    run exported; the judge's column is this call's. A session the room refused is not
-    judged here either, and its row stays `recusada`. Writing into the directory being read
-    is refused: `--out` defaults to today's date, which on the day of the run is that very
-    directory, and `close` would replace the README that records what the run cost.
+    run exported; the judge's column is this call's. A session the room refused or an
+    error killed midway is not judged here either, and its row says so. Writing into the
+    directory being read is refused: `--out` defaults to today's date, which on the day of the
+    run is that very directory, and `close` would replace the README that records what the run
+    cost.
     """
     out = Path(args.out)
     if out.resolve() == Path(args.rejudge).resolve():
@@ -861,27 +868,32 @@ async def rejudge(args: argparse.Namespace) -> int:
     if not earlier:
         print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
         return 2
-    to_judge = [script for _, script, result, _ in earlier if result.refused is None]
+    to_judge = [script for _, script, result, _ in earlier if result.whole]
     base_url = earlier[-1][3]
     budget = budget_of(args)
     results: list[SessionResult] = []
     not_started: list[str] = []
-    for position, (path, script, result, _) in enumerate(earlier):
-        if _spent(results) >= budget:
-            not_started = [later.name for _, later, _, _ in earlier[position:]]
-            break
-        print(f"\n▶ {script.name} — judging {path.name} again")
-        out.mkdir(parents=True, exist_ok=True)
-        if result.refused is None:
-            await judge(
-                script,
-                result,
-                out=out,
-                stamp=path.stem[len(script.name) + 1 :],
-                prompt_repeats=shares_judge_prompt(script, to_judge),
-            )
-        results.append(result)
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+    try:
+        for position, (path, script, result, _) in enumerate(earlier):
+            playing = script.name
+            if _spent(results) >= budget:
+                not_started = [later.name for _, later, _, _ in earlier[position:]]
+                break
+            print(f"\n▶ {script.name} — judging {path.name} again")
+            out.mkdir(parents=True, exist_ok=True)
+            results.append(result)
+            if result.whole:
+                await judge(
+                    script,
+                    result,
+                    out=out,
+                    stamp=path.stem[len(script.name) + 1 :],
+                    prompt_repeats=shares_judge_prompt(script, to_judge),
+                )
+    except Exception as killed:
+        close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
+        raise
     return finish(
         results,
         out=out,

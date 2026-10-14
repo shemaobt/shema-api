@@ -658,6 +658,33 @@ async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_pa
     )
 
 
+async def test_a_rejudge_killed_by_an_error_still_leaves_the_readme_and_the_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    the_room_agent_is(monkeypatch, judge=llm.call_agent)
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: _Wire(json.dumps(A_VERDICT)))
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    out = tmp_path / "again"
+    (out / "P01-b.2026-09-16T21-13-26.verdict.json").mkdir(parents=True)
+
+    with pytest.raises(IsADirectoryError):
+        await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P01-a | FAIL |" in readme and "| P01-b | FAIL |" in readme, (
+        "o P01-a foi julgado e o P01-b morreu ao gravar o veredito: as duas linhas existem"
+    )
+    assert "judge US$ 0.51." in readme, (
+        "2 x 0,256 da tabela, à mão: a chamada do juiz que morreu foi paga e entra na conta"
+    )
+    assert "Rodada interrompida em P01-b por IsADirectoryError: " in readme
+    assert "\ncost US$ 0.51 — judge US$ 0.51\n" in capsys.readouterr().out
+
+
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:
     warned = golden_runner.Played(idx=0, team="Oi.", guide="Vão com Deus!", outcome="pass")
     warned.mechanical = ["religious farewell of its own"]
