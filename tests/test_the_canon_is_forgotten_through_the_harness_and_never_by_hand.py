@@ -411,9 +411,10 @@ def _fed_by_what_functions_return(
         for function in tree.body
         if names_a_cache and isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
     }
-    overridden = _fixtures_of(tree) & outside.keys()
-    fixtures = _fixtures_of(tree) - overridden
-    called_by_pytest = _called_by_pytest(tree) if outside else set()
+    of_the_file = _fixtures_of(tree)
+    overridden = of_the_file & outside.keys()
+    fixtures = of_the_file - overridden
+    called_by_pytest = _called_by_pytest(tree) if outside or fixtures else set()
     carried: dict[str, set[str]] = {}
     for _ in range(len(functions) + 1):
         fed = {
@@ -423,14 +424,11 @@ def _fed_by_what_functions_return(
                     ([parameter.arg], value)
                     for parameter in _parameters_of(node)
                     for value in _as_resolved(
-                        (
-                            carried
-                            if parameter.arg in fixtures
-                            else outside
-                            if node in called_by_pytest
-                            else {}
-                        ).get(parameter.arg, set())
+                        (carried if parameter.arg in fixtures else outside).get(
+                            parameter.arg, set()
+                        )
                     )
+                    if node in called_by_pytest
                 ),
             ]
             for node, bindings in arguments.items()
@@ -441,7 +439,7 @@ def _fed_by_what_functions_return(
                 *(
                     ([name], value)
                     for name, names in carried.items()
-                    if name not in overridden
+                    if name not in of_the_file
                     for value in _as_resolved(names)
                 ),
             ],
@@ -1642,6 +1640,26 @@ def test_a_case(cached) -> None:
     cached.cache_clear()
 """
 
+THE_CASE_WHOSE_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_ITS_OWN_FIXTURE = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    forget(get_settings)
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -2550,6 +2568,21 @@ def test_a_method_that_clears_its_parameter_is_a_clear_at_the_call(
     ],
 )
 def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole_where_they_do_not(
+    tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    clears = _the_clears_in(_planted(tmp_path, source), _the_caches_the_harness_forgets())
+
+    assert clears == (of_the_canon, of_something_else)
+
+
+@pytest.mark.parametrize(
+    ("source", "of_the_canon", "of_something_else"),
+    [
+        (THE_CASE_WHOSE_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_ITS_OWN_FIXTURE, [], [13]),
+    ],
+    ids=["a helper that is handed another cache under the name of the case's fixture"],
+)
+def test_a_fixture_of_the_case_feeds_only_what_pytest_calls_with_it(
     tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
 ) -> None:
     clears = _the_clears_in(_planted(tmp_path, source), _the_caches_the_harness_forgets())
