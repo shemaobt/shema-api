@@ -23,7 +23,8 @@ from tests.canon_harness import (
 )
 
 TESTS = Path(__file__).resolve().parent
-APP = TESTS.parent / "app"
+ROOT = TESTS.parent
+APP = ROOT / "app"
 THE_CANON_PACKAGE = "app.services.internalization_room.canon."
 
 
@@ -31,7 +32,7 @@ def _the_caches_the_harness_forgets() -> set[str]:
     return the_names_the_forgotten_caches_are_reached_by()
 
 
-def _imports_of(tree: ast.AST) -> dict[str, str]:
+def _imports_of(tree: ast.AST, package: list[str]) -> dict[str, str]:
     imports: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -39,8 +40,10 @@ def _imports_of(tree: ast.AST) -> dict[str, str]:
                 root = alias.name.partition(".")[0]
                 imports[alias.asname or root] = alias.name if alias.asname else root
         elif isinstance(node, ast.ImportFrom):
+            held = package[: len(package) - node.level + 1] if node.level else []
+            where = ".".join([*held, *([node.module] if node.module else [])])
             for alias in node.names:
-                imports[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+                imports[alias.asname or alias.name] = f"{where}.{alias.name}"
     return imports
 
 
@@ -78,6 +81,12 @@ def _names_in(
         if isinstance(node, ast.Name | ast.Attribute) and (chain := _chain(node)):
             root, path = chain
             names.update(base + path for base in _origins(root, imports, sources, reading))
+            steps = path.split(".")[1:]
+            for kept in range(1, len(steps) + 1):
+                held = root + "".join(f".{step}" for step in steps[:kept])
+                if held in sources:
+                    rest = "".join(f".{step}" for step in steps[kept:])
+                    names.update(base + rest for base in _origins(held, imports, sources, reading))
         elif got := _got_by_getattr(node):
             owner, attribute = got
             names.update(
@@ -115,11 +124,17 @@ def _outside_every_function(node: ast.AST) -> Iterator[ast.AST]:
 
 
 def _bound_by(target: ast.expr) -> list[str]:
-    return [
-        bound.id
-        for bound in ast.walk(target)
-        if isinstance(bound, ast.Name) and isinstance(bound.ctx, ast.Store)
-    ]
+    bound: list[str] = []
+    for node in ast.walk(target):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            bound.append(node.id)
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, ast.Store)
+            and (chain := _chain(node))
+        ):
+            bound.append(chain[0] + chain[1])
+    return bound
 
 
 Bindings = list[tuple[list[str], ast.AST]]
@@ -167,7 +182,8 @@ def _parametrized_bindings(names: list[str], values: ast.AST) -> Bindings:
     return [(names, values)]
 
 
-Functions = dict[str, ast.FunctionDef | ast.AsyncFunctionDef]
+Function = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+Functions = dict[str, Function]
 
 
 def _defined_in(scope: ast.AST) -> Functions:
@@ -175,26 +191,52 @@ def _defined_in(scope: ast.AST) -> Functions:
     for child in ast.iter_child_nodes(scope):
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
             defined[child.name] = child
+        elif (
+            isinstance(child, ast.Assign)
+            and isinstance(child.value, ast.Lambda)
+            and len(child.targets) == 1
+            and isinstance(child.targets[0], ast.Name)
+        ):
+            defined[child.targets[0].id] = child.value
         elif not isinstance(child, ast.ClassDef):
             defined |= _defined_in(child)
     return defined
 
 
+def _handed_to(
+    function: Function, arguments: list[ast.expr], keywords: list[ast.keyword], skipping: int = 0
+) -> list[tuple[str, ast.expr]]:
+    parameters = [parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]]
+    return [
+        *zip(parameters[skipping:], arguments, strict=False),
+        *((keyword.arg, keyword.value) for keyword in keywords if keyword.arg),
+    ]
+
+
+def _hand_over(
+    function: Function,
+    arguments: list[ast.expr],
+    keywords: list[ast.keyword],
+    given: dict[ast.AST, Bindings],
+) -> None:
+    given[function].extend(
+        ([parameter], argument) for parameter, argument in _handed_to(function, arguments, keywords)
+    )
+
+
 def _read_the_calls(scope: ast.AST, visible: Functions, given: dict[ast.AST, Bindings]) -> None:
     for child in ast.iter_child_nodes(scope):
-        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
-            function = visible.get(child.func.id)
-            if function is not None:
-                parameters = [
-                    parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]
-                ]
-                given[function].extend(
-                    ([parameter], argument)
-                    for parameter, argument in zip(parameters, child.args, strict=False)
-                )
-                given[function].extend(
-                    ([keyword.arg], keyword.value) for keyword in child.keywords if keyword.arg
-                )
+        if isinstance(child, ast.Call):
+            if isinstance(child.func, ast.Lambda):
+                _hand_over(child.func, child.args, child.keywords, given)
+            elif isinstance(child.func, ast.Name):
+                function = visible.get(child.func.id)
+                if function is not None:
+                    _hand_over(function, child.args, child.keywords, given)
+                elif (
+                    child.func.id == "map" and child.args and isinstance(child.args[0], ast.Lambda)
+                ):
+                    _hand_over(child.args[0], child.args[1:], [], given)
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
             _read_the_calls(child, visible | _defined_in(child), given)
         else:
@@ -203,12 +245,10 @@ def _read_the_calls(scope: ast.AST, visible: Functions, given: dict[ast.AST, Bin
 
 def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
     given: dict[ast.AST, Bindings] = {
-        node: []
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        node: [] for node in ast.walk(tree) if isinstance(node, Function)
     }
     for function in given:
-        for decorator in function.decorator_list:
+        for decorator in getattr(function, "decorator_list", []):
             if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
                 given[function].extend(_parametrized_bindings(*parametrized))
     _read_the_calls(tree, _defined_in(tree), given)
@@ -219,7 +259,7 @@ def _bindings(
     nodes: Iterable[ast.AST], arguments: dict[ast.AST, Bindings]
 ) -> Iterator[tuple[list[str], ast.AST]]:
     for node in nodes:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        if isinstance(node, Function):
             yield from arguments.get(node, [])
         elif isinstance(node, ast.For | ast.comprehension):
             yield _bound_by(node.target), node.iter
@@ -240,19 +280,280 @@ def _sourced_by(bindings: Bindings, seed: dict[str, list[ast.AST]]) -> dict[str,
     return sources
 
 
-def _cleared_by(call: ast.Call) -> ast.expr | None:
-    if isinstance(call.func, ast.Attribute) and call.func.attr == "cache_clear":
-        return call.func.value
-    got = _got_by_getattr(call.func)
+def _bound_clear_of(expression: ast.AST) -> ast.expr | None:
+    if isinstance(expression, ast.Attribute) and expression.attr == "cache_clear":
+        return expression.value
+    got = _got_by_getattr(expression)
     return got[0] if got and got[1] == "cache_clear" else None
 
 
-def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
-    tree = ast.parse(module.read_text(encoding="utf-8"))
-    imports = _imports_of(tree)
+def _bound_clears_kept_in(
+    name: str, sources: dict[str, list[ast.AST]], reading: frozenset[str] = frozenset()
+) -> list[ast.expr]:
+    if name in reading:
+        return []
+    cleared: list[ast.expr] = []
+    for source in sources.get(name, []):
+        if (bound := _bound_clear_of(source)) is not None:
+            cleared.append(bound)
+        elif isinstance(source, ast.Name):
+            cleared.extend(_bound_clears_kept_in(source.id, sources, reading | {name}))
+    return cleared
+
+
+def _cleared_by(
+    call: ast.Call, sources: dict[str, list[ast.AST]], spied_on: set[ast.AST]
+) -> list[ast.expr]:
+    if (direct := _bound_clear_of(call.func)) is not None:
+        return [direct]
+    if isinstance(call.func, ast.Name) and call not in spied_on:
+        return _bound_clears_kept_in(call.func.id, sources)
+    return []
+
+
+def _inside_the_spies(tree: ast.AST) -> set[ast.AST]:
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    called = {call.func.id for call in calls if isinstance(call.func, ast.Name)}
+    installed = {
+        argument.id
+        for call in calls
+        if isinstance(call.func, ast.Attribute) and call.func.attr == "setattr"
+        for argument in call.args
+        if isinstance(argument, ast.Name)
+    }
+    return {
+        inside
+        for function in ast.walk(tree)
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+        and function.name in installed - called
+        for inside in ast.walk(function)
+    }
+
+
+def _values_returned_by(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.expr]:
+    values: list[ast.expr] = []
+    pending = list(ast.iter_child_nodes(function))
+    while pending:
+        node = pending.pop()
+        if isinstance(node, Function):
+            continue
+        if isinstance(node, ast.Return | ast.Yield) and node.value is not None:
+            values.append(node.value)
+        pending.extend(ast.iter_child_nodes(node))
+    return values
+
+
+def _as_resolved(names: set[str]) -> list[ast.expr]:
+    return [ast.Name(id=name) for name in sorted(names)]
+
+
+def _names_returned_by(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: dict[str, str],
+    fed: dict[ast.AST, Bindings],
+    at_the_top_sources: dict[str, list[ast.AST]],
+    canon_caches: set[str],
+) -> set[str]:
+    sources = _sourced_by(_bindings(list(ast.walk(function)), fed), at_the_top_sources)
+    return {
+        name
+        for value in _values_returned_by(function)
+        for name in _names_in(value, imports, sources)
+        if any(cache == name or cache.startswith(f"{name}.") for cache in canon_caches)
+    }
+
+
+def _fed_by_what_functions_return(
+    tree: ast.Module,
+    imports: dict[str, str],
+    arguments: dict[ast.AST, Bindings],
+    at_the_top: list[ast.AST],
+    canon_caches: set[str],
+    names_a_cache: bool,
+) -> tuple[dict[ast.AST, Bindings], dict[str, list[ast.AST]]]:
+    functions = {
+        function.name: function
+        for function in tree.body
+        if names_a_cache and isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    fixtures = {
+        name
+        for name, function in functions.items()
+        if "fixture" in {_decorator_name(decorator) for decorator in function.decorator_list}
+    }
+    carried: dict[str, set[str]] = {}
+    for _ in range(len(functions) + 1):
+        fed = {
+            node: [
+                *bindings,
+                *(
+                    ([parameter.arg], value)
+                    for parameter in _parameters_of(node)
+                    if parameter.arg in fixtures
+                    for value in _as_resolved(carried.get(parameter.arg, set()))
+                ),
+            ]
+            for node, bindings in arguments.items()
+        }
+        at_the_top_sources = _sourced_by(
+            [
+                *_bindings(at_the_top, fed),
+                *(
+                    ([name], value)
+                    for name, names in carried.items()
+                    for value in _as_resolved(names)
+                ),
+            ],
+            {},
+        )
+        now = {
+            name: names
+            for name, function in functions.items()
+            if (
+                names := _names_returned_by(
+                    function, imports, fed, at_the_top_sources, canon_caches
+                )
+            )
+        }
+        if now == carried:
+            break
+        carried = now
+    return fed, at_the_top_sources
+
+
+def _parameters_of(function: Function) -> list[ast.arg]:
+    return [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
+
+
+def _module_file(dotted: str, root: Path) -> Path | None:
+    base = root.joinpath(*dotted.split("."))
+    return next(
+        (found for found in (base.with_suffix(".py"), base / "__init__.py") if found.is_file()),
+        None,
+    )
+
+
+def _package_of(module: Path, root: Path) -> list[str]:
+    return list(module.relative_to(root).parent.parts) if module.is_relative_to(root) else []
+
+
+Callee = tuple[Path, ast.Module, ast.FunctionDef | ast.AsyncFunctionDef, int]
+
+
+def _is_static(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return "staticmethod" in {_decorator_name(decorator) for decorator in method.decorator_list}
+
+
+def _defined_at(
+    tree: ast.Module, path: list[str]
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, int] | None:
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and path == [node.name]:
+            return node, 0
+        if isinstance(node, ast.ClassDef) and path[:1] == [node.name]:
+            for method in node.body:
+                if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef) and path[1:] == [
+                    method.name
+                ]:
+                    return method, 0 if _is_static(method) else 1
+    return None
+
+
+def _callee_named(dotted: str, module: Path, tree: ast.Module, root: Path) -> Callee | None:
+    parts = dotted.split(".")
+    if len(parts) == 2 and (here := _defined_at(tree, parts)):
+        return module, tree, here[0], here[1]
+    for taken in range(len(parts) - 1, 0, -1):
+        if (file := _module_file(".".join(parts[:taken]), root)) is None:
+            continue
+        callee_tree = ast.parse(file.read_text(encoding="utf-8"))
+        if found := _defined_at(callee_tree, parts[taken:]):
+            return file, callee_tree, found[0], found[1]
+        return None
+    return None
+
+
+def _clears_its_parameter(callee: Callee, parameter: str, root: Path) -> bool:
+    file, tree, function, _ = callee
+    if "cache_clear" not in file.read_text(encoding="utf-8"):
+        return False
+    marker = f"<{parameter}>"
+    of_the_marker, _ = _clears_in_tree(
+        file,
+        tree,
+        {marker},
+        root,
+        {function: [([parameter], ast.Name(id=marker))]},
+        follow=False,
+    )
+    return bool(of_the_marker)
+
+
+def _leftmost_name(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Attribute | ast.Call):
+        node = node.value if isinstance(node, ast.Attribute) else node.func
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _hands_the_canon_to_a_clear(
+    call: ast.Call,
+    module: Path,
+    tree: ast.Module,
+    imports: dict[str, str],
+    sources: dict[str, list[ast.AST]],
+    canon_caches: set[str],
+    root: Path,
+) -> bool:
+    classes = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
+    leftmost = _leftmost_name(call.func)
+    if leftmost not in imports and leftmost not in sources and leftmost not in classes:
+        return False
+    handed = [
+        argument
+        for argument in [*call.args, *(keyword.value for keyword in call.keywords)]
+        if _names_in(argument, imports, sources) & canon_caches
+    ]
+    if not handed:
+        return False
+    callees = (
+        {f"{owner}.{call.func.attr}" for owner in _names_in(call.func.value, imports, sources)}
+        if isinstance(call.func, ast.Attribute)
+        else _names_in(call.func, imports, sources)
+    )
+    for dotted in callees:
+        if (callee := _callee_named(dotted, module, tree, root)) is None:
+            continue
+        for parameter, argument in _handed_to(callee[2], call.args, call.keywords, callee[3]):
+            if argument in handed and _clears_its_parameter(callee, parameter, root):
+                return True
+    return False
+
+
+def _clears_in_tree(
+    module: Path,
+    tree: ast.Module,
+    canon_caches: set[str],
+    root: Path,
+    seeded: dict[ast.AST, Bindings],
+    *,
+    follow: bool,
+) -> tuple[list[int], list[int]]:
+    text = module.read_text(encoding="utf-8")
+    names_a_cache = any(cache.rpartition(".")[2] in text for cache in canon_caches)
+    imports = _imports_of(tree, _package_of(module, root))
+    spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
-    arguments = _arguments_given(tree)
-    at_the_top_sources = _sourced_by(_bindings(at_the_top, arguments), {})
+    given = _arguments_given(tree)
+    for function, bindings in seeded.items():
+        given[function].extend(bindings)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for method in node.body:
+                if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef) and method.args.args:
+                    given[method].append(([method.args.args[0].arg], ast.Name(id=node.name)))
+    arguments, at_the_top_sources = _fed_by_what_functions_return(
+        tree, imports, given, at_the_top, canon_caches, names_a_cache
+    )
     scopes = [(at_the_top, at_the_top_sources)]
     for function in _outermost_functions(tree):
         within = list(ast.walk(function))
@@ -262,10 +563,27 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
     of_something_else: list[int] = []
     for nodes, sources in scopes:
         for node in nodes:
-            if isinstance(node, ast.Call) and (cleared := _cleared_by(node)) is not None:
-                names = _names_in(cleared, imports, sources)
+            if not isinstance(node, ast.Call):
+                continue
+            if cleared := _cleared_by(node, sources, spied_on):
+                names = set().union(*(_names_in(each, imports, sources) for each in cleared))
                 (of_the_canon if names & canon_caches else of_something_else).append(node.lineno)
+            elif (
+                follow
+                and names_a_cache
+                and _hands_the_canon_to_a_clear(
+                    node, module, tree, imports, sources, canon_caches, root
+                )
+            ):
+                of_the_canon.append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
+
+
+def _the_clears_in(
+    module: Path, canon_caches: set[str], root: Path = ROOT
+) -> tuple[list[int], list[int]]:
+    tree = ast.parse(module.read_text(encoding="utf-8"))
+    return _clears_in_tree(module, tree, canon_caches, root, {}, follow=True)
 
 
 CLEARS_ONE_THING_AND_NAMES_ANOTHER = """\
@@ -534,6 +852,403 @@ def test_a_case() -> None:
     held.load_map.cache_clear()
 """
 
+CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+    empty_it()
+"""
+
+CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    empty_it = getattr(book_material.preservation_rules, "cache_clear")
+    empty_it()
+"""
+
+CLEARS_THROUGH_AN_ATTRIBUTE_TARGET = """\
+from types import SimpleNamespace
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    holder = SimpleNamespace()
+    holder.cached = book_material.preservation_rules
+    holder.cached.cache_clear()
+"""
+
+CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET = """\
+from types import SimpleNamespace
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    holder = SimpleNamespace()
+    holder.cached = book_material.preservation_rules
+    holder.other = 1
+    holder.other.cache_clear()
+"""
+
+CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    (lambda cached: cached.cache_clear())(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_LAMBDA_KEPT_IN_A_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    forget = lambda cached: cached.cache_clear()
+    forget(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_LAMBDA_GIVEN_TO_MAP = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    list(map(lambda cached: cached.cache_clear(), (book_material.preservation_rules,)))
+"""
+
+CLEARS_ANOTHER_CACHE_THROUGH_A_LAMBDA = """\
+from app.core.config import get_settings
+
+
+def test_a_case() -> None:
+    (lambda cached: cached.cache_clear())(get_settings)
+"""
+
+CLEARS_THROUGH_A_FIXTURE_THAT_RETURNS_THE_CACHE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_FIXTURE_THAT_YIELDS_A_LOCAL_HOLDING_THE_CACHE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    held = book_material.preservation_rules
+    yield held
+
+
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_FIXTURE_FED_BY_ANOTHER_FIXTURE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def first():
+    return book_material.preservation_rules
+
+
+@pytest.fixture
+def second(first):
+    return first
+
+
+def test_a_case(second) -> None:
+    second.cache_clear()
+"""
+
+CLEARS_THE_FIXTURE_OF_ANOTHER_CACHE = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+@pytest.fixture
+def settings():
+    return get_settings
+
+
+def test_a_case(settings) -> None:
+    settings.cache_clear()
+"""
+
+CLEARS_THROUGH_THE_VALUE_A_FUNCTION_RETURNS = """\
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    return book_material.preservation_rules
+
+
+def test_a_case() -> None:
+    the_cache().cache_clear()
+"""
+
+CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    held = book_material.preservation_rules
+    return held
+
+
+def test_a_case() -> None:
+    cached = the_cache()
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    return book_material.preservation_rules
+
+
+def the_same_cache():
+    return the_cache()
+
+
+def test_a_case() -> None:
+    the_same_cache().cache_clear()
+"""
+
+CLEARS_THE_VALUE_OF_A_FUNCTION_THAT_RETURNS_ANOTHER_CACHE = """\
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    return book_material.preservation_rules
+
+
+def the_settings():
+    return get_settings
+
+
+def test_a_case() -> None:
+    the_settings().cache_clear()
+"""
+
+A_SIBLING_MODULE_IMPORTED_BY_A_DOT = """\
+from . import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
+"""
+
+A_SUBPACKAGE_IMPORTED_BY_A_DOT = """\
+from .canon import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
+"""
+
+A_MODULE_IMPORTED_THROUGH_THE_PARENT = """\
+from ..canon import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
+"""
+
+A_CACHE_IMPORTED_BY_A_DOT_FROM_ITS_MODULE = """\
+from .book_material import preservation_rules as the_rules
+
+
+def test_a_case() -> None:
+    the_rules.cache_clear()
+"""
+
+# The same source on purpose: the contrast is the package the file sits in, not the text.
+A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT = A_SIBLING_MODULE_IMPORTED_BY_A_DOT
+
+THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER = """\
+def forget(cached) -> None:
+    cached.cache_clear()
+"""
+
+THE_HELPER_MODULE_THAT_CLEARS_ITS_FIRST_PARAMETER_ONLY = """\
+def forget(first, second) -> None:
+    first.cache_clear()
+"""
+
+THE_HELPER_MODULE_THAT_CLEARS_SOMETHING_ELSE = """\
+def forget(cached):
+    unrelated = 1
+    unrelated.cache_clear()
+    return cached
+"""
+
+THE_CASE_THAT_IMPORTS_THE_HELPER_BY_NAME = """\
+from a_helper import forget
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    forget(book_material.preservation_rules)
+"""
+
+THE_CASE_THAT_IMPORTS_THE_HELPER_MODULE_UNDER_ANOTHER_NAME = """\
+import a_helper as helper
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    helper.forget(book_material.preservation_rules)
+"""
+
+THE_CASE_THAT_IMPORTS_THE_HELPER_UNDER_ANOTHER_NAME = """\
+from a_helper import forget as drop
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    drop(cached=book_material.preservation_rules)
+"""
+
+THE_CASE_THAT_HANDS_THE_CACHE_SECOND = """\
+from a_helper import forget
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    forget(1, book_material.preservation_rules)
+"""
+
+THE_CASE_THAT_HANDS_ANOTHER_CACHE = """\
+from a_helper import forget
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    assert book_material.preservation_rules
+    forget(get_settings)
+"""
+
+THE_CLASS_WHOSE_METHOD_CLEARS_ITS_PARAMETER = """\
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+"""
+
+THE_CASE_THAT_CALLS_A_METHOD_ON_AN_INSTANCE = """\
+from a_helper import Holder
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    holder = Holder()
+    holder.forget(book_material.preservation_rules)
+"""
+
+THE_CASE_THAT_CALLS_A_METHOD_ON_A_FRESH_INSTANCE = """\
+from a_helper import Holder
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    Holder().forget(book_material.preservation_rules)
+"""
+
+A_CLASS_OF_THE_CASE_WHOSE_METHOD_CLEARS_ITS_PARAMETER = """\
+from app.services.internalization_room.canon import book_material
+
+
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+
+    def test_a_case(self) -> None:
+        self.forget(book_material.preservation_rules)
+
+
+def test_another_case() -> None:
+    Holder().forget(book_material.preservation_rules)
+"""
+
+TWO_CLASSES_WHOSE_METHODS_ARE_CALLED_FORGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+class Quiet:
+    def forget(self, cached) -> None:
+        return None
+
+
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+
+
+def test_a_case() -> None:
+    Quiet().forget(book_material.preservation_rules)
+"""
+
+THE_CLASS_WHOSE_STATIC_METHOD_CLEARS_ITS_PARAMETER = """\
+class Holder:
+    @staticmethod
+    def forget(cached) -> None:
+        cached.cache_clear()
+"""
+
+THE_CASE_THAT_CALLS_A_STATIC_METHOD_ON_THE_CLASS = """\
+from a_helper import Holder
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    Holder.forget(book_material.preservation_rules)
+"""
+
+THE_CLASS_WHOSE_CLASS_METHOD_CLEARS_ITS_PARAMETER = """\
+class Holder:
+    @classmethod
+    def forget(cls, cached) -> None:
+        cached.cache_clear()
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -546,6 +1261,33 @@ def test_a_case(monkeypatch) -> None:
         empty_it()
 
     monkeypatch.setattr(cache, "cache_clear", empty_and_note)
+"""
+
+A_SPY_THE_CASE_CALLS_BY_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case(monkeypatch) -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+
+    def empty_and_note() -> None:
+        empty_it()
+
+    monkeypatch.setattr(cache, "cache_clear", empty_and_note)
+    empty_and_note()
+"""
+
+A_WRAPPER_NO_ONE_INSTALLED = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+
+    def empty_and_note() -> None:
+        empty_it()
 """
 
 CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET = """\
@@ -715,14 +1457,26 @@ def _built_by_a_call(value: ast.expr | None) -> bool:
     )
 
 
-def _cache_declared_by(node: ast.AST) -> str | None:
+def _cache_declared_by(node: ast.AST, named: set[ast.AST]) -> str | None:
     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
         kinds = {_decorator_name(decorator) for decorator in node.decorator_list}
         return node.name if kinds & CACHES else None
     if isinstance(node, ast.Assign | ast.AnnAssign) and _built_by_a_call(node.value):
         target = node.targets[0] if isinstance(node, ast.Assign) else node.target
         return ast.unparse(target)
+    if isinstance(node, ast.Call) and node not in named and _built_by_a_call(node):
+        return ast.unparse(node)
     return None
+
+
+def _named_or_decorating(tree: ast.AST) -> set[ast.AST]:
+    named: set[ast.AST] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+            named.add(node.value)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            named.update(node.decorator_list)
+    return named
 
 
 def _unlisted_caches(root: Path, listed: set[str]) -> list[str]:
@@ -730,8 +1484,10 @@ def _unlisted_caches(root: Path, listed: set[str]) -> list[str]:
     for module in sorted(root.rglob("*.py")):
         relative = module.relative_to(root.parent)
         dotted = ".".join(relative.with_suffix("").parts)
-        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
-            name = _cache_declared_by(node)
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        named = _named_or_decorating(tree)
+        for node in ast.walk(tree):
+            name = _cache_declared_by(node, named)
             qualified = f"{dotted}.{name}"
             if name is None or dotted.startswith(THE_CANON_PACKAGE) or qualified in listed:
                 continue
@@ -795,6 +1551,51 @@ def _read() -> str:
 
 
 read_the_map_again = lru_cache(_read)
+"""
+
+A_CACHE_BUILT_BY_A_CALL_AND_RETURNED = """\
+from functools import lru_cache
+
+
+def _read() -> str:
+    return "the map"
+
+
+def keep_it():
+    return lru_cache(maxsize=1)(_read)
+"""
+
+A_CACHE_BUILT_BY_A_CALL_AND_HANDED_ON = """\
+import functools
+
+
+def _read() -> str:
+    return "the map"
+
+
+register(functools.cache(_read))
+"""
+
+A_CACHE_BUILT_BY_A_CALL_AND_LEFT_ALONE = """\
+from functools import lru_cache
+
+
+def _read() -> str:
+    return "the map"
+
+
+lru_cache(maxsize=1)(_read)
+"""
+
+A_DECORATOR_BUILT_BY_A_CALL_ON_A_FUNCTION = """\
+from functools import lru_cache
+
+SIZE = 1
+
+
+@lru_cache(SIZE)
+def read_the_map_again() -> str:
+    return "the map"
 """
 
 A_DECORATOR_KEPT_IN_A_NAME = """\
@@ -872,6 +1673,18 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_MODULE_UNDER_ANOTHER_NAME, 5),
         (CLEARS_THROUGH_THE_FULL_PATH, 5),
         (CLEARS_THROUGH_A_NAME_THAT_HOLDS_THE_MODULE, 6),
+        (CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME, 7),
+        (CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR, 6),
+        (CLEARS_THROUGH_AN_ATTRIBUTE_TARGET, 9),
+        (CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE, 5),
+        (CLEARS_THROUGH_A_LAMBDA_KEPT_IN_A_NAME, 5),
+        (CLEARS_THROUGH_A_LAMBDA_GIVEN_TO_MAP, 5),
+        (CLEARS_THROUGH_A_FIXTURE_THAT_RETURNS_THE_CACHE, 12),
+        (CLEARS_THROUGH_A_FIXTURE_THAT_YIELDS_A_LOCAL_HOLDING_THE_CACHE, 13),
+        (CLEARS_THROUGH_A_FIXTURE_FED_BY_ANOTHER_FIXTURE, 17),
+        (CLEARS_THROUGH_THE_VALUE_A_FUNCTION_RETURNS, 9),
+        (CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE, 11),
+        (CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE, 13),
     ],
     ids=[
         "named at the clear",
@@ -899,6 +1712,18 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named through a module imported under another name",
         "named by the full path of its module",
         "named through a name that holds the module",
+        "cleared by a bound cache_clear kept in a name",
+        "cleared by a bound cache_clear got by getattr",
+        "named by an attribute target",
+        "named by the parameter of a lambda called in place",
+        "named by the parameter of a lambda kept in a name",
+        "named by the parameter of a lambda given to map",
+        "named by a fixture that returns it",
+        "named by a fixture that yields a local holding it",
+        "named by a fixture that another fixture feeds",
+        "named by the value a function returns",
+        "named by a name a function's value feeds",
+        "named by a function that returns another's value",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -983,6 +1808,37 @@ def test_a_cache_built_by_handing_the_function_to_the_decorator_is_reported(
     app = _an_app_holding(tmp_path, "services/a_new_cache.py", source)
 
     assert len(_unlisted_caches(app, set())) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "line", "name"),
+    [
+        (A_CACHE_BUILT_BY_A_CALL_AND_RETURNED, 9, "lru_cache(maxsize=1)(_read)"),
+        (A_CACHE_BUILT_BY_A_CALL_AND_HANDED_ON, 8, "functools.cache(_read)"),
+        (A_CACHE_BUILT_BY_A_CALL_AND_LEFT_ALONE, 8, "lru_cache(maxsize=1)(_read)"),
+    ],
+    ids=["returned", "handed to a call", "left alone"],
+)
+def test_a_cache_built_by_a_call_and_kept_under_no_name_is_reported_where_it_is(
+    tmp_path: Path, source: str, line: int, name: str
+) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", source)
+
+    (reported,) = _unlisted_caches(app, set())
+
+    assert reported.startswith(
+        f"app/services/a_new_cache.py:{line} `{name}` is a cache the harness does not know. "
+    )
+
+
+def test_a_decorator_built_by_a_call_is_one_cache_and_not_two(tmp_path: Path) -> None:
+    app = _an_app_holding(
+        tmp_path, "services/a_new_cache.py", A_DECORATOR_BUILT_BY_A_CALL_ON_A_FUNCTION
+    )
+
+    (reported,) = _unlisted_caches(app, set())
+
+    assert reported.startswith("app/services/a_new_cache.py:7 `read_the_map_again` is a cache ")
 
 
 def test_a_decorator_kept_in_a_name_is_not_a_cache(tmp_path: Path) -> None:
@@ -1073,10 +1929,178 @@ def test_a_spy_the_harness_calls_through_a_bound_cache_clear_is_not_a_clear_by_h
 
 
 @pytest.mark.parametrize(
+    ("source", "line"),
+    [(A_SPY_THE_CASE_CALLS_BY_NAME, 9), (A_WRAPPER_NO_ONE_INSTALLED, 9)],
+    ids=["a spy the case calls by name", "a wrapper no one installed"],
+)
+def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
+    tmp_path: Path, source: str, line: int
+) -> None:
+    of_the_canon, of_something_else = _the_clears_in(
+        _planted(tmp_path, source), _the_caches_the_harness_forgets()
+    )
+
+    assert (of_the_canon, of_something_else) == ([line], [])
+
+
+@pytest.mark.parametrize(
+    ("at", "source", "of_the_canon", "of_something_else"),
+    [
+        (
+            "services/internalization_room/canon/a_case.py",
+            A_SIBLING_MODULE_IMPORTED_BY_A_DOT,
+            [5],
+            [],
+        ),
+        ("services/internalization_room/a_case.py", A_SUBPACKAGE_IMPORTED_BY_A_DOT, [5], []),
+        (
+            "services/internalization_room/other/a_case.py",
+            A_MODULE_IMPORTED_THROUGH_THE_PARENT,
+            [5],
+            [],
+        ),
+        (
+            "services/internalization_room/canon/a_case.py",
+            A_CACHE_IMPORTED_BY_A_DOT_FROM_ITS_MODULE,
+            [5],
+            [],
+        ),
+        ("services/a_case.py", A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT, [], [5]),
+    ],
+    ids=[
+        "a sibling module imported by a dot",
+        "a subpackage imported by a dot",
+        "a module imported through the parent",
+        "a cache imported by a dot from its module",
+        "a module outside the room imported by a dot",
+    ],
+)
+def test_a_relative_import_is_read_as_the_module_it_names_from_where_the_file_is(
+    tmp_path: Path, at: str, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    app = _an_app_holding(tmp_path, at, source)
+
+    clears = _the_clears_in(app / at, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == (of_the_canon, of_something_else)
+
+
+def _a_case_beside_its_helper(tmp_path: Path, helper: str, source: str) -> Path:
+    (tmp_path / "a_helper.py").write_text(helper, encoding="utf-8")
+    return _planted(tmp_path, source)
+
+
+@pytest.mark.parametrize(
+    ("helper", "source", "of_the_canon"),
+    [
+        (
+            THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_IMPORTS_THE_HELPER_BY_NAME,
+            [7],
+        ),
+        (
+            THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_IMPORTS_THE_HELPER_MODULE_UNDER_ANOTHER_NAME,
+            [7],
+        ),
+        (
+            THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_IMPORTS_THE_HELPER_UNDER_ANOTHER_NAME,
+            [7],
+        ),
+        (
+            THE_HELPER_MODULE_THAT_CLEARS_ITS_FIRST_PARAMETER_ONLY,
+            THE_CASE_THAT_HANDS_THE_CACHE_SECOND,
+            [],
+        ),
+        (
+            THE_HELPER_MODULE_THAT_CLEARS_SOMETHING_ELSE,
+            THE_CASE_THAT_IMPORTS_THE_HELPER_BY_NAME,
+            [],
+        ),
+        (
+            THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_HANDS_ANOTHER_CACHE,
+            [],
+        ),
+    ],
+    ids=[
+        "a helper imported by name",
+        "a helper reached through its module under another name",
+        "a helper imported under another name, the cache given by keyword",
+        "a cache handed to the parameter the helper leaves alone",
+        "a helper that clears something else",
+        "a helper handed another cache",
+    ],
+)
+def test_a_helper_of_another_module_that_clears_its_parameter_is_a_clear_at_the_call(
+    tmp_path: Path, helper: str, source: str, of_the_canon: list[int]
+) -> None:
+    module = _a_case_beside_its_helper(tmp_path, helper, source)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == (of_the_canon, [])
+
+
+@pytest.mark.parametrize(
+    ("helper", "source", "of_the_canon", "of_something_else"),
+    [
+        (
+            THE_CLASS_WHOSE_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_METHOD_ON_AN_INSTANCE,
+            [8],
+            [],
+        ),
+        (
+            THE_CLASS_WHOSE_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_METHOD_ON_A_FRESH_INSTANCE,
+            [7],
+            [],
+        ),
+        (
+            THE_CLASS_WHOSE_STATIC_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_STATIC_METHOD_ON_THE_CLASS,
+            [7],
+            [],
+        ),
+        (
+            THE_CLASS_WHOSE_CLASS_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_STATIC_METHOD_ON_THE_CLASS,
+            [7],
+            [],
+        ),
+        ("", A_CLASS_OF_THE_CASE_WHOSE_METHOD_CLEARS_ITS_PARAMETER, [9, 13], [6]),
+        ("", TWO_CLASSES_WHOSE_METHODS_ARE_CALLED_FORGET, [], [11]),
+    ],
+    ids=[
+        "a method called on an instance of an imported class",
+        "a method called on a fresh instance of an imported class",
+        "a static method called on the class, which has no receiver",
+        "a class method called on the class, whose receiver is the class",
+        "a method of a class of the case, through self and through an instance",
+        "two classes whose methods share a name",
+    ],
+)
+def test_a_method_that_clears_its_parameter_is_a_clear_at_the_call(
+    tmp_path: Path, helper: str, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    module = _a_case_beside_its_helper(tmp_path, helper, source)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == (of_the_canon, of_something_else)
+
+
+@pytest.mark.parametrize(
     ("source", "of_the_canon", "of_something_else"),
     [
         (CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET, [], [6]),
         (CLEARS_THE_SIBLING_OF_A_PARAMETRIZED_ARGUMENT, [], [8]),
+        (CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET, [], [10]),
+        (CLEARS_ANOTHER_CACHE_THROUGH_A_LAMBDA, [], [5]),
+        (CLEARS_THE_FIXTURE_OF_ANOTHER_CACHE, [], [18]),
+        (CLEARS_THE_VALUE_OF_A_FUNCTION_THAT_RETURNS_ANOTHER_CACHE, [], [14]),
         (CLEARS_A_NAME_UNPACKED_FROM_A_CACHE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR, [6], []),
@@ -1087,6 +2111,10 @@ def test_a_spy_the_harness_calls_through_a_bound_cache_clear_is_not_a_clear_by_h
     ids=[
         "the sibling of a tuple target",
         "the sibling of a parametrized argument",
+        "the sibling of an attribute target",
+        "another cache through a lambda",
+        "the fixture of another cache",
+        "the value of a function that returns another cache",
         "a name unpacked from a cache, shapes not paired",
         "a name unpacked from a longer tuple",
         "a name unpacked from a tuple with a star",
