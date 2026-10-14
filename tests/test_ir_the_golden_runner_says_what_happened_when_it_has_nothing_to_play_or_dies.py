@@ -326,3 +326,40 @@ async def test_a_run_cancelled_midway_still_leaves_the_readme_and_the_cost_total
         "o Ctrl-C não deixava relatório, e quem o lia não sabia onde a rodada parou"
     )
     assert "\ncost US$ 6.00 — guide US$ 4.00 · validator US$ 2.00\n" in capsys.readouterr().out
+
+
+async def test_a_session_cancelled_while_the_room_is_opening_it_is_a_row_and_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    opened: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            opened.append(json.loads(request.content)["pericopeId"])
+            if len(opened) == 2:
+                silent.set()
+                await asyncio.Event().wait()
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
+    out = tmp_path / "reports"
+    playing = asyncio.create_task(golden_runner.run(golden_args(sessions, out)))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P02-b | — |" in readme, (
+        "o Ctrl-C cancelou a porta da segunda sessão, e a que não chegou a abrir ficava fora"
+    )
+    assert "Rodada interrompida em P02-b por CancelledError.\n" in readme
+    assert opened == ["P01", "P02"], "a rodada cancelada não tenta a terceira sessão"

@@ -511,7 +511,7 @@ async def play_session(
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         results.append(SessionResult(script.name, None, [], _refusal(refused)))
         return
-    except Exception:
+    except BaseException:
         results.append(SessionResult(script.name, None, []))
         raise
     result = SessionResult(script.name, session_id, played)
