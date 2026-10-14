@@ -363,6 +363,20 @@ def _fixtures_of(tree: ast.Module) -> set[str]:
     }
 
 
+def _called_by_pytest(tree: ast.Module) -> set[ast.AST]:
+    scopes = [tree, *(node for node in tree.body if isinstance(node, ast.ClassDef))]
+    return {
+        function
+        for scope in scopes
+        for function in scope.body
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+        and (
+            function.name.startswith("test")
+            or "fixture" in {_decorator_name(decorator) for decorator in function.decorator_list}
+        )
+    }
+
+
 def _as_resolved(names: set[str]) -> list[ast.expr]:
     return [ast.Name(id=name) for name in sorted(names)]
 
@@ -398,6 +412,7 @@ def _fed_by_what_functions_return(
         if names_a_cache and isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
     }
     fixtures = _fixtures_of(tree)
+    called_by_pytest = _called_by_pytest(tree)
     carried: dict[str, set[str]] = {}
     for _ in range(len(functions) + 1):
         fed = {
@@ -407,9 +422,13 @@ def _fed_by_what_functions_return(
                     ([parameter.arg], value)
                     for parameter in _parameters_of(node)
                     for value in _as_resolved(
-                        (carried if parameter.arg in fixtures else outside).get(
-                            parameter.arg, set()
-                        )
+                        (
+                            carried
+                            if parameter.arg in fixtures
+                            else outside
+                            if node in called_by_pytest
+                            else {}
+                        ).get(parameter.arg, set())
                     )
                 ),
             ]
@@ -1483,6 +1502,18 @@ def test_a_case(cached) -> None:
     cached.cache_clear()
 """
 
+THE_CASE_WHOSE_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME = """\
+from app.core.config import get_settings
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    forget(get_settings)
+"""
+
 THE_CASE_THAT_ASKS_FOR_ANOTHER_NAME = """\
 def test_a_case(other) -> None:
     other.cache_clear()
@@ -2446,6 +2477,12 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
             [10],
             [],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME,
+            [],
+            [5],
+        ),
     ],
     ids=[
         "a fixture that returns the cache",
@@ -2453,6 +2490,7 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         "a case that asks for another name",
         "a case that defines the fixture itself",
         "a fixture of the case that requests the conftest's",
+        "a helper that is handed another cache under the fixture's name",
     ],
 )
 def test_a_fixture_of_the_conftest_beside_the_case_feeds_the_parameter_of_its_name(
