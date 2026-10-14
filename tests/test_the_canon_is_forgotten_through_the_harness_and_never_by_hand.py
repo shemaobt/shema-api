@@ -141,34 +141,51 @@ def _parametrized(decorator: ast.Call) -> tuple[list[str], ast.expr] | None:
     return names, given["argvalues"]
 
 
+Functions = dict[str, ast.FunctionDef | ast.AsyncFunctionDef]
+
+
+def _defined_in(scope: ast.AST) -> Functions:
+    defined: Functions = {}
+    for child in ast.iter_child_nodes(scope):
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            defined[child.name] = child
+        elif not isinstance(child, ast.ClassDef):
+            defined |= _defined_in(child)
+    return defined
+
+
+def _read_the_calls(scope: ast.AST, visible: Functions, given: dict[ast.AST, Bindings]) -> None:
+    for child in ast.iter_child_nodes(scope):
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+            function = visible.get(child.func.id)
+            if function is not None:
+                parameters = [
+                    parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]
+                ]
+                given[function].extend(
+                    ([parameter], argument)
+                    for parameter, argument in zip(parameters, child.args, strict=False)
+                )
+                given[function].extend(
+                    ([keyword.arg], keyword.value) for keyword in child.keywords if keyword.arg
+                )
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            _read_the_calls(child, visible | _defined_in(child), given)
+        else:
+            _read_the_calls(child, visible, given)
+
+
 def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
-    defined = {
-        node.name: node
+    given: dict[ast.AST, Bindings] = {
+        node: []
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
-    given: dict[ast.AST, Bindings] = {function: [] for function in defined.values()}
-    for function in defined.values():
+    for function in given:
         for decorator in function.decorator_list:
             if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
                 given[function].append(parametrized)
-    for call in ast.walk(tree):
-        if (
-            isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Name)
-            and call.func.id in defined
-        ):
-            function = defined[call.func.id]
-            parameters = [
-                parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]
-            ]
-            given[function].extend(
-                ([parameter], argument)
-                for parameter, argument in zip(parameters, call.args, strict=False)
-            )
-            given[function].extend(
-                ([keyword.arg], keyword.value) for keyword in call.keywords if keyword.arg
-            )
+    _read_the_calls(tree, _defined_in(tree), given)
     return given
 
 
@@ -503,6 +520,42 @@ def test_a_case(monkeypatch) -> None:
         empty_it()
 
     monkeypatch.setattr(cache, "cache_clear", empty_and_note)
+"""
+
+TWO_CASES_EACH_DEFINE_A_HELPER_OF_ONE_NAME = """\
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    def forget(cached) -> None:
+        cached.cache_clear()
+
+    forget(book_material.preservation_rules)
+
+
+def test_another_case() -> None:
+    def forget(cached) -> None:
+        cached.cache_clear()
+
+    forget(get_settings)
+"""
+
+A_METHOD_AND_A_HELPER_OF_ONE_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+
+
+def test_a_case() -> None:
+    forget(book_material.preservation_rules)
 """
 
 CLEARS_THE_FAIL_SAFE_SECTIONS = """\
@@ -933,6 +986,22 @@ def test_a_spy_the_harness_calls_through_a_bound_cache_clear_is_not_a_clear_by_h
     )
 
     assert (of_the_canon, of_something_else) == ([], [])
+
+
+@pytest.mark.parametrize(
+    ("source", "of_the_canon", "of_something_else"),
+    [
+        (TWO_CASES_EACH_DEFINE_A_HELPER_OF_ONE_NAME, [7], [14]),
+        (A_METHOD_AND_A_HELPER_OF_ONE_NAME, [5], [10]),
+    ],
+    ids=["two cases each define a helper of one name", "a method and a helper of one name"],
+)
+def test_a_helper_is_told_from_another_of_the_same_name_by_where_it_is_defined(
+    tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    clears = _the_clears_in(_planted(tmp_path, source), _the_caches_the_harness_forgets())
+
+    assert clears == (of_the_canon, of_something_else)
 
 
 def test_a_cache_listed_from_outside_the_room_is_one_the_harness_forgets_by_its_own_path(
