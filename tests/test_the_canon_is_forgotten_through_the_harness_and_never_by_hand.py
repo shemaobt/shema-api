@@ -95,7 +95,7 @@ def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 yield _bound_by(target), node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+        elif isinstance(node, ast.AnnAssign | ast.NamedExpr) and node.value is not None:
             yield _bound_by(node.target), node.value
         elif isinstance(node, ast.withitem) and node.optional_vars is not None:
             yield _bound_by(node.optional_vars), node.context_expr
@@ -217,6 +217,15 @@ from app.services.internalization_room.canon import book_material
 
 def test_a_case() -> None:
     [cached.cache_clear() for cached in (book_material.preservation_rules,)]
+"""
+
+CLEARS_THROUGH_A_WALRUS_TARGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    if cached := book_material.preservation_rules:
+        cached.cache_clear()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -455,6 +464,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_TUPLE_TARGET, 6),
         (CLEARS_THROUGH_A_WITH_TARGET, 6),
         (CLEARS_THROUGH_A_COMPREHENSION_TARGET, 5),
+        (CLEARS_THROUGH_A_WALRUS_TARGET, 6),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -472,6 +482,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a tuple target",
         "named by a with target",
         "named by a comprehension target",
+        "named by a walrus target",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
