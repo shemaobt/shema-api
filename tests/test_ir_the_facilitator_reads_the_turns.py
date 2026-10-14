@@ -8,7 +8,6 @@ before this change, whose shape no route writes any more.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
+from app.core import stage_clock
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import llm
@@ -111,13 +111,31 @@ class ElevenLabs:
         return SimpleNamespace(status_code=200, content=f"voz {len(self.spoken)}".encode(), text="")
 
 
+class Stopwatch:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def passes(self, seconds: float) -> None:
+        self.now += seconds
+
+
 class Anthropic:
     """The provider behind the real model ladder: one rung refused, every call a little slow."""
 
-    def __init__(self, drafts: list[str], refuses: str = "", takes_s: float = 0.0) -> None:
+    def __init__(
+        self,
+        drafts: list[str],
+        refuses: str = "",
+        takes_s: float = 0.0,
+        stopwatch: Stopwatch | None = None,
+    ) -> None:
         self.drafts = drafts
         self.refuses = refuses
         self.takes_s = takes_s
+        self.stopwatch = stopwatch or Stopwatch()
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         if kwargs["model"] == self.refuses:
@@ -129,7 +147,7 @@ class Anthropic:
                 ),
                 body=None,
             )
-        await asyncio.sleep(self.takes_s)
+        self.stopwatch.passes(self.takes_s)
         system = "".join(block["text"] for block in kwargs["system"])
         validating = "corrected_response" in system
         text = json.dumps(PASS) if validating else (self.drafts.pop(0) if self.drafts else "Ok.")
@@ -482,14 +500,16 @@ async def test_the_model_is_the_rung_that_answered_after_a_fallback(
 async def test_recognition_and_reply_times_are_kept_no_synthesis_time_is_invented(
     client, db_session, room_app, script, monkeypatch
 ) -> None:
-    provider = Anthropic([OPENING, LINES[0]], takes_s=0.15)
+    stopwatch = Stopwatch()
+    monkeypatch.setattr(stage_clock, "time", stopwatch)
+    provider = Anthropic([OPENING, LINES[0]], takes_s=0.15, stopwatch=stopwatch)
     monkeypatch.setattr(
         llm.anthropic, "AsyncAnthropic", lambda **_: SimpleNamespace(messages=provider)
     )
     the_room_agent_is(monkeypatch, turn=llm.call_agent)
 
     async def slow_hearing(*_: Any, **__: Any) -> HeardSpeech:
-        await asyncio.sleep(0.5)
+        stopwatch.passes(0.5)
         return _heard(WORDS[0])
 
     monkeypatch.setattr(sessions_api, "heard_speech", slow_hearing)
@@ -500,8 +520,8 @@ async def test_recognition_and_reply_times_are_kept_no_synthesis_time_is_invente
     (opening, timed) = await _read(client, room)
 
     assert opening["voice"]["recognition_ms"] is None
-    assert 500 <= timed["voice"]["recognition_ms"] < 800
-    assert 300 <= timed["voice"]["reply_ms"] < 500
+    assert timed["voice"]["recognition_ms"] == 500
+    assert timed["voice"]["reply_ms"] == 300
     assert timed["voice"]["synthesis_ms"] is None
 
 
