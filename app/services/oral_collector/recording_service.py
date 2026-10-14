@@ -390,6 +390,8 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         duration_seconds=data.duration_seconds,
         file_size_bytes=data.file_size_bytes,
         format=data.format,
+        source=data.source,
+        source_reference=data.source_reference,
         recorded_at=data.recorded_at,
     )
     recompute_review_flags(recording)
