@@ -354,7 +354,7 @@ def _leads_to_a_cache(name: str, canon_caches: set[str]) -> bool:
     return any(cache == name or cache.startswith(f"{name}.") for cache in canon_caches)
 
 
-def _fixtures_of(tree: ast.Module) -> set[str]:
+def _fixtures_of(tree: ast.Module | ast.ClassDef) -> set[str]:
     return {
         function.name
         for function in tree.body
@@ -375,6 +375,22 @@ def _called_by_pytest(tree: ast.Module) -> set[ast.AST]:
             or "fixture" in {_decorator_name(decorator) for decorator in function.decorator_list}
         )
     }
+
+
+def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
+    reach: dict[ast.AST, dict[str, ast.AST]] = {}
+    for scope in ast.walk(tree):
+        if isinstance(scope, ast.ClassDef):
+            fixtures = {
+                function.name: function
+                for function in scope.body
+                if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+                and function.name in _fixtures_of(scope)
+            }
+            for function in scope.body:
+                if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+                    reach[function] = fixtures
+    return reach
 
 
 def _as_resolved(names: set[str]) -> list[ast.expr]:
@@ -414,8 +430,11 @@ def _fed_by_what_functions_return(
     overridden = _fixtures_of(tree) & outside.keys()
     fixtures = _fixtures_of(tree) - overridden
     called_by_pytest = _called_by_pytest(tree) if outside else set()
+    reach = _fixtures_in_reach(tree) if names_a_cache else {}
+    of_the_classes = {fixture for each in reach.values() for fixture in each.values()}
     carried: dict[str, set[str]] = {}
-    for _ in range(len(functions) + 1):
+    carried_by_the_classes: dict[ast.AST, set[str]] = {}
+    for _ in range(len(functions) + len(of_the_classes) + 1):
         fed = {
             node: [
                 *bindings,
@@ -423,7 +442,9 @@ def _fed_by_what_functions_return(
                     ([parameter.arg], value)
                     for parameter in _parameters_of(node)
                     for value in _as_resolved(
-                        (
+                        carried_by_the_classes.get(reach[node][parameter.arg], set())
+                        if parameter.arg in reach.get(node, {})
+                        else (
                             carried
                             if parameter.arg in fixtures
                             else outside
@@ -456,9 +477,17 @@ def _fed_by_what_functions_return(
                 )
             )
         }
-        if now == carried:
+        now_by_the_classes = {
+            fixture: names
+            for fixture in of_the_classes
+            if (
+                names := _names_returned_by(fixture, imports, fed, at_the_top_sources, canon_caches)
+            )
+        }
+        if now == carried and now_by_the_classes == carried_by_the_classes:
             break
         carried = now
+        carried_by_the_classes = now_by_the_classes
     return fed, at_the_top_sources, carried
 
 
@@ -1850,6 +1879,22 @@ def _decorator_name(decorator: ast.expr) -> str | None:
     return target.id if isinstance(target, ast.Name) else None
 
 
+THE_CASE_WHOSE_CLASS_DEFINES_THE_FIXTURE_ITS_METHOD_ASKS_FOR = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
+
 CACHES = {"lru_cache", "cache"}
 
 
@@ -2756,6 +2801,23 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
     clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path / "tests")
 
     assert clears == ([], [2])
+
+
+@pytest.mark.parametrize(
+    ("source", "of_the_canon", "of_something_else"),
+    [
+        (THE_CASE_WHOSE_CLASS_DEFINES_THE_FIXTURE_ITS_METHOD_ASKS_FOR, [12], []),
+    ],
+    ids=[
+        "a method of the class that asks for the class's fixture",
+    ],
+)
+def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
+    tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    clears = _the_clears_in(_planted(tmp_path, source), _the_caches_the_harness_forgets())
+
+    assert clears == (of_the_canon, of_something_else)
 
 
 def test_a_cache_listed_from_outside_the_room_is_one_the_harness_forgets_by_its_own_path(
