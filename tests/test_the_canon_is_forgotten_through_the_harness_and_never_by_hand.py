@@ -566,14 +566,16 @@ def _handed_down(
     imports: dict[str, str],
     scopes: list[tuple[ast.AST, list[ast.AST], dict[str, list[ast.AST]]]],
     canon_caches: set[str],
-) -> dict[ast.AST, Bindings]:
+    callers: set[ast.AST],
+) -> set[tuple[ast.AST, str, str]]:
     sources = {caller: caller_sources for caller, _, caller_sources in scopes}
-    down: dict[ast.AST, Bindings] = {}
-    for caller, function, parameter, argument in handed:
-        for name in sorted(_names_in(argument, imports, sources[caller])):
-            if _leads_to_a_cache(name, canon_caches):
-                down.setdefault(function, []).append(([parameter], ast.Name(id=name)))
-    return down
+    return {
+        (function, parameter, name)
+        for caller, function, parameter, argument in handed
+        if caller in callers
+        for name in _names_in(argument, imports, sources[caller])
+        if "." in name and _leads_to_a_cache(name, canon_caches)
+    }
 
 
 def _clears_in_tree(
@@ -602,10 +604,17 @@ def _clears_in_tree(
         tree, imports, given, at_the_top, canon_caches, names_a_cache
     )
     scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
-    if names_a_cache:
-        for function, bindings in _handed_down(handed, imports, scopes, canon_caches).items():
-            arguments[function].extend(bindings)
+    passed: set[tuple[ast.AST, str, str]] = set()
+    callers = {caller for caller, *_ in handed}
+    while names_a_cache and (
+        new := _handed_down(handed, imports, scopes, canon_caches, callers) - passed
+    ):
+        passed |= new
+        for function, parameter, name in new:
+            arguments[function].append(([parameter], ast.Name(id=name)))
         scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
+        fed = {function for function, *_ in new}
+        callers = {caller for caller, nodes, _ in scopes if fed.intersection(nodes)}
     of_the_canon: list[int] = []
     of_something_else: list[int] = []
     for _, nodes, sources in scopes:
@@ -1118,6 +1127,39 @@ def forget(cached) -> None:
 def test_a_case() -> None:
     cached_local = book_material.preservation_rules
     forget(cached_local)
+"""
+
+CLEARS_THROUGH_A_CHAIN_OF_HELPERS_THAT_NAME_THEIR_PARAMETER_ALIKE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def _empty(cached) -> None:
+    cached.cache_clear()
+
+
+def forget(cached) -> None:
+    _empty(cached)
+
+
+def test_a_case() -> None:
+    forget(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_CHAIN_OF_HELPERS_HANDED_A_LOCAL_OF_THE_CALLER = """\
+from app.services.internalization_room.canon import book_material
+
+
+def _empty(cached) -> None:
+    cached.cache_clear()
+
+
+def forget(cached) -> None:
+    _empty(cached)
+
+
+def test_a_case() -> None:
+    cached = book_material.preservation_rules
+    forget(cached)
 """
 
 A_SIBLING_MODULE_IMPORTED_BY_A_DOT = """\
@@ -1746,6 +1788,8 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE, 11),
         (CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE, 13),
         (CLEARS_THROUGH_A_LOCAL_OF_THE_CALLER_HANDED_TO_A_HELPER, 5),
+        (CLEARS_THROUGH_A_CHAIN_OF_HELPERS_THAT_NAME_THEIR_PARAMETER_ALIKE, 5),
+        (CLEARS_THROUGH_A_CHAIN_OF_HELPERS_HANDED_A_LOCAL_OF_THE_CALLER, 5),
     ],
     ids=[
         "named at the clear",
@@ -1786,6 +1830,8 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a name a function's value feeds",
         "named by a function that returns another's value",
         "named by a local of the caller handed to a helper",
+        "named by a chain of helpers that name their parameter alike",
+        "named by a chain of helpers handed a local of the caller",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
