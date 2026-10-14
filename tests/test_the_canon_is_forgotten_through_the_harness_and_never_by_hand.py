@@ -319,13 +319,78 @@ def _inside_the_spies(tree: ast.AST) -> set[ast.AST]:
     }
 
 
+def _values_returned_by(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.expr]:
+    values: list[ast.expr] = []
+    pending = list(ast.iter_child_nodes(function))
+    while pending:
+        node = pending.pop()
+        if isinstance(node, Function):
+            continue
+        if isinstance(node, ast.Return | ast.Yield) and node.value is not None:
+            values.append(node.value)
+        pending.extend(ast.iter_child_nodes(node))
+    return values
+
+
+def _as_resolved(names: set[str]) -> list[ast.expr]:
+    return [ast.Name(id=name) for name in sorted(names)]
+
+
+def _fed_by_the_fixtures(
+    tree: ast.Module,
+    imports: dict[str, str],
+    arguments: dict[ast.AST, Bindings],
+    at_the_top: list[ast.AST],
+) -> tuple[dict[ast.AST, Bindings], dict[str, list[ast.AST]]]:
+    fixtures = {
+        function.name: function
+        for function in tree.body
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+        and "fixture" in {_decorator_name(decorator) for decorator in function.decorator_list}
+    }
+    carried: dict[str, set[str]] = {}
+    for _ in range(len(fixtures) + 1):
+        fed = {
+            node: [
+                *bindings,
+                *(
+                    ([parameter.arg], value)
+                    for parameter in _parameters_of(node)
+                    if parameter.arg in fixtures
+                    for value in _as_resolved(carried.get(parameter.arg, set()))
+                ),
+            ]
+            for node, bindings in arguments.items()
+        }
+        at_the_top_sources = _sourced_by(_bindings(at_the_top, fed), {})
+        now = {
+            name: {
+                found
+                for value in _values_returned_by(function)
+                for found in _names_in(
+                    value,
+                    imports,
+                    _sourced_by(_bindings(list(ast.walk(function)), fed), at_the_top_sources),
+                )
+            }
+            for name, function in fixtures.items()
+        }
+        carried = now
+    return fed, at_the_top_sources
+
+
+def _parameters_of(function: Function) -> list[ast.arg]:
+    return [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
+
+
 def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
     tree = ast.parse(module.read_text(encoding="utf-8"))
     imports = _imports_of(tree)
     spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
-    arguments = _arguments_given(tree)
-    at_the_top_sources = _sourced_by(_bindings(at_the_top, arguments), {})
+    arguments, at_the_top_sources = _fed_by_the_fixtures(
+        tree, imports, _arguments_given(tree), at_the_top
+    )
     scopes = [(at_the_top, at_the_top_sources)]
     for function in _outermost_functions(tree):
         within = list(ast.walk(function))
@@ -685,6 +750,78 @@ from app.core.config import get_settings
 
 def test_a_case() -> None:
     (lambda cached: cached.cache_clear())(get_settings)
+"""
+
+CLEARS_THROUGH_A_FIXTURE_THAT_RETURNS_THE_CACHE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_FIXTURE_THAT_YIELDS_A_LOCAL_HOLDING_THE_CACHE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    held = book_material.preservation_rules
+    yield held
+
+
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_FIXTURE_FED_BY_ANOTHER_FIXTURE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def first():
+    return book_material.preservation_rules
+
+
+@pytest.fixture
+def second(first):
+    return first
+
+
+def test_a_case(second) -> None:
+    second.cache_clear()
+"""
+
+CLEARS_THE_FIXTURE_OF_ANOTHER_CACHE = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+@pytest.fixture
+def settings():
+    return get_settings
+
+
+def test_a_case(settings) -> None:
+    settings.cache_clear()
 """
 
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
@@ -1058,6 +1195,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE, 5),
         (CLEARS_THROUGH_A_LAMBDA_KEPT_IN_A_NAME, 5),
         (CLEARS_THROUGH_A_LAMBDA_GIVEN_TO_MAP, 5),
+        (CLEARS_THROUGH_A_FIXTURE_THAT_RETURNS_THE_CACHE, 12),
+        (CLEARS_THROUGH_A_FIXTURE_THAT_YIELDS_A_LOCAL_HOLDING_THE_CACHE, 13),
+        (CLEARS_THROUGH_A_FIXTURE_FED_BY_ANOTHER_FIXTURE, 17),
     ],
     ids=[
         "named at the clear",
@@ -1091,6 +1231,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by the parameter of a lambda called in place",
         "named by the parameter of a lambda kept in a name",
         "named by the parameter of a lambda given to map",
+        "named by a fixture that returns it",
+        "named by a fixture that yields a local holding it",
+        "named by a fixture that another fixture feeds",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -1286,6 +1429,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
         (CLEARS_THE_SIBLING_OF_A_PARAMETRIZED_ARGUMENT, [], [8]),
         (CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET, [], [10]),
         (CLEARS_ANOTHER_CACHE_THROUGH_A_LAMBDA, [], [5]),
+        (CLEARS_THE_FIXTURE_OF_ANOTHER_CACHE, [], [18]),
         (CLEARS_A_NAME_UNPACKED_FROM_A_CACHE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR, [6], []),
@@ -1298,6 +1442,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
         "the sibling of a parametrized argument",
         "the sibling of an attribute target",
         "another cache through a lambda",
+        "the fixture of another cache",
         "a name unpacked from a cache, shapes not paired",
         "a name unpacked from a longer tuple",
         "a name unpacked from a tuple with a star",
