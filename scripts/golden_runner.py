@@ -892,7 +892,7 @@ async def rejudge(args: argparse.Namespace) -> int:
                     stamp=path.stem[len(script.name) + 1 :],
                     prompt_repeats=shares_judge_prompt(script, to_judge),
                 )
-    except Exception as killed:
+    except BaseException as killed:
         close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
         raise
     return finish(
