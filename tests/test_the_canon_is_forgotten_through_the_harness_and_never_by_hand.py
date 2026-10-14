@@ -130,7 +130,17 @@ def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
-    given: dict[ast.AST, Bindings] = {}
+    given: dict[ast.AST, Bindings] = {function: [] for function in defined.values()}
+    for function in defined.values():
+        for decorator in function.decorator_list:
+            if (
+                isinstance(decorator, ast.Call)
+                and _decorator_name(decorator) == "parametrize"
+                and len(decorator.args) == 2
+                and isinstance(decorator.args[0], ast.Constant)
+            ):
+                names = str(decorator.args[0].value).split(",")
+                given[function].append(([name.strip() for name in names], decorator.args[1]))
     for call in ast.walk(tree):
         if (
             isinstance(call, ast.Call)
@@ -139,8 +149,7 @@ def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
         ):
             function = defined[call.func.id]
             parameters = [parameter.arg for parameter in function.args.args]
-            bindings = given.setdefault(function, [])
-            bindings.extend(
+            given[function].extend(
                 ([parameter], argument)
                 for parameter, argument in zip(parameters, call.args, strict=False)
             )
@@ -312,6 +321,17 @@ def forget(cached) -> None:
 
 def test_a_case() -> None:
     forget(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_PARAMETRIZED_ARGUMENT = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.mark.parametrize("cached", [book_material.preservation_rules])
+def test_a_case(cached) -> None:
+    cached.cache_clear()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -554,6 +574,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_NAME_GIVEN_TO_GETATTR, 5),
         (CLEARS_THROUGH_GETATTR_OF_CACHE_CLEAR, 5),
         (CLEARS_THROUGH_AN_ARGUMENT_OF_A_HELPER, 5),
+        (CLEARS_THROUGH_A_PARAMETRIZED_ARGUMENT, 8),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -575,6 +596,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a string given to getattr",
         "cleared by getattr of cache_clear",
         "named by the argument of a helper",
+        "named by a parametrized argument",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
