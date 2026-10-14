@@ -494,10 +494,14 @@ CACHES = {"lru_cache", "cache"}
 
 
 def _built_by_a_call(value: ast.expr | None) -> bool:
+    if not isinstance(value, ast.Call):
+        return False
+    if isinstance(value.func, ast.Call):
+        return _decorator_name(value.func) in CACHES
     return (
-        isinstance(value, ast.Call)
-        and isinstance(value.func, ast.Call)
-        and (_decorator_name(value.func) in CACHES)
+        _decorator_name(value) in CACHES
+        and bool(value.args)
+        and not isinstance(value.args[0], ast.Constant)
     )
 
 
@@ -559,6 +563,35 @@ def _read() -> str:
 
 
 read_the_map_again = lru_cache(maxsize=1)(_read)
+"""
+
+A_CACHE_BUILT_BY_A_BARE_FUNCTOOLS_CALL = """\
+import functools
+
+
+def _read() -> str:
+    return "the map"
+
+
+read_the_map_again = functools.cache(_read)
+"""
+
+A_CACHE_BUILT_BY_LRU_CACHE_ON_A_FUNCTION = """\
+from functools import lru_cache
+
+
+def _read() -> str:
+    return "the map"
+
+
+read_the_map_again = lru_cache(_read)
+"""
+
+A_DECORATOR_KEPT_IN_A_NAME = """\
+from functools import lru_cache
+
+keep_one = lru_cache(maxsize=1)
+keep_many = lru_cache(128)
 """
 
 A_BARE_CACHE_NOBODY_LISTED = """\
@@ -717,6 +750,25 @@ def test_a_cache_built_by_a_call_is_reported_like_one_built_by_a_decorator(
         "app/services/a_new_cache.py:8 `read_the_map_again` is a cache the harness does not know. "
     )
     assert 'list "app.services.a_new_cache.read_the_map_again" in ' in reported
+
+
+@pytest.mark.parametrize(
+    "source",
+    [A_CACHE_BUILT_BY_A_BARE_FUNCTOOLS_CALL, A_CACHE_BUILT_BY_LRU_CACHE_ON_A_FUNCTION],
+    ids=["functools.cache on a function", "lru_cache on a function"],
+)
+def test_a_cache_built_by_handing_the_function_to_the_decorator_is_reported(
+    tmp_path: Path, source: str
+) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", source)
+
+    assert len(_unlisted_caches(app, set())) == 1
+
+
+def test_a_decorator_kept_in_a_name_is_not_a_cache(tmp_path: Path) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", A_DECORATOR_KEPT_IN_A_NAME)
+
+    assert _unlisted_caches(app, set()) == []
 
 
 def test_a_bare_functools_cache_is_a_cache_too(tmp_path: Path) -> None:
