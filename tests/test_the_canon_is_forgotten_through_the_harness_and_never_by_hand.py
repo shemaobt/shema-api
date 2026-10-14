@@ -610,30 +610,43 @@ def _conftests_above(module: Path, root: Path) -> list[Path]:
 def _fixtures_of_the_conftest(
     module: Path, canon_caches: set[str], root: Path
 ) -> dict[str, set[str]]:
-    outside: dict[str, set[str]] = {}
-    for conftest in _conftests_above(module, root):
-        if not conftest.is_file():
-            continue
-        text = conftest.read_text(encoding="utf-8")
-        if not outside and not any(cache.rpartition(".")[2] in text for cache in canon_caches):
-            continue
-        tree = ast.parse(text)
-        given, _ = _arguments_given(tree)
-        *_, carried = _fed_by_what_functions_return(
-            tree,
-            _imports_of(tree, _package_of(conftest, root)),
-            given,
-            list(_outside_every_function(tree)),
-            canon_caches,
-            True,
-            outside,
-        )
-        fixtures = _fixtures_of(tree)
-        outside = {
-            **{name: names for name, names in outside.items() if name not in fixtures},
-            **{name: names for name, names in carried.items() if name in fixtures},
-        }
-    return outside
+    texts = {
+        conftest: conftest.read_text(encoding="utf-8")
+        for conftest in _conftests_above(module, root)
+        if conftest.is_file()
+    }
+    if not any(
+        cache.rpartition(".")[2] in text for text in texts.values() for cache in canon_caches
+    ):
+        return {}
+    trees = {conftest: ast.parse(text) for conftest, text in texts.items()}
+    defined_by = {name: conftest for conftest, tree in trees.items() for name in _fixtures_of(tree)}
+    carried_by_name: dict[str, set[str]] = {}
+    while True:
+        now: dict[str, set[str]] = {}
+        for conftest, tree in trees.items():
+            given, _ = _arguments_given(tree)
+            *_, carried = _fed_by_what_functions_return(
+                tree,
+                _imports_of(tree, _package_of(conftest, root)),
+                given,
+                list(_outside_every_function(tree)),
+                canon_caches,
+                True,
+                {
+                    name: names
+                    for name, names in carried_by_name.items()
+                    if defined_by[name] != conftest
+                },
+            )
+            now |= {
+                name: carried.get(name, set())
+                for name in _fixtures_of(tree)
+                if defined_by[name] == conftest
+            }
+        if now == carried_by_name:
+            return {name: names for name, names in now.items() if names}
+        carried_by_name = now
 
 
 def _clears_in_tree(
@@ -1470,7 +1483,7 @@ def cached():
     return get_settings
 """
 
-THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_THE_ONE_ABOVE = """\
+THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE = """\
 import pytest
 
 
@@ -2608,7 +2621,25 @@ def test_a_conftest_fixture_that_requests_one_of_a_conftest_above_is_followed_to
     subdirectory = tmp_path / "test_a_subdirectory"
     subdirectory.mkdir()
     (subdirectory / "conftest.py").write_text(
-        THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_THE_ONE_ABOVE, encoding="utf-8"
+        THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE, encoding="utf-8"
+    )
+    module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_THAT_REQUESTS_ANOTHER)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == ([2], [])
+
+
+def test_a_conftest_fixture_takes_what_it_requests_from_a_conftest_nearer_than_its_own(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE, encoding="utf-8"
+    )
+    subdirectory = tmp_path / "test_a_subdirectory"
+    subdirectory.mkdir()
+    (subdirectory / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
     )
     module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_THAT_REQUESTS_ANOTHER)
 
