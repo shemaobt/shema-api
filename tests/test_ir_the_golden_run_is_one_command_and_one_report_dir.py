@@ -792,6 +792,22 @@ async def test_a_rejudge_names_the_verdict_from_the_exports_name_and_keeps_the_w
     )
 
 
+async def test_a_rejudge_over_a_directory_that_does_not_exist_says_so_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    missing = tmp_path / "2026-09-16"
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(missing, again, rejudge=str(missing)))
+
+    assert exit_code == 2
+    assert capsys.readouterr().err == f"golden: {missing}: no such directory\n", (
+        "a pasta que não existe dizia «nothing exported», como se estivesse lá e vazia"
+    )
+    assert judge.asked == [] and not again.exists()
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

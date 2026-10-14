@@ -918,6 +918,9 @@ async def rejudge(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if not Path(args.rejudge).exists():
+        print(f"golden: {args.rejudge}: no such directory", file=sys.stderr)
+        return 2
     earlier = []
     for path in sorted(Path(args.rejudge).glob("*.json")):
         if path.name.endswith(".verdict.json"):
