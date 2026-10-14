@@ -84,11 +84,12 @@ class FacilitatorTeamView(BaseModel):
 
 
 class FacilitatorTeamDetail(FacilitatorTeamView):
-    """One team at its own address, with the two facts only this route can answer.
+    """One team at its own address, with the three facts only this route can answer.
 
-    Everything the queue's row carries, because the screen draws all of it, plus two the row
-    deliberately does not: they are facts about **one** team, and on a fourteen-row queue they
-    would be fourteen answers to a question nobody asked.
+    Everything the queue's row carries, because the screen draws all of it, plus three the row
+    deliberately does not: the scene the team is in and its two counts of passages. They are
+    facts about **one** team, and on a fourteen-row queue they would be fourteen answers to a
+    question nobody asked.
     """
 
     #: Which scene of the active passage the team last actually moved a bead in — `scene:S2`,
@@ -107,14 +108,22 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
 
     #: How many of the book's passages have met the completion floor.
     #:
-    #: **The one count this product allows, and the reason has to live beside it.** It is a
-    #: position in the book, not a measure of the team — every other count on every other
-    #: surface is forbidden, so without the reason written down this one gets deleted by
-    #: somebody who is right about the rule and wrong about the case (ENG-469).
+    #: **A position in the book, not a measure of the team, and the reason has to live beside
+    #: it.** Every other count on every other surface is forbidden, so without the reason
+    #: written down this one gets deleted by somebody who is right about the rule and wrong
+    #: about the case (ENG-469).
     #:
     #: Counts the floor, not the walk: a passage closed out of order counts, and the team
-    #: still stands where the canon's order puts them.
+    #: still stands where the canon's order puts them. It stays only until the Desk stops
+    #: reading it (ENG-1598); ``approved_total`` is the count the Desk draws.
     closed_total: int
+
+    #: How many of the book's passages are approved: each has a live release, and a finished
+    #: session without one approves nothing.
+    #:
+    #: **The count Marcia's page shows, «N de 14 aprovadas».** Decided with Jonatas on
+    #: 2026-10-13 (ENG-1228, Q5) to replace ``closed_total`` as the one count the Desk draws.
+    approved_total: int
 
 
 class TeamListingResponse(BaseModel):

@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NoWordsHeard, UpstreamServiceError, ValidationError
-from app.services.internalization_room.languages import FLOOR, room_language
+from app.services.internalization_room.languages import AUTHORED, room_language
+from app.services.internalization_room.rounding import math_round
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
     TranscriptionResult,
@@ -91,7 +92,7 @@ class HeardSpeech(BaseModel):
     """
 
     text: str = ""
-    bridge_language: str = FLOOR
+    bridge_language: str = AUTHORED
     language_code: str | None = None
     language_probability: float | None = None
     take_ms: float | None = None
@@ -162,7 +163,7 @@ async def heard_speech(
     *,
     filename: str | None = None,
     mime_type: str | None = None,
-    language: str = FLOOR,
+    language: str = AUTHORED,
     settings: Settings | None = None,
 ) -> HeardSpeech:
     """`heard`, keeping the provider metadata the comprehension flow needs.
@@ -199,7 +200,7 @@ async def heard_speech(
         bridge_language=language,
         language_code=result.language_code,
         language_probability=result.language_probability,
-        take_ms=None if measured is None else round(measured, -3),
+        take_ms=None if measured is None else math_round(measured / 1000) * 1000,
         measured_ms=measured,
         mother_tongue_floor=mother_tongue_floor,
     )
