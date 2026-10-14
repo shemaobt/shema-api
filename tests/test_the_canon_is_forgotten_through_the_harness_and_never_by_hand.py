@@ -2469,6 +2469,19 @@ def test_a_nearer_conftest_fixture_of_the_same_name_shadows_the_one_above(
     assert clears == ([], [2])
 
 
+def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
+    )
+    subdirectory = tmp_path / "tests" / "test_a_subdirectory"
+    subdirectory.mkdir(parents=True)
+    module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path / "tests")
+
+    assert clears == ([], [2])
+
+
 def test_a_cache_listed_from_outside_the_room_is_one_the_harness_forgets_by_its_own_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
