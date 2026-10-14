@@ -135,6 +135,13 @@ def _fed_by(
     return fed_by
 
 
+def _cleared_by(call: ast.Call) -> ast.expr | None:
+    if isinstance(call.func, ast.Attribute) and call.func.attr == "cache_clear":
+        return call.func.value
+    got = _got_by_getattr(call.func)
+    return got[0] if got and got[1] == "cache_clear" else None
+
+
 def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
     tree = ast.parse(module.read_text(encoding="utf-8"))
     imports = _imports_of(tree)
@@ -148,13 +155,9 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
     of_something_else: list[int] = []
     for nodes, fed_by in scopes:
         for node in nodes:
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "cache_clear"
-            ):
-                cleared = _names_in(node.func.value, imports, fed_by)
-                (of_the_canon if cleared & canon_caches else of_something_else).append(node.lineno)
+            if isinstance(node, ast.Call) and (cleared := _cleared_by(node)) is not None:
+                names = _names_in(cleared, imports, fed_by)
+                (of_the_canon if names & canon_caches else of_something_else).append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
 
 
@@ -250,6 +253,14 @@ from app.services.internalization_room.canon import book_material
 
 def test_a_case() -> None:
     getattr(book_material, "preservation_rules").cache_clear()
+"""
+
+CLEARS_THROUGH_GETATTR_OF_CACHE_CLEAR = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    getattr(book_material.preservation_rules, "cache_clear")()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -490,6 +501,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_COMPREHENSION_TARGET, 5),
         (CLEARS_THROUGH_A_WALRUS_TARGET, 6),
         (CLEARS_THROUGH_A_NAME_GIVEN_TO_GETATTR, 5),
+        (CLEARS_THROUGH_GETATTR_OF_CACHE_CLEAR, 5),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -509,6 +521,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a comprehension target",
         "named by a walrus target",
         "named by a string given to getattr",
+        "cleared by getattr of cache_clear",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
