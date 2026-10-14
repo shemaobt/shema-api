@@ -53,6 +53,19 @@ def _chain(node: ast.expr) -> tuple[str, str] | None:
     return None
 
 
+def _got_by_getattr(node: ast.AST) -> tuple[ast.expr, str] | None:
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) == 2
+        and isinstance(node.args[1], ast.Constant)
+        and isinstance(node.args[1].value, str)
+    ):
+        return node.args[0], node.args[1].value
+    return None
+
+
 def _names_in(
     expression: ast.AST, imports: dict[str, str], fed_by: dict[str, set[str]]
 ) -> set[str]:
@@ -62,6 +75,9 @@ def _names_in(
             root, path = chain
             for base in fed_by.get(root, set()) | {imports.get(root, root)}:
                 names.add(base + path)
+        elif got := _got_by_getattr(node):
+            owner, attribute = got
+            names.update(f"{base}.{attribute}" for base in _names_in(owner, imports, fed_by))
     return names
 
 
@@ -226,6 +242,14 @@ from app.services.internalization_room.canon import book_material
 def test_a_case() -> None:
     if cached := book_material.preservation_rules:
         cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_NAME_GIVEN_TO_GETATTR = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    getattr(book_material, "preservation_rules").cache_clear()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -465,6 +489,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_WITH_TARGET, 6),
         (CLEARS_THROUGH_A_COMPREHENSION_TARGET, 5),
         (CLEARS_THROUGH_A_WALRUS_TARGET, 6),
+        (CLEARS_THROUGH_A_NAME_GIVEN_TO_GETATTR, 5),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -483,6 +508,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a with target",
         "named by a comprehension target",
         "named by a walrus target",
+        "named by a string given to getattr",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
