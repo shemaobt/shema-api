@@ -415,7 +415,7 @@ against a stack and judges it with her own checks. Read verbatim, never forked.
 _Avoid_: fixture, scenario, test case, roteiro
 
 **Room note**:
-A fact about the room the app hands the Guide in place of the team's words, bracketed and in the session's language: the session has just started, the team spoke in the mother tongue for about so many seconds, or the team cut the Guide's previous reply short. Never words the team said.
+A fact about the room the app hands the Guide in place of the team's words, bracketed and in the session's language: the session has just started, the team spoke in the mother tongue for about so many seconds, the team cut the Guide's previous reply short, or the team rehearsed a scene and translated it frase by frase. Never words the team said: in a **Rehearsal turn** their words follow it.
 _Avoid_: system message, prompt, instruction, Nota da sala
 
 **Earlier passages**:
@@ -427,8 +427,12 @@ The scenes whose recorded and translated scene rehearsal has reached the Guide a
 _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
 
 **Scene rehearsal** (`ir_scene_rehearsals`; ensaio da cena):
-One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent, the team's scene label and whether it was said at the recording or later, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, frozen once sent, never heard by the recognizer or the voice.
+One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, frozen once sent, never heard by the recognizer or the voice.
 _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
+
+**Rehearsal turn** («terminei»):
+The turn a sent **Scene rehearsal** makes: her **Room note** on it, then the words of its live **Scene frases** in recording order, handed to the Guide with no recording and no recognizer. The scene label is kept on the record and never handed to the Guide.
+_Avoid_: checking turn, Team turn
 
 **Scene frase** (`ir_scene_frases`):
 One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase.
