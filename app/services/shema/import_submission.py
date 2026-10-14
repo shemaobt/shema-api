@@ -48,7 +48,7 @@ from app.models.shema_forms import ReceivedSubmission, SubmissionImport
 from app.services.shema import _trail
 from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
-from app.services.shema._media_sharing import pulse_photo
+from app.services.shema._media_sharing import pulse_image_authorized, pulse_photo
 from app.services.shema._progress import ProgressSource
 from app.services.shema._scope import (
     Readership,
@@ -64,7 +64,6 @@ from app.services.shema._submission_archive import (
 from app.services.shema.read_submission import as_received, inbox_name
 from app.services.shema.save_project import save_project
 from app.utils.shema_forms import (
-    IMAGE_AUTHORIZED_FIELD,
     IMAGE_DESCRIPTION_FIELD,
     IMAGE_FIELD,
     PULSE_FORM_TYPE,
@@ -180,7 +179,7 @@ async def _mint_pulse_photo(
     photo = pulse_photo(
         image,
         caption=str(answers.get(IMAGE_DESCRIPTION_FIELD) or ""),
-        authorized=answers.get(IMAGE_AUTHORIZED_FIELD) is True,
+        authorized=pulse_image_authorized(answers),
         by=submission.submitted_by,
         at=submission.received_at,
     )
