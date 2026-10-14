@@ -710,6 +710,7 @@ async def test_a_rejudge_over_an_export_that_cannot_be_read_names_the_file_and_p
             lambda export: export["turns"][0].update(guide=None),
             "turns[0].guide is NoneType, not str",
         ),
+        (lambda export: export.update(turns=[None]), "turns[0] is NoneType, not dict"),
         (lambda export: export.update(refused=502), "refused is int, not str or NoneType"),
     ],
 )

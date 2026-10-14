@@ -854,6 +854,8 @@ def _strings(raw: dict[str, Any], key: str, where: str, *, default: Any = _ABSEN
 
 def _played(turn: dict[str, Any], at: int) -> Played:
     where = f"turns[{at}]."
+    if not isinstance(turn, dict):
+        raise TypeError(f"turns[{at}] is {type(turn).__name__}, not dict")
     return Played(
         idx=_read(turn, "idx", (int,), where),
         team=_read(turn, "team", (str,), where),
