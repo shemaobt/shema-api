@@ -47,6 +47,7 @@ from scripts.bt_golden_checks import check_round
 from scripts.golden_spend import (
     OVER_BUDGET,
     Call,
+    Usage,
     budget_of,
     budgeted,
     priced,
@@ -91,7 +92,7 @@ class Played:
     missingWithoutFrase: int
     checks: list[str]
     roundMs: int = 0
-    usage: list[dict[str, Any]] = field(default_factory=list)
+    usage: list[Usage] = field(default_factory=list)
 
 
 def load_script(path: Path) -> Script:
@@ -147,7 +148,7 @@ async def play(
                 missingWithoutFrase=reply["missingWithoutFrase"],
                 checks=checks,
                 roundMs=int(reply.get("roundMs") or round((time.monotonic() - started) * 1000)),
-                usage=list(reply.get("usage") or []),
+                usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
             )
         )
         _announce(played[-1])
@@ -284,13 +285,13 @@ async def run(args: argparse.Namespace) -> int:
 def _paid(played: list[Played]) -> list[Call]:
     return [
         Call(
-            call["role"],
-            call["rung"],
-            call["cost_usd"],
-            call["input_tokens"],
-            call["output_tokens"],
-            call["cache_read_tokens"] or 0,
-            call["cache_write_tokens"] or 0,
+            call.role,
+            call.rung,
+            call.cost_usd,
+            call.input_tokens,
+            call.output_tokens,
+            call.cache_read_tokens or 0,
+            call.cache_write_tokens or 0,
         )
         for line in played
         for call in line.usage

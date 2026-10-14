@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from scripts import bt_golden_runner
-from tests.golden_spend_harness import BT_PRICED, bt_args, bt_shelf, the_room_answers
+from tests.golden_spend_harness import BT_PRICED, bt_args, bt_shelf, charged_call, the_room_answers
 
 
 def _a_round_that_costs_three_dollars() -> httpx.Response:
@@ -162,3 +162,38 @@ async def test_a_script_killed_by_a_timeout_is_a_killed_verdict_naming_the_error
         "· cost US$ 3.00\n"
     ) in shown, "o roteiro morreu na segunda rodada e a linha dele dizia PASS"
     assert "PASS" not in shown
+
+
+async def test_a_room_that_reports_usage_in_another_shape_is_a_key_error_on_the_round_it_arrives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rounds: list[str] = []
+    older = {
+        key: value for key, value in charged_call("analyst", 2.0).items() if key != "latency_ms"
+    }
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        rounds.append(request.url.path)
+        return httpx.Response(
+            200,
+            json={
+                "findings": [],
+                "spoken": "Muito bem.",
+                "outcome": "pass",
+                "conferida": True,
+                "missingWithoutFrase": 0,
+                "usage": [older],
+            },
+        )
+
+    the_room_answers(monkeypatch, _room)
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2))
+
+    with pytest.raises(KeyError, match="latency_ms"):
+        await bt_golden_runner.run(bt_args(tmp_path / "reports"))
+
+    assert len(rounds) == 1, (
+        "uma sala mais velha que a costura pagava todas as rodadas e só estourava na conta"
+    )
