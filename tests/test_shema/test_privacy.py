@@ -60,6 +60,7 @@ from app.services.shema import (
     media_download_url,
     prayer_visibility,
     reaches_prayer_wall,
+    reader_may_read_media,
     region_scope,
     searchable_text,
     shared_prayer_audio,
@@ -774,6 +775,25 @@ def test_media_of_a_withheld_project_never_reaches_a_public_audience(flagged, cl
     assert can_share_media(flagged, granted, ShemaAudience.PUBLICO) is False
     assert can_share_media(cleared, granted, ShemaAudience.PUBLICO) is True
     assert can_share_media(cleared, _Item(None), ShemaAudience.COORDENACAO) is False
+
+
+def test_the_bytes_of_a_withheld_project_are_the_coordinations_only(flagged, cleared) -> None:
+    """The reader half of the rule (OBT-583, named; the rule is Daniel's of 9/oct/2026,
+    option b): on a withheld project only the coordination reads the bytes — not the OBT Lab
+    (``other``), and not the Resource Circle (``trusted``) either, whose reading of the
+    record's truth stops at a photograph of the team. A cleared project is read by everybody,
+    and a surface with no session reader is not this predicate's to refuse."""
+    assert reader_may_read_media(flagged, ShemaReader.COORDINATION) is True
+    assert reader_may_read_media(flagged, ShemaReader.TRUSTED) is False
+    assert reader_may_read_media(flagged, ShemaReader.OTHER) is False
+    assert reader_may_read_media(flagged, ShemaReader.OUTSIDE) is False
+    assert reader_may_read_media(flagged, None) is True
+
+    assert reader_may_read_media(cleared, ShemaReader.COORDINATION) is True
+    assert reader_may_read_media(cleared, ShemaReader.TRUSTED) is True
+    assert reader_may_read_media(cleared, ShemaReader.OTHER) is True
+    assert reader_may_read_media(cleared, ShemaReader.OUTSIDE) is True
+    assert reader_may_read_media(cleared, None) is True
 
 
 def test_notes_never_leave_coordination_whatever_the_record_says() -> None:

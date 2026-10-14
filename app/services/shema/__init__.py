@@ -224,6 +224,7 @@ from app.services.shema._media_sharing import (
     can_export_notes,
     can_share_media,
     is_authorized,
+    reader_may_read_media,
     recorded_decision,
 )
 from app.services.shema._media_storage import (
@@ -498,6 +499,7 @@ __all__ = [
     "read_intake_form",
     "read_record",
     "read_submission",
+    "reader_may_read_media",
     "readership",
     "reads_assessments",
     "reads_team_health",

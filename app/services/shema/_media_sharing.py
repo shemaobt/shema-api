@@ -39,7 +39,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaMediaKind
 from app.db.models.shema_form import ShemaIntakeImage
 from app.db.models.shema_media import ShemaMediaItem
-from app.models.shema_privacy import ShemaAudience
+from app.models.shema_privacy import ShemaAudience, ShemaReader
 from app.models.shema_record import ShemaMediaAuthorization
 from app.services.shema._redaction import is_withheld
 
@@ -87,6 +87,29 @@ def can_share_media(project: ShemaProject, item: Authorizable, audience: ShemaAu
     if not is_authorized(item):
         return False
     return not (audience == ShemaAudience.PUBLICO and is_withheld(project))
+
+
+def reader_may_read_media(project: ShemaProject, reader: ShemaReader | None) -> bool:
+    """Whether a console reader is handed the **bytes** of ``project``'s media (OBT-583).
+
+    The other half of :func:`can_share_media`, for the one axis that predicate does not see:
+    an audience says *where the file is going*; a reader says *who in the console is asking*.
+    On a project whose place is withheld, the bytes are the **coordination's only** — not the
+    OBT Lab's, which reads the record reduced, and not the Resource Circle's either, whose
+    reading of the record's truth (OBT-571) was decided over the record and does not reach a
+    photograph of the team. Daniel, 9/oct/2026, option b, until OBT-575 reopens the row; the
+    row stays as decided after pme#99. On a cleared project every reader reads them.
+
+    ``None`` is a surface with no session reader — one that names an audience instead — and
+    this predicate has nothing to say about it: the audience rule is :func:`can_share_media`'s.
+
+    It is a predicate here and not an ``if`` in ``media_download_url`` because a second caller
+    is on its way (OBT-585, the pending image in the inbox), and the module's own argument is
+    that a surface composing the rule itself composes it slightly differently.
+    """
+    if reader is None or reader is ShemaReader.COORDINATION:
+        return True
+    return not is_withheld(project)
 
 
 def can_export_notes(audience: ShemaAudience) -> bool:
