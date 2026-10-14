@@ -2852,6 +2852,29 @@ def test_a_nearer_conftest_fixture_that_requests_its_own_name_is_followed_to_the
     assert clears == ([2], [])
 
 
+def test_a_fixture_that_requests_its_own_name_takes_the_nearest_definition_above_it(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
+    )
+    middle = tmp_path / "test_a_subdirectory"
+    middle.mkdir()
+    (middle / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_ANOTHER_CACHE, encoding="utf-8"
+    )
+    inner = middle / "test_a_nested_subdirectory"
+    inner.mkdir()
+    (inner / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_EXTENDS_THE_ONE_OF_ITS_OWN_NAME, encoding="utf-8"
+    )
+    module = _planted(inner, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == ([], [2])
+
+
 def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
     (tmp_path / "conftest.py").write_text(
         THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
