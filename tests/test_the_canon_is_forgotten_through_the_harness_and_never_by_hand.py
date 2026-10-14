@@ -1523,6 +1523,12 @@ def test_a_case(cached) -> None:
     forget(cached)
 """
 
+THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_IN_A_CLASS = """\
+class TestACase:
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
 THE_CASE_THAT_ASKS_FOR_ANOTHER_NAME = """\
 def test_a_case(other) -> None:
     other.cache_clear()
@@ -2498,6 +2504,12 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
             [2],
             [],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_IN_A_CLASS,
+            [3],
+            [],
+        ),
     ],
     ids=[
         "a fixture that returns the cache",
@@ -2507,6 +2519,7 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         "a fixture of the case that requests the conftest's",
         "a helper that is handed another cache under the fixture's name",
         "a case that hands the fixture to a helper",
+        "a test method of a class that asks for the fixture",
     ],
 )
 def test_a_fixture_of_the_conftest_beside_the_case_feeds_the_parameter_of_its_name(
