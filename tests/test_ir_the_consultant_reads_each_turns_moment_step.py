@@ -149,3 +149,21 @@ def test_the_published_schema_of_a_step_lists_the_seven_causes_that_can_move_the
         ],
         "type": "string",
     }
+
+
+async def test_a_panorama_turn_reads_no_moment_because_a_book_has_none(
+    client, db_session, room_app
+) -> None:
+    project, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, project)
+    session = await create_session(
+        db_session, project_id=project.id, language="pt", pericope="OV-Ruth"
+    )
+    await append_exchange(
+        db_session, session, team_utterance="", guide_response="Vamos ouvir o livro de Rute."
+    )
+
+    answered = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/turns", headers=desk)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert answered.json()["turns"][0]["voice"]["moment"] is None
