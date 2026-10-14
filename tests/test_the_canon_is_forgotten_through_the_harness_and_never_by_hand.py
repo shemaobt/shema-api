@@ -1529,6 +1529,25 @@ class TestACase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_NESTED_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME = """\
+from app.core.config import get_settings
+
+
+def test_a_case() -> None:
+    def forget(cached) -> None:
+        cached.cache_clear()
+
+    forget(get_settings)
+"""
+
+THE_CASE_WHOSE_LAMBDA_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME = """\
+from app.core.config import get_settings
+
+
+def test_a_case() -> None:
+    (lambda cached: cached.cache_clear())(get_settings)
+"""
+
 THE_CASE_THAT_ASKS_FOR_ANOTHER_NAME = """\
 def test_a_case(other) -> None:
     other.cache_clear()
@@ -2510,6 +2529,18 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
             [3],
             [],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_NESTED_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME,
+            [],
+            [6],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_LAMBDA_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME,
+            [],
+            [5],
+        ),
     ],
     ids=[
         "a fixture that returns the cache",
@@ -2520,6 +2551,8 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         "a helper that is handed another cache under the fixture's name",
         "a case that hands the fixture to a helper",
         "a test method of a class that asks for the fixture",
+        "a nested helper that is handed another cache under the fixture's name",
+        "a lambda that is handed another cache under the fixture's name",
     ],
 )
 def test_a_fixture_of_the_conftest_beside_the_case_feeds_the_parameter_of_its_name(
