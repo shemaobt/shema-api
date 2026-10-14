@@ -695,6 +695,48 @@ async def test_a_rejudge_over_an_export_that_cannot_be_read_names_the_file_and_p
     assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
 
 
+@pytest.mark.parametrize(
+    ("mistype", "named"),
+    [
+        (
+            lambda export: export["turns"][0].update(mechanical="x"),
+            "turns[0].mechanical is str, not list",
+        ),
+        (
+            lambda export: export["turns"][0].update(mechanical=["a", 3]),
+            "turns[0].mechanical[1] is int, not str",
+        ),
+        (
+            lambda export: export["turns"][0].update(guide=None),
+            "turns[0].guide is NoneType, not str",
+        ),
+        (lambda export: export.update(refused=502), "refused is int, not str or NoneType"),
+    ],
+)
+async def test_a_rejudge_over_an_export_with_a_wrong_typed_field_names_file_and_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, mistype: Any, named: str
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    mistyped = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(mistyped.read_text(encoding="utf-8"))
+    mistype(exported)
+    mistyped.write_text(json.dumps(exported), encoding="utf-8")
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert exit_code == 2, "um export com um campo do tipo errado não é uma sessão reprovada"
+    assert capsys.readouterr().err == f"golden: {mistyped}: TypeError: {named}\n", (
+        "o campo de tipo errado passava na leitura e estourava depois, sem dizer qual arquivo era"
+    )
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+    assert not again.exists(), "a recusa vem antes de escrever qualquer coisa"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

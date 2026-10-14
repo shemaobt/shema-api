@@ -822,6 +822,50 @@ def finish(
     return gate or OVER_BUDGET
 
 
+_ABSENT: Any = object()
+
+
+def _read(
+    raw: dict[str, Any],
+    key: str,
+    kinds: tuple[type, ...],
+    where: str = "",
+    *,
+    default: Any = _ABSENT,
+) -> Any:
+    if key not in raw and default is not _ABSENT:
+        return default
+    value = raw[key]
+    if not isinstance(value, kinds):
+        raise TypeError(
+            f"{where}{key} is {type(value).__name__}, not "
+            + " or ".join(kind.__name__ for kind in kinds)
+        )
+    return value
+
+
+def _strings(raw: dict[str, Any], key: str, where: str, *, default: Any = _ABSENT) -> list[str]:
+    values: list[str] = _read(raw, key, (list,), where, default=default)
+    for at, value in enumerate(values):
+        if not isinstance(value, str):
+            raise TypeError(f"{where}{key}[{at}] is {type(value).__name__}, not str")
+    return values
+
+
+def _played(turn: dict[str, Any], at: int) -> Played:
+    where = f"turns[{at}]."
+    return Played(
+        idx=_read(turn, "idx", (int,), where),
+        team=_read(turn, "team", (str,), where),
+        guide=_read(turn, "guide", (str,), where),
+        outcome=_read(turn, "outcome", (str,), where),
+        interrupted=_read(turn, "interrupted", (bool,), where),
+        turnMs=_read(turn, "turnMs", (int,), where),
+        mechanical=_strings(turn, "mechanical", where),
+        appStatus=_strings(turn, "appStatus", where, default=[]),
+    )
+
+
 def exported(path: Path) -> tuple[Script, SessionResult, str]:
     """A session as a run left it: the script's head, the turns played, the room it was played on.
 
@@ -832,29 +876,22 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
     an export older than the fields is read as played whole, which is what those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
-    script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
-    played = [
-        Played(
-            idx=turn["idx"],
-            team=turn["team"],
-            guide=turn["guide"],
-            outcome=turn["outcome"],
-            interrupted=turn["interrupted"],
-            turnMs=turn["turnMs"],
-            mechanical=turn["mechanical"],
-            appStatus=turn.get("appStatus", []),
-        )
-        for turn in raw["turns"]
-    ]
+    script = Script(
+        _read(raw, "name", (str,)),
+        _read(raw, "pericopeId", (str,)),
+        _read(raw, "language", (str,)),
+        turns=[],
+    )
+    played = [_played(turn, at) for at, turn in enumerate(_read(raw, "turns", (list,)))]
     result = SessionResult(
         script.name,
-        raw["sessionId"],
+        _read(raw, "sessionId", (str, type(None))),
         played,
-        refused=raw.get("refused"),
-        killed=raw.get("killed"),
-        empty=raw.get("empty", False),
+        refused=_read(raw, "refused", (str, type(None)), default=None),
+        killed=_read(raw, "killed", (str, type(None)), default=None),
+        empty=_read(raw, "empty", (bool,), default=False),
     )
-    return script, result, raw["baseUrl"]
+    return script, result, _read(raw, "baseUrl", (str,))
 
 
 async def rejudge(args: argparse.Namespace) -> int:
