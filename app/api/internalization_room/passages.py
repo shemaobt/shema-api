@@ -4,13 +4,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import linked_tablet_dep
+from app.api.internalization_room._deps import device_project_dep, linked_tablet_dep
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
 from app.services.internalization_room.canon.elements import absence_index, element_keys
+from app.services.internalization_room.earlier_passages import approved_pericopes
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.passage_lines import PANORAMA, offered, panorama_line_for
 from app.services.internalization_room.voice_handles import clip_url
@@ -26,6 +27,7 @@ async def _voiced(
     *,
     book: str,
     language: str,
+    approved: bool,
     settings: Settings,
     in_flight: asyncio.Semaphore,
 ) -> PassageView:
@@ -40,6 +42,7 @@ async def _voiced(
         audio_url=clip_url(voiced.key),
         beads=len(element_keys(pericope_num, book=book)),
         absence_index=absence_index(pericope_num, book=book),
+        approved=approved,
     )
 
 
@@ -66,6 +69,7 @@ async def _voiced_panorama(
 async def passages(
     book: str,
     language: Annotated[str | None, Query(max_length=8)] = None,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BookPassagesResponse:
     """The passages of a book, each with the line the room says to name it out loud.
@@ -95,6 +99,9 @@ async def passages(
     than all fourteen, because the room's ElevenLabs key carries its own quota and a cold
     book should not spend it in one breath. Story order is the order they come back in.
 
+    Each passage says whether the team holds a live Release of it (`approved`), read once for
+    the whole book from the caller's team; the panorama is never approved.
+
     The panorama, when it has a line, opens the answer — it is the book's own entry, the
     one a team can return to for the whole rather than the part, and the app needs it first
     to offer it as the wheel's front door rather than another spoke among fourteen.
@@ -103,6 +110,7 @@ async def passages(
     spoken = floor(settings) if language is None else normalize(language)
     if spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
+    team_approved = await approved_pericopes(db, project_id=project_id)
     await db.commit()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
     speakable = offered(book, spoken)
@@ -114,7 +122,13 @@ async def passages(
         )
     entries.extend(
         _voiced(
-            pericope_num, line, book=book, language=spoken, settings=settings, in_flight=in_flight
+            pericope_num,
+            line,
+            book=book,
+            language=spoken,
+            approved=pericope_num in team_approved,
+            settings=settings,
+            in_flight=in_flight,
         )
         for pericope_num, line in speakable
     )

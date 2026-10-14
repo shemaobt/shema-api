@@ -110,16 +110,18 @@ def earlier_passages_due(stamp: Mapping[str, str] | None) -> bool:
     return at is None or datetime.now(UTC) - datetime.fromisoformat(at) >= READ_AGAIN_AFTER
 
 
+async def approved_pericopes(
+    db: AsyncSession, *, project_id: str, among: list[str] | None = None
+) -> set[str]:
+    """The pericopes this team holds a live Release of: any tablet's, forced or not."""
+    query = select(IRRelease.pericope).where(IRRelease.project_id == project_id, live(IRRelease))
+    if among is not None:
+        query = query.where(IRRelease.pericope.in_(among))
+    return set(await db.scalars(query))
+
+
 async def read_statuses(db: AsyncSession, *, project_id: str, earlier: list[str]) -> dict[str, str]:
-    approved = set(
-        await db.scalars(
-            select(IRRelease.pericope).where(
-                IRRelease.project_id == project_id,
-                IRRelease.pericope.in_(earlier),
-                live(IRRelease),
-            )
-        )
-    )
+    approved = await approved_pericopes(db, project_id=project_id, among=earlier)
     started = set(
         await db.scalars(
             select(IRSession.pericope).where(
