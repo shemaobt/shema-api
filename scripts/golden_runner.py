@@ -36,9 +36,11 @@ the key is identity-bound) where the room does. `--rejudge <dir>` judges the exp
 earlier run again, without playing the room.
 
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
-mechanical check tripped. 1 when any session failed or was refused, 2 when there was
-nothing to play or a script could not be read — named on stderr before any session is
-played or paid for — and 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
+mechanical check tripped. 1 when any session failed, was refused or had no turn to play, 2
+when there was nothing to play, a script could not be read or `--turns` was below 1 — named on
+stderr before any session is played or paid for — and 0 when every session passed. A script
+with no turns is not opened or judged: it is a row of its own, `vazia`, counted neither as a
+pass nor as a failure in the README's totals. DOCTRINE.md §5.2 binds the release to it.
 
 A run stops before the next session once what it has spent reaches `--budget-usd`, or
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
@@ -148,10 +150,11 @@ class SessionResult:
     unjudged: str | None = None
     judge_usage: list[Usage] = field(default_factory=list)
     killed: str | None = None
+    empty: bool = False
 
     @property
     def whole(self) -> bool:
-        return self.refused is None and self.killed is None
+        return self.refused is None and self.killed is None and not self.empty
 
     @property
     def faults(self) -> list[str]:
@@ -443,13 +446,14 @@ def judge_transcript(played: list[Played]) -> str:
 def export(
     script: Script,
     *,
-    session_id: str,
+    session_id: str | None,
     base_url: str,
     played: list[Played],
     out: Path,
     stamp: str,
     refused: str | None = None,
     killed: str | None = None,
+    empty: bool = False,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     report = out / f"{script.name}.{stamp}.json"
@@ -464,6 +468,7 @@ def export(
                 "sessionId": session_id,
                 "refused": refused,
                 "killed": killed,
+                "empty": empty,
                 "turns": [asdict(turn) for turn in played],
             },
             ensure_ascii=False,
@@ -503,6 +508,13 @@ async def play_session(
     survive the turn that failed.
     """
     print(f"\n▶ {script.name} ({script.pericopeId}, {script.language}) — {len(script.turns)} turns")
+    if not script.turns:
+        print("  empty: no turn to play, nothing to judge")
+        results.append(SessionResult(script.name, None, [], empty=True))
+        export(
+            script, session_id=None, base_url=base_url, played=[], out=out, stamp=stamp, empty=True
+        )
+        return
     played: list[Played] = []
     try:
         session_id = await open_session(script, client)
@@ -653,6 +665,7 @@ def summary(
     played = [turn for result in results for turn in result.played]
     faults = sum(len(result.faults) for result in results)
     refused = [result for result in results if result.refused]
+    empty = [result for result in results if result.empty]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
     by_role, unpriced = priced(_paid(results))
@@ -665,9 +678,10 @@ def summary(
         f"# Sessões-ouro — {stamp[:10]}, esta sala em `{tip}`, `{base_url}`",
         "",
         f"Rodada `{stamp}` de `scripts/golden_runner.py` sobre os roteiros dela ({pins}): "
-        f"**{approved}/{len(results)} aprovadas pelo juiz, {faults} avisos mecânicos, "
+        f"**{approved}/{len(results) - len(empty)} aprovadas pelo juiz, {faults} avisos mecânicos, "
         f"{fail_safes} fail-safes em {len(played)} turnos reais"
-        f"{f', {len(refused)} sessões recusadas' if refused else ''}.**",
+        f"{f', {len(refused)} sessões recusadas' if refused else ''}"
+        f"{f', {len(empty)} sessões vazias' if empty else ''}.**",
         "",
         "Este portão vale para o release, não só para o CI (DOCTRINE §5.2): nada que toque "
         "prompt, laço de turno, modelo ou tela chega à equipe sem as sessões-ouro aprovadas "
@@ -679,11 +693,14 @@ def summary(
     ]
     for result in results:
         column = "recusada" if result.refused else str(len(result.faults))
+        if result.empty:
+            column = "vazia"
         if result.refused and result.faults:
             column = f"recusada · {len(result.faults)}"
         noted = "; ".join(
             ([result.refused] if result.refused else [])
             + ([f"interrompida por {result.killed}"] if result.killed else [])
+            + (["nenhum turno a jogar; nada a julgar"] if result.empty else [])
             + result.faults
             + result.objections
         )
@@ -809,9 +826,9 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
 
     The turns' usage is left out on purpose: those calls were paid for by the run that
     exported them and are already in its README, and a re-judgement's money is the judge's.
-    A refusal and a death come back with the session, so a run cut short by the room or by
-    an error is not rebuilt as a whole one; an export older than the fields is read as
-    played whole, which is what those runs were.
+    A refusal, a death and an empty script come back with the session, so a run cut short by
+    the room or by an error, or one that had nothing to play, is not rebuilt as a whole one;
+    an export older than the fields is read as played whole, which is what those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
@@ -834,6 +851,7 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
         played,
         refused=raw.get("refused"),
         killed=raw.get("killed"),
+        empty=raw.get("empty", False),
     )
     return script, result, raw["baseUrl"]
 
@@ -919,8 +937,11 @@ def close(
         encoding="utf-8",
     )
     passed = sum(1 for result in results if result.passed)
+    empty = sum(1 for result in results if result.empty)
     for result in results:
         verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
+        if result.empty:
+            verdict = "EMPTY"
         cost = sum(priced(_paid([result]))[0].values())
         print(
             f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
@@ -930,7 +951,8 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
-    print(f"\n{passed}/{len(results)} golden sessions pass · {out / readme}")
+    note = f", {empty} empty" if empty else ""
+    print(f"\n{passed}/{len(results) - empty} golden sessions pass{note} · {out / readme}")
     return 0 if passed == len(results) else 1
 
 
@@ -951,6 +973,8 @@ def main() -> int:
     args = parser.parse_args()
     if not args.base_url and not args.rejudge:
         parser.error("--base-url names the room to play, or --rejudge <dir> a run to judge again")
+    if args.turns is not None and args.turns < 1:
+        parser.error("--turns must be at least 1, a session with no turn has nothing for the judge")
     return asyncio.run(run(args))
 
 
