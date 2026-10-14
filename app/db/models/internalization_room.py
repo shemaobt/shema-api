@@ -242,7 +242,7 @@ class IRCoverageEvent(Base):
     turn and mostly reports beads that are already where it says.
 
     ``project_id`` and ``pericope`` are copied off the session instead of joined for.
-    Element keys come from the canon: ``being:B3`` is Naomi in every project that works
+    Element keys come from the canon: ``being:S1:B3`` is Naomi in every project that works
     this passage, and the same key repeats across the passages she appears in. A key alone
     therefore does not name a bead, and the question the Desk asks of this table — which
     session touched this one last — needs all three in one index to be a single lookup.
