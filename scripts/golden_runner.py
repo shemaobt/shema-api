@@ -753,7 +753,7 @@ async def run(args: argparse.Namespace) -> int:
                     prompt_repeats=shares_judge_prompt(script, scripts),
                     results=results,
                 )
-    except Exception as killed:
+    except BaseException as killed:
         close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
         raise
     return finish(
@@ -768,14 +768,14 @@ async def run(args: argparse.Namespace) -> int:
 
 def close_dead(
     results: list[SessionResult],
-    killed: Exception,
+    killed: BaseException,
     *,
     playing: str,
     out: Path,
     base_url: str,
     stamp: str,
 ) -> None:
-    halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
+    halted = f"Rodada interrompida em {playing} por {what_killed(killed)}."
     readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
     close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
 
