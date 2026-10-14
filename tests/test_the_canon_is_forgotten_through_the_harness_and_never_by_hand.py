@@ -569,13 +569,11 @@ def _handed_down(
     imports: dict[str, str],
     scopes: list[tuple[ast.AST, list[ast.AST], dict[str, list[ast.AST]]]],
     canon_caches: set[str],
-    callers: set[ast.AST],
 ) -> set[tuple[ast.AST, str, str]]:
     sources = {caller: caller_sources for caller, _, caller_sources in scopes}
     return {
         (function, parameter, name)
         for caller, function, parameter, argument in handed
-        if caller in callers
         for name in _names_in(argument, imports, sources[caller])
         if "." in name and _leads_to_a_cache(name, canon_caches)
     }
@@ -585,7 +583,7 @@ def _fixtures_of_the_conftest(
     module: Path, canon_caches: set[str], root: Path
 ) -> dict[str, set[str]]:
     conftest = module.with_name("conftest.py")
-    if module == conftest or not conftest.is_file():
+    if not conftest.is_file():
         return {}
     text = conftest.read_text(encoding="utf-8")
     if not any(cache.rpartition(".")[2] in text for cache in canon_caches):
@@ -632,18 +630,13 @@ def _clears_in_tree(
     )
     scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
     passed: set[tuple[ast.AST, str, str]] = set()
-    callers = {caller for caller, *_ in handed}
-    while names_a_cache and (
-        new := _handed_down(handed, imports, scopes, canon_caches, callers) - passed
-    ):
+    while names_a_cache and (new := _handed_down(handed, imports, scopes, canon_caches) - passed):
         passed |= new
         for function, parameter, name in new:
             arguments[function].append(([parameter], ast.Name(id=name)))
             if function in at_the_top:
                 at_the_top_sources.setdefault(parameter, []).append(ast.Name(id=name))
         scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
-        fed = {function for function, *_ in new}
-        callers = {caller for caller, nodes, _ in scopes if fed.intersection(nodes)}
     of_the_canon: list[int] = []
     of_something_else: list[int] = []
     for _, nodes, sources in scopes:
