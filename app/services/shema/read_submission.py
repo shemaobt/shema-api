@@ -74,6 +74,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, ReceivedSubmissionDetail
+from app.services.shema._pending_image import pending_image_to_ask_for
 from app.services.shema._redaction import language_name_for, reads_the_truth
 from app.services.shema._scope import (
     NO_COORDINATION,
@@ -149,7 +150,7 @@ def readable_answers(
     return {key: value for key, value in answers.items() if key in unmapped}
 
 
-def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int, ShemaProject]]:
+def scoped_submissions(scope: RegionScope) -> Select[tuple[ShemaSubmission, int, ShemaProject]]:
     """Submissions joined to their project and their definition, inside the caller's reach."""
     return (
         select(ShemaSubmission, ShemaFormDefinition.version, ShemaProject)
@@ -172,7 +173,7 @@ async def list_submissions(
     day because FE-44 §9.0 makes every date on this wire one, and two Pulses that arrive on the
     same day still have an order the inbox should show them in.
     """
-    stmt = _scoped(scope).order_by(ShemaSubmission.received_at.desc())
+    stmt = scoped_submissions(scope).order_by(ShemaSubmission.received_at.desc())
     if project_id is not None:
         stmt = stmt.where(ShemaSubmission.project_id == project_id)
     return [
@@ -214,7 +215,9 @@ async def read_submission(
     defaults to nobody coordinating for the same reason as ``may_apply``: a caller that forgets it
     is handed a withheld project's answers as nothing at all, never as more (OBT-556).
     """
-    row = (await db.execute(_scoped(scope).where(ShemaSubmission.id == submission_id))).first()
+    row = (
+        await db.execute(scoped_submissions(scope).where(ShemaSubmission.id == submission_id))
+    ).first()
     if row is None:
         raise refuse_out_of_scope(
             scope, user=user, operation="read_submission", project_id=submission_id
@@ -224,15 +227,19 @@ async def read_submission(
     definition = await db.get(ShemaFormDefinition, submission.definition_id)
     received = as_received(submission, version, inbox_name(project, readership))
     reads_text = reads_the_truth(project, readership.reader_of(project.region_key))
+    answers = archived_answers(submission)
     return ReceivedSubmissionDetail(
         **received.model_dump(),
         fields=[] if definition is None else form_fields(definition),
         answers=readable_answers(
             definition,
-            archived_answers(submission),
+            answers,
             may_apply=may_apply,
             pending=submission.applied_at is None,
             reads_text=reads_text,
         ),
         answers_withheld=not reads_text,
+        pending_image=await pending_image_to_ask_for(
+            db, submission, project, answers, readership=readership
+        ),
     )

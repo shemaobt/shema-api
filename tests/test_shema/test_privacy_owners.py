@@ -183,6 +183,8 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", f"{PREFIX}/forms/submissions"),
         # OBT-556: a received Pulse's free text is coordination's on a withheld project.
         ("GET", f"{PREFIX}/forms/submissions/{{submission_id}}"),
+        # OBT-585: the pending image's link takes the reader to refuse, as the item's does.
+        ("GET", f"{PREFIX}/forms/submissions/{{submission_id}}/image/link"),
         ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),
         ("GET", f"{PREFIX}/pending-projects"),
         # OBT-581: the signed link takes the reader to **refuse** — an image of a withheld

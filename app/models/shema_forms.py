@@ -240,6 +240,12 @@ class ReceivedSubmissionDetail(ReceivedSubmission):
     #: withheld and the reader is not coordination (OBT-556) — the voice of the field is a
     #: withheld record's free text. Additive: a client that ignores it reads an empty Pulse.
     answers_withheld: bool = False
+    #: ``true`` when the Pulse is still pending, names an uploaded image, the leader ticked the
+    #: authorization box and **this reader** may read the bytes — i.e. when
+    #: ``GET /forms/submissions/{id}/image/link`` would answer a URL (OBT-585). Never the URL
+    #: itself, which is minted per call and stored nowhere. A reader the link would refuse reads
+    #: ``false``, which is what they read before the flag existed. Additive.
+    pending_image: bool = False
 
 
 class SubmissionImport(BaseModel):

@@ -32,8 +32,9 @@ media (BE-09, BE-14); the rule does not wait for it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaMediaKind
@@ -42,6 +43,7 @@ from app.db.models.shema_media import ShemaMediaItem
 from app.models.shema_privacy import ShemaAudience, ShemaReader
 from app.models.shema_record import ShemaMediaAuthorization
 from app.services.shema._redaction import is_withheld
+from app.utils.shema_forms import IMAGE_AUTHORIZED_FIELD
 
 
 class Authorizable(Protocol):
@@ -110,6 +112,19 @@ def reader_may_read_media(project: ShemaProject, reader: ShemaReader | None) -> 
     if reader is None or reader is ShemaReader.COORDINATION:
         return True
     return not is_withheld(project)
+
+
+def pulse_image_authorized(answers: Mapping[str, Any]) -> bool:
+    """Whether the leader ticked the Pulse's authorization box — the **one** reading of it.
+
+    Before the import there is no decision recorded on any row: the box is an answer in the
+    archived Pulse, and ``True`` is the only value that counts — unchecked, absent or anything
+    else is *undecided*, which :func:`is_authorized` makes behave as refused. The import reads
+    it here to mint the photo's decision (``import_submission._mint_pulse_photo``) and the
+    pending-image link reads it here to decide whether to serve the bytes (OBT-585), so the
+    two surfaces cannot come to read the same box differently.
+    """
+    return answers.get(IMAGE_AUTHORIZED_FIELD) is True
 
 
 def can_export_notes(audience: ShemaAudience) -> bool:

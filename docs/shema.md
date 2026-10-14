@@ -1827,6 +1827,33 @@ this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor
 >   prayer wall, the Prayer Pulse and the export carry neither the key, nor the filename, nor the
 >   description, before and after a withdrawal. **Out of scope, by the same decision:** the image
 >   inside the *sent* Prayer Pulse, which is GATE-03's (OBT-389) — the Pulse is text and stays text.
+> - **The coordination sees the image on the inbox, before it imports** (OBT-585, 14/oct/2026 —
+>   the Ponte's finding on OBT-582, 13/oct). Answer (2) above said the pending image is *on no
+>   surface*, and that stays true **of the record**: the ficha, the card, `hasMedia`, the export,
+>   the prayer wall and the Pulse still do not know the row exists. The one surface is the inbox,
+>   where the import is decided and the photograph is part of what is decided on:
+>   `GET /forms/submissions/{id}/image/link` mints the same fifteen-minute URL the item's link
+>   mints, stored nowhere, and the detail carries `pendingImage: true` — a flag, never a URL — when
+>   that call would answer this reader. Four gates (`app/services/shema/_pending_image.py`), and
+>   **their order is not the item's, on purpose**: the caller's scope (404); **the reader before
+>   the object** (`reader_may_read_media`, OBT-583 — on a withheld project the OBT Lab and the
+>   Resource Circle are refused the bytes and shown no pending image, Daniel, 9/oct/2026, option
+>   b, unchanged); an object to serve (404 — the Pulse still pending, naming an upload bound to it
+>   that holds a key; an imported Pulse's photo is the record's, under the decision the import
+>   recorded and a withdrawal may since have reversed); and **the leader's box** standing in for
+>   the decision nobody has recorded yet (`pulse_image_authorized`, the **one** reading the import
+>   also uses to mint the photo's decision — Daniel, 14/oct/2026: unchecked or absent is undecided,
+>   refused like it). The issue's text had the object before the reader, the item's order, and the
+>   Crivo found on the first cut (14/oct/2026) that here it leaks: the item's link is harmless
+>   that way because the record already hands every reader the photo's `id`, while the inbox
+>   detail hands the OBT Lab **no** answer of a withheld project (OBT-556) — a 404 for a Pulse
+>   without a photo beside a 403 for one with it would tell that reader, Pulse by Pulse, which
+>   ones carry a photograph the detail hides. Reader first, the answer depends on the withheld bit
+>   and the role alone; the Resource Circle, which reads the answers (OBT-571) and had nothing to
+>   learn, is refused by the same gate all the same — one predicate, one order. The reader's and
+>   the box's refusals say `NOT_SHARED` on the wire and differ in the log, as the item's do.
+>   **The two surfaces walk the same gates in the same order** (`pending_image_gates`), so the
+>   flag cannot reopen what the route closes. No migration: the flag is computed.
 >
 > **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
