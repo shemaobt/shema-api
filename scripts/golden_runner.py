@@ -148,6 +148,7 @@ class SessionResult:
     unjudged: str | None = None
     judge_usage: list[Usage] = field(default_factory=list)
     killed: str | None = None
+    empty: bool = False
 
     @property
     def whole(self) -> bool:
@@ -504,6 +505,10 @@ async def play_session(
     survive the turn that failed.
     """
     print(f"\n▶ {script.name} ({script.pericopeId}, {script.language}) — {len(script.turns)} turns")
+    if not script.turns[:turns]:
+        print("  empty: no turn to play, nothing to judge")
+        results.append(SessionResult(script.name, None, [], empty=True))
+        return
     played: list[Played] = []
     try:
         session_id = await open_session(script, client)
@@ -680,11 +685,14 @@ def summary(
     ]
     for result in results:
         column = "recusada" if result.refused else str(len(result.faults))
+        if result.empty:
+            column = "vazia"
         if result.refused and result.faults:
             column = f"recusada · {len(result.faults)}"
         noted = "; ".join(
             ([result.refused] if result.refused else [])
             + ([f"interrompida por {result.killed}"] if result.killed else [])
+            + (["nenhum turno a jogar; nada a julgar"] if result.empty else [])
             + result.faults
             + result.objections
         )

@@ -363,3 +363,24 @@ async def test_a_session_cancelled_while_the_room_is_opening_it_is_a_row_and_is_
     )
     assert "Rodada interrompida em P02-b por CancelledError.\n" in readme
     assert opened == ["P01", "P02"], "a rodada cancelada não tenta a terceira sessão"
+
+
+async def test_a_script_with_no_turns_is_not_judged_and_its_row_says_it_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    the_room_answers(
+        monkeypatch, lambda request: httpx.Response(200, json={"sessionId": "s-1"})
+    )
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    assert judge.asked == [], (
+        "um roteiro sem turnos chegava ao juiz com o transcript vazio, e a rodada pagava por nada"
+    )
+    assert not list(out.glob("*.verdict.json"))
+    assert "| P01-a | — | vazia | nenhum turno a jogar; nada a julgar |" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), "a sessão vazia é uma linha com o nome dela, não um PASS"
