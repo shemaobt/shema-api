@@ -13,6 +13,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.models.internalization_room import TurnMomentStep
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session
 from tests.baker import make_app, make_role
@@ -131,3 +132,20 @@ async def test_a_turn_stored_before_moments_existed_reads_no_moment(
 
     assert answered.status_code == 200, answered.text[:300]
     assert answered.json()["turns"][0]["voice"]["moment"] is None
+
+
+def test_the_published_schema_of_a_step_lists_the_seven_causes_that_can_move_the_room() -> None:
+    published = TurnMomentStep.model_json_schema()["properties"]["by"]["items"]
+
+    assert published == {
+        "enum": [
+            "entrance",
+            "articulation_entrance",
+            "where_we_are",
+            "fence",
+            "part_closing",
+            "familiarization_closing",
+            "send_off",
+        ],
+        "type": "string",
+    }
