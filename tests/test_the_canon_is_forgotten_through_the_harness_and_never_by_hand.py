@@ -1601,6 +1601,19 @@ def test_a_case(derived) -> None:
     derived.cache_clear()
 """
 
+THE_CASE_WHOSE_FIXTURE_EXTENDS_THE_ONE_OF_ITS_OWN_NAME = """\
+import pytest
+
+
+@pytest.fixture
+def cached(cached):
+    return cached
+
+
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
 THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_IN_A_CLASS = """\
 class TestACase:
     def test_a_case(self, cached) -> None:
@@ -2696,6 +2709,12 @@ def test_a_fixture_of_the_case_feeds_only_what_pytest_calls_with_it(
             [],
             [5],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_FIXTURE_EXTENDS_THE_ONE_OF_ITS_OWN_NAME,
+            [10],
+            [],
+        ),
     ],
     ids=[
         "a fixture that returns the cache",
@@ -2710,6 +2729,7 @@ def test_a_fixture_of_the_case_feeds_only_what_pytest_calls_with_it(
         "a conftest fixture that requests a fixture the case defines",
         "a nested helper that is handed another cache under the fixture's name",
         "a lambda that is handed another cache under the fixture's name",
+        "a fixture of the case that requests the conftest's fixture of its own name",
     ],
 )
 def test_a_fixture_of_the_conftest_beside_the_case_feeds_the_parameter_of_its_name(
