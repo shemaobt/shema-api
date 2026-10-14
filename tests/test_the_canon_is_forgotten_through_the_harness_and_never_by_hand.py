@@ -179,7 +179,8 @@ def _parametrized_bindings(names: list[str], values: ast.AST) -> Bindings:
     return [(names, values)]
 
 
-Functions = dict[str, ast.FunctionDef | ast.AsyncFunctionDef]
+Function = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+Functions = dict[str, Function]
 
 
 def _defined_in(scope: ast.AST) -> Functions:
@@ -187,26 +188,44 @@ def _defined_in(scope: ast.AST) -> Functions:
     for child in ast.iter_child_nodes(scope):
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
             defined[child.name] = child
+        elif (
+            isinstance(child, ast.Assign)
+            and isinstance(child.value, ast.Lambda)
+            and len(child.targets) == 1
+            and isinstance(child.targets[0], ast.Name)
+        ):
+            defined[child.targets[0].id] = child.value
         elif not isinstance(child, ast.ClassDef):
             defined |= _defined_in(child)
     return defined
 
 
+def _hand_over(
+    function: Function,
+    arguments: list[ast.expr],
+    keywords: list[ast.keyword],
+    given: dict[ast.AST, Bindings],
+) -> None:
+    parameters = [parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]]
+    given[function].extend(
+        ([parameter], argument) for parameter, argument in zip(parameters, arguments, strict=False)
+    )
+    given[function].extend(([keyword.arg], keyword.value) for keyword in keywords if keyword.arg)
+
+
 def _read_the_calls(scope: ast.AST, visible: Functions, given: dict[ast.AST, Bindings]) -> None:
     for child in ast.iter_child_nodes(scope):
-        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
-            function = visible.get(child.func.id)
-            if function is not None:
-                parameters = [
-                    parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]
-                ]
-                given[function].extend(
-                    ([parameter], argument)
-                    for parameter, argument in zip(parameters, child.args, strict=False)
-                )
-                given[function].extend(
-                    ([keyword.arg], keyword.value) for keyword in child.keywords if keyword.arg
-                )
+        if isinstance(child, ast.Call):
+            if isinstance(child.func, ast.Lambda):
+                _hand_over(child.func, child.args, child.keywords, given)
+            elif isinstance(child.func, ast.Name):
+                function = visible.get(child.func.id)
+                if function is not None:
+                    _hand_over(function, child.args, child.keywords, given)
+                elif (
+                    child.func.id == "map" and child.args and isinstance(child.args[0], ast.Lambda)
+                ):
+                    _hand_over(child.args[0], child.args[1:], [], given)
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
             _read_the_calls(child, visible | _defined_in(child), given)
         else:
@@ -215,12 +234,10 @@ def _read_the_calls(scope: ast.AST, visible: Functions, given: dict[ast.AST, Bin
 
 def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
     given: dict[ast.AST, Bindings] = {
-        node: []
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        node: [] for node in ast.walk(tree) if isinstance(node, Function)
     }
     for function in given:
-        for decorator in function.decorator_list:
+        for decorator in getattr(function, "decorator_list", []):
             if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
                 given[function].extend(_parametrized_bindings(*parametrized))
     _read_the_calls(tree, _defined_in(tree), given)
@@ -231,7 +248,7 @@ def _bindings(
     nodes: Iterable[ast.AST], arguments: dict[ast.AST, Bindings]
 ) -> Iterator[tuple[list[str], ast.AST]]:
     for node in nodes:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        if isinstance(node, Function):
             yield from arguments.get(node, [])
         elif isinstance(node, ast.For | ast.comprehension):
             yield _bound_by(node.target), node.iter
@@ -637,6 +654,39 @@ def test_a_case() -> None:
     holder.other.cache_clear()
 """
 
+CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    (lambda cached: cached.cache_clear())(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_LAMBDA_KEPT_IN_A_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    forget = lambda cached: cached.cache_clear()
+    forget(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_LAMBDA_GIVEN_TO_MAP = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    list(map(lambda cached: cached.cache_clear(), (book_material.preservation_rules,)))
+"""
+
+CLEARS_ANOTHER_CACHE_THROUGH_A_LAMBDA = """\
+from app.core.config import get_settings
+
+
+def test_a_case() -> None:
+    (lambda cached: cached.cache_clear())(get_settings)
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -1005,6 +1055,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME, 7),
         (CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR, 6),
         (CLEARS_THROUGH_AN_ATTRIBUTE_TARGET, 9),
+        (CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE, 5),
+        (CLEARS_THROUGH_A_LAMBDA_KEPT_IN_A_NAME, 5),
+        (CLEARS_THROUGH_A_LAMBDA_GIVEN_TO_MAP, 5),
     ],
     ids=[
         "named at the clear",
@@ -1035,6 +1088,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "cleared by a bound cache_clear kept in a name",
         "cleared by a bound cache_clear got by getattr",
         "named by an attribute target",
+        "named by the parameter of a lambda called in place",
+        "named by the parameter of a lambda kept in a name",
+        "named by the parameter of a lambda given to map",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -1229,6 +1285,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
         (CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET, [], [6]),
         (CLEARS_THE_SIBLING_OF_A_PARAMETRIZED_ARGUMENT, [], [8]),
         (CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET, [], [10]),
+        (CLEARS_ANOTHER_CACHE_THROUGH_A_LAMBDA, [], [5]),
         (CLEARS_A_NAME_UNPACKED_FROM_A_CACHE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR, [6], []),
@@ -1240,6 +1297,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
         "the sibling of a tuple target",
         "the sibling of a parametrized argument",
         "the sibling of an attribute target",
+        "another cache through a lambda",
         "a name unpacked from a cache, shapes not paired",
         "a name unpacked from a longer tuple",
         "a name unpacked from a tuple with a star",
