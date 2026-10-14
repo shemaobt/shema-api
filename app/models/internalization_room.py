@@ -1206,6 +1206,20 @@ class TurnTraceStep(BaseModel):
     note: str | None = None
 
 
+class TurnMoment(BaseModel):
+    at: At
+    part: int | None = None
+    closed: bool = False
+    fenced: bool = False
+
+
+class TurnMomentStep(BaseModel):
+    before: TurnMoment
+    after: TurnMoment
+    by: list[str]
+    ignored: list[str] = Field(default_factory=list)
+
+
 class TurnVoiceSide(BaseModel):
     outcome: TurnOutcomeCode
     boundary: bool
@@ -1217,6 +1231,7 @@ class TurnVoiceSide(BaseModel):
     model: str | None
     text: str
     audio_url: str
+    moment: TurnMomentStep | None
 
 
 class SessionTurn(BaseModel):
