@@ -659,6 +659,7 @@ def summary(
     played = [turn for result in results for turn in result.played]
     faults = sum(len(result.faults) for result in results)
     refused = [result for result in results if result.refused]
+    empty = [result for result in results if result.empty]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
     by_role, unpriced = priced(_paid(results))
@@ -671,9 +672,10 @@ def summary(
         f"# Sessões-ouro — {stamp[:10]}, esta sala em `{tip}`, `{base_url}`",
         "",
         f"Rodada `{stamp}` de `scripts/golden_runner.py` sobre os roteiros dela ({pins}): "
-        f"**{approved}/{len(results)} aprovadas pelo juiz, {faults} avisos mecânicos, "
+        f"**{approved}/{len(results) - len(empty)} aprovadas pelo juiz, {faults} avisos mecânicos, "
         f"{fail_safes} fail-safes em {len(played)} turnos reais"
-        f"{f', {len(refused)} sessões recusadas' if refused else ''}.**",
+        f"{f', {len(refused)} sessões recusadas' if refused else ''}"
+        f"{f', {len(empty)} sessões vazias' if empty else ''}.**",
         "",
         "Este portão vale para o release, não só para o CI (DOCTRINE §5.2): nada que toque "
         "prompt, laço de turno, modelo ou tela chega à equipe sem as sessões-ouro aprovadas "

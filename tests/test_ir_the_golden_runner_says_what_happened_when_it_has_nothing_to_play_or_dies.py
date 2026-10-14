@@ -406,3 +406,35 @@ async def test_a_script_with_no_turns_never_opens_a_session_in_the_room_nor_leav
     assert sorted(path.name for path in out.iterdir()) == ["README.md"], (
         "um export sem turnos seria remontado como sessão inteira por um --rejudge"
     )
+
+
+def _a_room_that_plays_and_a_judge_that_approves(monkeypatch: pytest.MonkeyPatch) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+
+
+async def test_an_empty_session_is_counted_apart_and_is_neither_an_approval_nor_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    assert (
+        "**1/1 aprovadas pelo juiz, 0 avisos mecânicos, 0 fail-safes em 1 turnos reais, "
+        "1 sessões vazias.**"
+    ) in (out / "README.md").read_text(encoding="utf-8"), (
+        "a sessão vazia entrava no denominador e a rodada dizia 1/2, como se uma sessão tivesse "
+        "sido reprovada"
+    )
