@@ -596,7 +596,7 @@ def _fixtures_of_the_conftest(
         if not conftest.is_file():
             continue
         text = conftest.read_text(encoding="utf-8")
-        if not any(cache.rpartition(".")[2] in text for cache in canon_caches):
+        if not outside and not any(cache.rpartition(".")[2] in text for cache in canon_caches):
             continue
         tree = ast.parse(text)
         given, _ = _arguments_given(tree)
@@ -609,7 +609,11 @@ def _fixtures_of_the_conftest(
             True,
             {},
         )
-        outside |= {name: names for name, names in carried.items() if name in _fixtures_of(tree)}
+        fixtures = _fixtures_of(tree)
+        outside = {
+            **{name: names for name, names in outside.items() if name not in fixtures},
+            **{name: names for name, names in carried.items() if name in fixtures},
+        }
     return outside
 
 
@@ -1434,6 +1438,17 @@ from app.services.internalization_room.canon import book_material
 def cached():
     held = book_material.preservation_rules
     yield held
+"""
+
+THE_CONFTEST_WHOSE_FIXTURE_RETURNS_ANOTHER_CACHE = """\
+import pytest
+
+from app.core.config import get_settings
+
+
+@pytest.fixture
+def cached():
+    return get_settings
 """
 
 THE_CASE_THAT_ASKS_FOR_THE_FIXTURE = """\
@@ -2434,6 +2449,24 @@ def test_a_fixture_of_a_conftest_above_the_case_feeds_the_parameter_of_its_name(
     clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
 
     assert clears == ([2], [])
+
+
+def test_a_nearer_conftest_fixture_of_the_same_name_shadows_the_one_above(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
+    )
+    subdirectory = tmp_path / "test_a_subdirectory"
+    subdirectory.mkdir()
+    (subdirectory / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_ANOTHER_CACHE, encoding="utf-8"
+    )
+    module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == ([], [2])
 
 
 def test_a_cache_listed_from_outside_the_room_is_one_the_harness_forgets_by_its_own_path(
