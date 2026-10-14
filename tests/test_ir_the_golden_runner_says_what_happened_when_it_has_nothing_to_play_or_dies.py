@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -369,9 +370,7 @@ async def test_a_script_with_no_turns_is_not_judged_and_its_row_says_it_is_empty
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     judge = the_judge_answers(monkeypatch)
-    the_room_answers(
-        monkeypatch, lambda request: httpx.Response(200, json={"sessionId": "s-1"})
-    )
+    the_room_answers(monkeypatch, lambda request: httpx.Response(200, json={"sessionId": "s-1"}))
     sessions = golden_shelf(tmp_path, ("P01-a", "P01", 0))
     out = tmp_path / "reports"
 
@@ -469,3 +468,39 @@ async def test_a_run_with_an_empty_session_does_not_exit_zero_even_when_every_ot
     assert exit_code == 1, (
         "um roteiro que não foi jogado não pode fechar o portão do release como se tivesse passado"
     )
+
+
+@pytest.mark.parametrize("turns", ["0", "-1"])
+def test_turns_below_one_is_refused_with_a_sentence_before_anything_is_read_or_opened(
+    turns: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    asked: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(500)
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1))
+    (sessions / "P02-b.json").write_text("{", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "golden_runner.py",
+            "--base-url=http://room/api/internalization-room",
+            f"--sessions={sessions}",
+            f"--out={tmp_path / 'reports'}",
+            f"--turns={turns}",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as refused:
+        golden_runner.main()
+
+    assert refused.value.code == 2
+    assert capsys.readouterr().err.endswith(
+        "error: --turns must be at least 1, a session with no turn has nothing for the judge\n"
+    ), "--turns 0 passava pelo parser, tocava zero turnos e entregava ao juiz um transcript vazio"
+    assert asked == [], "a recusa vem antes de ler os roteiros e antes de abrir qualquer sessão"
+    assert not (tmp_path / "reports").exists()

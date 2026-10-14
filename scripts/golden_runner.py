@@ -36,9 +36,11 @@ the key is identity-bound) where the room does. `--rejudge <dir>` judges the exp
 earlier run again, without playing the room.
 
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
-mechanical check tripped. 1 when any session failed or was refused, 2 when there was
-nothing to play or a script could not be read — named on stderr before any session is
-played or paid for — and 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
+mechanical check tripped. 1 when any session failed, was refused or had no turn to play, 2
+when there was nothing to play, a script could not be read or `--turns` was below 1 — named on
+stderr before any session is played or paid for — and 0 when every session passed. A script
+with no turns is not opened or judged: it is a row of its own, `vazia`, counted neither as a
+pass nor as a failure in the README's totals. DOCTRINE.md §5.2 binds the release to it.
 
 A run stops before the next session once what it has spent reaches `--budget-usd`, or
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
@@ -505,7 +507,7 @@ async def play_session(
     survive the turn that failed.
     """
     print(f"\n▶ {script.name} ({script.pericopeId}, {script.language}) — {len(script.turns)} turns")
-    if not script.turns[:turns]:
+    if not script.turns:
         print("  empty: no turn to play, nothing to judge")
         results.append(SessionResult(script.name, None, [], empty=True))
         return
@@ -966,6 +968,8 @@ def main() -> int:
     args = parser.parse_args()
     if not args.base_url and not args.rejudge:
         parser.error("--base-url names the room to play, or --rejudge <dir> a run to judge again")
+    if args.turns is not None and args.turns < 1:
+        parser.error("--turns must be at least 1, a session with no turn has nothing for the judge")
     return asyncio.run(run(args))
 
 
