@@ -384,3 +384,25 @@ async def test_a_script_with_no_turns_is_not_judged_and_its_row_says_it_is_empty
     assert "| P01-a | — | vazia | nenhum turno a jogar; nada a julgar |" in (
         out / "README.md"
     ).read_text(encoding="utf-8"), "a sessão vazia é uma linha com o nome dela, não um PASS"
+
+
+async def test_a_script_with_no_turns_never_opens_a_session_in_the_room_nor_leaves_an_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    asked: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(200, json={"sessionId": "s-1"})
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    assert asked == [], "a sessão sem turnos abria uma sessão na sala só para não jogar nada nela"
+    assert sorted(path.name for path in out.iterdir()) == ["README.md"], (
+        "um export sem turnos seria remontado como sessão inteira por um --rejudge"
+    )
