@@ -148,10 +148,15 @@ def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
             and call.func.id in defined
         ):
             function = defined[call.func.id]
-            parameters = [parameter.arg for parameter in function.args.args]
+            parameters = [
+                parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]
+            ]
             given[function].extend(
                 ([parameter], argument)
                 for parameter, argument in zip(parameters, call.args, strict=False)
+            )
+            given[function].extend(
+                ([keyword.arg], keyword.value) for keyword in call.keywords if keyword.arg
             )
     return given
 
@@ -332,6 +337,30 @@ from app.services.internalization_room.canon import book_material
 @pytest.mark.parametrize("cached", [book_material.preservation_rules])
 def test_a_case(cached) -> None:
     cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_KEYWORD_OF_A_HELPER = """\
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    forget(cached=book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_A_POSITIONAL_ONLY_PARAMETER = """\
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached, /) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    forget(book_material.preservation_rules)
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -648,6 +677,8 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_GETATTR_OF_CACHE_CLEAR, 5),
         (CLEARS_THROUGH_AN_ARGUMENT_OF_A_HELPER, 5),
         (CLEARS_THROUGH_A_PARAMETRIZED_ARGUMENT, 8),
+        (CLEARS_THROUGH_A_KEYWORD_OF_A_HELPER, 5),
+        (CLEARS_THROUGH_A_POSITIONAL_ONLY_PARAMETER, 5),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -670,6 +701,8 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "cleared by getattr of cache_clear",
         "named by the argument of a helper",
         "named by a parametrized argument",
+        "named by the keyword of a helper",
+        "named by a positional-only parameter",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
