@@ -12,7 +12,7 @@ JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -n 4 --dist load
 
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
-uv run mypy app/
+uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py --explicit-package-bases
 uv run python scripts/check_doctrine.py
 uv run python scripts/sync_doctrine.py --check
 TRIPOD_COMPILER_REPO=~/tripod_compiler uv run python scripts/sync_internalization_canon.py --check
