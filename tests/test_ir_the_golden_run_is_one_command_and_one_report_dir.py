@@ -808,6 +808,69 @@ async def test_a_rejudge_over_a_directory_that_does_not_exist_says_so_and_writes
     assert judge.asked == [] and not again.exists()
 
 
+async def test_a_rejudge_reads_an_export_with_no_turns_and_no_mark_as_empty_and_never_judges_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    bare = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(bare.read_text(encoding="utf-8"))
+    exported["turns"] = []
+    bare.write_text(json.dumps(exported), encoding="utf-8")
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert len(judge.asked) == 1 and GUIDE_LINE in judge.asked[0]["user_content"], (
+        "um export sem turnos e sem marca era julgado inteiro, com o transcript vazio"
+    )
+    assert not list(again.glob("P01-b*.verdict.json"))
+    assert "| P01-b | — | vazia | nenhum turno a jogar; nada a julgar |" in (
+        again / "README.md"
+    ).read_text(encoding="utf-8"), "o export antigo sem marca ficava como uma sessão inteira"
+    assert exit_code == 1, "a sessão vazia fecha o portão, como a que a rodada de hoje marca"
+
+
+@pytest.mark.parametrize(
+    ("mark", "reason", "row"),
+    [
+        (
+            "refused",
+            "502 o modelo não respondeu",
+            "| P01-b | — | recusada | 502 o modelo não respondeu |",
+        ),
+        (
+            "killed",
+            "ReadTimeout: the room did not answer",
+            "| P01-b | — | 0 | interrompida por ReadTimeout: the room did not answer |",
+        ),
+    ],
+)
+async def test_a_rejudge_keeps_a_refusal_or_a_death_that_left_no_turns_as_what_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mark: str, reason: str, row: str
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    cut = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(cut.read_text(encoding="utf-8"))
+    exported["turns"] = []
+    exported[mark] = reason
+    cut.write_text(json.dumps(exported), encoding="utf-8")
+    again = tmp_path / "again"
+
+    await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    readme = (again / "README.md").read_text(encoding="utf-8")
+    assert row in readme, "a sessão que a sala recusou ou que morreu sem turnos virava «vazia»"
+    assert len(judge.asked) == 1, "só o P01-a é julgado: a outra já tinha o motivo dela"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -885,13 +885,16 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
         turns=[],
     )
     played = [_played(turn, at) for at, turn in enumerate(_read(raw, "turns", (list,)))]
+    refused = _read(raw, "refused", (str, type(None)), default=None)
+    killed = _read(raw, "killed", (str, type(None)), default=None)
     result = SessionResult(
         script.name,
         _read(raw, "sessionId", (str, type(None))),
         played,
-        refused=_read(raw, "refused", (str, type(None)), default=None),
-        killed=_read(raw, "killed", (str, type(None)), default=None),
-        empty=_read(raw, "empty", (bool,), default=False),
+        refused=refused,
+        killed=killed,
+        empty=_read(raw, "empty", (bool,), default=False)
+        or (not played and refused is None and killed is None),
     )
     return script, result, _read(raw, "baseUrl", (str,))
 
