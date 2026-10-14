@@ -213,37 +213,49 @@ def _handed_to(
     ]
 
 
+Handed = list[tuple[ast.AST, Function, str, ast.expr]]
+
+
 def _hand_over(
     function: Function,
     arguments: list[ast.expr],
     keywords: list[ast.keyword],
     given: dict[ast.AST, Bindings],
+    handed: Handed,
+    caller: ast.AST,
 ) -> None:
-    given[function].extend(
-        ([parameter], argument) for parameter, argument in _handed_to(function, arguments, keywords)
-    )
+    for parameter, argument in _handed_to(function, arguments, keywords):
+        given[function].append(([parameter], argument))
+        handed.append((caller, function, parameter, argument))
 
 
-def _read_the_calls(scope: ast.AST, visible: Functions, given: dict[ast.AST, Bindings]) -> None:
+def _read_the_calls(
+    scope: ast.AST,
+    visible: Functions,
+    given: dict[ast.AST, Bindings],
+    handed: Handed,
+    caller: ast.AST,
+) -> None:
     for child in ast.iter_child_nodes(scope):
         if isinstance(child, ast.Call):
             if isinstance(child.func, ast.Lambda):
-                _hand_over(child.func, child.args, child.keywords, given)
+                _hand_over(child.func, child.args, child.keywords, given, handed, caller)
             elif isinstance(child.func, ast.Name):
                 function = visible.get(child.func.id)
                 if function is not None:
-                    _hand_over(function, child.args, child.keywords, given)
+                    _hand_over(function, child.args, child.keywords, given, handed, caller)
                 elif (
                     child.func.id == "map" and child.args and isinstance(child.args[0], ast.Lambda)
                 ):
-                    _hand_over(child.args[0], child.args[1:], [], given)
+                    _hand_over(child.args[0], child.args[1:], [], given, handed, caller)
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-            _read_the_calls(child, visible | _defined_in(child), given)
+            within = child if isinstance(caller, ast.Module) else caller
+            _read_the_calls(child, visible | _defined_in(child), given, handed, within)
         else:
-            _read_the_calls(child, visible, given)
+            _read_the_calls(child, visible, given, handed, caller)
 
 
-def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
+def _arguments_given(tree: ast.Module) -> tuple[dict[ast.AST, Bindings], Handed]:
     given: dict[ast.AST, Bindings] = {
         node: [] for node in ast.walk(tree) if isinstance(node, Function)
     }
@@ -251,8 +263,9 @@ def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
         for decorator in getattr(function, "decorator_list", []):
             if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
                 given[function].extend(_parametrized_bindings(*parametrized))
-    _read_the_calls(tree, _defined_in(tree), given)
-    return given
+    handed: Handed = []
+    _read_the_calls(tree, _defined_in(tree), given, handed, tree)
+    return given, handed
 
 
 def _bindings(
@@ -343,6 +356,10 @@ def _values_returned_by(function: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
     return values
 
 
+def _leads_to_a_cache(name: str, canon_caches: set[str]) -> bool:
+    return any(cache == name or cache.startswith(f"{name}.") for cache in canon_caches)
+
+
 def _as_resolved(names: set[str]) -> list[ast.expr]:
     return [ast.Name(id=name) for name in sorted(names)]
 
@@ -359,7 +376,7 @@ def _names_returned_by(
         name
         for value in _values_returned_by(function)
         for name in _names_in(value, imports, sources)
-        if any(cache == name or cache.startswith(f"{name}.") for cache in canon_caches)
+        if _leads_to_a_cache(name, canon_caches)
     }
 
 
@@ -529,6 +546,36 @@ def _hands_the_canon_to_a_clear(
     return False
 
 
+def _scopes(
+    tree: ast.Module,
+    arguments: dict[ast.AST, Bindings],
+    at_the_top: list[ast.AST],
+    at_the_top_sources: dict[str, list[ast.AST]],
+) -> list[tuple[ast.AST, list[ast.AST], dict[str, list[ast.AST]]]]:
+    scopes = [(tree, at_the_top, at_the_top_sources)]
+    for function in _outermost_functions(tree):
+        within = list(ast.walk(function))
+        scopes.append(
+            (function, within, _sourced_by(_bindings(within, arguments), at_the_top_sources))
+        )
+    return scopes
+
+
+def _handed_down(
+    handed: Handed,
+    imports: dict[str, str],
+    scopes: list[tuple[ast.AST, list[ast.AST], dict[str, list[ast.AST]]]],
+    canon_caches: set[str],
+) -> dict[ast.AST, Bindings]:
+    sources = {caller: caller_sources for caller, _, caller_sources in scopes}
+    down: dict[ast.AST, Bindings] = {}
+    for caller, function, parameter, argument in handed:
+        for name in sorted(_names_in(argument, imports, sources[caller])):
+            if _leads_to_a_cache(name, canon_caches):
+                down.setdefault(function, []).append(([parameter], ast.Name(id=name)))
+    return down
+
+
 def _clears_in_tree(
     module: Path,
     tree: ast.Module,
@@ -543,7 +590,7 @@ def _clears_in_tree(
     imports = _imports_of(tree, _package_of(module, root))
     spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
-    given = _arguments_given(tree)
+    given, handed = _arguments_given(tree)
     for function, bindings in seeded.items():
         given[function].extend(bindings)
     for node in ast.walk(tree):
@@ -554,14 +601,14 @@ def _clears_in_tree(
     arguments, at_the_top_sources = _fed_by_what_functions_return(
         tree, imports, given, at_the_top, canon_caches, names_a_cache
     )
-    scopes = [(at_the_top, at_the_top_sources)]
-    for function in _outermost_functions(tree):
-        within = list(ast.walk(function))
-        within_sources = _sourced_by(_bindings(within, arguments), at_the_top_sources)
-        scopes.append((within, within_sources))
+    scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
+    if names_a_cache:
+        for function, bindings in _handed_down(handed, imports, scopes, canon_caches).items():
+            arguments[function].extend(bindings)
+        scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
     of_the_canon: list[int] = []
     of_something_else: list[int] = []
-    for nodes, sources in scopes:
+    for _, nodes, sources in scopes:
         for node in nodes:
             if not isinstance(node, ast.Call):
                 continue
@@ -1058,6 +1105,19 @@ def the_settings():
 
 def test_a_case() -> None:
     the_settings().cache_clear()
+"""
+
+CLEARS_THROUGH_A_LOCAL_OF_THE_CALLER_HANDED_TO_A_HELPER = """\
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    cached_local = book_material.preservation_rules
+    forget(cached_local)
 """
 
 A_SIBLING_MODULE_IMPORTED_BY_A_DOT = """\
@@ -1685,6 +1745,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_THE_VALUE_A_FUNCTION_RETURNS, 9),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE, 11),
         (CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE, 13),
+        (CLEARS_THROUGH_A_LOCAL_OF_THE_CALLER_HANDED_TO_A_HELPER, 5),
     ],
     ids=[
         "named at the clear",
@@ -1724,6 +1785,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by the value a function returns",
         "named by a name a function's value feeds",
         "named by a function that returns another's value",
+        "named by a local of the caller handed to a helper",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
