@@ -279,6 +279,26 @@ async def test_an_entry_stored_before_the_stamps_reads_as_conversation_with_no_m
     ]
 
 
+async def test_a_row_stored_with_the_role_room_reads_as_the_team_side_marked_a_room_note(
+    client, db_session, room_app, script
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    session.messages = [
+        {"role": "room", "text": "[a sessão acabou de começar]"},
+        {"role": "team", "text": FIRST_ANSWER},
+    ]
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    turns = await _turns(client, session.id, desk)
+
+    assert [(t["role"], t["text"], t["note_kind"]) for t in turns] == [
+        ("team", "[a sessão acabou de começar]", "room"),
+        ("team", FIRST_ANSWER, None),
+    ], "uma nota gravada antes das notas da sala como lado da equipe aparecia como a sala falando"
+
+
 async def test_an_older_line_with_only_a_category_is_a_fail_safe_with_its_category_named(
     client, db_session, room_app, script
 ) -> None:

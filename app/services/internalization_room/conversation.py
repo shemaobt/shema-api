@@ -27,7 +27,7 @@ def _turn_of(message: dict[str, Any]) -> ConversationTurn:
         message.get("outcome") == "fail_safe" or bool(letter)
     )
     return ConversationTurn(
-        role=message["role"],
+        role="team" if message["role"] == "room" else message["role"],
         text=message.get("text", ""),
         at=message.get("at"),
         fail_safe=fail_safe,
@@ -39,6 +39,6 @@ def _turn_of(message: dict[str, Any]) -> ConversationTurn:
 def _note_kind_of(message: dict[str, Any]) -> Literal["opening", "room"] | None:
     if message.get("opening_note"):
         return "opening"
-    if message.get("room_note"):
+    if message.get("room_note") or message["role"] == "room":
         return "room"
     return None
