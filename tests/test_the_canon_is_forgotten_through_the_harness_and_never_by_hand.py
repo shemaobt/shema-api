@@ -336,20 +336,43 @@ def _as_resolved(names: set[str]) -> list[ast.expr]:
     return [ast.Name(id=name) for name in sorted(names)]
 
 
-def _fed_by_the_fixtures(
+def _names_returned_by(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: dict[str, str],
+    fed: dict[ast.AST, Bindings],
+    at_the_top_sources: dict[str, list[ast.AST]],
+    canon_caches: set[str],
+) -> set[str]:
+    sources = _sourced_by(_bindings(list(ast.walk(function)), fed), at_the_top_sources)
+    return {
+        name
+        for value in _values_returned_by(function)
+        for name in _names_in(value, imports, sources)
+        if any(cache == name or cache.startswith(f"{name}.") for cache in canon_caches)
+    }
+
+
+def _fed_by_what_functions_return(
     tree: ast.Module,
     imports: dict[str, str],
     arguments: dict[ast.AST, Bindings],
     at_the_top: list[ast.AST],
+    canon_caches: set[str],
+    text: str,
 ) -> tuple[dict[ast.AST, Bindings], dict[str, list[ast.AST]]]:
-    fixtures = {
+    names_a_cache = any(cache.rpartition(".")[2] in text for cache in canon_caches)
+    functions = {
         function.name: function
         for function in tree.body
-        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
-        and "fixture" in {_decorator_name(decorator) for decorator in function.decorator_list}
+        if names_a_cache and isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    fixtures = {
+        name
+        for name, function in functions.items()
+        if "fixture" in {_decorator_name(decorator) for decorator in function.decorator_list}
     }
     carried: dict[str, set[str]] = {}
-    for _ in range(len(fixtures) + 1):
+    for _ in range(len(functions) + 1):
         fed = {
             node: [
                 *bindings,
@@ -362,19 +385,28 @@ def _fed_by_the_fixtures(
             ]
             for node, bindings in arguments.items()
         }
-        at_the_top_sources = _sourced_by(_bindings(at_the_top, fed), {})
+        at_the_top_sources = _sourced_by(
+            [
+                *_bindings(at_the_top, fed),
+                *(
+                    ([name], value)
+                    for name, names in carried.items()
+                    for value in _as_resolved(names)
+                ),
+            ],
+            {},
+        )
         now = {
-            name: {
-                found
-                for value in _values_returned_by(function)
-                for found in _names_in(
-                    value,
-                    imports,
-                    _sourced_by(_bindings(list(ast.walk(function)), fed), at_the_top_sources),
+            name: names
+            for name, function in functions.items()
+            if (
+                names := _names_returned_by(
+                    function, imports, fed, at_the_top_sources, canon_caches
                 )
-            }
-            for name, function in fixtures.items()
+            )
         }
+        if now == carried:
+            break
         carried = now
     return fed, at_the_top_sources
 
@@ -384,12 +416,13 @@ def _parameters_of(function: Function) -> list[ast.arg]:
 
 
 def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
-    tree = ast.parse(module.read_text(encoding="utf-8"))
+    text = module.read_text(encoding="utf-8")
+    tree = ast.parse(text)
     imports = _imports_of(tree)
     spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
-    arguments, at_the_top_sources = _fed_by_the_fixtures(
-        tree, imports, _arguments_given(tree), at_the_top
+    arguments, at_the_top_sources = _fed_by_what_functions_return(
+        tree, imports, _arguments_given(tree), at_the_top, canon_caches, text
     )
     scopes = [(at_the_top, at_the_top_sources)]
     for function in _outermost_functions(tree):
@@ -824,6 +857,65 @@ def test_a_case(settings) -> None:
     settings.cache_clear()
 """
 
+CLEARS_THROUGH_THE_VALUE_A_FUNCTION_RETURNS = """\
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    return book_material.preservation_rules
+
+
+def test_a_case() -> None:
+    the_cache().cache_clear()
+"""
+
+CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    held = book_material.preservation_rules
+    return held
+
+
+def test_a_case() -> None:
+    cached = the_cache()
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    return book_material.preservation_rules
+
+
+def the_same_cache():
+    return the_cache()
+
+
+def test_a_case() -> None:
+    the_same_cache().cache_clear()
+"""
+
+CLEARS_THE_VALUE_OF_A_FUNCTION_THAT_RETURNS_ANOTHER_CACHE = """\
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+def the_cache():
+    return book_material.preservation_rules
+
+
+def the_settings():
+    return get_settings
+
+
+def test_a_case() -> None:
+    the_settings().cache_clear()
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -1198,6 +1290,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_FIXTURE_THAT_RETURNS_THE_CACHE, 12),
         (CLEARS_THROUGH_A_FIXTURE_THAT_YIELDS_A_LOCAL_HOLDING_THE_CACHE, 13),
         (CLEARS_THROUGH_A_FIXTURE_FED_BY_ANOTHER_FIXTURE, 17),
+        (CLEARS_THROUGH_THE_VALUE_A_FUNCTION_RETURNS, 9),
+        (CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE, 11),
+        (CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE, 13),
     ],
     ids=[
         "named at the clear",
@@ -1234,6 +1329,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a fixture that returns it",
         "named by a fixture that yields a local holding it",
         "named by a fixture that another fixture feeds",
+        "named by the value a function returns",
+        "named by a name a function's value feeds",
+        "named by a function that returns another's value",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -1430,6 +1528,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
         (CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET, [], [10]),
         (CLEARS_ANOTHER_CACHE_THROUGH_A_LAMBDA, [], [5]),
         (CLEARS_THE_FIXTURE_OF_ANOTHER_CACHE, [], [18]),
+        (CLEARS_THE_VALUE_OF_A_FUNCTION_THAT_RETURNS_ANOTHER_CACHE, [], [14]),
         (CLEARS_A_NAME_UNPACKED_FROM_A_CACHE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR, [6], []),
@@ -1443,6 +1542,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
         "the sibling of an attribute target",
         "another cache through a lambda",
         "the fixture of another cache",
+        "the value of a function that returns another cache",
         "a name unpacked from a cache, shapes not paired",
         "a name unpacked from a longer tuple",
         "a name unpacked from a tuple with a star",
