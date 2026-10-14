@@ -8,48 +8,77 @@ mints the fifteen-minute link — so the coordination can see the photograph on 
 it decides whether to import, which is the whole point of the inbox. The ficha, the card,
 ``hasMedia``, the export, the prayer wall and the Pulse keep not knowing the row exists.
 
-**The two surfaces ask the same two functions**, so the flag the detail shows and the link the
-route mints cannot disagree about who may ask — the flag is the link's four gates minus the
-minting, which is what *there is something to ask for* has to mean.
+**The two surfaces walk the same gates in the same order**, through :func:`pending_image_gates`,
+so the flag the detail shows and the link the route mints cannot disagree about who may ask —
+the flag is *the gates let this reader through*, which is what *there is something to ask for*
+has to mean — and neither can reopen through the other what one of them closes.
 
-The gates, in the order the link refuses them (the media item's, applied to a row that has no
-decision yet):
+The gates, in the order they refuse — and the order is **not** the media item's, on purpose:
 
 1. the caller's scope — the submission is reached through ``scoped_submissions``, so a Pulse
    of a project outside it is not found, as the project itself would be;
-2. an object to serve — the submission is still pending, its ``image`` answer names an upload,
+2. **the reader, before the object** —
+   :func:`~app.services.shema._media_sharing.reader_may_read_media`: on a withheld project
+   the bytes are the coordination's only (Daniel, 9/oct/2026, option b),
+   so the OBT Lab and the Resource Circle are refused here, **whatever the Pulse holds**. The
+   item's link asks for the object first, and there it is harmless: the record already hands
+   every reader the photo's ``id``. Here it would not be — the inbox detail hands the OBT Lab
+   *no* answer of a withheld project (``answers`` ``{}``, ``answersWithheld``, OBT-556), and a
+   404 for a Pulse without a photo beside a 403 for one with it would let that reader learn,
+   submission by submission, which Pulses carry a photograph the detail hides (the Crivo's
+   finding on this issue's first cut, 14/oct/2026). Refusing on the reader first makes the
+   answer depend on the withheld bit and the role alone, and on nothing the reader may not know.
+   The Resource Circle reads the answers (OBT-571) and had nothing to learn, and is refused all
+   the same: one predicate, one order, for every reader;
+3. an object to serve — the submission is still pending, its ``image`` answer names an upload,
    that upload is bound to **this** submission, and it holds a key. An imported Pulse is no
    longer pending: its photo is the record's, served by ``GET …/media/{item}/link`` under the
    decision the import recorded, which a withdrawal may since have reversed;
-3. the leader's box — :func:`~app.services.shema._media_sharing.pulse_image_authorized`, the
-   one reading the import also uses; unchecked or absent is undecided, refused;
-4. the reader — :func:`~app.services.shema._media_sharing.reader_may_read_media`: on a withheld
-   project the bytes are the coordination's only (Daniel, 9/oct/2026, option b), so the OBT Lab
-   and the Resource Circle are refused here too, and the detail shows them no pending image —
-   their ``answers`` are already ``{}`` and ``answersWithheld`` is already ``true`` (OBT-556).
+4. the leader's box — :func:`~app.services.shema._media_sharing.pulse_image_authorized`, the
+   one reading the import also uses; unchecked or absent is undecided, refused.
 
-Three and four answer the same sentence on the wire and different lines in the log, the
+Two and four answer the same sentence on the wire and different lines in the log, the
 ``media_download_url`` arrangement.
 """
 
 from __future__ import annotations
 
+import enum
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaIntakeImage, ShemaSubmission
+from app.models.shema_privacy import ShemaReader
 from app.services.shema._media_sharing import pulse_image_authorized, reader_may_read_media
 from app.services.shema._scope import Readership
 from app.utils.shema_forms import IMAGE_FIELD
 
 
+class PendingImageRefusal(enum.Enum):
+    """Which gate closed — for the log, never for the wire."""
+
+    READER = "reader"
+    NO_OBJECT = "no_object"
+    BOX = "box"
+
+
+class PendingImageVerdict(NamedTuple):
+    reader: ShemaReader
+    image: ShemaIntakeImage | None
+    refusal: PendingImageRefusal | None
+
+    @property
+    def readable(self) -> bool:
+        return self.refusal is None
+
+
 async def pending_image_of(
     db: AsyncSession, submission: ShemaSubmission, answers: Mapping[str, Any]
 ) -> ShemaIntakeImage | None:
-    """Gate two: the upload this still-pending Pulse names, bound to it and holding a key."""
+    """Gate three: the upload this still-pending Pulse names, bound to it and holding a key."""
     if submission.applied_at is not None:
         return None
     image_id = answers.get(IMAGE_FIELD)
@@ -61,13 +90,24 @@ async def pending_image_of(
     return image
 
 
-def may_read_pending_image(
-    project: ShemaProject, answers: Mapping[str, Any], readership: Readership
-) -> bool:
-    """Gates three and four together — the box, then the reader."""
-    return pulse_image_authorized(answers) and reader_may_read_media(
-        project, readership.reader_of(project.region_key)
-    )
+async def pending_image_gates(
+    db: AsyncSession,
+    submission: ShemaSubmission,
+    project: ShemaProject,
+    answers: Mapping[str, Any],
+    *,
+    readership: Readership,
+) -> PendingImageVerdict:
+    """Gates two to four, in that order, for a submission the scope has already let through."""
+    reader = readership.reader_of(project.region_key)
+    if not reader_may_read_media(project, reader):
+        return PendingImageVerdict(reader, None, PendingImageRefusal.READER)
+    image = await pending_image_of(db, submission, answers)
+    if image is None:
+        return PendingImageVerdict(reader, None, PendingImageRefusal.NO_OBJECT)
+    if not pulse_image_authorized(answers):
+        return PendingImageVerdict(reader, image, PendingImageRefusal.BOX)
+    return PendingImageVerdict(reader, image, None)
 
 
 async def pending_image_to_ask_for(
@@ -79,6 +119,5 @@ async def pending_image_to_ask_for(
     readership: Readership,
 ) -> bool:
     """What the inbox detail says: whether a call to the link would answer this reader a URL."""
-    if not may_read_pending_image(project, answers, readership):
-        return False
-    return await pending_image_of(db, submission, answers) is not None
+    verdict = await pending_image_gates(db, submission, project, answers, readership=readership)
+    return verdict.readable

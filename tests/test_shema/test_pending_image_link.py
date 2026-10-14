@@ -89,13 +89,20 @@ async def _project(db_session, project_id: str = "guarani-mbya", *, sensitive: b
 
 
 async def _pulse(
-    client, db_session, headers, *, authorized: bool | None = True, with_image: bool = True
+    client,
+    db_session,
+    headers,
+    *,
+    authorized: bool | None = True,
+    with_image: bool = True,
+    period: str = "2026-09",
 ) -> tuple[str, str | None]:
     """A Pulse through the link, with its image uploaded first; returns ``(submission, image)``."""
+    before = set((await db_session.execute(select(ShemaSubmission.id))).scalars())
     minted = await client.post(LINKS, json={"projectId": "guarani-mbya"}, headers=headers)
     assert minted.status_code == 201, minted.text
     token = minted.json()["token"]
-    answers: dict[str, Any] = {"submittedBy": "Kuaray", "period": "2026-09"}
+    answers: dict[str, Any] = {"submittedBy": "Kuaray", "period": period}
     image_id = None
     if with_image:
         stored = await client.post(
@@ -112,7 +119,8 @@ async def _pulse(
         f"{PREFIX}/intake/{token}", json={"definitionVersion": 1, "answers": answers}
     )
     assert accepted.status_code == 202, accepted.text
-    submission_id = (await db_session.execute(select(ShemaSubmission.id))).scalar_one()
+    after = set((await db_session.execute(select(ShemaSubmission.id))).scalars())
+    [submission_id] = after - before
     return submission_id, image_id
 
 
@@ -266,14 +274,10 @@ async def test_the_box_and_the_reader_refuse_with_one_sentence_and_two_log_lines
     await _project(db_session, sensitive=True)
     ours = await _headers(db_session, shema_app, "coordinator")
     lab = await _headers(db_session, shema_app, "obtLab")
-    checked, _ = await _pulse(client, db_session, ours)
+    checked, _ = await _pulse(client, db_session, ours, period="2026-08")
+    unchecked, _ = await _pulse(client, db_session, ours, authorized=False, period="2026-09")
 
     by_reader = await client.get(_link(checked), headers=lab)
-    await db_session.execute(
-        ShemaSubmission.__table__.delete().where(ShemaSubmission.id == checked)  # type: ignore[attr-defined]
-    )
-    await db_session.commit()
-    unchecked, _ = await _pulse(client, db_session, ours, authorized=False)
     by_box = await client.get(_link(unchecked), headers=ours)
 
     assert by_reader.status_code == by_box.status_code == 403
@@ -291,6 +295,72 @@ async def test_the_box_and_the_reader_refuse_with_one_sentence_and_two_log_lines
 
 
 # --- gate four: the reader, on a withheld and on a cleared project ---------------------------
+
+
+@pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])
+async def test_on_a_withheld_project_the_answer_does_not_depend_on_what_the_pulse_holds(
+    client, db_session, shema_app, bucket, role
+) -> None:
+    """The Crivo's finding on the first cut (14/oct/2026): with the object gate before the
+    reader's, an OBT Lab in the scope got 404 for a Pulse without a photo and 403 for one with
+    it, and could learn Pulse by Pulse which ones carry a photograph the detail hides. Reader
+    first: a Pulse without a photo, one with a photo and one already imported answer the same
+    403, byte for byte, and the detail shows no pending image for any of them. The Resource
+    Circle reads the answers (OBT-571) and had nothing to learn; it rides the same gate."""
+    project = await _project(db_session, sensitive=True)
+    ours = await _headers(db_session, shema_app, "coordinator")
+    theirs = await _headers(db_session, shema_app, role)
+    bare, _ = await _pulse(client, db_session, ours, with_image=False, period="2026-07")
+    with_photo, _ = await _pulse(client, db_session, ours, period="2026-08")
+    imported, _ = await _pulse(client, db_session, ours, period="2026-09")
+    record = await client.get(f"{PROJECTS}/{project.id}", headers=ours)
+    applied = await client.post(
+        f"{SUBMISSIONS}/{imported}/import", headers={**ours, "If-Match": record.headers["ETag"]}
+    )
+    assert applied.status_code == 200, applied.text
+
+    answers = [
+        await client.get(_link(submission_id), headers=theirs)
+        for submission_id in (bare, with_photo, imported)
+    ]
+    details = [
+        await _detail(client, submission_id, theirs)
+        for submission_id in (bare, with_photo, imported)
+    ]
+
+    assert [res.status_code for res in answers] == [403, 403, 403]
+    assert len({res.text for res in answers}) == 1
+    assert [detail["pendingImage"] for detail in details] == [False, False, False]
+    assert bucket.signed == []
+
+
+async def test_an_unknown_submission_is_logged_under_its_own_key(
+    client, db_session, shema_app, bucket, caplog
+) -> None:
+    """The Crivo's note: ``refuse_out_of_scope`` records what it is given as
+    ``shema_project_id``, and a submission's id there breaks the join by project. The line is
+    written here with the submission under its own key and no project id invented."""
+    caplog.set_level(logging.WARNING, logger="app.services.shema.pending_image_download_url")
+    await _project(db_session)
+    submission_id, _ = await _pulse(
+        client, db_session, await _headers(db_session, shema_app, "coordinator")
+    )
+    elsewhere = await _headers(
+        db_session, shema_app, "coordinator", regions=(ShemaRegionKey.AFRICA,)
+    )
+
+    outside = await client.get(_link(submission_id), headers=elsewhere)
+    unknown = await client.get(_link("no-such-submission"), headers=elsewhere)
+
+    assert outside.status_code == unknown.status_code == 404
+    assert outside.json() == unknown.json()
+    lines = [r for r in caplog.records if "found no row" in r.getMessage()]
+    assert [getattr(r, "shema_submission_id", None) for r in lines] == [
+        submission_id,
+        "no-such-submission",
+    ]
+    assert all(not hasattr(r, "shema_project_id") for r in lines)
+    assert all(r.shema_scope_regions == ["africa"] for r in lines)  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])
