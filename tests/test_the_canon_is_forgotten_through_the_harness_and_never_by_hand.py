@@ -364,7 +364,7 @@ def _fixtures_of(tree: ast.Module) -> set[str]:
 
 
 def _called_by_pytest(tree: ast.Module) -> set[ast.AST]:
-    scopes = [tree, *(node for node in tree.body if isinstance(node, ast.ClassDef))]
+    scopes = [tree, *(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef))]
     return {
         function
         for scope in scopes
@@ -1548,6 +1548,13 @@ def test_a_case() -> None:
     (lambda cached: cached.cache_clear())(get_settings)
 """
 
+THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_IN_A_NESTED_CLASS = """\
+class TestOuter:
+    class TestInner:
+        def test_a_case(self, cached) -> None:
+            cached.cache_clear()
+"""
+
 THE_CASE_THAT_ASKS_FOR_ANOTHER_NAME = """\
 def test_a_case(other) -> None:
     other.cache_clear()
@@ -2531,6 +2538,12 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         ),
         (
             THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_IN_A_NESTED_CLASS,
+            [4],
+            [],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
             THE_CASE_WHOSE_NESTED_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME,
             [],
             [6],
@@ -2551,6 +2564,7 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         "a helper that is handed another cache under the fixture's name",
         "a case that hands the fixture to a helper",
         "a test method of a class that asks for the fixture",
+        "a test method of a class nested in a class that asks for the fixture",
         "a nested helper that is handed another cache under the fixture's name",
         "a lambda that is handed another cache under the fixture's name",
     ],
