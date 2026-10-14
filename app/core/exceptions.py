@@ -261,6 +261,11 @@ class OverlapsAStandingFrase(ValidationError):
     pass
 
 
+class SceneRehearsalUntranslated(ValidationError):
+    """A scene rehearsal sent with no live frase: there is nothing in the bridge language to hand
+    the voice. A plain 422, with no code of its own: the tablet never offers «terminei» then."""
+
+
 class WordlessTelling(ValidationError):
     """A telling holds no words the room could make out, so it is no stretch and counts nothing.
 
@@ -493,6 +498,15 @@ async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JS
     )
 
 
+async def handle_scene_rehearsal_untranslated(
+    _request: Request, exc: SceneRehearsalUntranslated
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_BAD_REQUEST),
+    )
+
+
 async def handle_scene_rehearsal_sent(_request: Request, exc: SceneRehearsalSent) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -669,6 +683,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]

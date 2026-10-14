@@ -536,6 +536,7 @@ async def append_exchange(
     commit: bool = True,
     scene_rehearsals: list[str] | None = None,
     opening_note: str = "",
+    scene_rehearsal: dict[str, Any] | None = None,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -575,7 +576,8 @@ async def append_exchange(
 
     ``scene_rehearsals`` is the scenes whose scene rehearsal had reached the Guide as of this
     turn, kept on the Guide's entry, the one entry every turn has; an empty list is the fact
-    that none had, and ``None`` keeps nothing.
+    that none had, and ``None`` keeps nothing. ``scene_rehearsal`` is the one a **Rehearsal
+    turn** sent, kept on the same entry with the scene label as it stood at sending.
 
     What the room heard of the team's take — the language, its probability, the
     mother-tongue decision and the take's length — goes on the Guide's entry too, because a
@@ -639,6 +641,8 @@ async def append_exchange(
         guide["attempts"] = kept
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
+    if scene_rehearsal is not None:
+        guide["scene_rehearsal"] = scene_rehearsal
     step = (
         None
         if is_panorama(session.pericope)

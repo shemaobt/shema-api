@@ -4,20 +4,25 @@ The tablet's doors carry no words of the team and no classifier guess (ENG-1335)
 door is the facilitator's, and still reads a rehearsal its Zerar archived (ADR 0052).
 """
 
+import asyncio
 import uuid
+from functools import partial
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
+from app.api.internalization_room.sessions import _draft_the_turn
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.db.models.internalization_room import (
     IRSceneFrase,
     IRSceneRehearsal,
     IRSceneRestart,
     IRSession,
+    IRSessionStatus,
 )
 from app.models.internalization_room import (
     HeldAttemptView,
@@ -29,11 +34,15 @@ from app.models.internalization_room import (
     SceneRehearsalView,
     SceneRestartSnapshot,
     SceneRestartView,
+    TurnResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room import opening_claim
 from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
+from app.services.internalization_room.turn_dedup import answer_once, answered_turn
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
@@ -279,6 +288,88 @@ async def restart_scene_translation(
         db, rehearsal, attempt=str(attempt), closes=None if closes is None else str(closes)
     )
     return await _the_record(db, rehearsal)
+
+
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send",
+    response_model=TurnResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def send_scene_rehearsal(
+    session_id: str,
+    rehearsal_id: str,
+    background: BackgroundTasks,
+    turn_id: str = Form(..., max_length=64),
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TurnResponse:
+    """«terminei»: the scene's translation reaches the voice as a **Rehearsal turn**.
+
+    The tablet sends the rehearsal by reference under a turn id it minted. A resend under that
+    turn id hears the first reply, read before the rehearsal is (ADR 0043); any other turn id on
+    a sent rehearsal is refused. The send is claimed before the voice is asked and released when
+    the turn never lands (ADR 0063).
+    """
+    await db.commit()
+    return await answer_once(
+        session_id,
+        turn_id,
+        project_id,
+        partial(
+            _send,
+            session_id=session_id,
+            rehearsal_id=rehearsal_id,
+            turn_id=turn_id,
+            project_id=project_id,
+            background=background,
+        ),
+    )
+
+
+async def _send(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    rehearsal_id: str,
+    turn_id: str,
+    project_id: str,
+    background: BackgroundTasks,
+) -> TurnResponse:
+    replay = await answered_turn(db, session_id, turn_id, project_id)
+    if replay is not None:
+        return TurnResponse(**replay)
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    speech = await scenes.claim_the_send(db, rehearsal, turn_id=turn_id)
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+
+    async def _heard() -> HeardSpeech:
+        return speech
+
+    try:
+        return await opening_claim.answer_around_the_opening(
+            db,
+            session,
+            opening=False,
+            turn_id=turn_id,
+            project_id=project_id,
+            hearing=asyncio.create_task(_heard()),
+            deadline=asyncio.get_running_loop().time() + bound_s,
+            bound_s=bound_s,
+            draft=partial(
+                _draft_the_turn,
+                db,
+                session,
+                background=background,
+                opening=False,
+                halted=session.status is IRSessionStatus.NEEDS_PERSON,
+                bound_s=bound_s,
+            ),
+        )
+    except BaseException:
+        await db.rollback()
+        await scenes.release_the_send(rehearsal_id, turn_id)
+        raise
 
 
 @router.get(
