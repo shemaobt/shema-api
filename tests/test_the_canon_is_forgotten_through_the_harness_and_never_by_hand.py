@@ -607,7 +607,7 @@ def _fixtures_of_the_conftest(
             list(_outside_every_function(tree)),
             canon_caches,
             True,
-            {},
+            outside,
         )
         fixtures = _fixtures_of(tree)
         outside = {
@@ -1449,6 +1449,33 @@ from app.core.config import get_settings
 @pytest.fixture
 def cached():
     return get_settings
+"""
+
+THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_THE_ONE_ABOVE = """\
+import pytest
+
+
+@pytest.fixture
+def derived(cached):
+    return cached
+"""
+
+THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_THAT_REQUESTS_ANOTHER = """\
+def test_a_case(derived) -> None:
+    derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_FIXTURE_REQUESTS_THE_CONFTESTS = """\
+import pytest
+
+
+@pytest.fixture
+def second(cached):
+    return cached
+
+
+def test_a_case(second) -> None:
+    second.cache_clear()
 """
 
 THE_CASE_THAT_ASKS_FOR_THE_FIXTURE = """\
@@ -2413,12 +2440,19 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
             [],
             [12],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_FIXTURE_REQUESTS_THE_CONFTESTS,
+            [10],
+            [],
+        ),
     ],
     ids=[
         "a fixture that returns the cache",
         "a fixture that yields a local holding the cache",
         "a case that asks for another name",
         "a case that defines the fixture itself",
+        "a fixture of the case that requests the conftest's",
     ],
 )
 def test_a_fixture_of_the_conftest_beside_the_case_feeds_the_parameter_of_its_name(
@@ -2445,6 +2479,24 @@ def test_a_fixture_of_a_conftest_above_the_case_feeds_the_parameter_of_its_name(
     subdirectory = tmp_path / "test_a_subdirectory"
     subdirectory.mkdir()
     module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == ([2], [])
+
+
+def test_a_conftest_fixture_that_requests_one_of_a_conftest_above_is_followed_to_the_clear(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
+    )
+    subdirectory = tmp_path / "test_a_subdirectory"
+    subdirectory.mkdir()
+    (subdirectory / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_THE_ONE_ABOVE, encoding="utf-8"
+    )
+    module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_THAT_REQUESTS_ANOTHER)
 
     clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
 
