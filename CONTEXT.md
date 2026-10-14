@@ -431,7 +431,7 @@ One scene recorded whole in the mother tongue, with its record: the recording as
 _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
 
 **Rehearsal turn** («terminei»):
-The turn a sent **Scene rehearsal** makes: her **Room note** on it, then the words of its live **Scene frases** in recording order, handed to the Guide with no recording and no recognizer. The scene label is kept on the record and never handed to the Guide.
+The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the words of its live **Scene frases** in recording order, handed to the Guide with no recording and no recognizer. The scene label is kept on the record and never handed to the Guide.
 _Avoid_: checking turn, Team turn
 
 **Scene frase** (`ir_scene_frases`):

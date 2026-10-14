@@ -32,6 +32,7 @@ from app.db.models.internalization_room import (
     IRSceneRestart,
     IRSceneSaid,
     IRSession,
+    IRTurn,
 )
 from app.models.internalization_room import SceneRestartSnapshot, SceneSnapshotFrase
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
@@ -500,7 +501,7 @@ async def claim_the_send(
     the microphone.
     """
     rehearsal = await _locked(db, rehearsal.id)
-    if rehearsal.sent_at is not None and rehearsal.sent_turn_id != turn_id:
+    if rehearsal.sent_turn_id != turn_id:
         _refuse_a_sent(rehearsal)
     restarts = await restarts_of(db, [rehearsal.id])
     frases = (await frases_of(db, restarts))[rehearsal.id]
@@ -535,12 +536,20 @@ async def release_the_send(rehearsal_id: str, turn_id: str) -> None:
     """Unsend a rehearsal whose turn under `turn_id` never landed, so it can be sent again.
 
     Guarded on the claim's own turn id, and on a session of its own, as an opening claim is
-    released (ADR 0053).
+    released (ADR 0053). A turn stored under that id landed, whichever request failed after it,
+    and keeps the rehearsal sent.
     """
+    landed = select(IRTurn.turn_id).where(
+        IRTurn.session_id == IRSceneRehearsal.session_id, IRTurn.turn_id == turn_id
+    )
     async with AsyncSessionLocal() as own:
         await own.execute(
             update(IRSceneRehearsal)
-            .where(IRSceneRehearsal.id == rehearsal_id, IRSceneRehearsal.sent_turn_id == turn_id)
+            .where(
+                IRSceneRehearsal.id == rehearsal_id,
+                IRSceneRehearsal.sent_turn_id == turn_id,
+                ~landed.exists(),
+            )
             .values(sent_at=None, sent_turn_id=None)
             .execution_options(synchronize_session=False)
         )

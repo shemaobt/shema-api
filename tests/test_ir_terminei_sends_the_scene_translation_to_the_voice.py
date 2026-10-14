@@ -543,3 +543,23 @@ async def test_a_frase_arriving_after_the_send_is_refused(
 
     assert late.status_code == 409, late.text
     assert late.json()["code"] == "SCENE_REHEARSAL_SENT"
+
+
+async def test_a_late_failure_under_a_turn_id_that_already_landed_leaves_the_rehearsal_sent(
+    room: Room, db_session: AsyncSession
+) -> None:
+    """The same turn id resent to another instance drafts again; when that draft fails after the
+    first one landed, the rehearsal stays sent under the turn that answered it."""
+    from app.services.internalization_room.scene_rehearsals import release_the_send
+
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    sent = await send(room, session_id, rehearsal_id, "turno-que-chegou")
+    assert sent.status_code == 200, sent.text
+
+    await release_the_send(rehearsal_id, "turno-que-chegou")
+
+    assert (await read_by_the_desk(room, session_id, rehearsal_id))["sent_at"] is not None
+    late = await send(room, session_id, rehearsal_id, "outro-turno")
+    assert late.status_code == 409, late.text
