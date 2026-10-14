@@ -23,7 +23,8 @@ from tests.canon_harness import (
 )
 
 TESTS = Path(__file__).resolve().parent
-APP = TESTS.parent / "app"
+ROOT = TESTS.parent
+APP = ROOT / "app"
 THE_CANON_PACKAGE = "app.services.internalization_room.canon."
 
 
@@ -31,7 +32,7 @@ def _the_caches_the_harness_forgets() -> set[str]:
     return the_names_the_forgotten_caches_are_reached_by()
 
 
-def _imports_of(tree: ast.AST) -> dict[str, str]:
+def _imports_of(tree: ast.AST, package: list[str]) -> dict[str, str]:
     imports: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -39,8 +40,10 @@ def _imports_of(tree: ast.AST) -> dict[str, str]:
                 root = alias.name.partition(".")[0]
                 imports[alias.asname or root] = alias.name if alias.asname else root
         elif isinstance(node, ast.ImportFrom):
+            held = package[: len(package) - node.level + 1] if node.level else []
+            where = ".".join([*held, *([node.module] if node.module else [])])
             for alias in node.names:
-                imports[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+                imports[alias.asname or alias.name] = f"{where}.{alias.name}"
     return imports
 
 
@@ -415,10 +418,13 @@ def _parameters_of(function: Function) -> list[ast.arg]:
     return [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
 
 
-def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
+def _the_clears_in(
+    module: Path, canon_caches: set[str], root: Path = ROOT
+) -> tuple[list[int], list[int]]:
     text = module.read_text(encoding="utf-8")
     tree = ast.parse(text)
-    imports = _imports_of(tree)
+    package = list(module.relative_to(root).parent.parts) if module.is_relative_to(root) else []
+    imports = _imports_of(tree, package)
     spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
     arguments, at_the_top_sources = _fed_by_what_functions_return(
@@ -914,6 +920,46 @@ def the_settings():
 
 def test_a_case() -> None:
     the_settings().cache_clear()
+"""
+
+A_SIBLING_MODULE_IMPORTED_BY_A_DOT = """\
+from . import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
+"""
+
+A_SUBPACKAGE_IMPORTED_BY_A_DOT = """\
+from .canon import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
+"""
+
+A_MODULE_IMPORTED_THROUGH_THE_PARENT = """\
+from ..canon import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
+"""
+
+A_CACHE_IMPORTED_BY_A_DOT_FROM_ITS_MODULE = """\
+from .book_material import preservation_rules as the_rules
+
+
+def test_a_case() -> None:
+    the_rules.cache_clear()
+"""
+
+A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT = """\
+from . import book_material
+
+
+def test_a_case() -> None:
+    book_material.preservation_rules.cache_clear()
 """
 
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
@@ -1518,6 +1564,48 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
     )
 
     assert (of_the_canon, of_something_else) == ([line], [])
+
+
+@pytest.mark.parametrize(
+    ("at", "source", "of_the_canon", "of_something_else"),
+    [
+        (
+            "services/internalization_room/canon/a_case.py",
+            A_SIBLING_MODULE_IMPORTED_BY_A_DOT,
+            [5],
+            [],
+        ),
+        ("services/internalization_room/a_case.py", A_SUBPACKAGE_IMPORTED_BY_A_DOT, [5], []),
+        (
+            "services/internalization_room/other/a_case.py",
+            A_MODULE_IMPORTED_THROUGH_THE_PARENT,
+            [5],
+            [],
+        ),
+        (
+            "services/internalization_room/canon/a_case.py",
+            A_CACHE_IMPORTED_BY_A_DOT_FROM_ITS_MODULE,
+            [5],
+            [],
+        ),
+        ("services/a_case.py", A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT, [], [5]),
+    ],
+    ids=[
+        "a sibling module imported by a dot",
+        "a subpackage imported by a dot",
+        "a module imported through the parent",
+        "a cache imported by a dot from its module",
+        "a module outside the room imported by a dot",
+    ],
+)
+def test_a_relative_import_is_read_as_the_module_it_names_from_where_the_file_is(
+    tmp_path: Path, at: str, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    app = _an_app_holding(tmp_path, at, source)
+
+    clears = _the_clears_in(app / at, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == (of_the_canon, of_something_else)
 
 
 @pytest.mark.parametrize(
