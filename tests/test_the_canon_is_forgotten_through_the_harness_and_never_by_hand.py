@@ -1660,6 +1660,25 @@ def test_a_case() -> None:
     forget(get_settings)
 """
 
+THE_CASE_THAT_HANDS_ITS_OWN_FIXTURE_TO_A_HELPER = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case(cached) -> None:
+    forget(cached)
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -2579,8 +2598,12 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
     ("source", "of_the_canon", "of_something_else"),
     [
         (THE_CASE_WHOSE_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_ITS_OWN_FIXTURE, [], [13]),
+        (THE_CASE_THAT_HANDS_ITS_OWN_FIXTURE_TO_A_HELPER, [12], []),
     ],
-    ids=["a helper that is handed another cache under the name of the case's fixture"],
+    ids=[
+        "a helper that is handed another cache under the name of the case's fixture",
+        "a case that hands its fixture to a helper",
+    ],
 )
 def test_a_fixture_of_the_case_feeds_only_what_pytest_calls_with_it(
     tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
