@@ -877,7 +877,8 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
     exported them and are already in its README, and a re-judgement's money is the judge's.
     A refusal, a death and an empty script come back with the session, so a run cut short by
     the room or by an error, or one that had nothing to play, is not rebuilt as a whole one;
-    an export older than the fields is read as played whole, which is what those runs were.
+    an export older than the fields is read as played whole when it has turns, and as empty
+    when it has none and neither refused nor killed.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
