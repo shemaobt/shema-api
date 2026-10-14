@@ -258,3 +258,36 @@ async def test_a_script_cancelled_midway_is_a_killed_verdict_naming_the_cancel_a
     )
     assert "PASS" not in shown
     assert "\ncost US$ 3.00 — analyst US$ 2.00 · speaker US$ 1.00\n" in shown
+
+
+async def test_a_script_cancelled_while_the_room_is_opening_it_is_a_killed_verdict_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    opened: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session"):
+            pericope = json.loads(request.content)["pericopeId"]
+            opened.append(pericope)
+            if pericope == "P02":
+                silent.set()
+                await asyncio.Event().wait()
+            return httpx.Response(200, json={"sessionId": f"s-{pericope}"})
+        return _a_round_that_costs_three_dollars()
+
+    the_room_answers(monkeypatch, _room)
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
+    playing = asyncio.create_task(bt_golden_runner.run(bt_args(tmp_path / "reports")))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    shown = capsys.readouterr().out
+    assert "  KILLED · CancelledError · P02-b not opened\n" in shown, (
+        "o Ctrl-C cancelou a porta do segundo roteiro e a rodada morria sem uma linha dele"
+    )
+    assert "\ncost US$ 3.00 — analyst US$ 2.00 · speaker US$ 1.00\n" in shown
+    assert opened == ["P01", "P02"], "a rodada cancelada não tenta o terceiro roteiro"
