@@ -24,7 +24,7 @@ from app.core.exceptions import (
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.coverage_events import last_bead_moved_in_session
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import AUTHORED
 from app.services.internalization_room.voice_handles import (
     TEAM_AUDIO_ROUTE,
     from_question_handle,
@@ -119,7 +119,7 @@ async def transcribe_for_the_desk(
     question: IRQuestion,
     audio: bytes,
     stt: SpeechToText | None = None,
-    language: str = FLOOR,
+    language: str = AUTHORED,
 ) -> None:
     """Read the question back in text, for the facilitator's eyes only.
 

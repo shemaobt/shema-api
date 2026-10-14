@@ -4,7 +4,7 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
@@ -22,8 +22,8 @@ async def run_verdict_turn(
     validator_prompt: str,
     telling_back: str = "",
     book: str = "Ruth",
-    session_language: str = LANGUAGE_NAMES[FLOOR],
-    language_code: str = FLOOR,
+    session_language: str = LANGUAGE_NAMES[AUTHORED],
+    language_code: str = AUTHORED,
     settings: Settings | None = None,
     session_id: str = "?",
 ) -> TurnOutcome:

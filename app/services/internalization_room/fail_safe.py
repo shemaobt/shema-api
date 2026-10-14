@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
-from app.services.internalization_room.languages import FLOOR, room_language
+from app.services.internalization_room.languages import AUTHORED, room_language
 
 
 class FailSafe(enum.StrEnum):
@@ -47,7 +47,7 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     return parsed
 
 
-def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> list[str]:
+def utterances(kind: FailSafe | ProcessFamily, language_code: str = AUTHORED) -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
@@ -78,7 +78,7 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     lookup without that fallback, so a guard can ask whether a language the room claims to
     speak has actually had its lines written.
 
-    The untagged authored block counts as the floor's own and not as a borrowing: the file
+    The untagged authored block counts as English's own and not as a borrowing: the file
     says of it *"Written here in English; localize per session language"*, so it is English
     that happens to be untagged rather than English standing in for something unwritten.
     """
@@ -88,7 +88,7 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
         written = sections.get((str(kind), tag))
         if written:
             return written
-    if primary == FLOOR:
+    if primary == AUTHORED:
         return sections.get((str(kind), None), [])
     return []
 
@@ -117,12 +117,12 @@ def her_line(name: str, language_code: str) -> str | None:
     return lines[position] if position < len(lines) else None
 
 
-def first(kind: FailSafe, language_code: str = FLOOR) -> str:
+def first(kind: FailSafe, language_code: str = AUTHORED) -> str:
     lines = utterances(kind, language_code)
     return lines[0] if lines else ""
 
 
-def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
+def choose(kind: FailSafe, language_code: str = AUTHORED, *, turn: int = 0) -> tuple[str, str]:
     """One line for this situation, and the name the app knows it by.
 
     ``turn`` is not a count of turns. The A family is read by the draft at which the turn
@@ -160,11 +160,10 @@ def unrepairable(draft: int, language_code: str, first_scene: str = "") -> tuple
     return f"{line.rstrip('.!?')} — this is the part about {pointer}.", ""
 
 
-def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
+def inaudible_ladder(language_code: str) -> tuple[str, str]:
     """The D line for one more miss: always her first, however many came before it.
 
-    Her rule is ``didntCatchThat(0)``, one line for every miss, so the conversation it is
-    handed no longer decides which line is said.
+    Her rule is ``didntCatchThat(0)``, one line for every miss.
     """
     return choose(FailSafe.INAUDIBLE, language_code)
 
@@ -189,7 +188,9 @@ PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
 }
 
 
-def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
+def process_line(
+    family: ProcessFamily, step: str, language_code: str = AUTHORED
+) -> tuple[str, str]:
     """The line for one step of the telling-back or of the external check, and its name.
 
     A fail-safe answers a failure, so which of its lines is said follows the failure: the
