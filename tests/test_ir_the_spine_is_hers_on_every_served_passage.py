@@ -7,16 +7,10 @@ Her ingest is vendored read-only at the freeze, under `docs/doctrine/vendor/inge
 
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
-from pathlib import Path
-
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import elements_for
-from app.services.internalization_room.canon.parse_map import VENDOR, load_book
-
-HER_SPINE = Path(__file__).parent / "her_spine.mjs"
+from app.services.internalization_room.canon.parse_map import load_book
+from tests.her_spine_harness import her_spine
 
 #: The two kinds she names otherwise (`src/ingest/types.ts`); the other nine read the same.
 HER_KIND = {"absence": "significant_absence", "preserved": "preserved_element"}
@@ -30,24 +24,9 @@ def _served() -> list[str]:
     ]
 
 
-def _hers(pericopes: list[str]) -> dict[str, list[tuple[str, str]]]:
-    node = shutil.which("node")
-    assert node is not None, "sem node o colar dela não roda, e nada mais o compara com o nosso"
-    ran = subprocess.run(
-        [node, str(HER_SPINE), str(VENDOR), *pericopes],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return {
-        pericope: [(element_id, kind) for element_id, kind in spine]
-        for pericope, spine in json.loads(ran.stdout).items()
-    }
-
-
 def test_every_served_passage_strings_her_beads_in_her_order_under_her_ids() -> None:
     served = _served()
-    hers = _hers(served)
+    hers = her_spine(served)
 
     ours = {
         pericope: [
