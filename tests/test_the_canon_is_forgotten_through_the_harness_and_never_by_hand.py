@@ -1092,13 +1092,8 @@ def test_a_case() -> None:
     the_rules.cache_clear()
 """
 
-A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT = """\
-from . import book_material
-
-
-def test_a_case() -> None:
-    book_material.preservation_rules.cache_clear()
-"""
+# The same source on purpose: the contrast is the package the file sits in, not the text.
+A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT = A_SIBLING_MODULE_IMPORTED_BY_A_DOT
 
 THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER = """\
 def forget(cached) -> None:
