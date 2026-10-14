@@ -413,7 +413,7 @@ def _fed_by_what_functions_return(
     }
     overridden = _fixtures_of(tree) & outside.keys()
     fixtures = _fixtures_of(tree) - overridden
-    called_by_pytest = _called_by_pytest(tree)
+    called_by_pytest = _called_by_pytest(tree) if outside else set()
     carried: dict[str, set[str]] = {}
     for _ in range(len(functions) + 1):
         fed = {
@@ -610,41 +610,56 @@ def _conftests_above(module: Path, root: Path) -> list[Path]:
 
 
 def _fixtures_of_the_conftest(
-    module: Path, canon_caches: set[str], root: Path
+    module: Path, tree: ast.Module, canon_caches: set[str], root: Path
 ) -> dict[str, set[str]]:
-    texts = {
-        conftest: conftest.read_text(encoding="utf-8")
-        for conftest in _conftests_above(module, root)
-        if conftest.is_file()
-    }
-    if not any(
-        cache.rpartition(".")[2] in text for text in texts.values() for cache in canon_caches
+    conftests = [conftest for conftest in _conftests_above(module, root) if conftest.is_file()]
+    texts = {conftest: conftest.read_text(encoding="utf-8") for conftest in conftests}
+    if module not in conftests:
+        texts[module] = module.read_text(encoding="utf-8")
+
+    def names_a_cache(file: Path) -> bool:
+        return any(cache.rpartition(".")[2] in texts[file] for cache in canon_caches)
+
+    def requests_a_fixture_of_the_case() -> bool:
+        requested = {
+            parameter.arg
+            for conftest in conftests
+            for node in ast.walk(ast.parse(texts[conftest]))
+            if isinstance(node, Function)
+            for parameter in _parameters_of(node)
+        }
+        return bool(_fixtures_of(tree) & requested)
+
+    if not (
+        any(names_a_cache(conftest) for conftest in conftests)
+        or (
+            module not in conftests
+            and _fixtures_of(tree)
+            and names_a_cache(module)
+            and requests_a_fixture_of_the_case()
+        )
     ):
         return {}
-    trees = {conftest: ast.parse(text) for conftest, text in texts.items()}
-    defined_by = {name: conftest for conftest, tree in trees.items() for name in _fixtures_of(tree)}
+    trees = {file: tree if file == module else ast.parse(text) for file, text in texts.items()}
+    defined_by = {name: file for file, parsed in trees.items() for name in _fixtures_of(parsed)}
     carried_by_name: dict[str, set[str]] = {}
     while True:
         now: dict[str, set[str]] = {}
-        for conftest, tree in trees.items():
-            given, _ = _arguments_given(tree)
+        for file, parsed in trees.items():
+            given, _ = _arguments_given(parsed)
             *_, carried = _fed_by_what_functions_return(
-                tree,
-                _imports_of(tree, _package_of(conftest, root)),
+                parsed,
+                _imports_of(parsed, _package_of(file, root)),
                 given,
-                list(_outside_every_function(tree)),
+                list(_outside_every_function(parsed)),
                 canon_caches,
                 True,
-                {
-                    name: names
-                    for name, names in carried_by_name.items()
-                    if defined_by[name] != conftest
-                },
+                carried_by_name,
             )
             now |= {
                 name: carried.get(name, set())
-                for name in _fixtures_of(tree)
-                if defined_by[name] == conftest
+                for name in _fixtures_of(parsed)
+                if defined_by[name] == file
             }
         if now == carried_by_name:
             return {name: names for name, names in now.items() if names}
@@ -661,7 +676,7 @@ def _clears_in_tree(
     follow: bool,
 ) -> tuple[list[int], list[int]]:
     text = module.read_text(encoding="utf-8")
-    outside = _fixtures_of_the_conftest(module, canon_caches, root)
+    outside = _fixtures_of_the_conftest(module, tree, canon_caches, root)
     names_a_cache = bool(outside) or any(cache.rpartition(".")[2] in text for cache in canon_caches)
     imports = _imports_of(tree, _package_of(module, root))
     spied_on = _inside_the_spies(tree)
@@ -674,7 +689,6 @@ def _clears_in_tree(
             for method in node.body:
                 if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef) and method.args.args:
                     given[method].append(([method.args.args[0].arg], ast.Name(id=node.name)))
-    own_fixtures = _fixtures_of(tree)
     arguments, at_the_top_sources, _ = _fed_by_what_functions_return(
         tree,
         imports,
@@ -682,7 +696,7 @@ def _clears_in_tree(
         at_the_top,
         canon_caches,
         names_a_cache,
-        {name: names for name, names in outside.items() if name not in own_fixtures},
+        outside,
     )
     scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
     passed: set[tuple[ast.AST, str, str]] = set()
@@ -1559,6 +1573,21 @@ def forget(cached) -> None:
 
 def test_a_case(cached) -> None:
     forget(cached)
+"""
+
+THE_CASE_THAT_DEFINES_THE_FIXTURE_A_CONFTEST_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+def test_a_case(derived) -> None:
+    derived.cache_clear()
 """
 
 THE_CASE_THAT_ASKS_FOR_THE_FIXTURE_IN_A_CLASS = """\
@@ -2581,6 +2610,12 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
             [],
         ),
         (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_THAT_DEFINES_THE_FIXTURE_A_CONFTEST_FIXTURE_REQUESTS,
+            [12],
+            [],
+        ),
+        (
             THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
             THE_CASE_WHOSE_NESTED_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_FIXTURES_NAME,
             [],
@@ -2603,6 +2638,7 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         "a case that hands the fixture to a helper",
         "a test method of a class that asks for the fixture",
         "a test method of a class nested in a class that asks for the fixture",
+        "a conftest fixture that requests a fixture the case defines",
         "a nested helper that is handed another cache under the fixture's name",
         "a lambda that is handed another cache under the fixture's name",
     ],
