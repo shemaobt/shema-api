@@ -876,6 +876,8 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
     an export older than the fields is read as played whole, which is what those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise TypeError(f"not an export object, it is {type(raw).__name__}")
     script = Script(
         _read(raw, "name", (str,)),
         _read(raw, "pericopeId", (str,)),

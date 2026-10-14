@@ -737,6 +737,31 @@ async def test_a_rejudge_over_an_export_with_a_wrong_typed_field_names_file_and_
     assert not again.exists(), "a recusa vem antes de escrever qualquer coisa"
 
 
+@pytest.mark.parametrize(
+    ("text", "held"),
+    [("[]", "list"), ('"x"', "str"), ("3", "int"), ("null", "NoneType")],
+)
+async def test_a_rejudge_over_a_json_file_that_is_not_an_export_names_the_file_and_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, text: str, held: str
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    stray = earlier / "notes.json"
+    stray.write_text(text, encoding="utf-8")
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert exit_code == 2, "um JSON que não é export não é uma sessão reprovada"
+    assert capsys.readouterr().err == (
+        f"golden: {stray}: TypeError: not an export object, it is {held}\n"
+    ), "o arquivo solto era lido como export e a mensagem era a do interpretador, sem dizer isso"
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um arquivo solto não gasta nada"
+    assert not again.exists(), "a recusa vem antes de escrever qualquer coisa"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
