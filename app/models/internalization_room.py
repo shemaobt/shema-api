@@ -1277,11 +1277,12 @@ class RetroverificationFile(BaseModel):
 
 
 class ConversationTurn(BaseModel):
-    role: Literal["team", "guide", "room"]
+    role: Literal["team", "guide"]
     text: str
     at: str | None
     fail_safe: bool
     fail_safe_category: str | None
+    note_kind: Literal["opening", "room"] | None
 
 
 class ConversationResponse(BaseModel):
