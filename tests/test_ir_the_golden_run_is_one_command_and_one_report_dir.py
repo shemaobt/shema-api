@@ -649,6 +649,33 @@ async def test_a_rejudge_over_a_truncated_export_names_the_file_and_pays_for_not
     assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
 
 
+async def test_a_rejudge_over_an_export_missing_a_turns_key_names_the_first_such_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    _export(earlier, "P01-c")
+    headless = earlier / "P01-b.2026-09-16T21-13-26.json"
+    exported = json.loads(headless.read_text(encoding="utf-8"))
+    del exported["turns"][0]["guide"]
+    headless.write_text(json.dumps(exported), encoding="utf-8")
+    cut = earlier / "P01-c.2026-09-16T21-13-26.json"
+    cut.write_text('{"name": "P01-c"', encoding="utf-8")
+
+    exit_code = await golden_runner.run(_args(earlier, tmp_path / "again", rejudge=str(earlier)))
+
+    stderr = capsys.readouterr().err
+    assert exit_code == 2, "um export sem a fala do guia não é uma sessão reprovada"
+    assert stderr.startswith(f"golden: {headless}: KeyError: 'guide'\n"), (
+        "a chave que faltava no turno estourava num KeyError que não dizia de qual arquivo"
+    )
+    assert str(cut) not in stderr, "com dois exports ruins, o primeiro na ordem é o nomeado"
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
