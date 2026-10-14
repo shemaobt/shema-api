@@ -94,6 +94,7 @@ from scripts.golden_spend import (
     split,
     stopped,
     uncounted,
+    what_killed,
 )
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
@@ -509,7 +510,7 @@ async def play_session(
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         results.append(SessionResult(script.name, None, [], _refusal(refused)))
         return
-    except Exception:
+    except BaseException:
         results.append(SessionResult(script.name, None, []))
         raise
     result = SessionResult(script.name, session_id, played)
@@ -519,8 +520,8 @@ async def play_session(
     except httpx.HTTPStatusError as refused:
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         result.refused = _refusal(refused)
-    except Exception as dead:
-        result.killed = f"{type(dead).__name__}: {dead}"
+    except BaseException as dead:
+        result.killed = what_killed(dead)
         raise
     finally:
         report, transcript = export(
@@ -751,7 +752,7 @@ async def run(args: argparse.Namespace) -> int:
                     prompt_repeats=shares_judge_prompt(script, scripts),
                     results=results,
                 )
-    except Exception as killed:
+    except BaseException as killed:
         close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
         raise
     return finish(
@@ -766,14 +767,14 @@ async def run(args: argparse.Namespace) -> int:
 
 def close_dead(
     results: list[SessionResult],
-    killed: Exception,
+    killed: BaseException,
     *,
     playing: str,
     out: Path,
     base_url: str,
     stamp: str,
 ) -> None:
-    halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
+    halted = f"Rodada interrompida em {playing} por {what_killed(killed)}."
     readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
     close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
 
@@ -890,7 +891,7 @@ async def rejudge(args: argparse.Namespace) -> int:
                     stamp=path.stem[len(script.name) + 1 :],
                     prompt_repeats=shares_judge_prompt(script, to_judge),
                 )
-    except Exception as killed:
+    except BaseException as killed:
         close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
         raise
     return finish(
