@@ -508,7 +508,9 @@ async def play_session(
     `finally` for the same reason `play` appends as it goes — the turns already paid for
     survive the turn that failed.
     """
-    print(f"\n▶ {script.name} ({script.pericopeId}, {script.language}) — {len(script.turns)} turns")
+    to_play = len(script.turns[:turns])
+    count = str(to_play) if to_play == len(script.turns) else f"{to_play} of {len(script.turns)}"
+    print(f"\n▶ {script.name} ({script.pericopeId}, {script.language}) — {count} turns")
     if not script.turns:
         print("  empty: no turn to play, nothing to judge")
         results.append(SessionResult(script.name, None, [], empty=True))
