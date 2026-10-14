@@ -320,6 +320,9 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
             session_id = await open_session(script, client)
         except httpx.HTTPStatusError as turned_away:
             return _refused(turned_away)
+        except Exception as dead:
+            print(f"  KILLED · {type(dead).__name__}: {dead} · {script.name} not opened")
+            raise
         try:
             await play(script, client, session_id=session_id, played=played)
         except httpx.HTTPStatusError as stopped:
