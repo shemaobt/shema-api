@@ -118,9 +118,28 @@ async def urls(
     )
     assert minted.status_code == 201, minted.text
     token = minted.json()["token"]
+
+    async def _upload(bucket: str, key: str, data: bytes, content_type: str) -> str:
+        return f"gs://{bucket}/{key}"
+
+    monkeypatch.setattr(gcs_utils, "upload_gcs_object", _upload)
+    stored = await server.post(
+        f"{PREFIX}/intake/{token}/image",
+        content=b"\xff\xd8\xff\xe0" + b"\x00" * 16,
+        headers={"Content-Type": "image/jpeg"},
+    )
+    assert stored.status_code == 201, stored.text
     answered = await server.post(
         f"{PREFIX}/intake/{token}",
-        json={"definitionVersion": 1, "answers": {"submittedBy": "Kuaray", "period": "2026-09"}},
+        json={
+            "definitionVersion": 1,
+            "answers": {
+                "submittedBy": "Kuaray",
+                "period": "2026-09",
+                "image": stored.json()["id"],
+                "imageAuthorized": True,
+            },
+        },
     )
     assert answered.status_code == 202, answered.text
     submission_id = (await db_session.execute(select(ShemaSubmission.id))).scalar_one()
@@ -154,6 +173,9 @@ async def urls(
         ),
         f"{PREFIX}/forms/submissions/{{submission_id}}": (
             f"{PREFIX}/forms/submissions/{submission_id}"
+        ),
+        f"{PREFIX}/forms/submissions/{{submission_id}}/image/link": (
+            f"{PREFIX}/forms/submissions/{submission_id}/image/link"
         ),
         f"{PREFIX}/intake/{{token}}": f"{PREFIX}/intake/{token}",
         f"{PREFIX}/intercessors/leave/{{token}}": f"{PREFIX}/intercessors/leave/{exit_token}",
