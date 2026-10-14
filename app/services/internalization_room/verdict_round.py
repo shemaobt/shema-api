@@ -69,9 +69,8 @@ class TellingBackVerdict:
     """What one round decided, and what the room is about to say about it.
 
     `finding` is the half that carries the address — the one finding, or the addition of a
-    **Swap** — and `current` is everything this turn is allowed to voice. `said` already
-    carries the request for the whole stretch where there is one, so the caller synthesizes
-    it as it stands.
+    **Swap** — and `current` is everything this turn is allowed to voice. `said` is the verdict
+    the Speaker voiced, so the caller synthesizes it as it stands.
     """
 
     finding: Finding | None

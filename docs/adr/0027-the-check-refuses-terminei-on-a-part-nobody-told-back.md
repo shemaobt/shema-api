@@ -1,9 +1,17 @@
 ---
-status: accepted
+status: amended by shema-api#760: the restart route is back and writes a SupersededAttempt again
 date: 2026-09-18
 ---
 
 # The check refuses *terminei* on a part nobody told back, and names it
+
+**Amended by shema-api#760** on 13 October 2026: the restart route this decision retired is
+back as the team's «recomeçar a tradução» (ENG-1223), so the two paragraphs below that retire
+it and leave `SupersededAttempt` without a producer no longer hold. `POST
+/sessions/{id}/back-translation/restart` starts the translation over: every current frase stops
+counting, and the findings and the kept check rounds move onto one more `SupersededAttempt`,
+which `start_the_translation_over` writes. The record below is left as it was written; the
+refusal of *terminei* on a part nobody told back stands.
 
 ADR 0026 taught the release gate to read the current parts beside the stretches, and wrote its
 own gap into its consequences: the verdict's untold errand, `first_untold`, still walked stretch
