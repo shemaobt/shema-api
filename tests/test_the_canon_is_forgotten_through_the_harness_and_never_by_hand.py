@@ -418,6 +418,20 @@ def test_a_case() -> None:
     held.load_map.cache_clear()
 """
 
+SPIES_ON_THE_CLEAR_OF_A_CANON_CACHE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+
+    def spy() -> None:
+        empty_it()
+
+    spy()
+"""
+
 CLEARS_THE_FAIL_SAFE_SECTIONS = """\
 from app.services.internalization_room import fail_safe
 
@@ -722,6 +736,16 @@ def test_a_cache_that_shares_the_name_of_a_canon_cache_is_not_the_canon_to_forge
     )
 
     assert (of_the_canon, of_something_else) == ([], [5])
+
+
+def test_a_cache_clear_that_is_only_bound_to_a_name_is_a_spy_and_not_a_clear_by_hand(
+    tmp_path: Path,
+) -> None:
+    of_the_canon, of_something_else = _the_clears_in(
+        _planted(tmp_path, SPIES_ON_THE_CLEAR_OF_A_CANON_CACHE), _the_caches_the_harness_forgets()
+    )
+
+    assert (of_the_canon, of_something_else) == ([], [])
 
 
 def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:
