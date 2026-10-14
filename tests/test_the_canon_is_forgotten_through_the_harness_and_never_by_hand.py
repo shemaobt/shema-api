@@ -78,6 +78,12 @@ def _names_in(
         if isinstance(node, ast.Name | ast.Attribute) and (chain := _chain(node)):
             root, path = chain
             names.update(base + path for base in _origins(root, imports, sources, reading))
+            steps = path.split(".")[1:]
+            for kept in range(1, len(steps) + 1):
+                held = root + "".join(f".{step}" for step in steps[:kept])
+                if held in sources:
+                    rest = "".join(f".{step}" for step in steps[kept:])
+                    names.update(base + rest for base in _origins(held, imports, sources, reading))
         elif got := _got_by_getattr(node):
             owner, attribute = got
             names.update(
@@ -115,11 +121,17 @@ def _outside_every_function(node: ast.AST) -> Iterator[ast.AST]:
 
 
 def _bound_by(target: ast.expr) -> list[str]:
-    return [
-        bound.id
-        for bound in ast.walk(target)
-        if isinstance(bound, ast.Name) and isinstance(bound.ctx, ast.Store)
-    ]
+    bound: list[str] = []
+    for node in ast.walk(target):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            bound.append(node.id)
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, ast.Store)
+            and (chain := _chain(node))
+        ):
+            bound.append(chain[0] + chain[1])
+    return bound
 
 
 Bindings = list[tuple[list[str], ast.AST]]
@@ -600,6 +612,31 @@ def test_a_case() -> None:
     empty_it()
 """
 
+CLEARS_THROUGH_AN_ATTRIBUTE_TARGET = """\
+from types import SimpleNamespace
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    holder = SimpleNamespace()
+    holder.cached = book_material.preservation_rules
+    holder.cached.cache_clear()
+"""
+
+CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET = """\
+from types import SimpleNamespace
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    holder = SimpleNamespace()
+    holder.cached = book_material.preservation_rules
+    holder.other = 1
+    holder.other.cache_clear()
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -967,6 +1004,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_NAME_THAT_HOLDS_THE_MODULE, 6),
         (CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME, 7),
         (CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR, 6),
+        (CLEARS_THROUGH_AN_ATTRIBUTE_TARGET, 9),
     ],
     ids=[
         "named at the clear",
@@ -996,6 +1034,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named through a name that holds the module",
         "cleared by a bound cache_clear kept in a name",
         "cleared by a bound cache_clear got by getattr",
+        "named by an attribute target",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -1189,6 +1228,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
     [
         (CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET, [], [6]),
         (CLEARS_THE_SIBLING_OF_A_PARAMETRIZED_ARGUMENT, [], [8]),
+        (CLEARS_THE_SIBLING_OF_AN_ATTRIBUTE_TARGET, [], [10]),
         (CLEARS_A_NAME_UNPACKED_FROM_A_CACHE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE, [6], []),
         (CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR, [6], []),
@@ -1199,6 +1239,7 @@ def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
     ids=[
         "the sibling of a tuple target",
         "the sibling of a parametrized argument",
+        "the sibling of an attribute target",
         "a name unpacked from a cache, shapes not paired",
         "a name unpacked from a longer tuple",
         "a name unpacked from a tuple with a star",
