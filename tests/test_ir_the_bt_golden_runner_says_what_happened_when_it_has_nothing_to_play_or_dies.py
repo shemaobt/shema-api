@@ -8,6 +8,7 @@ the failure are its own arithmetic.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -225,3 +226,35 @@ async def test_a_script_the_room_could_not_be_reached_to_open_is_a_killed_verdic
     )
     assert "\ncost US$ 3.00 — analyst US$ 2.00 · speaker US$ 1.00\n" in shown
     assert opened == ["P01", "P02"], "a rodada morta não tenta o terceiro roteiro"
+
+
+async def test_a_script_cancelled_midway_is_a_killed_verdict_naming_the_cancel_and_never_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    rounds: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        rounds.append(request.url.path)
+        if len(rounds) == 2:
+            silent.set()
+            await asyncio.Event().wait()
+        return _a_round_that_costs_three_dollars()
+
+    the_room_answers(monkeypatch, _room)
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2))
+    playing = asyncio.create_task(bt_golden_runner.run(bt_args(tmp_path / "reports")))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    shown = capsys.readouterr().out
+    assert "  KILLED · CancelledError · 0 check(s) failed · s-1 · cost US$ 3.00\n" in shown, (
+        "o Ctrl-C cancelou o roteiro na segunda rodada e a linha dele dizia PASS"
+    )
+    assert "PASS" not in shown
+    assert "\ncost US$ 3.00 — analyst US$ 2.00 · speaker US$ 1.00\n" in shown

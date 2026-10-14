@@ -107,6 +107,11 @@ def budgeted(calls: list[Call]) -> float:
     return sum(by_role.values()) + guessed
 
 
+def what_killed(dead: BaseException) -> str:
+    named = type(dead).__name__
+    return f"{named}: {dead}" if str(dead) else named
+
+
 def split(by_role: dict[str, float]) -> str:
     return " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
 
