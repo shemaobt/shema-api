@@ -6,21 +6,35 @@ the recording covers the audio, the classification and the storyteller link, so 
 can tell a provisional, imported classification from one made beside the storyteller.
 """
 
+from datetime import UTC, datetime
+
+import inngest
 import pytest
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import RecordingSource
+from app.core.enums import RecordingSource, SplittingStatus
+from app.core.exceptions import SourceReferenceOnRawRecordingError
+from app.db.models.oc_recording import OC_Recording
 from app.models.oc_recording import (
     REFERENCE_NEEDS_EXTERNAL_SOURCE,
     RecordingCreate,
     RecordingResponse,
     RecordingUpdate,
+    SplitSegment,
 )
-from tests.baker import make_language, make_oc_taxonomy, make_project, make_user
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_taxonomy,
+    make_project,
+    make_user,
+)
 
 pytest.importorskip("app.inngest")
-recording_service = pytest.importorskip("app.services.oral_collector.recording_service")
+from app.inngest.audio_splitting import persist_split_segments
+from app.inngest.schemas import SegmentResult, SplitRequestedPayload, SplitSegmentData
+from app.services.oral_collector import recording_service, split_service
 
 ENOUGH = "a description long enough to say something"
 CITATION = "SIL Language & Culture Archives 93407, Siko's Stories (2022), catalogue JAR0001"
@@ -172,3 +186,154 @@ async def test_an_update_can_turn_a_raw_row_into_an_external_one(
     )
 
     assert (updated.source, updated.source_reference) == ("external", CITATION)
+
+
+async def test_an_update_cannot_slip_a_citation_onto_a_raw_row(
+    db_session: AsyncSession, seeded: dict[str, str]
+) -> None:
+    """The schema cannot see the stored row when the payload mentions one field alone;
+    the service can, and refuses the row it would otherwise store."""
+    recording = await recording_service.create_recording(
+        db_session,
+        _create(
+            project_id=seeded["project_id"],
+            genre_id=seeded["genre_id"],
+            subcategory_id=seeded["sub_id"],
+        ),
+        user_id=seeded["user_id"],
+    )
+
+    with pytest.raises(SourceReferenceOnRawRecordingError):
+        await recording_service.update_recording(
+            db_session, recording.id, RecordingUpdate(source_reference=CITATION)
+        )
+
+
+async def test_an_update_cannot_turn_an_external_row_raw_while_its_citation_stays(
+    db_session: AsyncSession, seeded: dict[str, str]
+) -> None:
+    recording = await recording_service.create_recording(
+        db_session,
+        _create(
+            project_id=seeded["project_id"],
+            genre_id=seeded["genre_id"],
+            subcategory_id=seeded["sub_id"],
+            source="external",
+            source_reference=CITATION,
+        ),
+        user_id=seeded["user_id"],
+    )
+
+    with pytest.raises(SourceReferenceOnRawRecordingError):
+        await recording_service.update_recording(
+            db_session, recording.id, RecordingUpdate(source="raw")
+        )
+
+    back_to_raw = await recording_service.update_recording(
+        db_session, recording.id, RecordingUpdate(source="raw", source_reference=None)
+    )
+    assert (back_to_raw.source, back_to_raw.source_reference) == ("raw", None)
+
+
+async def test_a_split_request_snapshots_the_source_into_the_event(
+    db_session: AsyncSession, seeded: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parent = await make_oc_recording(
+        db_session,
+        seeded["project_id"],
+        seeded["genre_id"],
+        seeded["sub_id"],
+        user_id=seeded["user_id"],
+        gcs_url="https://example.com/parent.m4a",
+        duration_seconds=60.0,
+    )
+    parent.source = RecordingSource.EXTERNAL
+    parent.source_reference = CITATION
+    await db_session.commit()
+
+    captured: list[inngest.Event] = []
+
+    async def fake_send(event: inngest.Event) -> list[str]:
+        captured.append(event)
+        return []
+
+    monkeypatch.setattr(split_service.inngest_client, "send", fake_send)
+
+    await split_service.request_split(
+        db_session,
+        parent.id,
+        [SplitSegment(start_seconds=0.0, end_seconds=10.0)],
+        seeded["user_id"],
+    )
+
+    assert captured[0].data["source"] == "external"
+    assert captured[0].data["source_reference"] == CITATION
+
+
+async def test_every_segment_of_an_external_recording_is_external_with_the_same_citation(
+    db_session: AsyncSession, seeded: dict[str, str]
+) -> None:
+    parent = await make_oc_recording(
+        db_session,
+        seeded["project_id"],
+        seeded["genre_id"],
+        seeded["sub_id"],
+        user_id=seeded["user_id"],
+        gcs_url="https://example.com/parent.m4a",
+        duration_seconds=60.0,
+        splitting_status=SplittingStatus.SPLITTING,
+    )
+    payload = SplitRequestedPayload(
+        recording_id=parent.id,
+        user_id=seeded["user_id"],
+        segments=[
+            SplitSegmentData(
+                start_seconds=float(i) * 10.0,
+                end_seconds=float(i + 1) * 10.0,
+                genre_id=seeded["genre_id"],
+                subcategory_id=seeded["sub_id"],
+                register_id=None,
+            )
+            for i in range(2)
+        ],
+        project_id=seeded["project_id"],
+        format="m4a",
+        title="Parent story",
+        recorded_at=datetime.now(UTC).isoformat(),
+        description=ENOUGH,
+        source="external",
+        source_reference=CITATION,
+    )
+    results = [
+        SegmentResult(
+            id=f"child-{i}",
+            gcs_url=f"https://example.com/child-{i}.m4a",
+            duration_seconds=10.0,
+            file_size_bytes=10_000,
+            index=i,
+        )
+        for i in range(2)
+    ]
+
+    new_ids = await persist_split_segments(db_session, payload, results)
+
+    for child_id in new_ids:
+        child = await db_session.get(OC_Recording, child_id)
+        assert child is not None
+        assert (child.source, child.source_reference) == ("external", CITATION)
+
+
+def test_a_split_event_from_before_the_field_existed_still_parses_as_raw() -> None:
+    """An in-flight event replayed by Inngest after the deploy carries no source; its
+    parent was written by the app, so raw is its true value."""
+    payload = SplitRequestedPayload(
+        recording_id="r",
+        user_id="u",
+        segments=[],
+        project_id="p",
+        format="m4a",
+        title="t",
+        recorded_at=datetime.now(UTC).isoformat(),
+    )
+
+    assert (payload.source, payload.source_reference) == ("raw", None)

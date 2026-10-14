@@ -57,6 +57,8 @@ async def persist_split_segments(
             secondary_register_id=payload.secondary_register_id,
             user_id=payload.user_id,
             storyteller_id=payload.storyteller_id,
+            source=payload.source,
+            source_reference=payload.source_reference,
             title=f"{payload.title} (segment {seg.index + 1})",
             description=payload.description,
             duration_seconds=seg.duration_seconds,

@@ -78,8 +78,8 @@ class RecordingUpdate(BaseModel):
     file_size_bytes: int | None = Field(default=None, ge=0)
     cleaning_status: CleaningStatus | None = None
     #: Both optional so an importer can correct a mislabelled row; the app never sends
-    #: them. The cross-check runs only when the payload carries both, because an update
-    #: that mentions one field alone cannot see the stored value of the other here.
+    #: them. The cross-check here covers a payload that carries both; the service checks
+    #: the row as it would be stored when the payload mentions only one of them.
     source: RecordingSource | None = None
     source_reference: str | None = Field(default=None, max_length=2000)
 
