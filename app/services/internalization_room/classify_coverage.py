@@ -12,8 +12,9 @@ from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.elements import Element, element_keys
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import CoverageStatus, merge, remaining
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before, classifier_ladder
+from app.services.internalization_room.prompt_blocks import _HER_KIND_NAMES
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 
@@ -124,7 +125,7 @@ def _unresolved_block(coverage_state: dict[str, str], offered: list[Element]) ->
         [
             {
                 "id": element.key,
-                "kind": element.kind.value,
+                "kind": _HER_KIND_NAMES.get(element.kind, element.kind.value),
                 "label": _shown_label(element),
                 "status": _shown_status(coverage_state, element),
             }
@@ -215,7 +216,7 @@ async def classify_coverage(
     guide_response: str,
     classifier_prompt: str,
     pericope_num: str,
-    session_language: str = LANGUAGE_NAMES[FLOOR],
+    session_language: str = LANGUAGE_NAMES[AUTHORED],
     settings: Settings | None = None,
 ) -> dict[str, str]:
     """Advance the tracker from one exchange. Never runs on the voice path.

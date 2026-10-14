@@ -137,7 +137,6 @@ async def a_session(
         if entered
         else [],
         coverage_state={},
-        kept_takes={},
         back_translation={},
         created_at=at,
         updated_at=at,

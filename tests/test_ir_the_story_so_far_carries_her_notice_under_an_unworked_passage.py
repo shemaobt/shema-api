@@ -129,7 +129,6 @@ def _session(id: str, pericope: str, project_id: str, messages: list[dict[str, s
         status=IRSessionStatus.IN_PROGRESS,
         messages=messages,
         coverage_state={},
-        kept_takes={},
         back_translation={},
         language="pt",
     )

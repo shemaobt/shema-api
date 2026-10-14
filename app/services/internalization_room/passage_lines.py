@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import load_book
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import AUTHORED
 
 _LINES_FILE = Path(__file__).parent / "prompts" / "passage_lines.md"
 _SECTION = re.compile(r"^### ([A-Za-z][A-Za-z0-9]*)-([a-z]{2})$", re.M)
@@ -29,7 +29,7 @@ def _sections() -> dict[tuple[str, str], str]:
     return parsed
 
 
-def line_for(pericope_num: str, language_code: str, *, floor: str = FLOOR) -> str:
+def line_for(pericope_num: str, language_code: str, *, fallback: str = AUTHORED) -> str:
     """How the room names one passage out loud, or "" when nobody has written it yet.
 
     An empty line is not an error the team should meet: a passage the room cannot name is
@@ -41,13 +41,14 @@ def line_for(pericope_num: str, language_code: str, *, floor: str = FLOOR) -> st
     Matching the tag whole emptied the entire book in silence, and an empty wheel says
     "everything is done".
 
-    A whole *language* nobody has written falls to the floor rather than emptying the book.
+    A whole *language* nobody has written falls to the authored English rather than emptying
+    the book.
     One unnamed passage is a passage withheld, which is the deliberate behaviour above; every
     passage unnamed at once is a room telling a team it has finished a book it never opened,
     and that is a different thing entirely.
     """
     said = _sections()
-    for tag in (language_code, language_code.split("-")[0].lower(), floor):
+    for tag in (language_code, language_code.split("-")[0].lower(), fallback):
         spoken = said.get((pericope_num, tag))
         if spoken is not None:
             return spoken
@@ -62,11 +63,11 @@ def panorama_line_for(language_code: str) -> str:
     code is global to this file rather than namespaced under its ``## Book`` heading.
     Ruth is the only vendored book today, so this cannot cross a book boundary yet.
 
-    Unlike ``line_for``, a missing line here never borrows the floor's: the panorama is
+    Unlike ``line_for``, a missing line here never borrows the authored English: the panorama is
     authored in every language at once or offered in none, so falling back would hand a
     team an answer in the wrong language instead of leaving the entry off the wheel.
     """
-    return line_for(PANORAMA, language_code, floor=language_code)
+    return line_for(PANORAMA, language_code, fallback=language_code)
 
 
 def offered(book: str, spoken: str) -> list[tuple[str, str]]:

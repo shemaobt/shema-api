@@ -42,6 +42,7 @@ from app.services.internalization_room.back_translation import (
     the_finding_that_leads,
 )
 from app.services.internalization_room.background import the_reading_ahead
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
@@ -68,9 +69,8 @@ class TellingBackVerdict:
     """What one round decided, and what the room is about to say about it.
 
     `finding` is the half that carries the address — the one finding, or the addition of a
-    **Swap** — and `current` is everything this turn is allowed to voice. `said` already
-    carries the request for the whole stretch where there is one, so the caller synthesizes
-    it as it stands.
+    **Swap** — and `current` is everything this turn is allowed to voice. `said` is the verdict
+    the Speaker voiced, so the caller synthesizes it as it stands.
     """
 
     finding: Finding | None
@@ -279,9 +279,15 @@ async def save_the_spoken_verdict(
         clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
     )
     await as_it_stands(state)
-    session = await append_exchange(
-        db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
-    )
+    with reading_the_canon_of(session.canon_pin):
+        session = await append_exchange(
+            db,
+            session,
+            team_utterance="",
+            guide_response=said,
+            outcome=outcome,
+            told_back=told_back,
+        )
     await save_back_translation(db, session, state, rule=as_it_stands)
     return session
 

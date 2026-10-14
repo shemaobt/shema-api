@@ -11,7 +11,7 @@ from app.core.room_enums import CoverageStatus, ElementKind
 class LabelledElement(BaseModel):
     """One bead, named in each language the Desk offers.
 
-    `key` is unique only within its pericope: `scene:1` is a different scene in every
+    `key` is unique only within its pericope: `scene:S1` is a different scene in every
     passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
 
     The two languages are named fields because that is the shape the Desk was promised, so
@@ -118,9 +118,9 @@ class ElementCoverage(BaseModel):
     showing a facilitator any count, percentage or ratio, so an aggregate must not be able to
     arrive here by being passed along from somewhere that legitimately computes one.
 
-    `scene` names the scene bead this one sits under — `scene:2`, not `2`. It is a key into
+    `scene` names the scene bead this one sits under — `scene:S2`, not `2`. It is a key into
     this same response and not a number, because the alternative is the client composing
-    `scene:{n}` to join a bead to its scene, and composing a key on the client is what the
+    `scene:S{n}` to join a bead to its scene, and composing a key on the client is what the
     label layer exists to prevent: the day the shape of a key changes, a client that builds
     one builds the wrong one, in silence, and the necklace simply stops joining up.
 
@@ -155,6 +155,16 @@ class PericopePosition(StrEnum):
     FUTURE = "future"
 
 
+class PassageRelease(BaseModel):
+    """The passage's live release with the highest **Version** for the team (ADRs 0014, 0047)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    forced_at: datetime | None
+    approved_at: datetime
+
+
 class PericopeStanding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -162,6 +172,9 @@ class PericopeStanding(BaseModel):
     reference: str
     title: str
     position: PericopePosition
+    release: PassageRelease | None
+    open_findings: int
+    approved: bool
 
 
 class SessionBead(BaseModel):
@@ -251,6 +264,16 @@ class CoverageView(BaseModel):
 
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 
+Cause = Literal[
+    "entrance",
+    "articulation_entrance",
+    "where_we_are",
+    "fence",
+    "part_closing",
+    "familiarization_closing",
+    "send_off",
+]
+
 
 class MomentView(BaseModel):
     at: At
@@ -281,8 +304,8 @@ class CreateSessionRequest(BaseModel):
     #: whether to play the panorama again — so naming it for any other session would mark that
     #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
-    #: Which language the room should speak to this team, read by the app off the tablet.
-    #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
+    #: Which language the room should speak to this team, as the team chose it on the tablet.
+    #: Named once here and fixed for the session's lifetime. Absent takes the floor, Portuguese;
     #: a language the room does not speak is refused rather than quietly answered in another.
     language: str | None = Field(default=None, max_length=8)
 
@@ -851,6 +874,100 @@ class TakesResponse(BaseModel):
     takes: list[TakeResponse]
 
 
+class SceneFraseView(BaseModel):
+    """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
+
+    frase_id: str
+    starts_ms: int
+    ends_ms: int
+    replaces: str | None = None
+    replaced_by: str | None = None
+
+
+class SceneRehearsalFacts(BaseModel):
+    rehearsal_id: str
+    session_id: str
+    pericope: str
+    n: int
+    scene: str | None = None
+    scene_said: Literal["recording", "later"] | None = None
+    duration_ms: int | None = None
+    content_type: str
+    verified: bool = False
+    recorded_at: str = ""
+    sent_at: str | None = None
+    #: The **Restart** the current frases follow, which a frase names to say it belongs to
+    #: this attempt; null before the first restart.
+    after_restart: str | None = None
+
+
+class SceneRehearsalView(SceneRehearsalFacts):
+    """A scene rehearsal as any tablet of the team resumes it, with no words and no guess."""
+
+    frases: list[SceneFraseView]
+
+
+class SceneRehearsalsResponse(BaseModel):
+    pericope: str
+    scene_rehearsals: list[SceneRehearsalView]
+
+
+class SceneSnapshotFrase(BaseModel):
+    frase_id: str
+    starts_ms: int
+    ends_ms: int
+    replaces: str | None
+    transcript: str
+
+
+class SceneRestartSnapshot(BaseModel):
+    """The scene rehearsal as it stood when its translation restarted."""
+
+    n: int
+    scene: str | None
+    scene_said: str | None
+    scene_guess: str | None
+    duration_ms: int | None
+    sha256: str
+    frases: list[SceneSnapshotFrase]
+
+
+class ReaderSceneFraseView(SceneFraseView):
+    transcript: str
+
+
+class SceneRestartView(BaseModel):
+    """A restart for the Desk: the record as it was, and every frase it set aside, the ones
+    that arrived after it included."""
+
+    restart_id: str
+    restarted_at: str
+    snapshot: SceneRestartSnapshot
+    frases: list[ReaderSceneFraseView]
+
+
+class HeldAttemptView(BaseModel):
+    """Frases naming an attempt whose restart has not landed, waiting for it."""
+
+    attempt: str
+    frases: list[ReaderSceneFraseView]
+
+
+class ReaderSceneRehearsalView(SceneRehearsalFacts):
+    """The rehearsal for the Desk: the frases' words, its restarts and the classifier's guess."""
+
+    frases: list[ReaderSceneFraseView]
+    scene_guess: str | None = None
+    archive_id: str | None = None
+    restarts: list[SceneRestartView]
+    held: list[HeldAttemptView]
+
+
+class ReaderSceneRehearsalsResponse(BaseModel):
+    session_id: str
+    scene_rehearsals: list[ReaderSceneRehearsalView]
+
+
 class ReleaseResponse(BaseModel):
     """What the Desk is told when a mint lands: the number and the fingerprint.
 
@@ -1208,6 +1325,20 @@ class TurnTraceStep(BaseModel):
     note: str | None = None
 
 
+class TurnMoment(BaseModel):
+    at: At
+    part: int | None = None
+    closed: bool = False
+    fenced: bool = False
+
+
+class TurnMomentStep(BaseModel):
+    before: TurnMoment
+    after: TurnMoment
+    by: list[Cause]
+    ignored: list[str] = Field(default_factory=list)
+
+
 class TurnVoiceSide(BaseModel):
     outcome: TurnOutcomeCode
     boundary: bool
@@ -1219,6 +1350,7 @@ class TurnVoiceSide(BaseModel):
     model: str | None
     text: str
     audio_url: str
+    moment: TurnMomentStep | None
 
 
 class SessionTurn(BaseModel):

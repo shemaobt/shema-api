@@ -2,26 +2,16 @@ from __future__ import annotations
 
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 
 import regex
 
 from app.db.models.internalization_room import IRSession
-from app.models.internalization_room import At, MomentView
+from app.models.internalization_room import At, Cause, MomentView
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 
 _DASH = "\N{EM DASH}"
-
-Cause = Literal[
-    "entrance",
-    "articulation_entrance",
-    "where_we_are",
-    "fence",
-    "part_closing",
-    "familiarization_closing",
-    "send_off",
-]
 
 NUMBER_WORDS = {
     "um": 1,
@@ -357,6 +347,8 @@ def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
     if moment is None:
         return ""
     parts = len(scene_ids_for(pericope_num))
+    if moment.part is not None and not 1 <= moment.part <= parts:
+        return ""
     if moment.at == "internalization":
         return f"MOMENT: Internalization of part {moment.part} of {parts} {_DASH} the part is open."
     if moment.at == "articulation":
