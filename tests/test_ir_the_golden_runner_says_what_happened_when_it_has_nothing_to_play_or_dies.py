@@ -456,3 +456,16 @@ async def test_an_empty_session_has_its_own_line_on_the_console_and_is_left_out_
     assert f"\n1/1 golden sessions pass, 1 empty · {out / 'README.md'}\n" in printed, (
         "a contagem de aprovadas dizia 1/2 e não dizia que a segunda não teve turno nenhum"
     )
+
+
+async def test_a_run_with_an_empty_session_does_not_exit_zero_even_when_every_other_one_passed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
+
+    assert exit_code == 1, (
+        "um roteiro que não foi jogado não pode fechar o portão do release como se tivesse passado"
+    )
