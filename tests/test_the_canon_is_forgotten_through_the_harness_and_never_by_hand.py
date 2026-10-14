@@ -204,11 +204,11 @@ def _defined_in(scope: ast.AST) -> Functions:
 
 
 def _handed_to(
-    function: Function, arguments: list[ast.expr], keywords: list[ast.keyword]
+    function: Function, arguments: list[ast.expr], keywords: list[ast.keyword], skipping: int = 0
 ) -> list[tuple[str, ast.expr]]:
     parameters = [parameter.arg for parameter in [*function.args.posonlyargs, *function.args.args]]
     return [
-        *zip(parameters, arguments, strict=False),
+        *zip(parameters[skipping:], arguments, strict=False),
         *((keyword.arg, keyword.value) for keyword in keywords if keyword.arg),
     ]
 
@@ -437,38 +437,46 @@ def _package_of(module: Path, root: Path) -> list[str]:
     return list(module.relative_to(root).parent.parts) if module.is_relative_to(root) else []
 
 
-def _function_of_another_module(
-    dotted: str, root: Path
-) -> tuple[Path, ast.Module, ast.FunctionDef | ast.AsyncFunctionDef] | None:
+Callee = tuple[Path, ast.Module, ast.FunctionDef | ast.AsyncFunctionDef, int]
+
+
+def _defined_at(
+    tree: ast.Module, path: list[str]
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, int] | None:
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and path == [node.name]:
+            return node, 0
+        if isinstance(node, ast.ClassDef) and path[:1] == [node.name]:
+            for method in node.body:
+                if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef) and path[1:] == [
+                    method.name
+                ]:
+                    return method, 1
+    return None
+
+
+def _callee_named(dotted: str, module: Path, tree: ast.Module, root: Path) -> Callee | None:
     parts = dotted.split(".")
+    if len(parts) == 2 and (here := _defined_at(tree, parts)):
+        return module, tree, here[0], here[1]
     for taken in range(len(parts) - 1, 0, -1):
         if (file := _module_file(".".join(parts[:taken]), root)) is None:
             continue
-        tree = ast.parse(file.read_text(encoding="utf-8"))
-        for node in tree.body:
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and parts[taken:] == [
-                node.name
-            ]:
-                return file, tree, node
+        callee_tree = ast.parse(file.read_text(encoding="utf-8"))
+        if found := _defined_at(callee_tree, parts[taken:]):
+            return file, callee_tree, found[0], found[1]
         return None
     return None
 
 
-def _clears_its_parameter(
-    file: Path,
-    tree: ast.Module,
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
-    parameter: str,
-    root: Path,
-) -> bool:
-    text = file.read_text(encoding="utf-8")
-    if "cache_clear" not in text:
+def _clears_its_parameter(callee: Callee, parameter: str, root: Path) -> bool:
+    file, tree, function, _ = callee
+    if "cache_clear" not in file.read_text(encoding="utf-8"):
         return False
     marker = f"<{parameter}>"
     of_the_marker, _ = _clears_in_tree(
+        file,
         tree,
-        text,
-        _package_of(file, root),
         {marker},
         root,
         {function: [([parameter], ast.Name(id=marker))]},
@@ -477,14 +485,24 @@ def _clears_its_parameter(
     return bool(of_the_marker)
 
 
+def _leftmost_name(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Attribute | ast.Call):
+        node = node.value if isinstance(node, ast.Attribute) else node.func
+    return node.id if isinstance(node, ast.Name) else None
+
+
 def _hands_the_canon_to_a_clear(
     call: ast.Call,
+    module: Path,
+    tree: ast.Module,
     imports: dict[str, str],
     sources: dict[str, list[ast.AST]],
     canon_caches: set[str],
     root: Path,
 ) -> bool:
-    if not (chain := _chain(call.func)) or not (chain[0] in imports or chain[0] in sources):
+    classes = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
+    leftmost = _leftmost_name(call.func)
+    if leftmost not in imports and leftmost not in sources and leftmost not in classes:
         return False
     handed = [
         argument
@@ -493,33 +511,42 @@ def _hands_the_canon_to_a_clear(
     ]
     if not handed:
         return False
-    for dotted in _names_in(call.func, imports, sources):
-        if (found := _function_of_another_module(dotted, root)) is None:
+    callees = (
+        {f"{owner}.{call.func.attr}" for owner in _names_in(call.func.value, imports, sources)}
+        if isinstance(call.func, ast.Attribute)
+        else _names_in(call.func, imports, sources)
+    )
+    for dotted in callees:
+        if (callee := _callee_named(dotted, module, tree, root)) is None:
             continue
-        file, tree, function = found
-        for parameter, argument in _handed_to(function, call.args, call.keywords):
-            if argument in handed and _clears_its_parameter(file, tree, function, parameter, root):
+        for parameter, argument in _handed_to(callee[2], call.args, call.keywords, callee[3]):
+            if argument in handed and _clears_its_parameter(callee, parameter, root):
                 return True
     return False
 
 
 def _clears_in_tree(
+    module: Path,
     tree: ast.Module,
-    text: str,
-    package: list[str],
     canon_caches: set[str],
     root: Path,
     seeded: dict[ast.AST, Bindings],
     *,
     follow: bool,
 ) -> tuple[list[int], list[int]]:
+    text = module.read_text(encoding="utf-8")
     names_a_cache = any(cache.rpartition(".")[2] in text for cache in canon_caches)
-    imports = _imports_of(tree, package)
+    imports = _imports_of(tree, _package_of(module, root))
     spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
     given = _arguments_given(tree)
     for function, bindings in seeded.items():
         given[function].extend(bindings)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for method in node.body:
+                if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef) and method.args.args:
+                    given[method].append(([method.args.args[0].arg], ast.Name(id=node.name)))
     arguments, at_the_top_sources = _fed_by_what_functions_return(
         tree, imports, given, at_the_top, canon_caches, names_a_cache
     )
@@ -540,7 +567,9 @@ def _clears_in_tree(
             elif (
                 follow
                 and names_a_cache
-                and _hands_the_canon_to_a_clear(node, imports, sources, canon_caches, root)
+                and _hands_the_canon_to_a_clear(
+                    node, module, tree, imports, sources, canon_caches, root
+                )
             ):
                 of_the_canon.append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
@@ -549,10 +578,8 @@ def _clears_in_tree(
 def _the_clears_in(
     module: Path, canon_caches: set[str], root: Path = ROOT
 ) -> tuple[list[int], list[int]]:
-    text = module.read_text(encoding="utf-8")
-    return _clears_in_tree(
-        ast.parse(text), text, _package_of(module, root), canon_caches, root, {}, follow=True
-    )
+    tree = ast.parse(module.read_text(encoding="utf-8"))
+    return _clears_in_tree(module, tree, canon_caches, root, {}, follow=True)
 
 
 CLEARS_ONE_THING_AND_NAMES_ANOTHER = """\
@@ -1136,6 +1163,67 @@ from app.services.internalization_room.canon import book_material
 def test_a_case() -> None:
     assert book_material.preservation_rules
     forget(get_settings)
+"""
+
+THE_CLASS_WHOSE_METHOD_CLEARS_ITS_PARAMETER = """\
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+"""
+
+THE_CASE_THAT_CALLS_A_METHOD_ON_AN_INSTANCE = """\
+from a_helper import Holder
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    holder = Holder()
+    holder.forget(book_material.preservation_rules)
+"""
+
+THE_CASE_THAT_CALLS_A_METHOD_ON_A_FRESH_INSTANCE = """\
+from a_helper import Holder
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    Holder().forget(book_material.preservation_rules)
+"""
+
+A_CLASS_OF_THE_CASE_WHOSE_METHOD_CLEARS_ITS_PARAMETER = """\
+from app.services.internalization_room.canon import book_material
+
+
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+
+    def test_a_case(self) -> None:
+        self.forget(book_material.preservation_rules)
+
+
+def test_another_case() -> None:
+    Holder().forget(book_material.preservation_rules)
+"""
+
+TWO_CLASSES_WHOSE_METHODS_ARE_CALLED_FORGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+class Quiet:
+    def forget(self, cached) -> None:
+        return None
+
+
+class Holder:
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+
+
+def test_a_case() -> None:
+    Quiet().forget(book_material.preservation_rules)
 """
 
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
@@ -1930,6 +2018,41 @@ def test_a_helper_of_another_module_that_clears_its_parameter_is_a_clear_at_the_
     clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
 
     assert clears == (of_the_canon, [])
+
+
+@pytest.mark.parametrize(
+    ("helper", "source", "of_the_canon", "of_something_else"),
+    [
+        (
+            THE_CLASS_WHOSE_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_METHOD_ON_AN_INSTANCE,
+            [8],
+            [],
+        ),
+        (
+            THE_CLASS_WHOSE_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_METHOD_ON_A_FRESH_INSTANCE,
+            [7],
+            [],
+        ),
+        ("", A_CLASS_OF_THE_CASE_WHOSE_METHOD_CLEARS_ITS_PARAMETER, [9, 13], [6]),
+        ("", TWO_CLASSES_WHOSE_METHODS_ARE_CALLED_FORGET, [], [11]),
+    ],
+    ids=[
+        "a method called on an instance of an imported class",
+        "a method called on a fresh instance of an imported class",
+        "a method of a class of the case, through self and through an instance",
+        "two classes whose methods share a name",
+    ],
+)
+def test_a_method_that_clears_its_parameter_is_a_clear_at_the_call(
+    tmp_path: Path, helper: str, source: str, of_the_canon: list[int], of_something_else: list[int]
+) -> None:
+    module = _a_case_beside_its_helper(tmp_path, helper, source)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == (of_the_canon, of_something_else)
 
 
 @pytest.mark.parametrize(
