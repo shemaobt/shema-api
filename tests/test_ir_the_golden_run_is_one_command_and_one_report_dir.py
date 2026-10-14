@@ -630,6 +630,25 @@ def _export(directory: Path, name: str, *, refused: str | None = None) -> None:
     )
 
 
+async def test_a_rejudge_over_a_truncated_export_names_the_file_and_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    truncated = earlier / "P01-b.2026-09-16T21-13-26.json"
+    truncated.write_text('{"name": "P01-b", "pericopeId": "P01"', encoding="utf-8")
+
+    exit_code = await golden_runner.run(_args(earlier, tmp_path / "again", rejudge=str(earlier)))
+
+    assert exit_code == 2, "um export cortado não é uma sessão reprovada: a re-julgação nem começa"
+    assert capsys.readouterr().err.startswith(f"golden: {truncated}: JSONDecodeError: "), (
+        "o JSON cortado derrubava a re-julgação num traceback que não dizia qual arquivo era"
+    )
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
