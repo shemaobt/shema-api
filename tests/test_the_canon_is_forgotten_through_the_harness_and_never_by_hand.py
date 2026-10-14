@@ -39,7 +39,7 @@ def _imports_of(tree: ast.AST) -> dict[str, str]:
                 imports[alias.asname or root] = alias.name if alias.asname else root
         elif isinstance(node, ast.ImportFrom):
             for alias in node.names:
-                imports[alias.name] = f"{node.module}.{alias.name}"
+                imports[alias.asname or alias.name] = f"{node.module}.{alias.name}"
     return imports
 
 
@@ -242,6 +242,14 @@ def test_a_case() -> None:
     load_map.cache_clear()
 """
 
+CLEARS_THROUGH_A_NAME_IMPORTED_UNDER_ANOTHER_NAME = """\
+from app.services.internalization_room.canon.parse_map import load_map as read_the_map
+
+
+def test_a_case() -> None:
+    read_the_map.cache_clear()
+"""
+
 CLEARS_THROUGH_A_MODULE_UNDER_ANOTHER_NAME = """\
 import app.services.internalization_room.canon.parse_map as pm
 
@@ -299,6 +307,14 @@ from app.services.internalization_room import passage_lines
 
 def test_a_case() -> None:
     passage_lines.verse_ranges.cache_clear()
+"""
+
+CLEARS_THE_FAIL_SAFE_SECTIONS_BY_THE_NAME_IT_IS_IMPORTED_AS = """\
+from app.services.internalization_room.fail_safe import _sections
+
+
+def test_a_case() -> None:
+    _sections.cache_clear()
 """
 
 CLEARS_THE_PROMPT_LOADER = """\
@@ -413,6 +429,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_THE_CASE_AROUND_IT, 8),
         (CLEARS_THROUGH_A_NAME_IMPORTED_FROM_ITS_MODULE, 5),
+        (CLEARS_THROUGH_A_NAME_IMPORTED_UNDER_ANOTHER_NAME, 5),
         (CLEARS_THROUGH_A_MODULE_UNDER_ANOTHER_NAME, 5),
         (CLEARS_THROUGH_THE_FULL_PATH, 5),
         (CLEARS_THROUGH_A_NAME_THAT_HOLDS_THE_MODULE, 6),
@@ -426,6 +443,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by the module that feeds it",
         "named by the case around the function that clears it",
         "named by the name its module exports",
+        "named through a name imported under another name",
         "named through a module imported under another name",
         "named by the full path of its module",
         "named through a name that holds the module",
@@ -446,9 +464,15 @@ def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
     [
         (CLEARS_THE_FAIL_SAFE_SECTIONS, 5),
         (CLEARS_THE_FAIL_SAFE_FILE_THROUGH_AN_ALIAS, 6),
+        (CLEARS_THE_FAIL_SAFE_SECTIONS_BY_THE_NAME_IT_IS_IMPORTED_AS, 5),
         (CLEARS_THE_PROMPT_LOADER, 5),
     ],
-    ids=["the fail-safe sections", "the fail-safe file by an alias", "the prompt loader"],
+    ids=[
+        "the fail-safe sections",
+        "the fail-safe file by an alias",
+        "the fail-safe sections by the name they are imported as",
+        "the prompt loader",
+    ],
 )
 def test_a_clear_of_a_prompt_cache_is_read_as_one_the_harness_owns(
     tmp_path: Path, source: str, line: int
