@@ -224,6 +224,7 @@ from app.services.shema._media_sharing import (
     can_export_notes,
     can_share_media,
     is_authorized,
+    pulse_image_authorized,
     reader_may_read_media,
     recorded_decision,
 )
@@ -340,6 +341,7 @@ from app.services.shema.media_download_url import (
     material_download_url,
     media_download_url,
 )
+from app.services.shema.pending_image_download_url import pending_image_download_url
 from app.services.shema.read_intake_form import form_fields, read_intake_form
 from app.services.shema.read_record import build_record, read_changes_since, read_record
 from app.services.shema.read_submission import as_received, list_submissions, read_submission
@@ -488,10 +490,12 @@ __all__ = [
     "notify_submission",
     "notify_urgent",
     "open_exit_link",
+    "pending_image_download_url",
     "pending_projects",
     "plan_needs",
     "prayer_visibility",
     "publish_definition",
+    "pulse_image_authorized",
     "raise_day_moves",
     "reaches",
     "reaches_prayer_wall",

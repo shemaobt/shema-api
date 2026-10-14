@@ -86,12 +86,14 @@ from app.models.shema_forms import (
     ReceivedSubmissionDetail,
     SubmissionImport,
 )
+from app.models.shema_record import ShemaMediaLink
 from app.services.shema import (
     apply_submission,
     create_intake_link,
     import_submission,
     list_intake_links,
     list_submissions,
+    pending_image_download_url,
     read_intake_form,
     read_submission,
     receive_submission,
@@ -193,6 +195,22 @@ async def received(
 ) -> list[ReceivedSubmission]:
     """FE-44 §9.9's inbox: everything received for the projects the caller reaches."""
     return await list_submissions(db, scope, project_id=project_id, readership=reading)
+
+
+@router.get("/forms/submissions/{submission_id}/image/link", response_model=ShemaMediaLink)
+async def pending_image_link(
+    submission_id: str, db: Db, scope: Scope, user: CurrentUser, reading: Reading
+) -> ShemaMediaLink:
+    """A fifteen-minute signed GET for a pending Pulse's image — or a refusal naming no reason.
+
+    OBT-585: the coordination decides whether to import on the inbox, and the photograph is part
+    of what it decides on. The item's link (``app/api/shema/media.py``) only exists after the
+    import; this one serves the upload before it, behind the same gates applied to the leader's
+    box instead of a recorded decision (``app/services/shema/_pending_image.py`` carries them and
+    the order). Minted per call, stored nowhere; the detail above says whether to ask.
+    """
+    link = await pending_image_download_url(db, scope, submission_id, user=user, readership=reading)
+    return ShemaMediaLink(url=link.url, expires_in_minutes=link.expires_in_minutes)
 
 
 @router.get("/forms/submissions/{submission_id}", response_model=ReceivedSubmissionDetail)

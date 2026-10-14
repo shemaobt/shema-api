@@ -238,10 +238,18 @@ class ShemaIntakeImage(Base):
 
     **It is not a media item yet.** Until a coordinator imports the Pulse, the photo is on no
     surface of the record: the ficha's media list and the card's ``hasMedia`` read
-    ``shema_media_items``, and this table is not that one. The import is what mints the
+    ``shema_media_items``, and this table is not that one — nor do the export, the prayer wall
+    or the Pulse read it. The import is what mints the
     :class:`~app.db.models.shema_media.ShemaMediaItem` — with the leader's answer to the box as
     the authorization triple — and writes :attr:`media_item_id` here, so the two rows point at
     the same object and the same decision (``docs/shema.md`` §6.6).
+
+    **The one surface before the import is the inbox, and it is not the record** (OBT-585):
+    the submission detail says whether there is a pending image to ask for, and
+    ``GET /forms/submissions/{id}/image/link`` mints a fifteen-minute URL for it, behind the
+    media item's gates with the leader's box standing in for the decision nobody has recorded
+    yet (``app/services/shema/_pending_image.py``). The coordination decides whether to import
+    on that screen, and the photograph is part of what it decides on.
 
     ``intake_link_id`` is ``SET NULL`` for the link's own reason: revoking a credential must not
     be blocked by what came through it. The project reference restricts, as the submission's
