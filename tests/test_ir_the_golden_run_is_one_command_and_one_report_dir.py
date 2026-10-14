@@ -762,6 +762,36 @@ async def test_a_rejudge_over_a_json_file_that_is_not_an_export_names_the_file_a
     assert not again.exists(), "a recusa vem antes de escrever qualquer coisa"
 
 
+@pytest.mark.parametrize(
+    ("file_name", "verdict_name"),
+    [
+        (
+            "P01-renamed.2026-09-16T21-13-26.json",
+            "P01-a.P01-renamed.2026-09-16T21-13-26.verdict.json",
+        ),
+        (
+            "P01-a.2026-09-16T21-13-26.5.json",
+            "P01-a.2026-09-16T21-13-26.5.verdict.json",
+        ),
+    ],
+)
+async def test_a_rejudge_names_the_verdict_from_the_exports_name_and_keeps_the_whole_stamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_name: str, verdict_name: str
+) -> None:
+    the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    (earlier / "P01-a.2026-09-16T21-13-26.json").rename(earlier / file_name)
+    again = tmp_path / "again"
+
+    await golden_runner.run(_args(earlier, again, rejudge=str(earlier)))
+
+    assert [verdict.name for verdict in again.glob("*.verdict.json")] == [verdict_name], (
+        "o carimbo era cortado pelo tamanho do nome de dentro do JSON, e não do que o arquivo diz"
+    )
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

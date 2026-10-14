@@ -950,7 +950,7 @@ async def rejudge(args: argparse.Namespace) -> int:
                     script,
                     result,
                     out=out,
-                    stamp=path.stem[len(script.name) + 1 :],
+                    stamp=path.stem.removeprefix(f"{script.name}."),
                     prompt_repeats=shares_judge_prompt(script, to_judge),
                 )
     except BaseException as killed:
