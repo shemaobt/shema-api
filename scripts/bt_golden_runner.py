@@ -313,6 +313,7 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
     print(f"▶ {script.name} ({script.pericopeId}, {script.language}) → {base_url}")
     played: list[Played] = []
     refused: httpx.HTTPStatusError | None = None
+    killed: Exception | None = None
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
         try:
             session_id = await open_session(script, client)
@@ -322,6 +323,9 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
             await play(script, client, session_id=session_id, played=played)
         except httpx.HTTPStatusError as stopped:
             refused = stopped
+        except Exception as dead:
+            killed = dead
+            raise
         finally:
             calls = _paid(played)
             paid.extend(calls)
@@ -336,6 +340,8 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
             )
             failed = sum(len(line.checks) for line in played)
             verdict = "STOPPED" if refused is not None else ("FAIL" if failed else "PASS")
+            if killed is not None:
+                verdict = f"KILLED · {type(killed).__name__}: {killed}"
             cost = sum(priced(calls)[0].values())
             print(f"  {verdict} · {failed} check(s) failed · {session_id} · cost US$ {cost:.2f}")
             print(f"  {report}\n  {transcript}")

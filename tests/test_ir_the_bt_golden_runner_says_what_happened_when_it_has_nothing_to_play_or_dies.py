@@ -135,3 +135,30 @@ async def test_a_script_killed_by_a_timeout_still_leaves_the_run_its_cost_total(
     assert "\ncost US$ 6.00 — analyst US$ 4.00 · speaker US$ 2.00\n" in capsys.readouterr().out, (
         "uma rodada de cada roteiro foi paga antes de o tempo esgotar, e a conta não aparecia"
     )
+
+
+async def test_a_script_killed_by_a_timeout_is_a_killed_verdict_naming_the_error_and_never_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    rounds: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        rounds.append(request.url.path)
+        if len(rounds) == 2:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return _a_round_that_costs_three_dollars()
+
+    the_room_answers(monkeypatch, _room)
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2))
+
+    with pytest.raises(httpx.ReadTimeout):
+        await bt_golden_runner.run(bt_args(tmp_path / "reports"))
+
+    shown = capsys.readouterr().out
+    assert (
+        "  KILLED · ReadTimeout: the room did not answer · 0 check(s) failed · s-1 "
+        "· cost US$ 3.00\n"
+    ) in shown, "o roteiro morreu na segunda rodada e a linha dele dizia PASS"
+    assert "PASS" not in shown
