@@ -440,6 +440,10 @@ def _package_of(module: Path, root: Path) -> list[str]:
 Callee = tuple[Path, ast.Module, ast.FunctionDef | ast.AsyncFunctionDef, int]
 
 
+def _is_static(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return "staticmethod" in {_decorator_name(decorator) for decorator in method.decorator_list}
+
+
 def _defined_at(
     tree: ast.Module, path: list[str]
 ) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, int] | None:
@@ -451,7 +455,7 @@ def _defined_at(
                 if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef) and path[1:] == [
                     method.name
                 ]:
-                    return method, 1
+                    return method, 0 if _is_static(method) else 1
     return None
 
 
@@ -1224,6 +1228,30 @@ class Holder:
 
 def test_a_case() -> None:
     Quiet().forget(book_material.preservation_rules)
+"""
+
+THE_CLASS_WHOSE_STATIC_METHOD_CLEARS_ITS_PARAMETER = """\
+class Holder:
+    @staticmethod
+    def forget(cached) -> None:
+        cached.cache_clear()
+"""
+
+THE_CASE_THAT_CALLS_A_STATIC_METHOD_ON_THE_CLASS = """\
+from a_helper import Holder
+
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    Holder.forget(book_material.preservation_rules)
+"""
+
+THE_CLASS_WHOSE_CLASS_METHOD_CLEARS_ITS_PARAMETER = """\
+class Holder:
+    @classmethod
+    def forget(cls, cached) -> None:
+        cached.cache_clear()
 """
 
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
@@ -2035,12 +2063,26 @@ def test_a_helper_of_another_module_that_clears_its_parameter_is_a_clear_at_the_
             [7],
             [],
         ),
+        (
+            THE_CLASS_WHOSE_STATIC_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_STATIC_METHOD_ON_THE_CLASS,
+            [7],
+            [],
+        ),
+        (
+            THE_CLASS_WHOSE_CLASS_METHOD_CLEARS_ITS_PARAMETER,
+            THE_CASE_THAT_CALLS_A_STATIC_METHOD_ON_THE_CLASS,
+            [7],
+            [],
+        ),
         ("", A_CLASS_OF_THE_CASE_WHOSE_METHOD_CLEARS_ITS_PARAMETER, [9, 13], [6]),
         ("", TWO_CLASSES_WHOSE_METHODS_ARE_CALLED_FORGET, [], [11]),
     ],
     ids=[
         "a method called on an instance of an imported class",
         "a method called on a fresh instance of an imported class",
+        "a static method called on the class, which has no receiver",
+        "a class method called on the class, whose receiver is the class",
         "a method of a class of the case, through self and through an instance",
         "two classes whose methods share a name",
     ],
