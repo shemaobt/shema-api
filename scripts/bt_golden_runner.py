@@ -54,6 +54,7 @@ from scripts.golden_spend import (
     split,
     stopped,
     uncounted,
+    what_killed,
 )
 
 BT_DIR = Path(__file__).resolve().parent.parent / "golden/bt"
@@ -314,20 +315,20 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
     print(f"▶ {script.name} ({script.pericopeId}, {script.language}) → {base_url}")
     played: list[Played] = []
     refused: httpx.HTTPStatusError | None = None
-    killed: Exception | None = None
+    killed: BaseException | None = None
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
         try:
             session_id = await open_session(script, client)
         except httpx.HTTPStatusError as turned_away:
             return _refused(turned_away)
-        except Exception as dead:
-            print(f"  KILLED · {type(dead).__name__}: {dead} · {script.name} not opened")
+        except BaseException as dead:
+            print(f"  KILLED · {what_killed(dead)} · {script.name} not opened")
             raise
         try:
             await play(script, client, session_id=session_id, played=played)
         except httpx.HTTPStatusError as stopped:
             refused = stopped
-        except Exception as dead:
+        except BaseException as dead:
             killed = dead
             raise
         finally:
@@ -345,7 +346,7 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
             failed = sum(len(line.checks) for line in played)
             verdict = "STOPPED" if refused is not None else ("FAIL" if failed else "PASS")
             if killed is not None:
-                verdict = f"KILLED · {type(killed).__name__}: {killed}"
+                verdict = f"KILLED · {what_killed(killed)}"
             cost = sum(priced(calls)[0].values())
             print(f"  {verdict} · {failed} check(s) failed · {session_id} · cost US$ {cost:.2f}")
             print(f"  {report}\n  {transcript}")

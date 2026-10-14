@@ -11,6 +11,7 @@ Ruth alone, and the run has to say so and go on.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -683,6 +684,46 @@ async def test_a_rejudge_killed_by_an_error_still_leaves_the_readme_and_the_cost
     )
     assert "Rodada interrompida em P01-b por IsADirectoryError: " in readme
     assert "\ncost US$ 0.51 — judge US$ 0.51\n" in capsys.readouterr().out
+
+
+async def test_a_rejudge_cancelled_midway_still_leaves_the_readme_and_the_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    silent = asyncio.Event()
+
+    class _SilentOnTheSecondCall(_Wire):
+        calls = 0
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.calls += 1
+            if self.calls == 2:
+                silent.set()
+                await asyncio.Event().wait()
+            return await super().create(**kwargs)
+
+    wire = _SilentOnTheSecondCall(json.dumps(A_VERDICT))
+    the_room_agent_is(monkeypatch, judge=llm.call_agent)
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: wire)
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    _export(earlier, "P01-b")
+    out = tmp_path / "again"
+    playing = asyncio.create_task(golden_runner.run(_args(earlier, out, rejudge=str(earlier))))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P01-a | FAIL |" in readme and "| P01-b | — |" in readme, (
+        "o P01-a foi julgado e o juiz do P01-b foi cancelado: as duas linhas existem"
+    )
+    assert "judge US$ 0.26." in readme, "0,256 da tabela, à mão: só a chamada que terminou é paga"
+    assert "Rodada interrompida em P01-b por CancelledError.\n" in readme
+    assert "\ncost US$ 0.26 — judge US$ 0.26\n" in capsys.readouterr().out
 
 
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:
