@@ -391,12 +391,22 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
             ),
         ]
 
+    around = {
+        inner: outer
+        for outer in classes.values()
+        for inner in outer.body
+        if isinstance(inner, ast.ClassDef)
+    }
+
+    def visible(scope: ast.ClassDef) -> list[ast.ClassDef]:
+        return [*lineage(scope), *(visible(around[scope]) if scope in around else [])]
+
     reach: dict[ast.AST, dict[str, ast.AST]] = {}
     for scope in ast.walk(tree):
         if isinstance(scope, ast.ClassDef):
             fixtures = {
                 function.name: function
-                for each in reversed(lineage(scope))
+                for each in reversed(visible(scope))
                 for function in each.body
                 if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
                 and function.name in _fixtures_of(each)
@@ -1964,6 +1974,22 @@ class TestACase(Base):
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_NESTED_CLASS_ASKS_FOR_THE_FIXTURE_OF_THE_CLASS_AROUND_IT = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestOuter:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    class TestInner:
+        def test_a_case(self, cached) -> None:
+            cached.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -2880,12 +2906,14 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_TEST_OF_THE_MODULE_TOO, [12], [16]),
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_METHOD_OF_ANOTHER_CLASS_TOO, [12], [17]),
         (THE_CASE_WHOSE_METHOD_ASKS_FOR_THE_FIXTURE_OF_ITS_BASE_CLASS, [14], []),
+        (THE_CASE_WHOSE_NESTED_CLASS_ASKS_FOR_THE_FIXTURE_OF_THE_CLASS_AROUND_IT, [13], []),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
         "a test of the module that asks for the name of the class's fixture",
         "a method of another class that asks for the name of the class's fixture",
         "a method of a subclass that asks for the fixture of its base class",
+        "a method of a nested class that asks for the fixture of the class around it",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
