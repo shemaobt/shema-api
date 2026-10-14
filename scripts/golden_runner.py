@@ -37,7 +37,8 @@ earlier run again, without playing the room.
 
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
 mechanical check tripped. 1 when any session failed or was refused, 2 when there was
-nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
+nothing to play or a script could not be read — named on stderr before any session is
+played or paid for — and 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
 
 A run stops before the next session once what it has spent reaches `--budget-usd`, or
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
@@ -734,7 +735,13 @@ def summary(
 async def run(args: argparse.Namespace) -> int:
     if args.rejudge:
         return await rejudge(args)
-    scripts = [load_script(path) for path in scripts_to_play(args)]
+    scripts: list[Script] = []
+    for path in scripts_to_play(args):
+        try:
+            scripts.append(load_script(path))
+        except Exception as unreadable:
+            print(f"golden: {path}: {type(unreadable).__name__}: {unreadable}", file=sys.stderr)
+            return 2
     if not scripts:
         asked = f"session named {args.only}" if args.only else f"sessions under {args.sessions}"
         print(f"golden: no {asked}", file=sys.stderr)

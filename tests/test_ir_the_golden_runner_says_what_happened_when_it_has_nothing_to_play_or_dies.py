@@ -52,6 +52,45 @@ async def test_an_empty_sessions_directory_names_the_directory_and_not_a_session
     )
 
 
+async def test_a_script_that_cannot_be_read_is_named_and_the_run_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    asked: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(500)
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 1))
+    broken = sessions / "P02-b.json"
+    broken.write_text('{"name": "P02-b", "pericopeId": "P02"', encoding="utf-8")
+
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
+
+    assert exit_code == 2, "um roteiro ilegível não é uma sessão reprovada: a rodada nem começa"
+    assert capsys.readouterr().err.startswith(f"golden: {broken}: JSONDecodeError: "), (
+        "o JSON cortado derrubava a rodada inteira num traceback que não dizia qual arquivo era"
+    )
+    assert asked == [], "o P01 estava bom, mas a rodada com um roteiro ruim não gasta nada"
+
+
+async def test_a_script_named_by_a_path_that_does_not_exist_is_named_back(
+    tmp_path: Path, capsys
+) -> None:
+    sessions = golden_shelf(tmp_path)
+    gone = tmp_path / "gone.json"
+
+    exit_code = await golden_runner.run(
+        golden_args(sessions, tmp_path / "reports", script=str(gone))
+    )
+
+    assert exit_code == 2
+    assert capsys.readouterr().err.startswith(f"golden: {gone}: FileNotFoundError: "), (
+        "quem passou --script com o caminho errado levava um traceback sem o caminho de volta"
+    )
+
+
 async def test_a_session_killed_by_a_timeout_still_leaves_the_readme_and_the_cost_total(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:

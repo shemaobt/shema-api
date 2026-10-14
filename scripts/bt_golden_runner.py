@@ -16,7 +16,8 @@ voice, the outcome and the checks that failed; and `<name>.<stamp>.transcript.tx
 round by round for a person to read beside one of her `.golden/bt-<name>.md` reports.
 
 The exit code is the gate: 1 when any check failed in any round, 2 when the room refused the
-request or the shelf held no script to play, 0 when her bar was met. Each run costs real
+request, the shelf held no script to play or a script could not be read (named on stderr
+before any round is paid for), 0 when her bar was met. Each run costs real
 model calls — hers came to roughly US$ 6-7 for five rounds — so it is never part of the test
 suite.
 
@@ -246,15 +247,22 @@ async def run(args: argparse.Namespace) -> int:
     if not paths:
         print(f"bt golden: no script under {BT_DIR}", file=sys.stderr)
         return 2
+    scripts: list[Script] = []
+    for path in paths:
+        try:
+            scripts.append(load_script(path))
+        except Exception as unreadable:
+            print(f"bt golden: {path}: {type(unreadable).__name__}: {unreadable}", file=sys.stderr)
+            return 2
     codes: list[int] = []
     paid: list[Call] = []
     not_started: list[str] = []
     try:
-        for position, path in enumerate(paths):
+        for position, script in enumerate(scripts):
             if budgeted(paid) >= budget:
-                not_started = [later.stem for later in paths[position:]]
+                not_started = [later.name for later in scripts[position:]]
                 break
-            codes.append(await play_script(path, args, paid))
+            codes.append(await play_script(script, args, paid))
     finally:
         by_role, unpriced = priced(paid)
         if by_role or unpriced:
@@ -293,14 +301,13 @@ def scripts_to_play(args: argparse.Namespace) -> list[Path]:
     return [Path(args.script)] if args.script else sorted(BT_DIR.glob("*.json"))
 
 
-async def play_script(path: Path, args: argparse.Namespace, paid: list[Call]) -> int:
+async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]) -> int:
     """Play her script through one room and answer with what a CI should do about it.
 
     The catches in this file are the boundary: the room refusing, at the door or in a round,
     is not her bar failing, and the rounds already paid for in model calls have to reach the
     report before that becomes an exit code.
     """
-    script = load_script(path)
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"X-Access-Code": args.access_code} if args.access_code else {}
     print(f"▶ {script.name} ({script.pericopeId}, {script.language}) → {base_url}")
