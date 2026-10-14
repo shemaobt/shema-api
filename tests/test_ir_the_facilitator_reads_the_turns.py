@@ -644,6 +644,7 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
         "synthesis_ms": None,
         "model": None,
         "text": "Linha antiga.",
+        "moment": None,
     }
 
 
