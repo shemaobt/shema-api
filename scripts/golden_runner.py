@@ -874,7 +874,6 @@ async def rejudge(args: argparse.Namespace) -> int:
     results: list[SessionResult] = []
     not_started: list[str] = []
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
-    playing = earlier[0][1].name
     try:
         for position, (path, script, result, _) in enumerate(earlier):
             playing = script.name
