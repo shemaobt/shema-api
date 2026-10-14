@@ -497,7 +497,7 @@ def _clears_its_parameter(callee: Callee, parameter: str, root: Path) -> bool:
     file, tree, function, _ = callee
     if "cache_clear" not in file.read_text(encoding="utf-8"):
         return False
-    marker = f"<{parameter}>"
+    marker = f"<marker>.{parameter}"
     of_the_marker, _ = _clears_in_tree(
         file,
         tree,
@@ -1243,6 +1243,14 @@ A_MODULE_OUTSIDE_THE_ROOM_IMPORTED_BY_A_DOT = A_SIBLING_MODULE_IMPORTED_BY_A_DOT
 THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER = """\
 def forget(cached) -> None:
     cached.cache_clear()
+"""
+
+THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER_IN_A_NESTED_FUNCTION = """\
+def forget(cached) -> None:
+    def _empty(held) -> None:
+        held.cache_clear()
+
+    _empty(cached)
 """
 
 THE_HELPER_MODULE_THAT_CLEARS_ITS_FIRST_PARAMETER_ONLY = """\
@@ -2227,6 +2235,11 @@ def _a_case_beside_its_helper(tmp_path: Path, helper: str, source: str) -> Path:
             [7],
         ),
         (
+            THE_HELPER_MODULE_THAT_CLEARS_ITS_PARAMETER_IN_A_NESTED_FUNCTION,
+            THE_CASE_THAT_IMPORTS_THE_HELPER_BY_NAME,
+            [7],
+        ),
+        (
             THE_HELPER_MODULE_THAT_CLEARS_ITS_FIRST_PARAMETER_ONLY,
             THE_CASE_THAT_HANDS_THE_CACHE_SECOND,
             [],
@@ -2246,6 +2259,7 @@ def _a_case_beside_its_helper(tmp_path: Path, helper: str, source: str) -> Path:
         "a helper imported by name",
         "a helper reached through its module under another name",
         "a helper imported under another name, the cache given by keyword",
+        "a helper that hands its parameter to a nested function that clears it",
         "a cache handed to the parameter the helper leaves alone",
         "a helper that clears something else",
         "a helper handed another cache",
