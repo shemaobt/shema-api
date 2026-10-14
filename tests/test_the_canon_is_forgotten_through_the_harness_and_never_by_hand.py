@@ -240,16 +240,60 @@ def _sourced_by(bindings: Bindings, seed: dict[str, list[ast.AST]]) -> dict[str,
     return sources
 
 
-def _cleared_by(call: ast.Call) -> ast.expr | None:
-    if isinstance(call.func, ast.Attribute) and call.func.attr == "cache_clear":
-        return call.func.value
-    got = _got_by_getattr(call.func)
+def _bound_clear_of(expression: ast.AST) -> ast.expr | None:
+    if isinstance(expression, ast.Attribute) and expression.attr == "cache_clear":
+        return expression.value
+    got = _got_by_getattr(expression)
     return got[0] if got and got[1] == "cache_clear" else None
+
+
+def _bound_clears_kept_in(
+    name: str, sources: dict[str, list[ast.AST]], reading: frozenset[str] = frozenset()
+) -> list[ast.expr]:
+    if name in reading:
+        return []
+    cleared: list[ast.expr] = []
+    for source in sources.get(name, []):
+        if (bound := _bound_clear_of(source)) is not None:
+            cleared.append(bound)
+        elif isinstance(source, ast.Name):
+            cleared.extend(_bound_clears_kept_in(source.id, sources, reading | {name}))
+    return cleared
+
+
+def _cleared_by(
+    call: ast.Call, sources: dict[str, list[ast.AST]], spied_on: set[ast.AST]
+) -> list[ast.expr]:
+    if (direct := _bound_clear_of(call.func)) is not None:
+        return [direct]
+    if isinstance(call.func, ast.Name) and call not in spied_on:
+        return _bound_clears_kept_in(call.func.id, sources)
+    return []
+
+
+def _inside_the_spies(tree: ast.AST) -> set[ast.AST]:
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    called = {call.func.id for call in calls if isinstance(call.func, ast.Name)}
+    installed = {
+        argument.id
+        for call in calls
+        if isinstance(call.func, ast.Attribute) and call.func.attr == "setattr"
+        for argument in call.args
+        if isinstance(argument, ast.Name)
+    }
+    return {
+        inside
+        for function in ast.walk(tree)
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+        and function.name in installed - called
+        for inside in ast.walk(function)
+    }
 
 
 def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
     tree = ast.parse(module.read_text(encoding="utf-8"))
     imports = _imports_of(tree)
+    spied_on = _inside_the_spies(tree)
     at_the_top = list(_outside_every_function(tree))
     arguments = _arguments_given(tree)
     at_the_top_sources = _sourced_by(_bindings(at_the_top, arguments), {})
@@ -262,9 +306,12 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
     of_something_else: list[int] = []
     for nodes, sources in scopes:
         for node in nodes:
-            if isinstance(node, ast.Call) and (cleared := _cleared_by(node)) is not None:
-                names = _names_in(cleared, imports, sources)
-                (of_the_canon if names & canon_caches else of_something_else).append(node.lineno)
+            if not isinstance(node, ast.Call) or not (
+                cleared := _cleared_by(node, sources, spied_on)
+            ):
+                continue
+            names = set().union(*(_names_in(each, imports, sources) for each in cleared))
+            (of_the_canon if names & canon_caches else of_something_else).append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
 
 
@@ -534,6 +581,25 @@ def test_a_case() -> None:
     held.load_map.cache_clear()
 """
 
+CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+    empty_it()
+"""
+
+CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    empty_it = getattr(book_material.preservation_rules, "cache_clear")
+    empty_it()
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -546,6 +612,33 @@ def test_a_case(monkeypatch) -> None:
         empty_it()
 
     monkeypatch.setattr(cache, "cache_clear", empty_and_note)
+"""
+
+A_SPY_THE_CASE_CALLS_BY_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case(monkeypatch) -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+
+    def empty_and_note() -> None:
+        empty_it()
+
+    monkeypatch.setattr(cache, "cache_clear", empty_and_note)
+    empty_and_note()
+"""
+
+A_WRAPPER_NO_ONE_INSTALLED = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cache = book_material.preservation_rules
+    empty_it = cache.cache_clear
+
+    def empty_and_note() -> None:
+        empty_it()
 """
 
 CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET = """\
@@ -872,6 +965,8 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_MODULE_UNDER_ANOTHER_NAME, 5),
         (CLEARS_THROUGH_THE_FULL_PATH, 5),
         (CLEARS_THROUGH_A_NAME_THAT_HOLDS_THE_MODULE, 6),
+        (CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME, 7),
+        (CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR, 6),
     ],
     ids=[
         "named at the clear",
@@ -899,6 +994,8 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named through a module imported under another name",
         "named by the full path of its module",
         "named through a name that holds the module",
+        "cleared by a bound cache_clear kept in a name",
+        "cleared by a bound cache_clear got by getattr",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -1070,6 +1167,21 @@ def test_a_spy_the_harness_calls_through_a_bound_cache_clear_is_not_a_clear_by_h
     )
 
     assert (of_the_canon, of_something_else) == ([], [])
+
+
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [(A_SPY_THE_CASE_CALLS_BY_NAME, 9), (A_WRAPPER_NO_ONE_INSTALLED, 9)],
+    ids=["a spy the case calls by name", "a wrapper no one installed"],
+)
+def test_a_wrapper_that_is_called_or_never_installed_is_a_clear_by_hand(
+    tmp_path: Path, source: str, line: int
+) -> None:
+    of_the_canon, of_something_else = _the_clears_in(
+        _planted(tmp_path, source), _the_caches_the_harness_forgets()
+    )
+
+    assert (of_the_canon, of_something_else) == ([line], [])
 
 
 @pytest.mark.parametrize(
