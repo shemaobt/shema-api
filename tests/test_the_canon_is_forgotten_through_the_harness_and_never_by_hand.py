@@ -80,23 +80,23 @@ def _outside_every_function(node: ast.AST) -> Iterator[ast.AST]:
             yield from _outside_every_function(child)
 
 
+def _bound_by(target: ast.expr) -> list[str]:
+    return [
+        bound.id
+        for bound in ast.walk(target)
+        if isinstance(bound, ast.Name) and isinstance(bound.ctx, ast.Store)
+    ]
+
+
 def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
     for node in nodes:
         if isinstance(node, ast.For):
-            yield (
-                [bound.id for bound in ast.walk(node.target) if isinstance(bound, ast.Name)],
-                (node.iter),
-            )
+            yield _bound_by(node.target), node.iter
         elif isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name):
-                    yield [target.id], node.value
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.value is not None
-        ):
-            yield [node.target.id], node.value
+                yield _bound_by(target), node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            yield _bound_by(node.target), node.value
 
 
 def _fed_by(
@@ -189,6 +189,15 @@ from app.services.internalization_room.canon import book_material, parse_map
 def test_a_case() -> None:
     for named, cached in (("one", book_material.preservation_rules), ("two", parse_map.load_map)):
         cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_TUPLE_TARGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cached, other = book_material.preservation_rules, 1
+    cached.cache_clear()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -424,6 +433,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THE_LOADER_DIRECTLY, 5),
         (CLEARS_THROUGH_A_LOOP_VARIABLE, 6),
         (CLEARS_THROUGH_A_TUPLE_LOOP, 6),
+        (CLEARS_THROUGH_A_TUPLE_TARGET, 6),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -438,6 +448,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named at the clear",
         "named by the loop that feeds it",
         "named by a tuple the loop unpacks",
+        "named by a tuple target",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
