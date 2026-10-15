@@ -742,3 +742,23 @@ async def test_a_p11_scene_4_rehearsal_sent_as_a_checking_turn_reads_r5_as_the_a
     assert checked["voice"]["accepted_ids"] == ["R5"], (
         "a leitura do consultor não dizia quais leituras aceitas o turno de conferência levou"
     )
+
+
+async def test_the_opening_and_the_same_words_typed_read_no_accepted_readings(
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    the_models_answer(monkeypatch)
+    opened = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": room.session_id, "roomNote": "session_start"}
+    )
+    typed = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": room.session_id, "teamText": SANDAL[0]}
+    )
+    assert (opened.status_code, typed.status_code) == (200, 200), (opened.text, typed.text)
+
+    turns = await _read(golden, room)
+
+    assert [turn["voice"]["accepted_ids"] for turn in turns] == [[], []], (
+        "um turno sem conferência aparecia na leitura com leituras aceitas, ou sem a chave"
+    )
