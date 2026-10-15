@@ -528,3 +528,17 @@ async def test_the_golden_turn_answers_with_the_ids_the_record_keeps_for_it(
     await db_session.refresh(stored)
     *_, guide = stored.messages
     assert guide["accepted_ids"] == typed.json()["acceptedIds"]
+
+
+async def test_an_ordinary_golden_turn_says_nothing_of_accepted_ids(client, monkeypatch) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    typed = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": SANDAL[0]}
+    )
+
+    assert typed.status_code == 200, typed.text
+    assert "acceptedIds" not in typed.json(), (
+        "a resposta de um turno comum trazia a chave de leituras aceitas"
+    )
