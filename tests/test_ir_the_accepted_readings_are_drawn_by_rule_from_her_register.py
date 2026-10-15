@@ -137,3 +137,29 @@ def test_the_guard_holds_nothing_back_on_the_pinned_canon() -> None:
     held = [x.key for pericope in RUTH for x in accepted_readings_of(pericope).excluded]
 
     assert held == [], "o cânone fixado tinha itens barrados pelo guarda"
+
+
+def test_a_text_fact_a_code_and_a_cut_that_no_longer_fits_are_held_back_naming_why() -> None:
+    anchor = "The voice accepts it and does not correct or remark on it. Voice and team"
+    planted = (
+        "A team telling 'he took off his shoe' is accepted without comment, as the Hebrew "
+        "word allows. A team telling 'his shoe' is correct (FIG_0168)."
+    )
+    log = P11_LOG.read_text(encoding="utf-8")
+    assert log.count(anchor) == 1 and log.count("OPTIONAL (FIG_0167): ") == 1
+    sabotaged = log.replace(
+        anchor, anchor.replace(" Voice and team", f" {planted} Voice and team")
+    ).replace("OPTIONAL (FIG_0167): ", "OPTIONAL (FIG_0167) — ")
+
+    readings = accepted_readings_from("P11", sabotaged, P11_COORDINATES.read_text(encoding="utf-8"))
+
+    held = {(x.why[:26], x.text[:40]) for x in readings.excluded}
+    assert held == {
+        ("fact", "A team telling 'he took off his shoe' is"),
+        ("code", "A team telling 'his shoe' is correct (FI"),
+        ("cut not found exactly once", "OPTIONAL (FIG_0167) — 'I will uncover yo"),
+    }, "um fato do texto, um código ou um corte que já não cabia chegava à voz"
+    every_line = "\n".join(
+        line for scene in ("S1", "S2", "S3", "S4") for line in accepted_lines(readings.items, scene)
+    )
+    assert "shoe" not in every_line and "FIG_" not in every_line and "OPTIONAL" not in every_line
