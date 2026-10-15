@@ -69,6 +69,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.facilitator_route_audit_harness import facilitator_routes, template_of
 from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
@@ -78,37 +79,6 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 #: The only body the force route accepts as a force. Without it the route answers
 #: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
 FORCE = {"json": {"force": True}}
-
-
-def _dependency_calls(dependant) -> set:
-    found = {dependant.call}
-    for sub in dependant.dependencies:
-        found |= _dependency_calls(sub)
-    return found
-
-
-def facilitator_routes() -> list[tuple[str, str]]:
-    """Every mounted route behind the facilitator or the reader gate, as (method, path).
-
-    Derived from the gate objects in each route's dependency tree rather than from the path,
-    because `/facilitator` in a path is a naming convention and this is not. A route added
-    to either family is covered here the moment it is mounted.
-    """
-    from app.api.facilitator._deps import facilitator_role, reader_role
-    from app.main import app
-
-    gates = {facilitator_role.dependency, reader_role.dependency}
-    found = []
-    for route in app.routes:
-        dependant = getattr(route, "dependant", None)
-        if dependant is None:
-            continue
-        calls = {getattr(c, "dependency", c) for c in _dependency_calls(dependant)}
-        if not gates & calls:
-            continue
-        for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
-            found.append((method, route.path))
-    return sorted(found)
 
 
 @pytest.fixture()
@@ -521,42 +491,6 @@ def _shape(body, *ids: str):
     return out
 
 
-#: Templates of the same set, for matching against the mounted paths.
-REFUSING_TEMPLATES = {
-    ("POST", f"{DESK}/devices/claim"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/coverage"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/boundary-turns"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns/{{number}}/audio"),
-    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
-    ("PATCH", f"{DESK}/devices/{{device_id}}"),
-    ("DELETE", f"{DESK}/devices/{{device_id}}"),
-    ("POST", f"{DESK}/devices/{{device_id}}/attended"),
-    ("DELETE", f"{DESK}/devices/{{device_id}}/attended"),
-    ("GET", f"{DESK}/teams/{{team_id}}"),
-    ("GET", f"{DESK}/teams/{{team_id}}/devices"),
-    ("GET", f"{DESK}/teams/{{team_id}}/coverage"),
-    ("GET", f"{DESK}/teams/{{team_id}}/pericopes"),
-    ("GET", f"{DESK}/teams/{{team_id}}/sessions"),
-    ("GET", f"{DESK}/teams/{{team_id}}/nudges"),
-    ("GET", f"{IR}/facilitator/questions"),
-    ("GET", f"{IR}/facilitator/questions/{{question_id}}/audio"),
-    ("GET", f"{IR}/facilitator/questions/audio/{{handle}}"),
-    ("POST", f"{IR}/facilitator/questions/{{question_id}}/reply"),
-    ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/mother-tongue-takes"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/scene-rehearsals"),
-    ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
-    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
-    ("DELETE", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
-    ("POST", f"{IR}/facilitator/projects/{{project_id}}/passages/{{pericope}}/archive"),
-}
-
 #: Routes that name no resource and cannot refuse: they answer with a list, and the scoping
 #: shows as a row that is absent rather than a status. Checked by its own case below.
 FILTERING_TEMPLATES = {
@@ -591,20 +525,43 @@ def test_the_audit_is_not_empty() -> None:
     )
 
 
-def test_every_facilitator_route_is_covered_by_this_audit() -> None:
-    """A route in neither group is a route this file silently skips.
+async def test_every_facilitator_route_is_covered_by_this_audit(client, db_session) -> None:
+    """A route in no group is a route this file silently skips.
 
-    The set of routes is derived; what is written by hand is how to *ask* each one. This is
-    what stops the two drifting apart — a new facilitator route fails here until somebody
-    says which kind of scoping it has.
+    The set of routes is derived; what is written by hand is how to *ask* each one, in
+    `refusing_routes`, and the derivation proves that table complete. This is what stops
+    the two drifting apart — a new facilitator route fails here until somebody says which
+    kind of scoping it has.
     """
+    owner = await a_facilitator(db_session, email="dono@example.com")
     mounted = set(facilitator_routes())
-    covered = REFUSING_TEMPLATES | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
+    held = {
+        (case["method"], template_of(case["method"], case["owned"][0]))
+        for case in await refusing_routes(db_session, owner, "x")
+    }
+    covered = held | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
 
     assert mounted == covered, (
         "as rotas de facilitador mudaram e esta auditoria nao acompanhou — "
         f"sem cobertura: {sorted(mounted - covered)}; sobrando na tabela: "
         f"{sorted(covered - mounted)}"
+    )
+
+
+async def test_refusing_routes_holds_a_case_for_every_mounted_route_that_names_a_resource(
+    client, db_session
+) -> None:
+    owner = await a_facilitator(db_session, email="dono@example.com")
+
+    held = {
+        (case["method"], template_of(case["method"], case["owned"][0]))
+        for case in await refusing_routes(db_session, owner, "x")
+    }
+    named = set(facilitator_routes()) - FILTERING_TEMPLATES - NOTHING_TO_SCOPE
+
+    assert held == named, (
+        "a tabela de casos nao acompanha as rotas montadas — "
+        f"sem caso: {sorted(named - held)}; caso sem rota: {sorted(held - named, key=str)}"
     )
 
 

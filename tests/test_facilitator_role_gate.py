@@ -33,6 +33,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.facilitator_route_audit_harness import facilitator_routes as routes_behind_the_gates
 from tests.release_harness import a_claimed_device, team_headers
 from tests.stream_harness import opening_status
 
@@ -348,6 +349,10 @@ def test_the_audit_covers_both_route_families():
     assert set(facilitator_routes()) <= set(_REQUESTS), (
         f"rotas fora da tabela: {set(facilitator_routes()) - set(_REQUESTS)}"
     )
+
+
+def test_the_finder_by_path_and_the_finder_by_gate_find_the_same_routes():
+    assert set(facilitator_routes()) == set(routes_behind_the_gates())
 
 
 async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(
