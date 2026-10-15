@@ -265,6 +265,12 @@ def _reads_that_name_a_team_resource() -> set[str]:
     }
 
 
+def _audio_doors() -> set[str]:
+    return {
+        path for method, path in facilitator_routes() if method == "GET" and path.endswith("/audio")
+    }
+
+
 def _reads_of_a_team() -> set[str]:
     return {
         path
@@ -370,14 +376,20 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
     session_before = await _row(per_request, IRSession, team.session)
     question_before = await _row(per_request, IRQuestion, team.question)
 
-    question = await client.get(f"{IR}/facilitator/questions/{team.question}/audio", headers=reader)
-    by_handle = await client.get(
-        f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", headers=reader
+    doors = [
+        f"{IR}/facilitator/questions/{team.question}/audio",
+        f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}",
+        f"{IR}/facilitator/takes/{team.take}/audio",
+        f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
+    ]
+    mounted = _audio_doors()
+    covered = {template_of("GET", url) for url in doors if url.endswith("/audio")}
+    assert covered == mounted, (
+        f"sem porta: {sorted(mounted - covered)}; "
+        f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
-    take = await client.get(f"{IR}/facilitator/takes/{team.take}/audio", headers=reader)
-    turn = await client.get(
-        f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", headers=reader
-    )
+
+    question, by_handle, take, turn = [await client.get(url, headers=reader) for url in doors]
 
     assert question.status_code == 200, question.text[:300]
     assert by_handle.content == b"a equipe perguntou"
