@@ -701,12 +701,14 @@ async def test_an_archived_sessions_turns_are_read_by_its_id(
 
 
 async def _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
-    golden: httpx.AsyncClient, room: Room
+    golden: httpx.AsyncClient, room: Room, monkeypatch: pytest.MonkeyPatch, *script: Any
 ) -> None:
+    the_models_answer(monkeypatch)
     opened = await golden.post(
         f"{GOLDEN}/turn", json={"sessionId": room.session_id, "roomNote": "session_start"}
     )
     assert opened.status_code == 200, opened.text[:300]
+    the_models_answer(monkeypatch, *script)
     kept = await golden.post(
         f"{GOLDEN}/rehearsal",
         json={"sessionId": room.session_id, "sceneId": "S4", "pieces": SANDAL},
@@ -734,8 +736,7 @@ async def test_a_p11_scene_4_rehearsal_sent_as_a_checking_turn_reads_r5_as_the_a
     golden, db_session, room_app, monkeypatch
 ) -> None:
     room = await _a_p11_room(db_session, room_app)
-    the_models_answer(monkeypatch)
-    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(golden, room)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(golden, room, monkeypatch)
 
     (_opening, checked) = await _read(golden, room)
 
@@ -762,3 +763,19 @@ async def test_the_opening_and_the_same_words_typed_read_no_accepted_readings(
     assert [turn["voice"]["accepted_ids"] for turn in turns] == [[], []], (
         "um turno sem conferência aparecia na leitura com leituras aceitas, ou sem a chave"
     )
+
+
+async def test_a_checking_turn_the_validator_sent_back_reads_regenerate_then_pass_beside_the_ids_it_was_handed(  # noqa: E501
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
+        golden, room, monkeypatch, None, json.dumps(REGENERATE), None, None
+    )
+
+    (_opening, checked) = await _read(golden, room)
+
+    assert [step["verdict"] for step in checked["voice"]["trace"]] == ["regenerate", "pass"], (
+        "a leitura do consultor não dizia que o Validador devolveu o rascunho do turno"
+    )
+    assert checked["voice"]["accepted_ids"] == ["R5"]
