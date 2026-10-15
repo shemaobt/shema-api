@@ -7,6 +7,8 @@ from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import (
+    BoundaryTurn,
+    SessionBoundaryTurnsResponse,
     SessionTurn,
     SessionTurnsResponse,
     TurnMomentStep,
@@ -91,6 +93,20 @@ def turns_of(session: IRSession) -> SessionTurnsResponse:
             for number, (guide, opening) in enumerate(_voice_turns(session))
         ],
     )
+
+
+def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
+    marked = [
+        BoundaryTurn(
+            number=number,
+            outcome=turn.voice.outcome,
+            team=(turn.team.guide_heard if turn.team else None) or "",
+            guide=turn.voice.text,
+        )
+        for number, turn in enumerate(turns_of(session).turns)
+        if turn.voice.boundary
+    ]
+    return SessionBoundaryTurnsResponse(session_id=session.id, count=len(marked), turns=marked)
 
 
 async def turn_clip_url(session: IRSession, number: int) -> str:
