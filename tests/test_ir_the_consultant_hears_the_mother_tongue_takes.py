@@ -15,6 +15,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
 from app.services.internalization_room import takes as takes_service
@@ -23,6 +24,7 @@ from tests.baker import (
     grant_room_app_role,
     make_language,
     make_project,
+    make_project_user_access,
     make_user,
     open_ir_session,
 )
@@ -328,3 +330,37 @@ async def test_a_take_the_storage_fails_to_answer_about_is_unread_and_the_read_s
         (2, True, True),
         (3, False, False),
     ]
+
+
+async def _a_facilitator_of(db: AsyncSession, project: Project, email: str) -> dict[str, str]:
+    from app.services.auth.issue_tokens import issue_tokens
+
+    user = await make_user(db, email=email)
+    await grant_room_app_role(db, user.id, "facilitator")
+    await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
+    access, _refresh = await issue_tokens(db, user)
+    return {"Authorization": f"Bearer {access}"}
+
+
+async def test_the_owner_and_a_consultant_read_it_and_another_projects_reader_and_nobody_do_not(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    language = await make_language(db_session, name="Lang b", code="lb")
+    other = await make_project(db_session, language.id, name="Team b")
+    owner = await _a_facilitator_of(db_session, team, "dona@example.com")
+    stranger = await _a_facilitator_of(db_session, other, "outra@example.com")
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64)
+    url = f"{IR}/facilitator/sessions/{session.id}/mother-tongue-takes"
+
+    answers = {
+        "owner": (await client.get(url, headers=owner)).status_code,
+        "consultant": (await client.get(url, headers=consultant)).status_code,
+        "stranger": (await client.get(url, headers=stranger)).status_code,
+        "nobody": (await client.get(url)).status_code,
+    }
+
+    assert answers == {"owner": 200, "consultant": 200, "stranger": 404, "nobody": 401}
