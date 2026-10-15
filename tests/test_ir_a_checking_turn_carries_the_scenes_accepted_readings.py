@@ -222,6 +222,22 @@ async def test_a_rehearsal_marked_with_a_scene_the_passage_lacks_in_the_articula
     assert "accepted_ids" not in guide, "um ensaio sem cena conferida guardava ids de leituras"
 
 
+async def test_the_turn_keeps_the_label_the_passage_lacks_as_it_stood_at_sending(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+
+    sent = await a_sent_rehearsal(client, session_id, "S99")
+
+    assert sent.status_code == 200, sent.text
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, guide = stored.messages
+    assert guide["scene_rehearsal"]["scene"] == "S99", (
+        "o turno guardava como sem cena um ensaio que a equipe marcou com uma cena que não existe"
+    )
+
+
 async def test_an_unmarked_rehearsal_outside_an_articulation_hands_the_guide_no_accepted_readings(
     client, monkeypatch, db_session: AsyncSession
 ) -> None:
