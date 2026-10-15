@@ -15,6 +15,8 @@ from app.db.models.internalization_room import IRSceneFrase, IRSceneRehearsal
 from app.services import internalization_room as room_service
 from app.services.internalization_room import hearing, takes
 from app.services.internalization_room import scene_rehearsals as scenes
+from tests.baker import make_user
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import (
     BEARER,
@@ -276,3 +278,47 @@ async def test_the_golden_send_is_the_tablets_send_function_given_the_tablets_dr
     (call,) = calls
     assert (call["rehearsal"], call["turn_id"]) == (rehearsal_id, "turno-do-runner")
     assert call["draft"].func is sessions_api.draft_the_turn
+
+
+REHEARSAL_DOORS = {
+    "rehearsal": {"sessionId": "s", "sceneId": "S1", "pieces": ["a"]},
+    "rehearsal/send": {"sessionId": "s", "rehearsalId": "r", "turnId": "t"},
+}
+
+
+async def test_the_rehearsal_doors_answer_404_where_no_runner_key_is_configured(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    monkeypatch.setattr(get_settings(), "internalization_room_runner_key", "")
+
+    kept = await a_kept_rehearsal(client, session_id)
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id)
+
+    assert (kept.status_code, sent.status_code) == (404, 404)
+
+
+async def test_the_rehearsal_doors_refuse_every_credential_but_the_runners_bearer_key(
+    client, db_session: AsyncSession
+) -> None:
+    from app.services.auth.issue_tokens import issue_tokens
+
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    access, _refresh = await issue_tokens(db_session, await make_user(db_session))
+    refused = {
+        "a wrong key": {"Authorization": "Bearer outra-chave"},
+        "no credential": {"Authorization": ""},
+        "a facilitator's token": {"Authorization": f"Bearer {access}"},
+        "a tablet's credential as the bearer": {"Authorization": f"Bearer {tablet.credential}"},
+        "a tablet's credential in its own header": {**tablet.headers, "Authorization": ""},
+        "the key in the seam's header": {"Authorization": "", "X-Access-Code": RUNNER_KEY},
+    }
+
+    answered = {
+        (who, door): (await client.post(f"{GOLDEN}/{door}", json=body, headers=headers)).status_code
+        for who, headers in refused.items()
+        for door, body in REHEARSAL_DOORS.items()
+    }
+
+    assert set(answered.values()) == {401}, answered
