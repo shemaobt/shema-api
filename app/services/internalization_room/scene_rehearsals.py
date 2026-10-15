@@ -79,7 +79,8 @@ async def keep_scene_rehearsal(
 ) -> IRSceneRehearsal:
     """Store the scene as sent and number it in its session; the same bytes are the same one.
 
-    A scene that is not one of the passage's is kept as no label, never as the team's word.
+    A scene that is not one of the passage's is kept as no label, never as the team's word, and
+    as the label the tablet sent beside it, so the rehearsal reads as marked.
     Two keeps at once can read the same last number: the unique index refuses the second,
     which walks to the next number, the house loop ``speaker_service`` uses. A loser that
     carried the same bytes answers with the winner instead.
@@ -100,6 +101,7 @@ async def keep_scene_rehearsal(
     )
     duration_ms = await measure_ms(audio)
     label = scene if scene in scene_ids_for(pericope) else None
+    foreign = scene if scene and label is None else None
     last = await db.scalar(
         select(func.max(IRSceneRehearsal.n)).where(IRSceneRehearsal.session_id == session_id)
     )
@@ -114,6 +116,7 @@ async def keep_scene_rehearsal(
             duration_ms=duration_ms,
             scene=label,
             scene_said=IRSceneSaid.RECORDING if scene else None,
+            scene_foreign=foreign,
             storage_key=stored.storage_key,
             size_bytes=stored.size_bytes,
             sha256=stored.sha256,

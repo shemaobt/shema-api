@@ -394,6 +394,27 @@ async def test_a_scene_that_is_not_one_of_the_passages_is_kept_as_unknown_not_as
     assert (unmarked.json()["scene"], unmarked.json()["scene_said"]) == (None, None)
 
 
+async def test_the_label_the_passage_lacks_is_remembered_as_sent_beside_the_scene_it_is_not(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+
+    foreign = await record(room, session_id, scene="S99")
+    labelled = await record(room, session_id, audio=recording(40, 2), scene="S2")
+
+    remembered = {}
+    for kept in (foreign, labelled):
+        row = await db_session.execute(
+            text("SELECT scene, scene_foreign FROM ir_scene_rehearsals WHERE id = :id"),
+            {"id": kept.json()["rehearsal_id"]},
+        )
+        remembered[kept.json()["rehearsal_id"]] = tuple(row.one())
+    assert remembered[foreign.json()["rehearsal_id"]] == (None, "S99"), (
+        "o rótulo que a passagem não tem não era guardado como a tablet o mandou"
+    )
+    assert remembered[labelled.json()["rehearsal_id"]] == ("S2", None)
+
+
 async def test_a_second_session_of_the_passage_lists_its_live_scene_rehearsals_before_any_turn(
     room: Room, db_session: AsyncSession
 ) -> None:
