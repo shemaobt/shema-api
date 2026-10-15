@@ -64,6 +64,19 @@ def _readings_for(
         return ()
 
 
+def _report_send_backs(outcome: TurnOutcome, ids: list[str], checked: str, session_id: str) -> None:
+    for attempt in outcome.attempts:
+        if attempt.get("verdict") == "regenerate":
+            logger.warning(
+                "[accepted-sendback] session=%s scene=%s ids=%s attempt=%s issues=%s",
+                session_id,
+                checked,
+                ids,
+                attempt["attempt"],
+                attempt["issues"],
+            )
+
+
 async def run_turn(
     *,
     transcript: str,
@@ -150,4 +163,9 @@ async def run_turn(
         earlier_passages=earlier,
         first_scene=load_map(pericope_num).scenes[0].title,
     )
-    return replace(outcome, accepted_ids=accepted_ids_for(items, checked)) if checked else outcome
+    if not checked:
+        return outcome
+    ids = accepted_ids_for(items, checked)
+    if ids:
+        _report_send_backs(outcome, ids, checked, session_id)
+    return replace(outcome, accepted_ids=ids)

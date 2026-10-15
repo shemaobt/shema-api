@@ -374,3 +374,41 @@ async def test_an_unmarked_rehearsal_in_the_familiarization_of_part_2_hands_the_
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "um ensaio sem cena marcada, na familiarização da parte 2, ganhava as leituras da cena 2"
     )
+
+
+def regenerating(claim: str) -> str:
+    return json.dumps(
+        {
+            "verdict": "regenerate",
+            "issues": [
+                {"claim": claim, "problem": "invented_detail", "explanation": "o mapa não diz"}
+            ],
+        }
+    )
+
+
+def the_sendbacks_said(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == passage_turn.__name__ and "[accepted-sendback]" in record.getMessage()
+    ]
+
+
+async def test_a_send_back_on_a_turn_that_handed_readings_is_reported_with_the_ids_and_the_issue(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2
+    (said,) = the_sendbacks_said(caplog)
+    for expected in (session_id, "scene=S4", "ids=['R5']", "attempt=1", "deu a sandália ao Boaz"):
+        assert expected in said, f"o aviso do reenvio não trazia {expected!r}: {said}"
+    assert "ACCEPTED READINGS" not in said and "- R5: A team telling" not in said, (
+        "o aviso do reenvio repetia as palavras do bloco"
+    )
