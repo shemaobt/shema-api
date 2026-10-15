@@ -29,7 +29,8 @@ guide turn, outcome tag), the mechanical faults and what the room said each turn
 answered — the eight scores, every incident with its turn, severity and quote, the summary.
 `README.md` is the run's summary in the shape of her `golden/reports/2026-09-03/README.md`:
 a row per session, the judge's column and the mechanical column kept apart, cost and
-latency beside her ≈US$ 8 and median 27 s.
+latency beside her ≈US$ 8 and median 27 s, and the number of Validator send-backs that
+turns handed accepted readings drew, which her spec says to bring to her when it is above zero.
 
 The judge is her prompt, unedited, on the voice ladder — Fable 5.1, the same rung the run
 itself is on — handed the Validator's map and the session language from this repo's pin.
@@ -1013,6 +1014,8 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
+    send_backs = sum(turn.acceptedSendBacks for result in results for turn in result.played)
+    print(f"\nValidator send-backs on turns with accepted readings: {send_backs}")
     note = f", {empty} empty" if empty else ""
     print(f"\n{passed}/{len(results) - empty} golden sessions pass{note} · {out / readme}")
     return 0 if passed == len(results) else 1

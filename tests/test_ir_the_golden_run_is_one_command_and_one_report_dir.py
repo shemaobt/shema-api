@@ -371,6 +371,51 @@ def test_the_readme_adds_the_send_backs_of_every_session_into_one_line() -> None
     )
 
 
+def _sessions_drawing(*send_backs: int) -> list[golden_runner.SessionResult]:
+    return [
+        golden_runner.SessionResult(
+            f"P11-session-{at}",
+            f"s-{at}",
+            [
+                golden_runner.Played(
+                    idx=0,
+                    team="Oi.",
+                    guide=GUIDE_LINE,
+                    outcome="pass",
+                    acceptedSendBacks=drawn,
+                )
+            ],
+            verdict=_approving(),
+        )
+        for at, drawn in enumerate(send_backs)
+    ]
+
+
+def test_the_run_prints_the_send_backs_of_every_session_before_it_says_how_many_passed(
+    tmp_path: Path, capsys
+) -> None:
+    golden_runner.close(
+        _sessions_drawing(1, 2), out=tmp_path, base_url="http://room/", stamp="2026-10-15T18-00-00"
+    )
+
+    shown = capsys.readouterr().out
+    line = "\nValidator send-backs on turns with accepted readings: 3\n"
+    assert line in shown, "a rodada não imprimia a soma dos reenvios das duas sessões"
+    assert shown.index(line) < shown.index("2/2 golden sessions pass"), (
+        "a soma dos reenvios vem antes da linha que diz quantas sessões passaram"
+    )
+
+
+def test_the_run_prints_a_zero_when_no_session_drew_a_send_back(tmp_path: Path, capsys) -> None:
+    golden_runner.close(
+        _sessions_drawing(0, 0), out=tmp_path, base_url="http://room/", stamp="2026-10-15T18-00-00"
+    )
+
+    assert (
+        "\nValidator send-backs on turns with accepted readings: 0\n" in capsys.readouterr().out
+    ), "sem reenvios a rodada calava, e quem lê não distingue zero de não contado"
+
+
 def test_a_rung_the_table_never_priced_still_leaves_the_clock_in_the_readme() -> None:
     turn = golden_runner.Played(
         idx=0,
