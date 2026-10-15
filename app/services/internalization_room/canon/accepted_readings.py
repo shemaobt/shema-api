@@ -344,7 +344,7 @@ def accepted_readings_from(
     )
 
 
-@per_canon(maxsize=16)
+@per_canon(maxsize=64)
 def accepted_readings_of(pericope_num: str) -> AcceptedReadings:
     log = next(canon_path(LOGS_DIR).glob(f"{pericope_num}-*-COMPILATION-LOG.md"))
     coordinates = next(canon_path(COORDINATES_DIR).glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
