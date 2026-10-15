@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.canon.accepted_readings import (
+    AcceptedItem,
+    accepted_ids_for,
+    accepted_readings_block,
+    accepted_readings_of,
+)
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.fail_safe import inaudible_ladder
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
-from app.services.internalization_room.moment import moment_fact
+from app.services.internalization_room.moment import moment_at_turn_start, moment_fact
 from app.services.internalization_room.prompt_blocks import (
     RoomFact,
     coverage_status_block,
@@ -19,6 +29,39 @@ from app.services.internalization_room.prompt_blocks import (
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
+
+logger = logging.getLogger(__name__)
+
+
+def _checked_scene(
+    scene_rehearsal: SentSceneRehearsal | None, messages: list[dict[str, Any]], pericope_num: str
+) -> str | None:
+    if scene_rehearsal is None:
+        return None
+    if scene_rehearsal.scene:
+        return scene_rehearsal.scene
+    moment = moment_at_turn_start(messages)
+    if moment is None or moment.at != "articulation" or moment.part is None:
+        return None
+    scenes = scene_ids_for(pericope_num)
+    return scenes[moment.part - 1] if 1 <= moment.part <= len(scenes) else None
+
+
+def _readings_for(
+    pericope_num: str, checked: str | None, session_id: str
+) -> tuple[AcceptedItem, ...]:
+    if checked is None:
+        return ()
+    try:
+        return accepted_readings_of(pericope_num).items
+    except Exception as error:
+        logger.warning(
+            "[accepted] session=%s scene=%s: no accepted readings reach the Guide (%s)",
+            session_id,
+            checked,
+            type(error).__name__,
+        )
+        return ()
 
 
 async def run_turn(
@@ -37,6 +80,7 @@ async def run_turn(
     session_id: str = "?",
     prepared_pericope: str | None = None,
     earlier_passages: dict[str, str] | None = None,
+    scene_rehearsal: SentSceneRehearsal | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -68,6 +112,9 @@ async def run_turn(
 
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
+    checked = _checked_scene(scene_rehearsal, messages, pericope_num)
+    items = _readings_for(pericope_num, checked, session_id)
+    accepted = accepted_readings_block(items, checked) if checked else ""
     coverage_status = "\n\n".join(
         block
         for block in (
@@ -76,12 +123,13 @@ async def run_turn(
                 {
                     RoomFact.EARLIER_PASSAGES: earlier,
                     RoomFact.MOMENT: moment_fact(messages, pericope_num),
+                    RoomFact.ACCEPTED_READINGS: accepted,
                 }
             ),
         )
         if block
     )
-    return await _voiced_after_validation(
+    outcome = await _voiced_after_validation(
         speaker_system=render(
             cache_break_before(guide_prompt, "{{COVERAGE_STATUS}}"),
             SESSION_LANGUAGE=session_language,
@@ -102,3 +150,4 @@ async def run_turn(
         earlier_passages=earlier,
         first_scene=load_map(pericope_num).scenes[0].title,
     )
+    return replace(outcome, accepted_ids=accepted_ids_for(items, checked)) if checked else outcome

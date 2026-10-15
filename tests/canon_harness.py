@@ -22,6 +22,7 @@ import pytest
 from app.services import internalization_room as room
 from app.services.internalization_room import _default_prompts, canon, fail_safe, name_check
 from app.services.internalization_room.canon import (
+    accepted_readings,
     book_material,
     elements,
     kept,
@@ -38,6 +39,7 @@ def forget_the_canon() -> None:
     book_material.preservation_rules.cache_clear()
     book_material._register_complete.cache_clear()
     book_material.significant_absences.cache_clear()
+    accepted_readings.accepted_readings_of.cache_clear()
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
     labels._known_pericopes.cache_clear()
