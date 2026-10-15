@@ -644,7 +644,7 @@ async def _claim_the_send(
             rehearsal_id=rehearsal.id,
             n=rehearsal.n,
             frases=len(live_frases),
-            scene=rehearsal.scene,
+            scene=rehearsal.scene or rehearsal.scene_foreign,
         ),
     )
     await db.commit()

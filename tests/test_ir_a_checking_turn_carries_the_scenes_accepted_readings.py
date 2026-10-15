@@ -201,6 +201,27 @@ async def test_an_unmarked_rehearsal_in_the_articulation_of_part_4_is_checked_as
     )
 
 
+async def test_a_rehearsal_marked_with_a_scene_the_passage_lacks_in_the_articulation_of_part_4_is_checked_as_no_scene(  # noqa: E501
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(
+        db_session, session_id, {"at": "articulation", "part": 4, "fenced": True}
+    )
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S99")
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "um ensaio marcado com uma cena que a passagem não tem era conferido como a parte 4"
+    )
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, guide = stored.messages
+    assert "accepted_ids" not in guide, "um ensaio sem cena conferida guardava ids de leituras"
+
+
 async def test_an_unmarked_rehearsal_outside_an_articulation_hands_the_guide_no_accepted_readings(
     client, monkeypatch, db_session: AsyncSession
 ) -> None:
