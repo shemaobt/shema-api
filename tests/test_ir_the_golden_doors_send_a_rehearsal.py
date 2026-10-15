@@ -9,10 +9,12 @@ from httpx import ASGITransport
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSceneFrase, IRSceneRehearsal
 from app.services import internalization_room as room_service
 from app.services.internalization_room import hearing, takes
+from app.services.internalization_room import scene_rehearsals as scenes
 from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import (
     BEARER,
@@ -252,3 +254,25 @@ async def test_a_golden_send_naming_another_sessions_rehearsal_is_not_found_and_
 
     assert sent.status_code == 404, sent.text
     assert agent.guide_inputs == []
+
+
+async def test_the_golden_send_is_the_tablets_send_function_given_the_tablets_draft(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    calls: list[dict[str, Any]] = []
+    real = scenes.send_the_scene_rehearsal
+
+    async def spy(*args: Any, **kwargs: Any) -> Any:
+        calls.append({"rehearsal": args[2].id, **kwargs})
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(scenes, "send_the_scene_rehearsal", spy)
+
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id, "turno-do-runner")
+
+    assert sent.status_code == 200, sent.text
+    (call,) = calls
+    assert (call["rehearsal"], call["turn_id"]) == (rehearsal_id, "turno-do-runner")
+    assert call["draft"].func is sessions_api.draft_the_turn
