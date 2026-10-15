@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import time
 import uuid
+from functools import partial
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room.sessions import _scene_of, _worth_settling
+from app.api.internalization_room.sessions import _scene_of, _worth_settling, draft_the_turn
 from app.api.internalization_room.text_seam import (
     _collecting_model_calls,
     _language_code,
@@ -29,16 +30,18 @@ from app.api.internalization_room.text_seam import (
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, ValidationError
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
 from app.models.internalization_room_golden_doors import (
     GoldenRehearsalRequest,
     GoldenRehearsalResponse,
+    GoldenRehearsalSendRequest,
     GoldenSessionRequest,
     GoldenSessionResponse,
     GoldenTurnRequest,
     GoldenTurnResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
@@ -126,12 +129,57 @@ async def open_golden_session(
 async def keep_golden_rehearsal(
     payload: GoldenRehearsalRequest, db: AsyncSession = Depends(get_db)
 ) -> GoldenRehearsalResponse:
-    """A scene rehearsal kept from the words her script gives it, to be sent as a rehearsal turn."""
     session = await room.get_session(db, payload.sessionId)
     rehearsal = await keep_a_golden_rehearsal(
         db, session, scene=payload.sceneId, pieces=payload.pieces
     )
     return GoldenRehearsalResponse(rehearsalId=rehearsal.id)
+
+
+@router.post(
+    "/golden/rehearsal/send",
+    response_model=GoldenTurnResponse,
+    dependencies=[golden_runner_dep],
+    include_in_schema=False,
+)
+async def send_golden_rehearsal(
+    payload: GoldenRehearsalSendRequest, db: AsyncSession = Depends(get_db)
+) -> GoldenTurnResponse:
+    session = await room.get_session(db, payload.sessionId)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, payload.rehearsalId)
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+    background = BackgroundTasks()
+    started = time.monotonic()
+    with _collecting_model_calls() as calls:
+        await scenes.send_the_scene_rehearsal(
+            db,
+            session,
+            rehearsal,
+            turn_id=payload.turnId,
+            closes=None if payload.closes is None else str(payload.closes),
+            project_id="",
+            bound_s=bound_s,
+            draft=partial(
+                draft_the_turn,
+                db,
+                session,
+                background=background,
+                opening=False,
+                halted=session.status is IRSessionStatus.NEEDS_PERSON,
+                bound_s=bound_s,
+            ),
+        )
+        await background()
+    await db.refresh(session)
+    guide = session.messages[-1]
+    return GoldenTurnResponse(
+        guideText=guide["text"],
+        outcome=guide["outcome"],
+        transcript=guide["guide_heard"],
+        complete=await room.stored_as_done(db, session.id),
+        latencyMs=round((time.monotonic() - started) * 1000),
+        usage=calls,
+    )
 
 
 @router.post(

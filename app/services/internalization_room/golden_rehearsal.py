@@ -1,11 +1,3 @@
-"""A scene rehearsal kept from the words of a golden script, with no recording behind it.
-
-Her golden scripts carry a scene rehearsal as the frases the team translated. The tablet keeps
-one from audio, through the recognizer and the bucket; here the words are given, so the same
-writers keep the rehearsal and each frase over silence that is stored nowhere, under a device
-no tablet can be called, with no check against a bucket ever made.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -24,8 +16,6 @@ WAV = "audio/wav"
 
 
 class NoBucket:
-    """A store that keeps nothing: what a golden rehearsal has in place of a recording."""
-
     async def get(self, key: str) -> bytes | None:
         return None
 
@@ -37,7 +27,6 @@ class NoBucket:
 
 
 def _silence(seconds: int, seed: str) -> bytes:
-    """`seconds` of silence whose bytes follow `seed`, so no two golden recordings are one."""
     tone = int(hashlib.sha256(seed.encode()).hexdigest()[:6], 16) % 30_000
     out = io.BytesIO()
     with wave.open(out, "wb") as wav:
@@ -51,7 +40,6 @@ def _silence(seconds: int, seed: str) -> bytes:
 async def keep_a_golden_rehearsal(
     db: AsyncSession, session: IRSession, *, scene: str | None, pieces: list[str]
 ) -> IRSceneRehearsal:
-    """The rehearsal and one frase for each piece with words, one second apart in her order."""
     spoken = [piece for piece in pieces if piece.strip()]
     store = NoBucket()
     rehearsal = await scenes.keep_scene_rehearsal(

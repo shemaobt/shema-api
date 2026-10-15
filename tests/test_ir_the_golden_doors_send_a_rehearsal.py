@@ -1,12 +1,3 @@
-"""The Golden doors that keep a scene rehearsal from its pieces and send it as a rehearsal turn.
-
-Her golden scripts carry a scene rehearsal as the words the team translated, frase by frase.
-These two doors keep that rehearsal from the pieces as text and send it through the same
-function the tablet's send door calls, so a golden run reaches the voice the way a tablet's
-«terminei» does. Like the other Golden doors they exist only where a runner key is
-configured.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -21,9 +12,20 @@ from app.core.config import get_settings
 from app.db.models.internalization_room import IRSceneFrase, IRSceneRehearsal
 from app.services.internalization_room import hearing, takes
 from tests.hearing_harness import nothing_settles
-from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app, the_models_answer
+from tests.text_seam_harness import (
+    BEARER,
+    GOLDEN,
+    GUIDE_LINE,
+    RUNNER_KEY,
+    the_app,
+    the_models_answer,
+)
 
 PIECES = ["Noemi disse: voltem.", "Rute ficou com ela."]
+TWO_PT = (
+    "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por frase "
+    "(2 frases). Segue a tradução, na ordem:]"
+)
 
 
 @pytest.fixture()
@@ -111,3 +113,32 @@ async def test_a_golden_rehearsal_is_marked_as_no_tablets_and_reached_neither_th
         select(IRSceneFrase.verified_at).where(IRSceneFrase.rehearsal_id == rehearsal_id)
     )
     assert list(frases) == [None, None]
+
+
+async def a_sent_rehearsal(
+    client: httpx.AsyncClient,
+    session_id: str,
+    rehearsal_id: str,
+    turn_id: str = "turno-1",
+    **more: Any,
+) -> httpx.Response:
+    return await client.post(
+        f"{GOLDEN}/rehearsal/send",
+        json={"sessionId": session_id, "rehearsalId": rehearsal_id, "turnId": turn_id, **more},
+    )
+
+
+async def test_a_golden_rehearsal_sent_hands_the_guide_her_note_with_the_count_then_the_pieces(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id)
+
+    assert sent.status_code == 200, sent.text
+    handed = f"{TWO_PT} Noemi disse: voltem. Rute ficou com ela."
+    assert agent.guide_inputs == [handed]
+    body = sent.json()
+    assert (body["guideText"], body["outcome"], body["transcript"]) == (GUIDE_LINE, "pass", handed)
