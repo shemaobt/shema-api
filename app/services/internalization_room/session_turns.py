@@ -18,6 +18,7 @@ from app.models.internalization_room import (
     TurnVoiceSide,
 )
 from app.services.internalization_room.conversation import the_conversation
+from app.services.internalization_room.name_check import stored_opening_note
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -96,11 +97,12 @@ def turns_of(session: IRSession) -> SessionTurnsResponse:
 
 
 def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
+    kickoff = stored_opening_note(session)
     marked = [
         BoundaryTurn(
             number=number,
             outcome=turn.voice.outcome,
-            team=(turn.team.guide_heard if turn.team else None) or "",
+            team=(turn.team.guide_heard if turn.team else kickoff) or "",
             guide=turn.voice.text,
         )
         for number, turn in enumerate(turns_of(session).turns)

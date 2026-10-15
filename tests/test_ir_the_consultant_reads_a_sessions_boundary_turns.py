@@ -292,3 +292,67 @@ async def test_a_panorama_reads_its_boundary_turns_like_any_passage_and_one_with
 
     assert body["count"] == 1
     assert [turn["number"] for turn in body["turns"]] == [1]
+
+
+KICKOFF = (
+    "[A sess\xe3o acabou de come\xe7ar. A equipe abriu a passagem P01 e est\xe1 \xe0 mesa, "
+    "pronta para come\xe7ar. Fale primeiro.]"
+)
+
+
+async def _fail_safed_opening(
+    db: AsyncSession, session: IRSession, *, opening_note: str
+) -> IRSession:
+    fell = TurnOutcome(
+        speech="Desculpa, podem repetir?", transcript="", used_fail_safe=True, fixed_line="A1"
+    )
+    return await append_exchange(
+        db,
+        session,
+        team_utterance="",
+        guide_response="Desculpa, podem repetir?",
+        outcome=fell,
+        opening_note=opening_note,
+    )
+
+
+async def test_a_fail_safed_opening_lists_her_kickoff_note_as_the_team_words(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await _fail_safed_opening(db_session, session, opening_note=KICKOFF)
+
+    body = await _boundary_turns(client, consultant, session.id)
+
+    assert [(turn["number"], turn["outcome"], turn["team"]) for turn in body["turns"]] == [
+        (0, "fail_safe", KICKOFF)
+    ]
+
+
+async def test_a_fail_safed_opening_with_no_stored_kickoff_note_lists_no_team_words(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await _fail_safed_opening(db_session, session, opening_note="")
+
+    body = await _boundary_turns(client, consultant, session.id)
+
+    assert [turn["team"] for turn in body["turns"]] == [""]
+
+
+async def test_a_fail_safed_opening_still_has_no_team_side_in_the_turns_read(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await _fail_safed_opening(db_session, session, opening_note=KICKOFF)
+
+    answer = await client.get(f"{IR}/facilitator/sessions/{session.id}/turns", headers=consultant)
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["turns"][0]["team"] is None
