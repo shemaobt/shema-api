@@ -697,6 +697,7 @@ class InboxQuestionView(BaseModel):
     status: str
     heard_at: str | None
     audio_url: str
+    reply_audio_url: str | None
     duration_ms: int | None
     transcript: str | None
     asked_at: str
