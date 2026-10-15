@@ -8,9 +8,9 @@ snake_case. A key she adds later is ignored, never refused.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 from app.core.room_enums import EarlierPassageStatus
 from app.models.internalization_room_text_seam import ModelCall, Outcome
@@ -77,3 +77,29 @@ class GoldenTurnResponse(BaseModel):
     complete: bool
     latencyMs: int
     usage: list[ModelCall]
+    acceptedIds: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The entries whose accepted readings the Guide was handed, absent when it was "
+            "handed none. They come from the rehearsal send: on the turn door the list is "
+            "empty today, because a typed turn is never a checking turn."
+        ),
+    )
+
+    acceptedSendBacks: int = Field(
+        default=0,
+        description=(
+            "How many times the Validator sent the Guide's draft back on a turn that was handed "
+            "accepted readings, absent when none. It rides beside `acceptedIds` and is counted "
+            "from the same attempts the server's `[accepted-sendback]` warning reports."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _no_readings_handed_is_absent(self, handler: Any) -> dict[str, Any]:
+        served: dict[str, Any] = handler(self)
+        if not self.acceptedIds:
+            served.pop("acceptedIds", None)
+        if not self.acceptedSendBacks:
+            served.pop("acceptedSendBacks", None)
+        return served

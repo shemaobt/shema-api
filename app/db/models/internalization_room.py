@@ -464,6 +464,7 @@ class IRSceneRehearsal(Base):
         nullable=True,
     )
     scene_guess: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    scene_foreign: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     sent_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -29,7 +29,8 @@ guide turn, outcome tag), the mechanical faults and what the room said each turn
 answered — the eight scores, every incident with its turn, severity and quote, the summary.
 `README.md` is the run's summary in the shape of her `golden/reports/2026-09-03/README.md`:
 a row per session, the judge's column and the mechanical column kept apart, cost and
-latency beside her ≈US$ 8 and median 27 s.
+latency beside her ≈US$ 8 and median 27 s, and the number of Validator send-backs that
+turns handed accepted readings drew, which her spec says to bring to her when it is above zero.
 
 The judge is her prompt, unedited, on the voice ladder — Fable 5.1, the same rung the run
 itself is on — handed the Validator's map and the session language from this repo's pin.
@@ -140,6 +141,8 @@ class Played:
     usage: list[Usage] = field(default_factory=list)
     mechanical: list[str] = field(default_factory=list)
     appStatus: list[str] = field(default_factory=list)
+    acceptedIds: list[str] = field(default_factory=list)
+    acceptedSendBacks: int = 0
 
 
 @dataclass
@@ -371,6 +374,8 @@ async def play(
             interrupted=turn.interrupted,
             turnMs=int(reply.get("latencyMs") or round((time.monotonic() - started) * 1000)),
             usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
+            acceptedIds=reply.get("acceptedIds", []),
+            acceptedSendBacks=reply.get("acceptedSendBacks", 0),
             appStatus=[
                 fact
                 for fact in (
@@ -672,6 +677,7 @@ def summary(
     empty = [result for result in results if result.empty]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
+    send_backs = sum(turn.acceptedSendBacks for turn in played)
     by_role, unpriced = priced(_paid(results))
     voice = [
         sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
@@ -710,6 +716,7 @@ def summary(
         )
         lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
+    lines.append(f"Reenvios do Validador em turnos com leituras aceitas: {send_backs}.")
     if by_role:
         total = sum(by_role.values())
         free = (
@@ -868,6 +875,7 @@ def _played(turn: dict[str, Any], at: int) -> Played:
         turnMs=_read(turn, "turnMs", (int,), where),
         mechanical=_strings(turn, "mechanical", where),
         appStatus=_strings(turn, "appStatus", where, default=[]),
+        acceptedSendBacks=_read(turn, "acceptedSendBacks", (int,), where, default=0),
     )
 
 
@@ -1007,6 +1015,8 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
+    send_backs = sum(turn.acceptedSendBacks for result in results for turn in result.played)
+    print(f"\nValidator send-backs on turns with accepted readings: {send_backs}")
     note = f", {empty} empty" if empty else ""
     print(f"\n{passed}/{len(results) - empty} golden sessions pass{note} · {out / readme}")
     return 0 if passed == len(results) else 1
