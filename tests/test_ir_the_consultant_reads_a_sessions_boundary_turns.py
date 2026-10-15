@@ -127,3 +127,47 @@ async def test_two_marked_turns_among_ordinary_ones_read_as_a_count_of_two_oldes
 
     assert body["count"] == 2
     assert [turn["number"] for turn in body["turns"]] == [1, 3]
+
+
+async def test_a_marked_turn_is_listed_with_how_containment_ended_and_the_line_the_guide_voiced(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await _opening(
+        db_session, session, "Olá! Eu sou o Facilitador Digital. Vamos começar pela primeira parte."
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "Foi Deus que mandou a fome?",
+        "A passagem não conta por que veio a fome. Ela só diz que houve fome na terra.",
+        verdict="correct",
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "",
+        "Desculpa, não consegui ouvir direito, podem repetir?",
+        used_fail_safe=True,
+        fixed_line="D1",
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "E Rute casou com quem?",
+        "Essa é uma pergunta boa para levar ao facilitador de vocês.",
+    )
+
+    body = await _boundary_turns(client, consultant, session.id)
+
+    assert [(turn["number"], turn["outcome"], turn["guide"]) for turn in body["turns"]] == [
+        (
+            1,
+            "corrected",
+            "A passagem não conta por que veio a fome. Ela só diz que houve fome na terra.",
+        ),
+        (2, "fail_safe", "Desculpa, não consegui ouvir direito, podem repetir?"),
+        (3, "validated", "Essa é uma pergunta boa para levar ao facilitador de vocês."),
+    ]
