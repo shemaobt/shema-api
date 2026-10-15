@@ -31,6 +31,8 @@ from app.core.database import get_db
 from app.core.exceptions import ConflictError, ValidationError
 from app.db.models.internalization_room import IRPromptKey
 from app.models.internalization_room_golden_doors import (
+    GoldenRehearsalRequest,
+    GoldenRehearsalResponse,
     GoldenSessionRequest,
     GoldenSessionResponse,
     GoldenTurnRequest,
@@ -40,6 +42,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.golden_rehearsal import keep_a_golden_rehearsal
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.prompts import get_prompt_text
@@ -112,6 +115,23 @@ async def open_golden_session(
         earlier_passages=payload.earlierPassages,
     )
     return GoldenSessionResponse(sessionId=session.id)
+
+
+@router.post(
+    "/golden/rehearsal",
+    response_model=GoldenRehearsalResponse,
+    dependencies=[golden_runner_dep],
+    include_in_schema=False,
+)
+async def keep_golden_rehearsal(
+    payload: GoldenRehearsalRequest, db: AsyncSession = Depends(get_db)
+) -> GoldenRehearsalResponse:
+    """A scene rehearsal kept from the words her script gives it, to be sent as a rehearsal turn."""
+    session = await room.get_session(db, payload.sessionId)
+    rehearsal = await keep_a_golden_rehearsal(
+        db, session, scene=payload.sceneId, pieces=payload.pieces
+    )
+    return GoldenRehearsalResponse(rehearsalId=rehearsal.id)
 
 
 @router.post(

@@ -408,6 +408,7 @@ async def keep_a_frase(
     content_type: str,
     filename: str | None,
     store: TakeStore | None = None,
+    transcript: str | None = None,
 ) -> IRSceneFrase:
     """One frase of the scene, heard in the bridge language; the same bytes are the same frase.
 
@@ -438,8 +439,15 @@ async def keep_a_frase(
         content_type=content_type,
         store=store,
     )
-    text = await heard(
-        audio, language=room_language(session.language), filename=filename, mime_type=content_type
+    text = (
+        transcript
+        if transcript is not None
+        else await heard(
+            audio,
+            language=room_language(session.language),
+            filename=filename,
+            mime_type=content_type,
+        )
     )
     if not text.strip():
         raise WordlessTelling()

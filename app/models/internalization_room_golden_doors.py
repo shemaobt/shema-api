@@ -48,6 +48,18 @@ class GoldenTurnRequest(BaseModel):
     sceneRehearsals: list[str] | None = None
 
 
+class GoldenRehearsalRequest(BaseModel):
+    """A scene rehearsal as her script carries it: the scene and the frases as words."""
+
+    sessionId: str = Field(max_length=36)
+    sceneId: str | None = Field(default=None, max_length=16)
+    pieces: list[str]
+
+
+class GoldenRehearsalResponse(BaseModel):
+    rehearsalId: str
+
+
 class GoldenTurnResponse(BaseModel):
     """Her `HttpTurnResponse`, and the turn's model calls beside it, which she ignores."""
 
