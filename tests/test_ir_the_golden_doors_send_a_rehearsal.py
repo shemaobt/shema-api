@@ -91,3 +91,23 @@ async def test_a_rehearsal_kept_from_her_pieces_has_one_frase_for_each_in_her_or
         select(IRSceneRehearsal.scene).where(IRSceneRehearsal.id == rehearsal_id)
     )
     assert scene == "S2"
+
+
+async def test_a_golden_rehearsal_is_marked_as_no_tablets_and_reached_neither_the_recognizer_nor_the_bucket(  # noqa: E501
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+
+    kept = await a_kept_rehearsal(client, session_id)
+
+    assert kept.status_code == 200, kept.text
+    rehearsal_id = kept.json()["rehearsalId"]
+    rehearsal = await db_session.scalar(
+        select(IRSceneRehearsal).where(IRSceneRehearsal.id == rehearsal_id)
+    )
+    assert rehearsal is not None
+    assert (rehearsal.device_id, rehearsal.verified_at) == ("golden-runner", None)
+    frases = await db_session.scalars(
+        select(IRSceneFrase.verified_at).where(IRSceneFrase.rehearsal_id == rehearsal_id)
+    )
+    assert list(frases) == [None, None]
