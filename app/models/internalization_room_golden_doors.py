@@ -77,3 +77,4 @@ class GoldenTurnResponse(BaseModel):
     complete: bool
     latencyMs: int
     usage: list[ModelCall]
+    acceptedIds: list[str] = Field(default_factory=list)
