@@ -23,7 +23,7 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
-from tests.release_harness import ensaio_take
+from tests.release_harness import ensaio_take, retro_take
 
 IR = "/api/internalization-room"
 P = "P01"
@@ -73,9 +73,15 @@ async def _keep(
     sha: str,
     size_bytes: int = 2048,
     created_at: datetime | None = None,
+    pass_number: int | None = None,
 ) -> str:
     take = ensaio_take(
-        session.id, ordinal=ordinal, sha256=sha, project_id=team.id, created_at=created_at
+        session.id,
+        ordinal=ordinal,
+        sha256=sha,
+        project_id=team.id,
+        created_at=created_at,
+        pass_number=pass_number,
     )
     take.size_bytes = size_bytes
     db.add(take)
@@ -193,3 +199,21 @@ async def test_a_take_that_kept_no_duration_shows_none_never_one_guessed_from_it
     (row,) = body["takes"]
     assert "duration_ms" in row
     assert row["duration_ms"] is None
+
+
+async def test_a_telling_back_and_a_part_recorded_again_are_not_listed_beside_the_part_that_stands(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, pass_number=1)
+    again = await _keep(db_session, session, team, ordinal=1, sha="b" * 64, pass_number=2)
+    second = await _keep(db_session, session, team, ordinal=2, sha="c" * 64, pass_number=1)
+    db_session.add(retro_take(session.id, ordinal=1, sha256="d" * 64, project_id=team.id))
+    await db_session.commit()
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["take_id"], row["part"]) for row in body["takes"]] == [(again, 1), (second, 2)]
