@@ -265,6 +265,22 @@ def _reads_that_name_a_team_resource() -> set[str]:
     }
 
 
+def _audio_doors() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and "audio" in path.split("/")
+    }
+
+
+def _reads_of_a_team() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and "team_id" in parameters_of(method, path)
+    }
+
+
 async def _row(per_request: async_sessionmaker[AsyncSession], table, row_id: str) -> dict:
     async with per_request() as db:
         found = (await db.execute(select(table.__table__).where(table.id == row_id))).one()
@@ -362,14 +378,20 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
     session_before = await _row(per_request, IRSession, team.session)
     question_before = await _row(per_request, IRQuestion, team.question)
 
-    question = await client.get(f"{IR}/facilitator/questions/{team.question}/audio", headers=reader)
-    by_handle = await client.get(
-        f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", headers=reader
+    doors = [
+        f"{IR}/facilitator/questions/{team.question}/audio",
+        f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}",
+        f"{IR}/facilitator/takes/{team.take}/audio",
+        f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
+    ]
+    mounted = _audio_doors()
+    covered = {template_of("GET", url) for url in doors}
+    assert covered == mounted, (
+        f"sem porta: {sorted(mounted - covered)}; "
+        f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
-    take = await client.get(f"{IR}/facilitator/takes/{team.take}/audio", headers=reader)
-    turn = await client.get(
-        f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", headers=reader
-    )
+
+    question, by_handle, take, turn = [await client.get(url, headers=reader) for url in doors]
 
     assert question.status_code == 200, question.text[:300]
     assert by_handle.content == b"a equipe perguntou"
@@ -559,9 +581,16 @@ async def test_a_team_that_does_not_exist_is_refused_at_every_read_even_to_a_con
         (f"{DESK}/teams/{nowhere}/coverage", {"params": {"pericope": P}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": nowhere}}),
     ]
+    nudges_url = f"{DESK}/teams/{nowhere}/nudges"
 
+    mounted = _reads_of_a_team()
+    covered = {template_of("GET", url) for url, _ in reads} | {template_of("GET", nudges_url)}
+    assert covered == mounted, (
+        f"sem recusa: {sorted(mounted - covered)}; "
+        f"recusa sem rota: {sorted(covered - mounted, key=str)}"
+    )
     answers = {url: (await client.get(url, headers=reader, **kw)).status_code for url, kw in reads}
-    nudges = await opening_status(app, f"{DESK}/teams/{nowhere}/nudges", reader)
+    nudges = await opening_status(app, nudges_url, reader)
 
     assert set(answers.values()) == {404}, answers
     assert nudges == 404
