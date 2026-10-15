@@ -663,6 +663,42 @@ async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_
     assert exit_code == 1
 
 
+async def test_a_run_judged_again_carries_the_send_backs_its_export_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    earlier = tmp_path / "2026-10-15"
+    earlier.mkdir()
+    _export(earlier, "P11-a-telling-checked")
+    path = earlier / "P11-a-telling-checked.2026-09-16T21-13-26.json"
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    recorded["turns"][0]["acceptedSendBacks"] = 2
+    path.write_text(json.dumps(recorded), encoding="utf-8")
+    out = tmp_path / "2026-10-15-rejulgado"
+
+    await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    assert "\nReenvios do Validador em turnos com leituras aceitas: 2.\n" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), "rejulgar um relatório zerava os reenvios que ele registrou"
+
+
+async def test_a_run_judged_again_from_an_export_older_than_the_count_reads_it_as_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    earlier = tmp_path / "2026-09-16"
+    earlier.mkdir()
+    _export(earlier, "P01-understand-first")
+    out = tmp_path / "2026-09-16-rejulgado"
+
+    await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    assert "\nReenvios do Validador em turnos com leituras aceitas: 0.\n" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), "um relatório anterior à contagem derrubava o rejulgamento"
+
+
 async def test_a_rejudge_refuses_to_write_over_the_run_it_reads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:

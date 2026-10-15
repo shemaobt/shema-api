@@ -875,6 +875,7 @@ def _played(turn: dict[str, Any], at: int) -> Played:
         turnMs=_read(turn, "turnMs", (int,), where),
         mechanical=_strings(turn, "mechanical", where),
         appStatus=_strings(turn, "appStatus", where, default=[]),
+        acceptedSendBacks=_read(turn, "acceptedSendBacks", (int,), where, default=0),
     )
 
 
