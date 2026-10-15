@@ -378,15 +378,20 @@ async def test_a_rehearsal_recorded_for_scene_2_keeps_scene_2_as_the_teams_label
     assert "S3" not in str(on_the_tablet)
 
 
-async def test_a_scene_that_is_not_one_of_the_passages_is_kept_with_no_label(
+async def test_a_scene_that_is_not_one_of_the_passages_is_kept_as_unknown_not_as_none(
     room: Room, db_session: AsyncSession
 ) -> None:
     session_id = await a_session(db_session)
 
-    kept = await record(room, session_id, scene="S99")
+    foreign = await record(room, session_id, scene="S99")
+    unmarked = await record(room, session_id, audio=recording(40, 2), scene=None)
 
-    assert kept.status_code == 200, kept.text
-    assert (kept.json()["scene"], kept.json()["scene_said"]) == (None, None)
+    assert foreign.status_code == 200, foreign.text
+    assert unmarked.status_code == 200, unmarked.text
+    assert (foreign.json()["scene"], foreign.json()["scene_said"]) == (None, "recording"), (
+        "um rótulo que a passagem não tem era devolvido como se a equipe não tivesse marcado nada"
+    )
+    assert (unmarked.json()["scene"], unmarked.json()["scene_said"]) == (None, None)
 
 
 async def test_a_second_session_of_the_passage_lists_its_live_scene_rehearsals_before_any_turn(

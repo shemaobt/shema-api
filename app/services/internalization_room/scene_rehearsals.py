@@ -113,7 +113,7 @@ async def keep_scene_rehearsal(
             device_id=device_id,
             duration_ms=duration_ms,
             scene=label,
-            scene_said=IRSceneSaid.RECORDING if label else None,
+            scene_said=IRSceneSaid.RECORDING if scene else None,
             storage_key=stored.storage_key,
             size_bytes=stored.size_bytes,
             sha256=stored.sha256,
