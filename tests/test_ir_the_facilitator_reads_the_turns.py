@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.internalization_room import golden_doors
 from app.api.internalization_room import sessions as sessions_api
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core import stage_clock
@@ -30,8 +31,10 @@ from app.services.internalization_room.sessions import create_session
 from app.services.oral_collector import gcs_utils
 from app.services.platform import tts
 from tests.baker import make_app, make_role
+from tests.hearing_harness import nothing_settles
 from tests.release_harness import APP_KEY, PREFIX, P, a_claimed_device, at_the_desk, team_headers
 from tests.room_harness import room_client
+from tests.text_seam_harness import GOLDEN, RUNNER_KEY, the_models_answer
 from tests.turn_harness import the_room_agent_is
 
 PASS = {"verdict": "pass", "issues": []}
@@ -47,6 +50,7 @@ WORDS = [
     "Noemi chegou na colheita da cevada",
     "Boaz viu Rute no campo",
 ]
+SANDAL = ["Ele tirou a sandália e deu pro Boaz."]
 LINES = [
     "Vamos ficar nesta cena. O que vocês contariam?",
     "E depois disso, o que aconteceu?",
@@ -216,6 +220,18 @@ async def client(
     db_session: AsyncSession, per_request, bucket, elevenlabs, signed, monkeypatch
 ) -> Any:
     async with room_client(db_session, monkeypatch, per_request=per_request) as c:
+        yield c
+
+
+async def settled(**_: Any) -> None:
+    return None
+
+
+@pytest.fixture()
+async def golden(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Any:
+    nothing_settles(monkeypatch)
+    monkeypatch.setattr(golden_doors, "settle_coverage", settled)
+    async with room_client(db_session, monkeypatch, runner_key=RUNNER_KEY) as c:
         yield c
 
 
@@ -656,6 +672,7 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
         "boundary": False,
         "attempts": 0,
         "trace": [],
+        "accepted_ids": [],
         "recognition_ms": None,
         "reply_ms": None,
         "synthesis_ms": None,
@@ -681,3 +698,47 @@ async def test_an_archived_sessions_turns_are_read_by_its_id(
     turns = await _read(client, room)
 
     assert [turn["voice"]["text"] for turn in turns] == [OPENING, LINES[0]]
+
+
+async def _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
+    golden: httpx.AsyncClient, room: Room
+) -> None:
+    opened = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": room.session_id, "roomNote": "session_start"}
+    )
+    assert opened.status_code == 200, opened.text[:300]
+    kept = await golden.post(
+        f"{GOLDEN}/rehearsal",
+        json={"sessionId": room.session_id, "sceneId": "S4", "pieces": SANDAL},
+    )
+    assert kept.status_code == 200, kept.text[:300]
+    sent = await golden.post(
+        f"{GOLDEN}/rehearsal/send",
+        json={
+            "sessionId": room.session_id,
+            "rehearsalId": kept.json()["rehearsalId"],
+            "turnId": "turno-1",
+        },
+    )
+    assert sent.status_code == 200, sent.text[:300]
+
+
+async def _a_p11_room(db: AsyncSession, room_app) -> Room:
+    project, credential = await a_claimed_device(db)
+    session = await create_session(db, language="pt", pericope="P11", project_id=project.id)
+    desk, _facilitator = await at_the_desk(db, room_app, project)
+    return Room(session.id, credential, desk, project.id)
+
+
+async def test_a_p11_scene_4_rehearsal_sent_as_a_checking_turn_reads_r5_as_the_accepted_reading_it_was_handed(  # noqa: E501
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    the_models_answer(monkeypatch)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(golden, room)
+
+    (_opening, checked) = await _read(golden, room)
+
+    assert checked["voice"]["accepted_ids"] == ["R5"], (
+        "a leitura do consultor não dizia quais leituras aceitas o turno de conferência levou"
+    )

@@ -1363,6 +1363,7 @@ class TurnVoiceSide(BaseModel):
     boundary: bool
     attempts: int
     trace: list[TurnTraceStep]
+    accepted_ids: list[str]
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None
