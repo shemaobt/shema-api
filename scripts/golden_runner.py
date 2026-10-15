@@ -5,7 +5,9 @@ The scripts are hers, vendored byte for byte at `golden/sessions/` under the pin
 her app hands the Guide — a kickoff, the team speaking their own language for N seconds, an
 interruption. They are played through the room's **Golden doors**, `golden/session` and
 `golden/turn` under the base URL, with the requests her own runner sends
-(`src/golden/httpDriver.ts`) and the key as a bearer credential.
+(`src/golden/httpDriver.ts`) and the key as a bearer credential. A scene rehearsal step goes
+through `golden/rehearsal` and `golden/rehearsal/send` instead, so the room builds her note
+and the turn is a rehearsal turn by the server's own mark, as a tablet's «terminei» makes it.
 
     ACCESS_CODE=<key> uv run python scripts/golden_runner.py \\
         --base-url http://127.0.0.1:8044/api/internalization-room \\
@@ -67,6 +69,7 @@ import statistics
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -235,30 +238,6 @@ def mother_tongue_note(language: str, seconds: int) -> str:
     )
 
 
-def rehearsal_team_text(language: str, transcripts: list[str]) -> str:
-    pieces = [piece.strip() for piece in transcripts if piece.strip()]
-    if len(pieces) == 1:
-        note = (
-            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue a "
-            "tradução:]"
-            if _portuguese(language)
-            else "[The team rehearsed this scene in their own language and translated the scene "
-            "rehearsal. The translation follows:]"
-        )
-    elif _portuguese(language):
-        note = (
-            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por "
-            f"frase ({len(pieces)} frases). Segue a tradução, na ordem:]"
-        )
-    else:
-        note = (
-            "[The team rehearsed this scene in their own language and translated the scene "
-            f"rehearsal phrase by phrase ({len(pieces)} phrases). The translation follows, in "
-            "order:]"
-        )
-    return f"{note} {' '.join(pieces)}"
-
-
 def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
     current: list[str] | None = None
     carried = []
@@ -306,9 +285,6 @@ def request_for(
     elif turn.motherTongue:
         said = mother_tongue_note(script.language, turn.motherTongue)
         body.update(roomNote="mother_tongue", seconds=turn.motherTongue, noteText=said)
-    elif turn.rehearsal is not None:
-        said = rehearsal_team_text(script.language, turn.rehearsal)
-        body["teamText"] = said
     elif turn.team:
         said = turn.team
         body["teamText"] = said
@@ -331,6 +307,27 @@ async def open_session(script: Script, client: httpx.AsyncClient) -> str:
     opened = await client.post("golden/session", json=body)
     opened.raise_for_status()
     return str(opened.json()["sessionId"])
+
+
+async def send_rehearsal(
+    turn: ScriptTurn, client: httpx.AsyncClient, session_id: str
+) -> dict[str, Any]:
+    kept = await client.post(
+        "golden/rehearsal",
+        json={"sessionId": session_id, "sceneId": turn.rehearsalScene, "pieces": turn.rehearsal},
+    )
+    kept.raise_for_status()
+    sent = await client.post(
+        "golden/rehearsal/send",
+        json={
+            "sessionId": session_id,
+            "rehearsalId": kept.json()["rehearsalId"],
+            "turnId": str(uuid.uuid4()),
+        },
+    )
+    sent.raise_for_status()
+    reply: dict[str, Any] = sent.json()
+    return reply
 
 
 async def play(
@@ -356,11 +353,15 @@ async def play(
     moment: Moment | None = None
     heard = 2 * len(played)
     for idx, turn in enumerate(script.turns[:turns]):
-        body, expected = request_for(turn, script, session_id, carried[idx])
         started = time.monotonic()
-        answered = await client.post("golden/turn", json=body)
-        answered.raise_for_status()
-        reply = answered.json()
+        if turn.rehearsal is not None:
+            expected = ""
+            reply = await send_rehearsal(turn, client, session_id)
+        else:
+            body, expected = request_for(turn, script, session_id, carried[idx])
+            answered = await client.post("golden/turn", json=body)
+            answered.raise_for_status()
+            reply = answered.json()
         sent = carried[idx]
         line = Played(
             idx=idx,

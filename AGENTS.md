@@ -41,8 +41,10 @@ Marcia's golden scripts are played against a running server through two doors th
 where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and both answer 404. The
 Guide's conversation is played through the **Golden doors**,
 `/api/internalization-room/golden/session` and `/golden/turn`, in her runner's wire, with the key
-as `Authorization: Bearer <key>`; the back-translation check through the **Text seam**, which
-reads it in `X-Access-Code`.
+as `Authorization: Bearer <key>`; a scene rehearsal step goes through `/golden/rehearsal`, which
+keeps the rehearsal from the script's pieces as text, and `/golden/rehearsal/send`, which sends
+it through the function the tablet's send door calls; the back-translation check through the
+**Text seam**, which reads it in `X-Access-Code`.
 Two runners, one convention: reports land under `golden/reports/<date>/`, committed, and the key
 travels as `ACCESS_CODE`. Her twenty-three session scripts are vendored at `golden/sessions/`
 and her ten Back-Translation scripts at `golden/bt/`, under the pin in `docs/doctrine/FREEZE_PIN`,

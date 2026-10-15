@@ -8,18 +8,21 @@ and a run against hers are read by the same judge from the same shape.
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import golden_doors, router
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
+from app.db.models.internalization_room import IRSceneRehearsal
 from scripts.golden_runner import (
     Played,
     export,
@@ -29,6 +32,7 @@ from scripts.golden_runner import (
     open_session,
     play,
 )
+from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import (
     BEARER,
     GUIDE_LINE,
@@ -215,10 +219,50 @@ async def test_the_runner_sends_her_earlier_passages_her_rehearsal_and_the_scene
             "earlierPassages": {"P01": "approved", "P02": "not_worked"},
         },
     ), "a sessão abria sem o estado das passagens anteriores que o roteiro dela fixa"
-    assert [body.get("sceneRehearsals") for _door, body in sent[1:]] == [None, ["S1"], ["S1"]], (
-        "a lista de cenas ensaiadas segue de um turno para o outro, como no driver dela"
-    )
+    assert [body.get("sceneRehearsals") for door, body in sent[1:] if door == "turn"] == [
+        None,
+        ["S1"],
+    ], "a lista de cenas ensaiadas segue de um turno para o outro, como no driver dela"
     assert played[1].team == REHEARSAL_TEXT, "o turno de ensaio chegava ao Guia como texto vazio"
+
+
+async def test_the_runner_keeps_her_rehearsal_and_sends_it_under_a_turn_id_it_minted(
+    seam, tmp_path, monkeypatch, db_session: AsyncSession
+) -> None:
+    agent = the_models_answer(monkeypatch)
+    nothing_settles(monkeypatch)
+    doors: list[tuple[str, dict[str, Any]]] = []
+
+    async def _seen(request: httpx.Request) -> None:
+        doors.append((request.url.path.rsplit("/golden/", 1)[-1], json.loads(request.content)))
+
+    seam.event_hooks["request"].append(_seen)
+    script = load_script(_her_rehearsing_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+
+    await play(script, seam, session_id=session_id, played=played)
+
+    assert [door for door, _body in doors] == [
+        "session",
+        "turn",
+        "rehearsal",
+        "rehearsal/send",
+        "turn",
+    ]
+    _door, kept = doors[2]
+    assert kept == {
+        "sessionId": session_id,
+        "sceneId": "S1",
+        "pieces": ["Noemi disse: voltem.", " Rute ficou com ela. "],
+    }
+    _door, sent = doors[3]
+    minted = sent["turnId"]
+    assert str(uuid.UUID(minted)) == minted
+    stamped = await db_session.scalar(select(IRSceneRehearsal.sent_turn_id))
+    assert stamped == minted
+    assert agent.guide_inputs[1] == REHEARSAL_TEXT
+    assert played[1].team == REHEARSAL_TEXT
 
 
 async def test_the_judge_reads_what_the_app_told_the_guide_as_her_app_status_lines(
