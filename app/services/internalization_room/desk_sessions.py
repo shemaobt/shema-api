@@ -17,7 +17,7 @@ from sqlalchemy import ColumnElement, and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import SessionState
-from app.core.exceptions import ValidationError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.db.models.project import Project
@@ -34,7 +34,12 @@ from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import as_utc, end_of
 from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
-from app.services.project.facilitated_scope import confined_to, readable_project_ids
+from app.services.project.facilitated_scope import (
+    TEAM_NOT_FOUND,
+    confined_to,
+    readable_project_ids,
+)
+from app.services.project.reads_project import reads_project
 
 DEFAULT_PAGE = 50
 MAX_PAGE = 100
@@ -67,17 +72,33 @@ def _after(place: _Place) -> ColumnElement[bool]:
 
 
 async def desk_sessions_page(
-    db: AsyncSession, user: User, *, limit: int = DEFAULT_PAGE, cursor: str | None = None
+    db: AsyncSession,
+    user: User,
+    *,
+    limit: int = DEFAULT_PAGE,
+    cursor: str | None = None,
+    team_id: str | None = None,
+    pericope: str | None = None,
 ) -> DeskSessionsPage:
+    """One page of the readable sessions, narrowed to one team, one passage, or both.
+
+    The two filters are what the Desk's passage picker asks with: a team's sessions of one
+    pericope, in either language. A ``team_id`` the reader may not read, or that no team has,
+    is the same «Team not found» the inbox answers. The cursor continues inside the narrowed list.
+    """
+    if team_id is not None:
+        if not await reads_project(db, user, team_id):
+            raise NotFoundError(TEAM_NOT_FOUND)
+        scope = IRSession.project_id == team_id
+    else:
+        scope = confined_to(IRSession.project_id, await readable_project_ids(db, user))
     page = (
         select(IRSession, Project.name)
         .join(Project, Project.id == IRSession.project_id)
-        .where(
-            confined_to(IRSession.project_id, await readable_project_ids(db, user)),
-            live(),
-            entered(),
-        )
+        .where(scope, live(), entered())
     )
+    if pericope is not None:
+        page = page.where(IRSession.pericope == pericope)
     if cursor is not None:
         page = page.where(_after(_decode(cursor)))
 

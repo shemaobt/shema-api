@@ -499,6 +499,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{DESK}/teams/{team.id}/devices", {}),
         (f"{DESK}/teams/{team.id}/pericopes", {}),
         (f"{DESK}/teams/{team.id}/coverage", {"params": {"pericope": P}}),
+        (f"{DESK}/sessions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions/{team.question}/audio", {}),
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
@@ -579,6 +580,7 @@ async def test_a_team_that_does_not_exist_is_refused_at_every_read_even_to_a_con
         (f"{DESK}/teams/{nowhere}/devices", {}),
         (f"{DESK}/teams/{nowhere}/pericopes", {}),
         (f"{DESK}/teams/{nowhere}/coverage", {"params": {"pericope": P}}),
+        (f"{DESK}/sessions", {"params": {"team_id": nowhere}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": nowhere}}),
     ]
     nudges_url = f"{DESK}/teams/{nowhere}/nudges"
