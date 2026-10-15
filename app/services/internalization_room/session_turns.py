@@ -34,6 +34,7 @@ _OUTCOMES: dict[str, TurnOutcomeCode] = {
 _JS_SPACE = (
     "[\\t\\n\\v\\f\\r \\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
 )
+_PYTHON_ONLY_FOLDS = str.maketrans("\u0130\u0131\u017f\u212a", "\x00\x00\x00\x00")
 _JS_WORD = "[A-Za-z0-9_]"
 _JS_EDGE = f"(?:(?<={_JS_WORD})(?!{_JS_WORD})|(?<!{_JS_WORD})(?={_JS_WORD}))"
 
@@ -71,7 +72,7 @@ def is_boundary_turn(outcome: TurnOutcomeCode, text: str, *, opening: bool) -> b
         return True
     if opening:
         return False
-    spoken = _SELF_NAME.sub(" ", text)
+    spoken = _SELF_NAME.sub(" ", text.translate(_PYTHON_ONLY_FOLDS))
     return any(pattern.search(spoken) for pattern in _HANDS_OFF)
 
 

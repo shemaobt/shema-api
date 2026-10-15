@@ -98,3 +98,40 @@ def test_the_guides_name_is_not_taken_out_when_an_ascii_letter_follows_it() -> N
     line = "pro facilitador digitals"
 
     assert is_boundary_turn("validated", line, opening=False) is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("ao con\u017fultor", id="long-s-for-s"),
+        pytest.param("AO CON\u017fULTOR", id="long-s-for-s-in-capitals"),
+        pytest.param("pro fac\u0131litador", id="dotless-i-for-i"),
+        pytest.param("pro fac\u0130litador", id="dotted-capital-i-for-i"),
+    ],
+)
+def test_a_letter_her_javascript_does_not_fold_into_an_ascii_one_does_not_spell_a_hand_off(
+    line: str,
+) -> None:
+    assert is_boundary_turn("validated", line, opening=False) is False
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("ao consultor\u212a", id="kelvin-sign-after"),
+        pytest.param("ao consultor\u017f", id="long-s-after"),
+        pytest.param("ao consultor\u0131", id="dotless-i-after"),
+        pytest.param("ao consultor\u0130", id="dotted-capital-i-after"),
+        pytest.param("\u212aao consultor", id="kelvin-sign-before"),
+    ],
+)
+def test_a_letter_her_javascript_does_not_fold_is_not_a_word_character_beside_a_hand_off(
+    line: str,
+) -> None:
+    assert is_boundary_turn("validated", line, opening=False) is True
+
+
+def test_the_guides_name_is_taken_out_when_a_kelvin_sign_follows_it() -> None:
+    line = "pro facilitador digital\u212a"
+
+    assert is_boundary_turn("validated", line, opening=False) is False
