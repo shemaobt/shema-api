@@ -388,6 +388,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/mother-tongue-takes", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/scene-rehearsals", {}),
             "ids": (session_id, absent),
@@ -532,6 +538,7 @@ REFUSING_TEMPLATES = {
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/reply"),
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/mother-tongue-takes"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/scene-rehearsals"),
     ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),

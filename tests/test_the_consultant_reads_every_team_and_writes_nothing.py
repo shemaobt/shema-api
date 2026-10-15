@@ -301,6 +301,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/releases/1",
         f"{IR}/facilitator/sessions/{session}/retroverificacao",
         f"{IR}/facilitator/sessions/{session}/coverage",
+        f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
     ]
 
     for url in reads:
@@ -310,7 +311,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5]):
+    for url in (reads[0], reads[1], reads[2], reads[5], reads[7]):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
@@ -440,6 +441,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
     ]
 

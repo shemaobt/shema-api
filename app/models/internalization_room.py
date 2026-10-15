@@ -874,6 +874,18 @@ class TakesResponse(BaseModel):
     takes: list[TakeResponse]
 
 
+class MotherTongueTake(BaseModel):
+    """One recording of the session in the mother tongue, as the consultant's record lists it."""
+
+    take_id: str
+    part: int
+
+
+class MotherTongueTakesResponse(BaseModel):
+    session_id: str
+    takes: list[MotherTongueTake]
+
+
 class SceneFraseView(BaseModel):
     """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
 
