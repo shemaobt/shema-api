@@ -15,6 +15,10 @@ async def mother_tongue_takes_of(db: AsyncSession, session: IRSession) -> Mother
         if take.ordinal is not None:
             position += 1
         rows.append(
-            MotherTongueTake(take_id=take.id, part=None if take.ordinal is None else position)
+            MotherTongueTake(
+                take_id=take.id,
+                part=None if take.ordinal is None else position,
+                size_kb=(take.size_bytes + 512) // 1024,
+            )
         )
     return MotherTongueTakesResponse(session_id=session.id, takes=rows)

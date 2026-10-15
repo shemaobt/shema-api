@@ -879,6 +879,7 @@ class MotherTongueTake(BaseModel):
 
     take_id: str
     part: int | None
+    size_kb: int
 
 
 class MotherTongueTakesResponse(BaseModel):

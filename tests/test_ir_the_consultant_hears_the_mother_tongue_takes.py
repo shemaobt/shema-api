@@ -64,9 +64,16 @@ async def session(db_session: AsyncSession, team: Project) -> IRSession:
 
 
 async def _keep(
-    db: AsyncSession, session: IRSession, team: Project, *, ordinal: int | None, sha: str
+    db: AsyncSession,
+    session: IRSession,
+    team: Project,
+    *,
+    ordinal: int | None,
+    sha: str,
+    size_bytes: int = 2048,
 ) -> str:
     take = ensaio_take(session.id, ordinal=ordinal, sha256=sha, project_id=team.id)
+    take.size_bytes = size_bytes
     db.add(take)
     await db.commit()
     return take.id
@@ -120,3 +127,20 @@ async def test_a_rehearsal_told_whole_has_no_part_and_does_not_move_the_numbered
         (first, 1),
         (second, 2),
     ]
+
+
+async def test_the_size_is_in_kilobytes_rounded_half_up_as_her_page_rounds_it(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    for ordinal, size in enumerate((512, 1535, 1536, 2560), start=1):
+        await _keep(
+            db_session, session, team, ordinal=ordinal, sha=str(ordinal) * 64, size_bytes=size
+        )
+
+    body = await _read(client, consultant, session.id)
+
+    assert [row["size_kb"] for row in body["takes"]] == [1, 1, 2, 3]
