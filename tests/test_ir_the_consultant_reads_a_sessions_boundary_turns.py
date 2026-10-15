@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
-from app.services.internalization_room.sessions import append_exchange
+from app.services.internalization_room.sessions import append_exchange, create_session
 from app.services.internalization_room.validated_turn import TurnOutcome
 from tests.baker import (
     grant_room_app_role,
@@ -272,3 +272,23 @@ async def test_a_telling_back_verdict_and_the_notes_are_never_listed_nor_shift_a
 
     assert body["count"] == 1
     assert [turn["number"] for turn in body["turns"]] == [2]
+
+
+async def test_a_panorama_reads_its_boundary_turns_like_any_passage_and_one_with_no_turn_reads_none(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    panorama = await create_session(db_session, pericope="OV-Ruth", project_id=team.id)
+    assert (await _boundary_turns(client, consultant, panorama.id))["count"] == 0
+
+    panorama = await _opening(db_session, panorama, "Olá! Vamos olhar o livro todo.")
+    panorama = await _turn(
+        db_session, panorama, "E o fim do livro?", "O livro não nos conta isso agora."
+    )
+
+    body = await _boundary_turns(client, consultant, panorama.id)
+
+    assert body["count"] == 1
+    assert [turn["number"] for turn in body["turns"]] == [1]
