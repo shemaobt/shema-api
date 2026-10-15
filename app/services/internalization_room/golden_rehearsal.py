@@ -26,7 +26,7 @@ class NoBucket:
         return None
 
 
-def _silence(seconds: int, seed: str) -> bytes:
+def _flat_tone(seconds: int, seed: str) -> bytes:
     tone = int(hashlib.sha256(seed.encode()).hexdigest()[:6], 16) % 30_000
     out = io.BytesIO()
     with wave.open(out, "wb") as wav:
@@ -46,7 +46,7 @@ async def keep_a_golden_rehearsal(
         db,
         session,
         device_id=GOLDEN_DEVICE,
-        audio=_silence(max(len(spoken), 1), f"{scene}|{'|'.join(spoken)}"),
+        audio=_flat_tone(max(len(spoken), 1), f"{scene}|{'|'.join(spoken)}"),
         content_type=WAV,
         scene=scene,
         store=store,
@@ -60,7 +60,7 @@ async def keep_a_golden_rehearsal(
             ends_ms=(place + 1) * FRASE_MS,
             replaces=None,
             after_restart=None,
-            audio=_silence(1, f"{scene}|{place}|{piece}"),
+            audio=_flat_tone(1, f"{scene}|{place}|{piece}"),
             content_type=WAV,
             filename=None,
             store=store,
