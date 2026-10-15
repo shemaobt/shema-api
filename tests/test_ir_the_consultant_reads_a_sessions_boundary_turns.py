@@ -209,3 +209,31 @@ async def test_a_listed_turn_carries_the_team_words_as_the_guide_was_handed_them
         mother_tongue,
         "",
     ]
+
+
+async def test_each_listed_turn_is_found_in_the_turns_read_at_its_number_and_no_other_is_marked(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await _opening(db_session, session, "Olá! Eu sou o Facilitador Digital.")
+    session = await _turn(db_session, session, "Quem saiu?", "Elimeleque saiu de Belém.")
+    session = await _turn(
+        db_session, session, "Por quê?", "A passagem não conta por que veio a fome."
+    )
+    session = await _turn(db_session, session, "E depois?", "Eles foram para Moabe.")
+    session = await _turn(db_session, session, "", "Podem repetir?", used_fail_safe=True)
+    session = await _turn(db_session, session, "Quem sabe?", "Perguntem ao seu facilitador.")
+
+    body = await _boundary_turns(client, consultant, session.id)
+    read = await client.get(f"{IR}/facilitator/sessions/{session.id}/turns", headers=consultant)
+    turns = read.json()["turns"]
+
+    assert body["count"] == 3
+    assert [turns[turn["number"]]["voice"]["text"] for turn in body["turns"]] == [
+        turn["guide"] for turn in body["turns"]
+    ]
+    assert [number for number, turn in enumerate(turns) if turn["voice"]["boundary"]] == [
+        turn["number"] for turn in body["turns"]
+    ]
