@@ -676,6 +676,7 @@ def summary(
     empty = [result for result in results if result.empty]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
+    send_backs = sum(turn.acceptedSendBacks for turn in played)
     by_role, unpriced = priced(_paid(results))
     voice = [
         sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
@@ -714,6 +715,7 @@ def summary(
         )
         lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
+    lines.append(f"Reenvios do Validador em turnos com leituras aceitas: {send_backs}.")
     if by_role:
         total = sum(by_role.values())
         free = (

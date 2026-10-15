@@ -331,11 +331,44 @@ def test_the_readme_adds_the_money_up_by_role_and_times_the_voice_apart_from_the
         "|---|---|---|---|\n"
         "| P01-understand-first | PASS | 0 |  |\n"
         "\n"
+        "Reenvios do Validador em turnos com leituras aceitas: 0.\n"
         "Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ 0.61 — classifier "
         "US$ 0.01 · guide US$ 0.50 · validator US$ 0.10.\n"
         "Latência Guia+Validador por turno: 15 a 33 s (mediana ≈ 24 s); turno inteiro, com o "
         "classificador em linha: 17 a 33 s (mediana ≈ 25 s).\n"
     ), "o README é o dela: a linha do veredito, a tabela, o dinheiro e o relógio"
+
+
+def test_the_readme_adds_the_send_backs_of_every_session_into_one_line() -> None:
+    def turn(idx: int, send_backs: int) -> golden_runner.Played:
+        return golden_runner.Played(
+            idx=idx,
+            team="Oi.",
+            guide=GUIDE_LINE,
+            outcome="pass",
+            acceptedSendBacks=send_backs,
+        )
+
+    results = [
+        golden_runner.SessionResult(
+            "P11-a-telling-checked", "s-1", [turn(0, 0), turn(1, 1)], verdict=_approving()
+        ),
+        golden_runner.SessionResult(
+            "P13-a-telling-checked", "s-2", [turn(0, 0), turn(1, 2)], verdict=_approving()
+        ),
+    ]
+
+    readme = golden_runner.summary(
+        results,
+        base_url="http://127.0.0.1:8047/api/internalization-room/text-seam/",
+        stamp="2026-10-15T18-00-00",
+        tip="9c4e2b34",
+        pins="roteiros e doutrina no pin `533b6e3` · cânon `7372ec0`",
+    )
+
+    assert "\nReenvios do Validador em turnos com leituras aceitas: 3.\n" in readme, (
+        "o README não somava os reenvios das duas sessões numa linha só"
+    )
 
 
 def test_a_rung_the_table_never_priced_still_leaves_the_clock_in_the_readme() -> None:
