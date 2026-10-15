@@ -795,3 +795,57 @@ async def test_a_send_naming_an_attempt_that_is_not_the_current_one_is_refused(
     assert stale.status_code == 409, stale.text
     assert stale.json()["code"] == "RESTART_OUT_OF_ORDER"
     assert room.guide.inputs == []
+
+
+async def test_a_claim_still_waiting_on_a_drafting_opening_is_not_taken_over(
+    room: Room, db_session: AsyncSession
+) -> None:
+    """A send that waited on the opening drafts after the wait, with its whole turn bound."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    turn_s = settings.internalization_room_turn_bound_ms / 1000
+    wait_s = settings.internalization_room_opening_wait_ms / 1000
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    await claimed_by_hand(
+        db_session, rehearsal_id, "turno-que-esperou", timedelta(seconds=turn_s + 30 + wait_s / 2)
+    )
+
+    sent = await send(room, session_id, rehearsal_id, "turno-novo")
+
+    assert sent.status_code == 409, sent.text
+    assert sent.json()["code"] == "SCENE_REHEARSAL_SENDING"
+    assert room.guide.inputs == []
+
+
+async def test_a_frase_while_the_rehearsal_is_being_sent_is_told_so(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    await claimed_by_hand(db_session, rehearsal_id, "turno-em-voo", timedelta(0))
+
+    frase = await a_frase(room, session_id, rehearsal_id, (5000, 9000), "dois", tone=800)
+
+    assert frase.status_code == 409, frase.text
+    assert frase.json()["code"] == "SCENE_REHEARSAL_SENDING"
+
+
+async def test_a_restart_while_the_rehearsal_is_being_sent_is_told_so(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    await claimed_by_hand(db_session, rehearsal_id, "turno-em-voo", timedelta(0))
+
+    restarted = await room.client.post(
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
+        data={"attempt": str(uuid.uuid4())},
+    )
+
+    assert restarted.status_code == 409, restarted.text
+    assert restarted.json()["code"] == "SCENE_REHEARSAL_SENDING"

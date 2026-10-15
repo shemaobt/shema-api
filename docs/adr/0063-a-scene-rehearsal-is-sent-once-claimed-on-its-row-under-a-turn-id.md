@@ -21,21 +21,23 @@ recorded on ENG-1321), with the row settled in the plan:
   restart take: a claim on the session's row would never meet them. The claim stamps
   `sent_at` and `sent_turn_id` under that lock, with a conditional `UPDATE … WHERE` on the
   stamp it read, so it holds on SQLite too, where the lock does nothing. The live frases are
-  read under the same lock, and the claim commits on its own. A frase that arrives after the
-  claim is refused as `SCENE_REHEARSAL_SENT`, the refusal ADR 0059 gives a sent rehearsal. It
-  is never kept while missing from the sent text.
+  read under the same lock, and the claim commits on its own. A frase or a restart that
+  arrives after the claim is refused, so a frase is never kept while missing from the sent
+  text.
 - The send names the attempt it closes, the uuid its frases carry, and none before any
   restart. It is refused with 409 `RESTART_OUT_OF_ORDER` when that attempt is not the current
   one, or while a frase waits on a restart still on its way. The outbox retries it once the
   restart lands, as it retries a restart that overtook its predecessor (ADR 0059), so a send
   never freezes an attempt the team had already left.
-- Another turn id meets a standing claim. It is refused with 409 `SCENE_REHEARSAL_SENT` only
-  once a turn has landed under the claim's turn id. While the claim is live and nothing has
-  landed, it is refused with 409 `SCENE_REHEARSAL_SENDING`, which the outbox retries: that turn
-  may still fail and leave the rehearsal sendable.
-- A claim older than an opening claim may live, the turn bound plus thirty seconds (ADR 0053),
-  with no turn landed under its turn id, belongs to a request the deployment has already
-  killed. It counts as no claim, and a new turn id takes it over.
+- A frase, a restart or another turn id that meets a standing claim is refused with 409
+  `SCENE_REHEARSAL_SENT`, the refusal ADR 0059 gives a sent rehearsal, only once a turn has
+  landed under the claim's turn id. While the claim is live and nothing has landed, it is
+  refused with 409 `SCENE_REHEARSAL_SENDING`, which the outbox retries: that turn may still
+  fail and leave the rehearsal open.
+- A send may wait for a drafting opening, up to the opening wait, before its own turn bound
+  starts (ADR 0053). A claim older than both together and thirty seconds more, with no turn
+  landed under its turn id, belongs to a request that can no longer be running. It counts as
+  no claim: a frase or a restart lands, and a new turn id takes it over.
 - A resend under the same turn id is answered from the stored answer before anything else
   (ADR 0043). It joins an answer still in flight in this process. Otherwise it renews the claim
   with a fresh stamp and drafts again from the live frases, which the claim froze.

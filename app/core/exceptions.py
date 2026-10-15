@@ -56,8 +56,11 @@ ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
-#: A frase or restart sent to a scene rehearsal already sent: never accepted, never retried.
+#: A frase, restart or send for a scene rehearsal whose send landed: never accepted, never
+#: retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
+#: A frase, restart or send for a scene rehearsal another send is still taking to the voice:
+#: retried, since that send may fail and leave the rehearsal open.
 ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
