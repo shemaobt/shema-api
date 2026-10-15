@@ -214,7 +214,7 @@ def _kept_of_sentence(sentence: str) -> tuple[str, list[Klass]] | None:
     whole = _classes_of(sentence)
     if not whole:
         return None
-    if not _has_never(sentence) and (_positive(whole) or "OFFER_BACK" not in whole):
+    if not _has_never(sentence) and _positive(whole):
         return sentence, whole
     clauses = top_split(sentence, _CLAUSE)
     if _has_never(sentence):
