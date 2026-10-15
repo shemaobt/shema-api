@@ -72,9 +72,9 @@ async def _opening(db: AsyncSession, session: IRSession, guide: str) -> IRSessio
 async def _turn(
     db: AsyncSession, session: IRSession, team: str, guide: str, **outcome: Any
 ) -> IRSession:
-    heard = TurnOutcome(
-        speech=guide, transcript=team, guide_heard=team, mother_tongue=False, **outcome
-    )
+    outcome.setdefault("guide_heard", team)
+    outcome.setdefault("mother_tongue", False)
+    heard = TurnOutcome(speech=guide, transcript=team, **outcome)
     return await append_exchange(
         db, session, team_utterance=team, guide_response=guide, outcome=heard
     )
@@ -170,4 +170,42 @@ async def test_a_marked_turn_is_listed_with_how_containment_ended_and_the_line_t
         ),
         (2, "fail_safe", "Desculpa, não consegui ouvir direito, podem repetir?"),
         (3, "validated", "Essa é uma pergunta boa para levar ao facilitador de vocês."),
+    ]
+
+
+async def test_a_listed_turn_carries_the_team_words_as_the_guide_was_handed_them(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    fail_safe = {"used_fail_safe": True, "fixed_line": "A1"}
+    cut = "[A equipe interrompeu a sua fala anterior neste ponto.] Espera — a Noemi ficou?"
+    mother_tongue = (
+        "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — "
+        "nenhuma palavra chegou até você.]"
+    )
+    session = await _opening(db_session, session, "Olá! Vamos começar.")
+    session = await _turn(db_session, session, "E Rute casou com quem?", "Um.", **fail_safe)
+    session = await _turn(
+        db_session, session, "Espera — a Noemi ficou?", "Dois.", guide_heard=cut, **fail_safe
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "",
+        "Três.",
+        guide_heard=mother_tongue,
+        mother_tongue=True,
+        **fail_safe,
+    )
+    session = await _turn(db_session, session, "", "Quatro.", fixed_line="D1", used_fail_safe=True)
+
+    body = await _boundary_turns(client, consultant, session.id)
+
+    assert [turn["team"] for turn in body["turns"]] == [
+        "E Rute casou com quem?",
+        cut,
+        mother_tongue,
+        "",
     ]
