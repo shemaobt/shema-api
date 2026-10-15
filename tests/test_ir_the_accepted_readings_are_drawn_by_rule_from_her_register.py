@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from app.services.internalization_room.canon.accepted_readings import (
+    ACCEPTED_READINGS_HEADER,
     CUTS,
     DROPS,
     SCOPES,
@@ -12,6 +14,10 @@ from app.services.internalization_room.canon.accepted_readings import (
     accepted_readings_of,
 )
 from app.services.internalization_room.canon.parse_map import VENDOR
+
+GUIDE_PROMPT = (
+    Path(__file__).parents[1] / "app/services/internalization_room/prompts/guide_system_prompt.md"
+)
 
 P11_LOG = VENDOR / "compilation-log" / "P11-Ruth-4-1-8-COMPILATION-LOG.md"
 P11_COORDINATES = VENDOR / "meaning-coordinates" / "P11-Ruth-4-1-8-MEANING-COORDINATES.md"
@@ -163,3 +169,14 @@ def test_a_text_fact_a_code_and_a_cut_that_no_longer_fits_are_held_back_naming_w
         line for scene in ("S1", "S2", "S3", "S4") for line in accepted_lines(readings.items, scene)
     )
     assert "shoe" not in every_line and "FIG_" not in every_line and "OPTIONAL" not in every_line
+
+
+def test_the_header_handed_to_the_guide_is_the_one_her_prompt_quotes_byte_for_byte() -> None:
+    quoted = re.findall(
+        r'"(ACCEPTED READINGS FOR THE SCENE THIS TELLING CHECKS \(.*?)"',
+        GUIDE_PROMPT.read_text(encoding="utf-8"),
+    )
+
+    assert quoted == [ACCEPTED_READINGS_HEADER], (
+        "o cabeçalho que o Guia recebia já não era o que o prompt dela cita"
+    )
