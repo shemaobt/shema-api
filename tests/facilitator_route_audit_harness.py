@@ -9,6 +9,8 @@ once instead of drifting between two copies.
 
 from __future__ import annotations
 
+from fastapi.dependencies.utils import get_flat_dependant
+
 
 def _dependency_calls(dependant) -> set:
     found = {dependant.call}
@@ -55,10 +57,14 @@ def template_of(method: str, url: str) -> str | None:
     return None
 
 
+def names_read_by(route) -> set[str]:
+    flat = get_flat_dependant(route.dependant)
+    return {p.name for p in flat.path_params + flat.query_params}
+
+
 def parameters_of(method: str, path: str) -> set[str]:
     """The names a mounted route reads from its path and its query string."""
     for route in _mounted():
         if method in route.methods and route.path == path:
-            dependant = route.dependant
-            return {p.name for p in dependant.path_params + dependant.query_params}
+            return names_read_by(route)
     return set()
