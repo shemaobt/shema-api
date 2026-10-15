@@ -2,8 +2,10 @@
 
 Every turn is produced through the room's own turn route, with the recognizer, the model and
 the speech engine doubled at the seams the suite already uses, and read back through the
-facilitator's turns route and its per-turn audio door. The one exception is the turn stored
-before this change, whose shape no route writes any more.
+facilitator's turns route and its per-turn audio door. There are two exceptions. The turn
+stored before this change has a shape no route writes any more. The accepted-readings cases
+seed through the golden doors, whose rehearsal send calls the tablet's own writer, because a
+checking turn needs a stored rehearsal and only a send produces one.
 """
 
 from __future__ import annotations
@@ -792,3 +794,20 @@ async def test_the_turns_body_of_a_checking_turn_never_carries_the_readings_line
     assert response.status_code == 200, response.text[:300]
     for line in ("ACCEPTED READINGS", "- R5: A team telling", "is correct, not an addition"):
         assert line not in response.text, f"a leitura do consultor trazia o texto da regra: {line}"
+
+
+async def test_a_checking_turn_that_fell_to_a_fail_safe_still_reads_the_ids_it_was_handed(
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    regenerate = json.dumps(REGENERATE)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
+        golden, room, monkeypatch, None, regenerate, None, regenerate, None, regenerate
+    )
+
+    (_opening, checked) = await _read(golden, room)
+
+    assert checked["voice"]["outcome"] == "fail_safe"
+    assert checked["voice"]["accepted_ids"] == ["R5"], (
+        "um turno de conferência que caiu na frase fixa perdia na leitura as leituras aceitas"
+    )
