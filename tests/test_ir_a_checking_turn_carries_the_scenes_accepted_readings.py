@@ -545,3 +545,18 @@ async def test_the_golden_send_counts_every_send_back_of_the_turn_not_only_the_f
     assert sent.json().get("acceptedSendBacks") == 2, (
         "a resposta do envio dourado contava só um dos dois reenvios do mesmo turno"
     )
+
+
+async def test_the_golden_send_of_a_draft_the_validator_let_stand_says_nothing_of_send_backs(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json().get("acceptedIds") == ["R5"]
+    assert "acceptedSendBacks" not in sent.json(), (
+        "um rascunho aprovado de primeira chegava com a chave dos reenvios, zerada"
+    )
