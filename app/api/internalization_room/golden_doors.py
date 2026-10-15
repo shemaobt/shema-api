@@ -171,7 +171,7 @@ async def send_golden_rehearsal(
         )
         await background()
     await db.refresh(session)
-    guide = session.messages[-1]
+    *_, guide = session.messages
     return GoldenTurnResponse(
         guideText=guide["text"],
         outcome=guide["outcome"],
