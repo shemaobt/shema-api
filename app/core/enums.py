@@ -65,6 +65,23 @@ class ReviewFlagOrigin(StrEnum):
     SYSTEM = "system"
 
 
+class RecordingSource(StrEnum):
+    """Where a recording and everything attached to it came from.
+
+    One mark on the recording covers the audio, its classification and the storyteller it
+    points at: those travel together, and a storyteller row is shared by every recording
+    of that person, so it is the recording that knows its provenance.
+
+    The app never sends the field and so gets ``RAW``: audio the team captured in the field.
+    ``EXTERNAL`` is set only by a caller outside the app, importing from a published source
+    such as an archive, and is what tells a reader that the classification on the row was
+    not made by whoever sat with the storyteller.
+    """
+
+    RAW = "raw"
+    EXTERNAL = "external"
+
+
 class AcoustemeStatus(StrEnum):
     PENDING = "pending"
     READY = "ready"

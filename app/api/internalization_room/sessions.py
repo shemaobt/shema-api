@@ -46,7 +46,12 @@ from app.services.internalization_room.background import (
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.earlier_passages import earlier_passages_due
-from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
+from app.services.internalization_room.hearing import (
+    HeardSpeech,
+    SentSceneRehearsal,
+    heard_speech,
+    stop_hearing,
+)
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
@@ -102,6 +107,7 @@ async def _write_the_turn(
     *,
     outcome: room.TurnOutcome,
     opening: bool,
+    scene_rehearsal: SentSceneRehearsal | None = None,
 ) -> IRSession:
     with stage("db_write"):
         if opening:
@@ -123,6 +129,7 @@ async def _write_the_turn(
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
             commit=False,
+            scene_rehearsal=scene_rehearsal,
         )
         hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
         return session
@@ -783,7 +790,7 @@ async def _answer_the_turn(
         deadline=deadline,
         bound_s=bound_s,
         draft=partial(
-            _draft_the_turn,
+            draft_the_turn,
             db,
             session,
             background=background,
@@ -794,7 +801,7 @@ async def _answer_the_turn(
     )
 
 
-async def _draft_the_turn(
+async def draft_the_turn(
     db: AsyncSession,
     session: IRSession,
     *,
@@ -868,7 +875,9 @@ async def _draft_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
+    session = await _write_the_turn(
+        db, session, outcome=outcome, opening=opening, scene_rehearsal=speech_heard.scene_rehearsal
+    )
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

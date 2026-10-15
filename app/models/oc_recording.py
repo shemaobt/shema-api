@@ -1,13 +1,19 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.core.enums import CleaningStatus, SplittingStatus
+from app.core.enums import CleaningStatus, RecordingSource, SplittingStatus
 from app.utils.description_rule import MINIMUM_DESCRIPTION_CLUSTERS, is_sufficient_description
 
 DESCRIPTION_TOO_SHORT = (
     f"description must be at least {MINIMUM_DESCRIPTION_CLUSTERS} characters, counted as "
     "extended grapheme clusters, ignoring leading and trailing whitespace"
+)
+
+
+REFERENCE_NEEDS_EXTERNAL_SOURCE = (
+    "source_reference is only meaningful on an external recording; a raw field recording "
+    "has no published source to cite"
 )
 
 
@@ -40,9 +46,19 @@ class RecordingCreate(BaseModel):
     duration_seconds: float = Field(ge=0)
     file_size_bytes: int = Field(ge=0)
     format: str = Field(min_length=1, max_length=20)
+    #: The app never sends this and so writes ``raw``. An importer outside the app says
+    #: ``external`` and cites where the audio and its classification came from.
+    source: RecordingSource = RecordingSource.RAW
+    source_reference: str | None = Field(default=None, max_length=2000)
     recorded_at: datetime
 
     _check_description = field_validator("description")(_reject_insufficient_description)
+
+    @model_validator(mode="after")
+    def _reference_needs_external_source(self) -> "RecordingCreate":
+        if self.source_reference is not None and self.source is not RecordingSource.EXTERNAL:
+            raise ValueError(REFERENCE_NEEDS_EXTERNAL_SOURCE)
+        return self
 
 
 class RecordingUpdate(BaseModel):
@@ -61,8 +77,19 @@ class RecordingUpdate(BaseModel):
     duration_seconds: float | None = Field(default=None, ge=0)
     file_size_bytes: int | None = Field(default=None, ge=0)
     cleaning_status: CleaningStatus | None = None
+    #: Both optional so an importer can correct a mislabelled row; the app never sends
+    #: them. The cross-check here covers a payload that carries both; the service checks
+    #: the row as it would be stored when the payload mentions only one of them.
+    source: RecordingSource | None = None
+    source_reference: str | None = Field(default=None, max_length=2000)
 
     _check_description = field_validator("description")(_reject_insufficient_description)
+
+    @model_validator(mode="after")
+    def _reference_needs_external_source(self) -> "RecordingUpdate":
+        if self.source_reference is not None and self.source is RecordingSource.RAW:
+            raise ValueError(REFERENCE_NEEDS_EXTERNAL_SOURCE)
+        return self
 
 
 class ReviewFlagResponse(BaseModel):
@@ -105,6 +132,8 @@ class RecordingResponse(BaseModel):
     split_index: int | None = None
     split_segment_count: int | None = None
     review_flags: list[ReviewFlagResponse] = []
+    source: str = RecordingSource.RAW
+    source_reference: str | None = None
     recorded_at: datetime
     uploaded_at: datetime | None
     created_at: datetime

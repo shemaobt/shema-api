@@ -874,6 +874,24 @@ class TakesResponse(BaseModel):
     takes: list[TakeResponse]
 
 
+class MotherTongueTake(BaseModel):
+    """One recording of the session in the mother tongue, as the consultant's record lists it."""
+
+    take_id: str
+    part: int | None
+    size_kb: int
+    fingerprint: str
+    recorded_at: str
+    play_url: str | None
+    unread: bool
+    duration_ms: int | None = None
+
+
+class MotherTongueTakesResponse(BaseModel):
+    session_id: str
+    takes: list[MotherTongueTake]
+
+
 class SceneFraseView(BaseModel):
     """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
 
@@ -1362,6 +1380,30 @@ class SessionTurn(BaseModel):
 class SessionTurnsResponse(BaseModel):
     session_id: str
     turns: list[SessionTurn]
+
+
+class BoundaryTurn(BaseModel):
+    number: int
+    outcome: TurnOutcomeCode
+    team: str
+    guide: str
+
+
+class SessionBoundaryTurnsResponse(BaseModel):
+    """The turns the boundary rule marks, her «Perguntas de fronteira».
+
+    `number` is the turn's place in `SessionTurnsResponse.turns`, from zero, and the `{number}`
+    of its clip; her «turno n» is `number + 1`. `team` is what the Guide was handed in the
+    team's place: on the opening, her stored kickoff note as her transcript prints it, empty
+    when the session stored none, and on any other turn the words heard, empty when nothing
+    was heard. `guide` is the line voiced.
+    `count` is the length of `turns`, served so the Desk never counts, and the section is read
+    with no turn marked as well: `count` 0 and `turns` empty.
+    """
+
+    session_id: str
+    count: int
+    turns: list[BoundaryTurn]
 
 
 class BeadState(StrEnum):
