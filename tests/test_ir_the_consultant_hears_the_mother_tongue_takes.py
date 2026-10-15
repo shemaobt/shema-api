@@ -144,3 +144,17 @@ async def test_the_size_is_in_kilobytes_rounded_half_up_as_her_page_rounds_it(
     body = await _read(client, consultant, session.id)
 
     assert [row["size_kb"] for row in body["takes"]] == [1, 1, 2, 3]
+
+
+async def test_the_fingerprint_is_the_first_twelve_characters_of_the_sha256(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _keep(db_session, session, team, ordinal=1, sha="0123456789abcdef" * 4)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [row["fingerprint"] for row in body["takes"]] == ["0123456789ab"]

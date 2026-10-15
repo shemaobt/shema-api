@@ -880,6 +880,7 @@ class MotherTongueTake(BaseModel):
     take_id: str
     part: int | None
     size_kb: int
+    fingerprint: str
 
 
 class MotherTongueTakesResponse(BaseModel):

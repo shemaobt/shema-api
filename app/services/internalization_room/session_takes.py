@@ -19,6 +19,7 @@ async def mother_tongue_takes_of(db: AsyncSession, session: IRSession) -> Mother
                 take_id=take.id,
                 part=None if take.ordinal is None else position,
                 size_kb=(take.size_bytes + 512) // 1024,
+                fingerprint=take.sha256[:12],
             )
         )
     return MotherTongueTakesResponse(session_id=session.id, takes=rows)
