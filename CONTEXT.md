@@ -61,10 +61,6 @@ _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
 _Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
 
-**Visit** (*visita*):
-One session of the team on a pericope as the Desk shows it: the pericope is the unit of the Desk and the visit is one attempt at it. The pericope's line shows the current visit; the earlier ones, with how each ended, are listed in the Retroverification phase.
-_Avoid_: session (in the Desk's prose; it is the server's word for the same row), attempt, round, Sessão
-
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
 _Avoid_: bot, assistant, Sala
@@ -276,11 +272,19 @@ _Avoid_: ending, other, Fechamento
 
 ### Session states
 
-**Session**:
+**Session** (*sessão*):
 The work of one team on one pericope in one language, with status in progress, done or needs a
 person. A session nobody entered — no turn, no take and no halt — is not yet a room of the team:
-the Desk's column and the team's last activity ignore it.
-_Avoid_: passage, round, Sessão
+the Desk's column and the team's last activity ignore it. The Desk uses the same word.
+_Avoid_: passage, round, visit, visita, attempt
+
+**Approved passage** (*passagem aprovada*):
+A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
+_Avoid_: closed passage (a session done, which may hold no release), fechada, complete
+
+**Inactive team** (*equipe inativa*):
+A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of the book is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
+_Avoid_: stalled, parada, idle, dormant
 
 **Opening a session**:
 A tablet asking the room for its team's session of a pericope and language: the latest live one is returned whatever its state, and one is created only when none exists. An archived session is never returned.
@@ -303,7 +307,7 @@ A turn that carries the team's recording: what they said goes in, the Guide's ne
 _Avoid_: audio turn, retell turn
 
 **Attempt**:
-One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Visit.
+One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Session.
 _Avoid_: try, round, redraft (the count of drafts after the first), Tentativa
 
 **Attempt note**:
