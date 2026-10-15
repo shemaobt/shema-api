@@ -405,18 +405,18 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
     reach: dict[ast.AST, dict[str, ast.AST]] = {}
     for scope in ast.walk(tree):
         if isinstance(scope, ast.ClassDef):
-            fixtures = {
-                function.name: function
-                for each in reversed(visible(scope))
+            fixtures = [
+                function
+                for each in visible(scope)
                 for function in each.body
                 if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
                 and function.name in _fixtures_of(each)
-            }
+            ]
             for function in scope.body:
                 if function in called_by_pytest:
                     reach[function] = {
-                        name: fixture
-                        for name, fixture in fixtures.items()
+                        fixture.name: fixture
+                        for fixture in reversed(fixtures)
                         if fixture is not function
                     }
     return reach
@@ -2061,6 +2061,27 @@ class TestAnotherCase(Base):
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_SUBCLASS_FIXTURE_EXTENDS_THE_ONE_OF_ITS_BASE_CLASS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class Base:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+
+class TestACase(Base):
+    @pytest.fixture
+    def cached(self, cached):
+        return cached
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
 THE_CASE_WHOSE_METHOD_HANDS_THE_CLASS_FIXTURE_TO_A_HELPER = """\
 import pytest
 
@@ -3057,6 +3078,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         (THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_ANOTHER_FIXTURE_OF_THE_CLASS, [16], []),
         (THE_CASE_WHOSE_METHOD_HANDS_THE_CLASS_FIXTURE_TO_A_HELPER, [7], []),
         (THE_CASE_WHOSE_SUBCLASS_DEFINES_THE_FIXTURE_OF_ITS_BASE_CLASS_AGAIN, [24], [19]),
+        (THE_CASE_WHOSE_SUBCLASS_FIXTURE_EXTENDS_THE_ONE_OF_ITS_BASE_CLASS, [18], []),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
@@ -3069,6 +3091,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a class fixture that requests another fixture of the class",
         "a method that hands the class's fixture to a helper",
         "a subclass that defines the fixture of its base class again",
+        "a subclass fixture that requests the fixture of its base class of its own name",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
