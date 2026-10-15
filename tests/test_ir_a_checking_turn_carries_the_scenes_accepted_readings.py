@@ -107,3 +107,20 @@ async def test_a_rehearsal_of_p11_scene_4_ends_the_guides_room_facts_with_her_he
         "o ensaio da cena 4 chegava ao Guia sem as leituras aceitas dela no fim dos fatos da sala"
     )
     assert facts.count("ACCEPTED READINGS") == 1
+
+
+async def test_the_same_words_typed_hand_the_guide_no_accepted_readings(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    typed = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": SANDAL[0]}
+    )
+
+    assert typed.status_code == 200, typed.text
+    assert agent.guide_systems, "o Guia nem foi chamado"
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "as mesmas palavras digitadas levavam as leituras aceitas"
+    )
