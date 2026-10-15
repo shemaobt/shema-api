@@ -7,6 +7,7 @@ snake_case. A key she adds later is ignored, never refused.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -46,6 +47,23 @@ class GoldenTurnRequest(BaseModel):
     #: The full carried list of scene ids whose scene rehearsal has reached the Guide;
     #: `[]` is the fact that none has, and absence is no fact at all.
     sceneRehearsals: list[str] | None = None
+
+
+class GoldenRehearsalRequest(BaseModel):
+    sessionId: str = Field(max_length=36)
+    sceneId: str | None = Field(default=None, max_length=16)
+    pieces: list[str]
+
+
+class GoldenRehearsalResponse(BaseModel):
+    rehearsalId: str
+
+
+class GoldenRehearsalSendRequest(BaseModel):
+    sessionId: str = Field(max_length=36)
+    rehearsalId: str = Field(max_length=36)
+    turnId: str = Field(max_length=64)
+    closes: uuid.UUID | None = None
 
 
 class GoldenTurnResponse(BaseModel):

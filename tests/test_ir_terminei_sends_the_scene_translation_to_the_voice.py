@@ -30,7 +30,7 @@ from app.services import internalization_room as room_service
 from tests.baker import make_app, make_project_user_access, make_role, make_user, make_user_app_role
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
-from tests.hearing_harness import nothing_settles
+from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.room_harness import the_room_speaks
 from tests.turn_harness import the_room_agent_is
 
@@ -863,3 +863,25 @@ async def test_a_rehearsal_whose_claim_went_stale_reads_unsent_to_the_tablet_and
 
     assert on_the_tablet["sent_at"] is None
     assert on_the_desk["sent_at"] is None
+
+
+async def test_the_same_translated_words_through_the_turns_door_are_an_ordinary_turn_not_a_checking_one(  # noqa: E501
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id, scene="S2")
+    await three_translated(room, session_id, rehearsal_id)
+    the_transcriber_hears(monkeypatch, "um dois três", "pt", 1.0)
+
+    spoken = await room.client.post(
+        f"{IR}/sessions/{session_id}/turns",
+        files={"file": ("fala.wav", recording(2, 7), "audio/wav")},
+    )
+
+    assert spoken.status_code == 200, spoken.text
+    assert room.guide.inputs == ["um dois três"]
+    words, guide = (await conversation(db_session, session_id))[-2:]
+    assert (words["role"], words["text"], words.get("room_note")) == ("team", "um dois três", None)
+    assert guide["role"] == "guide"
+    assert "scene_rehearsal" not in guide
+    assert "scene_rehearsals" not in guide

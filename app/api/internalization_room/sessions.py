@@ -813,6 +813,70 @@ async def draft_the_turn(
     deadline: float,
     bound_s: float,
 ) -> TurnResponse:
+    reply, outcome, language = await _keep_the_turn(
+        db,
+        session,
+        background=background,
+        turn_id=turn_id,
+        opening=opening,
+        halted=halted,
+        speech_heard=speech_heard,
+        deadline=deadline,
+        bound_s=bound_s,
+    )
+    if outcome is None:
+        return reply
+    uploads: list[Upload] = []
+    try:
+        with stage("voice"):
+            await _voice_the_turn(outcome, language=language, uploads=uploads)
+    except Exception as error:
+        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
+    try:
+        await _upload(uploads)
+    except Exception as error:
+        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
+    return reply
+
+
+async def draft_the_turn_as_text(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+) -> TurnResponse:
+    reply, _outcome, _language = await _keep_the_turn(
+        db,
+        session,
+        background=background,
+        turn_id=turn_id,
+        opening=opening,
+        halted=halted,
+        speech_heard=speech_heard,
+        deadline=deadline,
+        bound_s=bound_s,
+    )
+    return reply
+
+
+async def _keep_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+) -> tuple[TurnResponse, room.TurnOutcome | None, str]:
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
@@ -838,7 +902,7 @@ async def draft_the_turn(
             )
         await db.commit()
         nudge(team_id, "sessions")
-        return reply
+        return reply, None, session.language
 
     if opening:
         with stage("db_let_go"):
@@ -922,15 +986,4 @@ async def draft_the_turn(
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            await _voice_the_turn(outcome, language=session.language, uploads=uploads)
-    except Exception as error:
-        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
-    try:
-        await _upload(uploads)
-    except Exception as error:
-        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
-    return reply
+    return reply, outcome, session.language
