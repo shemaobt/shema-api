@@ -446,3 +446,18 @@ async def test_a_send_back_on_a_rehearsal_that_handed_no_readings_is_not_reporte
     assert the_sendbacks_said(caplog) == [], (
         "um reenvio num turno sem leituras aceitas entrava na contagem dos que as contradizem"
     )
+
+
+async def test_a_draft_the_validator_lets_stand_on_a_checking_turn_is_not_reported(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert the_sendbacks_said(caplog) == [], (
+        "um rascunho aprovado de primeira entrava na contagem dos reenvios"
+    )
