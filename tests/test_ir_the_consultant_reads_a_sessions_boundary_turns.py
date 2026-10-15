@@ -237,3 +237,38 @@ async def test_each_listed_turn_is_found_in_the_turns_read_at_its_number_and_no_
     assert [number for number, turn in enumerate(turns) if turn["voice"]["boundary"]] == [
         turn["number"] for turn in body["turns"]
     ]
+
+
+async def test_a_telling_back_verdict_and_the_notes_are_never_listed_nor_shift_a_number(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="",
+        guide_response="Olá! Vamos começar.",
+        opening_note="[A equipe abriu a passagem; levem a dúvida ao seu facilitador.]",
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "Quem saiu?",
+        "Elimeleque saiu de Belém.",
+        room_note="[A equipe interrompeu a fala; a passagem não conta isso, seu facilitador sabe.]",
+    )
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="",
+        guide_response="A passagem não conta isso. Perguntem ao seu facilitador.",
+        told_back="a telling",
+    )
+    session = await _turn(db_session, session, "Quem sabe?", "Perguntem ao seu facilitador.")
+
+    body = await _boundary_turns(client, consultant, session.id)
+
+    assert body["count"] == 1
+    assert [turn["number"] for turn in body["turns"]] == [2]
