@@ -2034,6 +2034,25 @@ class TestACase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_SHADOWS_THE_CONFTESTS_FIXTURE_OF_ITS_NAME = """\
+import pytest
+
+from app.core.config import get_settings
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return get_settings
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+
+
+def test_another_case(cached) -> None:
+    cached.cache_clear()
+"""
+
 THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_CONFTESTS_FIXTURE_OF_ITS_OWN_NAME = """\
 import pytest
 
@@ -2998,9 +3017,16 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
             [10],
             [],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_SHADOWS_THE_CONFTESTS_FIXTURE_OF_ITS_NAME,
+            [16],
+            [12],
+        ),
     ],
     ids=[
         "a class fixture that requests the conftest's fixture of its own name",
+        "a class fixture that shadows the conftest's fixture of its name",
     ],
 )
 def test_a_fixture_defined_in_a_class_takes_what_it_requests_from_the_conftest(
