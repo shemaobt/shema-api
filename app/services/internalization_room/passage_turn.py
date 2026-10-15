@@ -8,11 +8,12 @@ from app.services.internalization_room.canon.accepted_readings import (
     accepted_readings_of,
 )
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
-from app.services.internalization_room.moment import moment_fact
+from app.services.internalization_room.moment import moment_at_turn_start, moment_fact
 from app.services.internalization_room.prompt_blocks import (
     RoomFact,
     coverage_status_block,
@@ -24,6 +25,20 @@ from app.services.internalization_room.prompt_blocks import (
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
+
+
+def _checked_scene(
+    scene_rehearsal: SentSceneRehearsal | None, messages: list[dict[str, Any]], pericope_num: str
+) -> str | None:
+    if scene_rehearsal is None:
+        return None
+    if scene_rehearsal.scene:
+        return scene_rehearsal.scene
+    moment = moment_at_turn_start(messages)
+    if moment is None or moment.at != "articulation" or moment.part is None:
+        return None
+    scenes = scene_ids_for(pericope_num)
+    return scenes[moment.part - 1] if 1 <= moment.part <= len(scenes) else None
 
 
 async def run_turn(
@@ -74,9 +89,10 @@ async def run_turn(
 
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
+    checked = _checked_scene(scene_rehearsal, messages, pericope_num)
     accepted = (
-        accepted_readings_block(accepted_readings_of(pericope_num).items, scene_rehearsal.scene)
-        if scene_rehearsal is not None and scene_rehearsal.scene
+        accepted_readings_block(accepted_readings_of(pericope_num).items, checked)
+        if checked
         else ""
     )
     coverage_status = "\n\n".join(

@@ -8,6 +8,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.services import internalization_room as room_service
 from app.services.internalization_room import hearing, takes
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.hearing_harness import nothing_settles
@@ -151,4 +152,44 @@ async def test_a_rehearsal_sent_outside_ruth_3_and_4_hands_the_guide_no_accepted
     assert sent.status_code == 200, sent.text
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "um ensaio de Rute 1 levava leituras aceitas que ela só deu para Rute 3 e 4"
+    )
+
+
+async def the_room_stands_in(db: AsyncSession, session_id: str, moment: dict[str, Any]) -> None:
+    stored = await room_service.get_session(db, session_id)
+    *earlier, guide = [dict(message) for message in stored.messages or []]
+    guide["moment"] = {"before": {"at": "familiarization"}, "after": moment, "by": []}
+    stored.messages = [*earlier, guide]
+    await db.commit()
+
+
+async def test_an_unmarked_rehearsal_in_the_articulation_of_part_4_is_checked_as_scene_4(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(
+        db_session, session_id, {"at": "articulation", "part": 4, "fenced": True}
+    )
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, None)
+
+    assert sent.status_code == 200, sent.text
+    assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P11_S4_R5}"), (
+        "um ensaio sem cena marcada, na articulação da parte 4, não era conferido como a cena 4"
+    )
+
+
+async def test_an_unmarked_rehearsal_outside_an_articulation_hands_the_guide_no_accepted_readings(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 4})
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, None)
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "um ensaio sem cena marcada, fora de uma articulação, ganhava uma cena por palpite"
     )
