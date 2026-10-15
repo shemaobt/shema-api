@@ -363,3 +363,8 @@ def accepted_lines(items: tuple[AcceptedItem, ...], scene: str) -> list[str]:
 
 def accepted_ids_for(items: tuple[AcceptedItem, ...], scene: str) -> list[str]:
     return list(dict.fromkeys(item.rid for item in items if scene in item.scenes))
+
+
+def accepted_readings_block(items: tuple[AcceptedItem, ...], scene: str) -> str:
+    lines = accepted_lines(items, scene)
+    return "\n".join([ACCEPTED_READINGS_HEADER, *lines]) if lines else ""

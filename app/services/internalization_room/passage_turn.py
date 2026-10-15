@@ -3,8 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.canon.accepted_readings import (
+    accepted_readings_block,
+    accepted_readings_of,
+)
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import inaudible_ladder
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.moment import moment_fact
@@ -37,6 +42,7 @@ async def run_turn(
     session_id: str = "?",
     prepared_pericope: str | None = None,
     earlier_passages: dict[str, str] | None = None,
+    scene_rehearsal: SentSceneRehearsal | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -68,6 +74,11 @@ async def run_turn(
 
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
+    accepted = (
+        accepted_readings_block(accepted_readings_of(pericope_num).items, scene_rehearsal.scene)
+        if scene_rehearsal is not None and scene_rehearsal.scene
+        else ""
+    )
     coverage_status = "\n\n".join(
         block
         for block in (
@@ -76,6 +87,7 @@ async def run_turn(
                 {
                     RoomFact.EARLIER_PASSAGES: earlier,
                     RoomFact.MOMENT: moment_fact(messages, pericope_num),
+                    RoomFact.ACCEPTED_READINGS: accepted,
                 }
             ),
         )
