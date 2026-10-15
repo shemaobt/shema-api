@@ -12,10 +12,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services import internalization_room as room_service
 from app.services.internalization_room import hearing, passage_turn, takes
+from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.hearing_harness import nothing_settles
-from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app, the_models_answer
-from tests.turn_harness import the_room_agent_is
+from tests.text_seam_harness import (
+    BEARER,
+    GOLDEN,
+    GUIDE_LINE,
+    RUNNER_KEY,
+    the_app,
+    the_models_answer,
+)
+from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
 
 HEADER = (
     "ACCEPTED READINGS FOR THE SCENE THIS TELLING CHECKS (a note from the app, in English like "
@@ -37,6 +46,15 @@ HEADER = (
 P11_S4_R5 = (
     "- R5: A team telling 'and gave it to Boaz' is correct, not an addition. "
     "The voice accepts it and does not correct or remark on it."
+)
+P13_S3_LINES = (
+    "- R5: A telling 'she took care of him' or 'she raised him' keeps the meaning; accept it "
+    "without comment.\n"
+    "- R8: A team telling 'King David' ('o rei Davi') is a nuance: the voice names it once "
+    "\N{EM DASH} 'a hist\u00f3ria d\u00e1 s\u00f3 o nome dele, Davi' ('the story gives only his "
+    "name, David') \N{EM DASH} without a send-back, and moves on.\n"
+    "- R9: A telling that recalls Boaz's words at the gate \N{EM DASH} he bought Ruth to raise "
+    "up the name of the dead \N{EM DASH} is correct; accept it without comment."
 )
 SANDAL = ["Ele tirou a sandália e deu pro Boaz."]
 
@@ -280,3 +298,174 @@ async def test_a_register_that_cannot_be_read_leaves_the_turn_whole_and_says_whe
         "a falha da leitura do registro passava calada, ou sem dizer a sessão e a cena"
     )
     assert "ACCEPTED READINGS" not in said[0]
+
+
+async def test_a_scene_mark_the_passage_lacks_hands_the_guide_nothing_and_keeps_no_ids(
+    monkeypatch,
+) -> None:
+    agent = the_models_answer(monkeypatch)
+
+    outcome = await passage_turn.run_turn(
+        transcript=SANDAL[0],
+        coverage_state=initial_state("P11"),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num="P11",
+        language_code="pt",
+        settings=settings(),
+        scene_rehearsal=SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=1, scene="S99"),
+    )
+
+    assert agent.guide_systems, "o Guia nem foi chamado"
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "uma cena que a passagem não tem levava as leituras aceitas de alguma outra"
+    )
+    assert outcome.accepted_ids == [], "uma cena que a passagem não tem guardava ids"
+
+
+async def test_a_marked_rehearsal_sent_late_at_the_ensaio_final_is_still_checked_as_its_scene(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "ensaio_final"})
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P11_S4_R5}"), (
+        "um ensaio marcado, enviado tarde, depois do envio, perdia as leituras aceitas da cena"
+    )
+
+
+async def test_a_rehearsal_of_p13_scene_3_telling_the_king_david_hands_the_guide_the_nuance_line(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client, "P13")
+    agent = the_models_answer(monkeypatch)
+
+    kept = await client.post(
+        f"{GOLDEN}/rehearsal",
+        json={
+            "sessionId": session_id,
+            "sceneId": "S3",
+            "pieces": ["Ela criou o filho do rei Davi."],
+        },
+    )
+    sent = await client.post(
+        f"{GOLDEN}/rehearsal/send",
+        json={
+            "sessionId": session_id,
+            "rehearsalId": kept.json()["rehearsalId"],
+            "turnId": "turno-1",
+        },
+    )
+
+    assert sent.status_code == 200, sent.text
+    assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P13_S3_LINES}"), (
+        "o ensaio da cena 3 de P13, com o rei Davi, chegava ao Guia sem a linha do R8"
+    )
+
+
+async def test_an_unmarked_rehearsal_in_the_familiarization_of_part_2_hands_the_guide_no_readings(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "familiarization", "part": 2})
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, None)
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "um ensaio sem cena marcada, na familiarização da parte 2, ganhava as leituras da cena 2"
+    )
+
+
+def regenerating(claim: str) -> str:
+    return json.dumps(
+        {
+            "verdict": "regenerate",
+            "issues": [
+                {"claim": claim, "problem": "invented_detail", "explanation": "o mapa não diz"}
+            ],
+        }
+    )
+
+
+def the_sendbacks_said(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == passage_turn.__name__ and "[accepted-sendback]" in record.getMessage()
+    ]
+
+
+async def test_a_send_back_on_a_turn_that_handed_readings_is_reported_with_the_ids_and_the_issue(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2
+    (said,) = the_sendbacks_said(caplog)
+    for expected in (session_id, "scene=S4", "ids=['R5']", "attempt=1", "deu a sandália ao Boaz"):
+        assert expected in said, f"o aviso do reenvio não trazia {expected!r}: {said}"
+    assert "ACCEPTED READINGS" not in said and "- R5: A team telling" not in said, (
+        "o aviso do reenvio repetia as palavras do bloco"
+    )
+    assert GUIDE_LINE not in said, "o aviso do reenvio repetia o rascunho do Guia"
+
+
+async def test_every_send_back_of_a_checking_turn_is_reported_not_only_the_first(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    first, second = regenerating("deu a sandália ao Boaz"), regenerating("o Boaz ficou com ela")
+    the_models_answer(monkeypatch, None, first, None, second)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    one, two = the_sendbacks_said(caplog)
+    assert "attempt=1" in one and "deu a sandália ao Boaz" in one
+    assert "attempt=2" in two and "o Boaz ficou com ela" in two, (
+        "o segundo reenvio do mesmo turno não era contado"
+    )
+
+
+async def test_a_send_back_on_a_rehearsal_that_handed_no_readings_is_not_reported(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S3")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2, "o Validador não mandou o rascunho de volta"
+    assert the_sendbacks_said(caplog) == [], (
+        "um reenvio num turno sem leituras aceitas entrava na contagem dos que as contradizem"
+    )
+
+
+async def test_a_draft_the_validator_lets_stand_on_a_checking_turn_is_not_reported(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert the_sendbacks_said(caplog) == [], (
+        "um rascunho aprovado de primeira entrava na contagem dos reenvios"
+    )
