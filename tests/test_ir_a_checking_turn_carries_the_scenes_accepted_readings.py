@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services import internalization_room as room_service
 from app.services.internalization_room import hearing, passage_turn, takes
+from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app, the_models_answer
-from tests.turn_harness import the_room_agent_is
+from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
 
 HEADER = (
     "ACCEPTED READINGS FOR THE SCENE THIS TELLING CHECKS (a note from the app, in English like "
@@ -280,3 +282,27 @@ async def test_a_register_that_cannot_be_read_leaves_the_turn_whole_and_says_whe
         "a falha da leitura do registro passava calada, ou sem dizer a sessão e a cena"
     )
     assert "ACCEPTED READINGS" not in said[0]
+
+
+async def test_a_scene_mark_the_passage_lacks_hands_the_guide_nothing_and_keeps_no_ids(
+    monkeypatch,
+) -> None:
+    agent = the_models_answer(monkeypatch)
+
+    outcome = await passage_turn.run_turn(
+        transcript=SANDAL[0],
+        coverage_state=initial_state("P11"),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num="P11",
+        language_code="pt",
+        settings=settings(),
+        scene_rehearsal=SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=1, scene="S99"),
+    )
+
+    assert agent.guide_systems, "o Guia nem foi chamado"
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "uma cena que a passagem não tem levava as leituras aceitas de alguma outra"
+    )
+    assert outcome.accepted_ids == [], "uma cena que a passagem não tem guardava ids"
