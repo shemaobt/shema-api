@@ -146,6 +146,55 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
     assert [t["at"] for t in turns] == sorted(t["at"] for t in turns)
 
 
+async def test_the_opening_note_is_marked_apart_from_the_words_the_team_said(
+    client, db_session, room_app, script
+) -> None:
+    session_id, desk, _credential = await _a_conversation(client, db_session, room_app, script)
+
+    turns = await _turns(client, session_id, desk)
+
+    assert [(t["text"], t["note_kind"]) for t in turns[:5]] == [
+        (NOTE_PT_P03, "opening"),
+        (GUIDE_OPENING, None),
+        (FIRST_ANSWER, None),
+        (GUIDE_LINE, None),
+        (SECOND_ANSWER, None),
+    ], "a Sala de Observação contava a nota de abertura como fala da equipe"
+
+
+async def test_the_mother_tongue_note_is_marked_a_room_note_and_the_lines_around_it_are_not(
+    client, db_session, room_app, script
+) -> None:
+    session_id, desk, _credential = await _a_conversation(client, db_session, room_app, script)
+
+    turns = await _turns(client, session_id, desk)
+
+    assert [(t["role"], t["note_kind"]) for t in turns[5:]] == [
+        ("guide", None),
+        ("team", "room"),
+        ("guide", None),
+    ], "a Sala de Observação contava a nota da língua materna como fala da equipe"
+    assert turns[6]["text"].startswith("[A equipe falou na língua materna")
+
+
+async def test_a_take_the_room_could_not_hear_stays_the_teams_side_and_is_not_a_note(
+    client, db_session, room_app, script
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await the_room_opens(client, credential, session.id)
+    script.said = ""
+
+    await the_team_says(client, credential, session.id, "turno-1")
+
+    turns = await _turns(client, session.id, desk)
+    inaudible = [t for t in turns if t["text"] == "(inaudible)"]
+    assert [(t["role"], t["note_kind"]) for t in inaudible] == [("team", None)], (
+        "a vez da equipe que a sala não ouviu virava nota da sala e saía da conta da equipe"
+    )
+
+
 async def test_only_the_fail_safe_line_is_marked_and_names_its_category(
     client, db_session, room_app, script
 ) -> None:
@@ -246,6 +295,26 @@ async def test_an_entry_stored_before_the_stamps_reads_as_conversation_with_no_m
         ("guide", GUIDE_OPENING, None),
         ("team", FIRST_ANSWER, None),
     ]
+
+
+async def test_a_row_stored_with_the_role_room_reads_as_the_team_side_marked_a_room_note(
+    client, db_session, room_app, script
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    session.messages = [
+        {"role": "room", "text": "[a sessão acabou de começar]"},
+        {"role": "team", "text": FIRST_ANSWER},
+    ]
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    turns = await _turns(client, session.id, desk)
+
+    assert [(t["role"], t["text"], t["note_kind"]) for t in turns] == [
+        ("team", "[a sessão acabou de começar]", "room"),
+        ("team", FIRST_ANSWER, None),
+    ], "uma nota gravada antes das notas da sala como lado da equipe aparecia como a sala falando"
 
 
 async def test_an_older_line_with_only_a_category_is_a_fail_safe_with_its_category_named(

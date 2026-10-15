@@ -62,7 +62,7 @@ async def test_the_wheel_offers_all_fourteen_passages_of_ruth_in_order(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", voiced)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id="a-team", db=db_session)
 
     assert [view.pericope for view in answer.passages if view.kind == "passage"] == RUTH
 

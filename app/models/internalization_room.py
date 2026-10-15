@@ -442,6 +442,8 @@ class PassageView(BaseModel):
     audio_url: str
     beads: int = 0
     absence_index: int = -1
+    #: The team holds a live Release of this passage, from any tablet, forced or not.
+    approved: bool = False
 
 
 class BookPassagesResponse(BaseModel):
@@ -1275,11 +1277,12 @@ class RetroverificationFile(BaseModel):
 
 
 class ConversationTurn(BaseModel):
-    role: Literal["team", "guide", "room"]
+    role: Literal["team", "guide"]
     text: str
     at: str | None
     fail_safe: bool
     fail_safe_category: str | None
+    note_kind: Literal["opening", "room"] | None
 
 
 class ConversationResponse(BaseModel):

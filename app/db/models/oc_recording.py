@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
-from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
+from app.core.enums import CleaningStatus, RecordingSource, SplittingStatus, UploadStatus
 
 
 class ReviewFlag(TypedDict):
@@ -81,6 +81,10 @@ class OC_Recording(Base):
     review_flags: Mapped[list[ReviewFlag]] = mapped_column(
         JSON(none_as_null=True), nullable=False, server_default=text("'[]'"), default=list
     )
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=RecordingSource.RAW, server_default="raw"
+    )
+    source_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

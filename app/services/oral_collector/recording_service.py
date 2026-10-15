@@ -17,6 +17,7 @@ from app.core.enums import (
     CleaningStatus,
     OCNotificationEvent,
     OCRecordingEvent,
+    RecordingSource,
     SplittingStatus,
     UploadStatus,
 )
@@ -26,6 +27,7 @@ from app.core.exceptions import (
     InvalidCleaningStatusError,
     NotFoundError,
     SecondaryClassificationConflictError,
+    SourceReferenceOnRawRecordingError,
     UnknownReferenceError,
     UploadNotConfirmed,
     ValidationError,
@@ -390,6 +392,8 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         duration_seconds=data.duration_seconds,
         file_size_bytes=data.file_size_bytes,
         format=data.format,
+        source=data.source,
+        source_reference=data.source_reference,
         recorded_at=data.recorded_at,
     )
     recompute_review_flags(recording)
@@ -445,6 +449,12 @@ async def update_recording(
         secondary_subcategory_id=effective_sec_sub,
     ):
         raise SecondaryClassificationConflictError
+    effective_source = data.source if "source" in provided else recording.source
+    effective_reference = (
+        data.source_reference if "source_reference" in provided else recording.source_reference
+    )
+    if effective_reference is not None and effective_source != RecordingSource.EXTERNAL:
+        raise SourceReferenceOnRawRecordingError
     if data.cleaning_status is not None:
         new_status = data.cleaning_status
         if new_status not in USER_SETTABLE_CLEANING_STATUSES:

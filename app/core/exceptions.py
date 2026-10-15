@@ -340,6 +340,21 @@ class InvalidCleaningStatusError(ValidationError):
         )
 
 
+class SourceReferenceOnRawRecordingError(ValidationError):
+    """A citation on a raw field recording, after the update is applied to the stored row.
+
+    The schema catches the contradiction when one payload carries both fields; this is
+    the other half, for an update that mentions only one of them and would leave the
+    stored row saying raw with a citation beside it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "source_reference is only meaningful on an external recording; a raw field "
+            "recording has no published source to cite"
+        )
+
+
 class SecondaryClassificationConflictError(ValidationError):
     def __init__(self) -> None:
         super().__init__(
