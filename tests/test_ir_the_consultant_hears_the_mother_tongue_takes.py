@@ -401,3 +401,18 @@ async def test_reading_the_takes_changes_neither_the_session_nor_a_take(
     await db_session.refresh(take)
 
     assert (_as_stored(session), _as_stored(take)) == before
+
+
+async def test_the_part_is_the_position_among_the_numbered_parts_not_the_number_the_tablet_sent(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    second = await _keep(db_session, session, team, ordinal=2, sha="a" * 64)
+    fifth = await _keep(db_session, session, team, ordinal=5, sha="b" * 64)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["take_id"], row["part"]) for row in body["takes"]] == [(second, 1), (fifth, 2)]
