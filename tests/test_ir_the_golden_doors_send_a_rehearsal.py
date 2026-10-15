@@ -205,3 +205,19 @@ async def test_a_golden_rehearsal_sent_while_another_send_stands_is_told_it_is_b
     assert sent.status_code == 409, sent.text
     assert sent.json()["code"] == "SCENE_REHEARSAL_SENDING"
     assert agent.guide_inputs == []
+
+
+async def test_a_golden_send_closing_an_attempt_that_is_not_the_current_one_is_refused_and_unheard(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(
+        client, session_id, rehearsal_id, closes="5f0c0f0e-7b0a-4a52-9c0e-2f5d3c1b9a11"
+    )
+
+    assert sent.status_code == 409, sent.text
+    assert sent.json()["code"] == "RESTART_OUT_OF_ORDER"
+    assert agent.guide_inputs == []
