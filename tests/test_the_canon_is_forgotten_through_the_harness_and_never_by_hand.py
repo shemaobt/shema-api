@@ -414,7 +414,11 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
             }
             for function in scope.body:
                 if function in called_by_pytest:
-                    reach[function] = fixtures
+                    reach[function] = {
+                        name: fixture
+                        for name, fixture in fixtures.items()
+                        if fixture is not function
+                    }
     return reach
 
 
@@ -2010,6 +2014,39 @@ class TestACase:
         self.forget(get_settings)
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_MODULES_FIXTURE_OF_ITS_OWN_NAME = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self, cached):
+        return cached
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_CONFTESTS_FIXTURE_OF_ITS_OWN_NAME = """\
+import pytest
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self, cached):
+        return cached
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -2946,6 +2983,35 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
     tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
 ) -> None:
     clears = _the_clears_in(_planted(tmp_path, source), _the_caches_the_harness_forgets())
+
+    assert clears == (of_the_canon, of_something_else)
+
+
+@pytest.mark.parametrize(
+    ("conftest", "source", "of_the_canon", "of_something_else"),
+    [
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_CONFTESTS_FIXTURE_OF_ITS_OWN_NAME,
+            [10],
+            [],
+        ),
+    ],
+    ids=[
+        "a class fixture that requests the conftest's fixture of its own name",
+    ],
+)
+def test_a_fixture_defined_in_a_class_takes_what_it_requests_from_the_conftest(
+    tmp_path: Path,
+    conftest: str,
+    source: str,
+    of_the_canon: list[int],
+    of_something_else: list[int],
+) -> None:
+    (tmp_path / "conftest.py").write_text(conftest, encoding="utf-8")
+    module = _planted(tmp_path, source)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
 
     assert clears == (of_the_canon, of_something_else)
 
