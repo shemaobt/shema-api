@@ -575,3 +575,80 @@ async def test_the_judge_reads_the_same_transcript_of_a_checking_turn_whether_or
     assert judge_transcript(played) == block
     assert transcript.read_text(encoding="utf-8") == block + "\n"
     assert played[1].acceptedIds == ["R5"]
+
+
+def _the_validator_sends_the_draft_back() -> str:
+    return json.dumps(
+        {
+            "verdict": "regenerate",
+            "issues": [
+                {
+                    "claim": "deu a sandália ao Boaz",
+                    "problem": "invented_detail",
+                    "explanation": "o mapa não diz",
+                }
+            ],
+        }
+    )
+
+
+async def test_the_export_shows_how_many_send_backs_the_turn_drew_beside_the_readings_it_was_handed(
+    seam, tmp_path, monkeypatch
+) -> None:
+    the_models_answer(
+        monkeypatch, None, None, None, _the_validator_sends_the_draft_back(), None, None
+    )
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+
+    report, _transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    turns = json.loads(report.read_text(encoding="utf-8"))["turns"]
+    assert [turn["acceptedSendBacks"] for turn in turns] == [0, 1], (
+        "o relatório não dizia, ao lado do turno, quantos reenvios do Validador ele sofreu"
+    )
+    assert turns[1]["acceptedIds"] == ["R5"]
+
+
+async def test_the_judge_reads_the_same_transcript_of_a_turn_the_validator_sent_back(
+    seam, tmp_path, monkeypatch
+) -> None:
+    agent = the_models_answer(
+        monkeypatch, None, None, None, _the_validator_sends_the_draft_back(), None, None
+    )
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+    _report, transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    status = "APP STATUS (what the app told the guide this turn): "
+    scenes = (
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        "S4. Parts with none: S1, S2, S3."
+    )
+    block = (
+        f"[turn 0]\nTEAM: {agent.guide_inputs[0]}\nGUIDE (pass): {GUIDE_LINE}\n\n"
+        f"[turn 1]\n{status}{scenes}\nTEAM: {agent.guide_inputs[1]}\nGUIDE (pass): {GUIDE_LINE}"
+    )
+    assert played[1].acceptedSendBacks == 1
+    assert judge_transcript(played) == block
+    assert transcript.read_text(encoding="utf-8") == block + "\n"

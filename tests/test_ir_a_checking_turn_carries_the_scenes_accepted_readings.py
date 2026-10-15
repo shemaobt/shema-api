@@ -552,3 +552,63 @@ async def test_an_ordinary_golden_turn_says_nothing_of_accepted_ids(client, monk
     assert "acceptedIds" not in typed.json(), (
         "a resposta de um turno comum trazia a chave de leituras aceitas"
     )
+
+
+async def test_the_golden_send_counts_the_send_back_the_validator_made_on_the_readings_turn(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2, "o Validador não mandou o rascunho de volta"
+    assert sent.json().get("acceptedSendBacks") == 1, (
+        "a resposta do envio dourado não contava o reenvio do Validador num turno com leituras"
+    )
+
+
+async def test_the_golden_send_counts_every_send_back_of_the_turn_not_only_the_first(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    first, second = regenerating("deu a sandália ao Boaz"), regenerating("o Boaz ficou com ela")
+    the_models_answer(monkeypatch, None, first, None, second)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json().get("acceptedSendBacks") == 2, (
+        "a resposta do envio dourado contava só um dos dois reenvios do mesmo turno"
+    )
+
+
+async def test_the_golden_send_of_a_draft_the_validator_let_stand_says_nothing_of_send_backs(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json().get("acceptedIds") == ["R5"]
+    assert "acceptedSendBacks" not in sent.json(), (
+        "um rascunho aprovado de primeira chegava com a chave dos reenvios, zerada"
+    )
+
+
+async def test_the_golden_send_of_a_scene_with_no_ruling_does_not_count_a_send_back(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    sent = await a_sent_rehearsal(client, session_id, "S3")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2, "o Validador não mandou o rascunho de volta"
+    assert "acceptedSendBacks" not in sent.json(), (
+        "um reenvio num turno sem leituras aceitas entrava na contagem dos que as contradizem"
+    )

@@ -75,7 +75,9 @@ table has never seen carries no figure; the budget counts it at the dearest tabl
 kind of token and the run says how many, so a model change cannot slip under the ceiling. Reading
 that table makes the back-translation runner need a `DATABASE_URL` for the settings to load, as
 the golden runner already did. Each script's closing line says what it cost, and the run ends
-with the total by role. The back-translation run is the gate on any change to the two
+with the total by role. The Guide's run also prints, and writes into its README, how many times the
+Validator sent a draft back on turns handed accepted readings, which her spec says to bring to her
+when it is above zero. The back-translation run is the gate on any change to the two
 back-translation prompts. The golden run is the gate on the release, not only on CI:
 `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions must pass before anything
 touching prompts, turn loop, model or canvas reaches the team, and a green unit suite is not

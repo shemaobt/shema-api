@@ -48,6 +48,7 @@ from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.golden_rehearsal import keep_a_golden_rehearsal
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
+from app.services.internalization_room.passage_turn import accepted_send_backs
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import the_opening_note
 from app.services.internalization_room.turn.speech import mother_tongue_note
@@ -180,6 +181,9 @@ async def send_golden_rehearsal(
         latencyMs=round((time.monotonic() - started) * 1000),
         usage=calls,
         acceptedIds=guide.get("accepted_ids", []),
+        acceptedSendBacks=len(
+            accepted_send_backs(guide.get("attempts", []), guide.get("accepted_ids", []))
+        ),
     )
 
 

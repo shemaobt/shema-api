@@ -64,17 +64,22 @@ def _readings_for(
         return ()
 
 
+def accepted_send_backs(attempts: list[dict[str, Any]], ids: list[str]) -> list[dict[str, Any]]:
+    if not ids:
+        return []
+    return [attempt for attempt in attempts if attempt.get("verdict") == "regenerate"]
+
+
 def _report_send_backs(outcome: TurnOutcome, ids: list[str], checked: str, session_id: str) -> None:
-    for attempt in outcome.attempts:
-        if attempt.get("verdict") == "regenerate":
-            logger.warning(
-                "[accepted-sendback] session=%s scene=%s ids=%s attempt=%s issues=%s",
-                session_id,
-                checked,
-                ids,
-                attempt["attempt"],
-                attempt["issues"],
-            )
+    for attempt in accepted_send_backs(outcome.attempts, ids):
+        logger.warning(
+            "[accepted-sendback] session=%s scene=%s ids=%s attempt=%s issues=%s",
+            session_id,
+            checked,
+            ids,
+            attempt["attempt"],
+            attempt["issues"],
+        )
 
 
 async def run_turn(
@@ -166,6 +171,5 @@ async def run_turn(
     if not checked:
         return outcome
     ids = accepted_ids_for(items, checked)
-    if ids:
-        _report_send_backs(outcome, ids, checked, session_id)
+    _report_send_backs(outcome, ids, checked, session_id)
     return replace(outcome, accepted_ids=ids)
