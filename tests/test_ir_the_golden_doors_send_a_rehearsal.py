@@ -168,3 +168,19 @@ async def test_the_turn_a_golden_rehearsal_leaves_is_a_checking_turn_by_the_serv
         "frases": 2,
         "scene": "S2",
     }
+
+
+async def test_a_golden_rehearsal_sent_again_under_another_turn_id_is_refused_as_sent(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    first = await a_sent_rehearsal(client, session_id, rehearsal_id, "turno-a")
+    assert first.status_code == 200, first.text
+    agent = the_models_answer(monkeypatch)
+
+    again = await a_sent_rehearsal(client, session_id, rehearsal_id, "turno-b")
+
+    assert again.status_code == 409, again.text
+    assert again.json()["code"] == "SCENE_REHEARSAL_SENT"
+    assert agent.guide_inputs == []
