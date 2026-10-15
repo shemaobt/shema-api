@@ -412,3 +412,21 @@ async def test_a_send_back_on_a_turn_that_handed_readings_is_reported_with_the_i
     assert "ACCEPTED READINGS" not in said and "- R5: A team telling" not in said, (
         "o aviso do reenvio repetia as palavras do bloco"
     )
+
+
+async def test_every_send_back_of_a_checking_turn_is_reported_not_only_the_first(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    first, second = regenerating("deu a sandália ao Boaz"), regenerating("o Boaz ficou com ela")
+    the_models_answer(monkeypatch, None, first, None, second)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    one, two = the_sendbacks_said(caplog)
+    assert "attempt=1" in one and "deu a sandália ao Boaz" in one
+    assert "attempt=2" in two and "o Boaz ficou com ela" in two, (
+        "o segundo reenvio do mesmo turno não era contado"
+    )
