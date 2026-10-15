@@ -469,3 +469,49 @@ async def test_a_draft_the_validator_lets_stand_on_a_checking_turn_is_not_report
     assert the_sendbacks_said(caplog) == [], (
         "um rascunho aprovado de primeira entrava na contagem dos reenvios"
     )
+
+
+async def test_the_golden_send_answers_with_the_ids_of_the_readings_the_guide_was_handed(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json().get("acceptedIds") == ["R5"], (
+        "a resposta do envio dourado não dizia quais leituras aceitas o Guia recebeu"
+    )
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, guide = stored.messages
+    assert guide["accepted_ids"] == sent.json()["acceptedIds"]
+
+
+async def test_the_golden_send_of_a_scene_with_no_ruling_says_nothing_of_accepted_ids(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S3")
+
+    assert sent.status_code == 200, sent.text
+    assert "acceptedIds" not in sent.json(), (
+        "a resposta do envio de uma cena sem leituras aceitas trazia a chave vazia"
+    )
+
+
+async def test_an_ordinary_golden_turn_says_nothing_of_accepted_ids(client, monkeypatch) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    typed = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": SANDAL[0]}
+    )
+
+    assert typed.status_code == 200, typed.text
+    assert "acceptedIds" not in typed.json(), (
+        "a resposta de um turno comum trazia a chave de leituras aceitas"
+    )
