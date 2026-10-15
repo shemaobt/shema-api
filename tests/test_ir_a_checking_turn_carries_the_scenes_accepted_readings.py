@@ -306,3 +306,18 @@ async def test_a_scene_mark_the_passage_lacks_hands_the_guide_nothing_and_keeps_
         "uma cena que a passagem não tem levava as leituras aceitas de alguma outra"
     )
     assert outcome.accepted_ids == [], "uma cena que a passagem não tem guardava ids"
+
+
+async def test_a_marked_rehearsal_sent_late_at_the_ensaio_final_is_still_checked_as_its_scene(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "ensaio_final"})
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P11_S4_R5}"), (
+        "um ensaio marcado, enviado tarde, depois do envio, perdia as leituras aceitas da cena"
+    )
