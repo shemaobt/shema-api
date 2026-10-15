@@ -333,6 +333,39 @@ async def test_a_take_the_storage_fails_to_answer_about_is_unread_and_the_read_s
     ]
 
 
+async def test_a_take_the_signer_fails_to_link_is_unread_and_the_others_still_get_theirs(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+    signer: Signer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken = f"takes/{session.id}/ensaio/{'b' * 64}"
+
+    async def signing(
+        bucket: str, key: str, *, expiry_minutes: int, response_content_type: str | None
+    ) -> str:
+        if key == broken:
+            raise RuntimeError("the credentials did not resolve")
+        return await signer(
+            bucket, key, expiry_minutes=expiry_minutes, response_content_type=response_content_type
+        )
+
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", signing)
+    for ordinal, sha in enumerate("abc", start=1):
+        await _keep(db_session, session, team, ordinal=ordinal, sha=sha * 64)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["part"], row["unread"], row["play_url"] is None) for row in body["takes"]] == [
+        (1, False, False),
+        (2, True, True),
+        (3, False, False),
+    ]
+
+
 async def _a_facilitator_of(db: AsyncSession, project: Project, email: str) -> dict[str, str]:
     from app.services.auth.issue_tokens import issue_tokens
 
