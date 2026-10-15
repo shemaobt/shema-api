@@ -138,3 +138,17 @@ async def test_a_rehearsal_of_a_scene_with_no_ruling_hands_the_guide_no_accepted
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "a cena 3 de P11, sem nenhuma regra, levava um cabeçalho sem linhas"
     )
+
+
+async def test_a_rehearsal_sent_outside_ruth_3_and_4_hands_the_guide_no_accepted_readings(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client, "P01")
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S2")
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "um ensaio de Rute 1 levava leituras aceitas que ela só deu para Rute 3 e 4"
+    )
