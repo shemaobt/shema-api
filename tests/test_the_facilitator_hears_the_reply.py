@@ -22,6 +22,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.hard_stretch_harness import MemoryStore
 
 IR = "/api/internalization-room"
 STORAGE = "/armazenamento"
@@ -31,24 +32,18 @@ SECOND = b"a resposta corrigida, gravada depois"
 BEFORE_THIS_CHANGE = b"uma resposta guardada antes desta mudanca"
 
 
-class Bucket:
-    def __init__(self, objects: dict[str, bytes]) -> None:
-        self.objects = objects
-
-    async def get(self, key: str) -> bytes | None:
-        return self.objects.get(key)
-
-    async def put(self, key: str, data: bytes, mime: str) -> None:
-        self.objects[key] = data
+@pytest.fixture()
+def store() -> MemoryStore:
+    return MemoryStore()
 
 
 @pytest.fixture()
-def objects() -> dict[str, bytes]:
-    return {}
+def objects(store: MemoryStore) -> dict[str, bytes]:
+    return store.objects
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, objects, monkeypatch: pytest.MonkeyPatch):
+async def client(db_session: AsyncSession, store, objects, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI, Response
 
     from app.api.internalization_room import router
@@ -57,7 +52,7 @@ async def client(db_session: AsyncSession, objects, monkeypatch: pytest.MonkeyPa
     from app.core.exceptions import NotFoundError, register_exception_handlers
 
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", BUCKET, raising=False)
-    monkeypatch.setattr(service, "_store", lambda *a, **kw: Bucket(objects))
+    monkeypatch.setattr(service, "_store", lambda *a, **kw: store)
 
     async def _signed(
         bucket: str, key: str, *, expiry_minutes: int, response_content_type: str | None = None
