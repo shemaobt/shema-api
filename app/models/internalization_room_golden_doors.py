@@ -77,7 +77,14 @@ class GoldenTurnResponse(BaseModel):
     complete: bool
     latencyMs: int
     usage: list[ModelCall]
-    acceptedIds: list[str] = Field(default_factory=list)
+    acceptedIds: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The entries whose accepted readings the Guide was handed, absent when it was "
+            "handed none. They come from the rehearsal send: on the turn door the list is "
+            "empty today, because a typed turn is never a checking turn."
+        ),
+    )
 
     @model_serializer(mode="wrap")
     def _no_readings_handed_is_absent(self, handler: Any) -> dict[str, Any]:
