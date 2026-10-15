@@ -560,3 +560,18 @@ async def test_the_golden_send_of_a_draft_the_validator_let_stand_says_nothing_o
     assert "acceptedSendBacks" not in sent.json(), (
         "um rascunho aprovado de primeira chegava com a chave dos reenvios, zerada"
     )
+
+
+async def test_the_golden_send_of_a_scene_with_no_ruling_does_not_count_a_send_back(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    sent = await a_sent_rehearsal(client, session_id, "S3")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2, "o Validador não mandou o rascunho de volta"
+    assert "acceptedSendBacks" not in sent.json(), (
+        "um reenvio num turno sem leituras aceitas entrava na contagem dos que as contradizem"
+    )
