@@ -21,7 +21,7 @@ from functools import partial
 from fastapi import APIRouter, BackgroundTasks, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room.sessions import _scene_of, _worth_settling, draft_the_turn
+from app.api.internalization_room.sessions import _scene_of, _worth_settling, draft_the_turn_as_text
 from app.api.internalization_room.text_seam import (
     _collecting_model_calls,
     _language_code,
@@ -160,7 +160,7 @@ async def send_golden_rehearsal(
             project_id="",
             bound_s=bound_s,
             draft=partial(
-                draft_the_turn,
+                draft_the_turn_as_text,
                 db,
                 session,
                 background=background,

@@ -258,7 +258,7 @@ async def test_a_golden_send_naming_another_sessions_rehearsal_is_not_found_and_
     assert agent.guide_inputs == []
 
 
-async def test_the_golden_send_is_the_tablets_send_function_given_the_tablets_draft(
+async def test_the_golden_send_is_the_tablets_send_function_given_the_draft_that_leaves_text(
     client, monkeypatch
 ) -> None:
     session_id = await an_open_session(client)
@@ -277,7 +277,7 @@ async def test_the_golden_send_is_the_tablets_send_function_given_the_tablets_dr
     assert sent.status_code == 200, sent.text
     (call,) = calls
     assert (call["rehearsal"], call["turn_id"]) == (rehearsal_id, "turno-do-runner")
-    assert call["draft"].func is sessions_api.draft_the_turn
+    assert call["draft"].func is sessions_api.draft_the_turn_as_text
 
 
 REHEARSAL_DOORS = {
@@ -322,3 +322,29 @@ async def test_the_rehearsal_doors_refuse_every_credential_but_the_runners_beare
     }
 
     assert set(answered.values()) == {401}, answered
+
+
+async def test_the_golden_send_leaves_the_guides_words_as_text_and_asks_for_no_clip(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    voiced: list[str] = []
+    uploaded: list[int] = []
+
+    async def _voice(text: str, **_: Any) -> tuple[None, int]:
+        voiced.append(text)
+        return None, 0
+
+    async def _upload(uploads: list[Any]) -> None:
+        uploaded.append(len(uploads))
+
+    monkeypatch.setattr(room_service, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(sessions_api, "_upload", _upload)
+
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id)
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["guideText"] == GUIDE_LINE
+    assert voiced == []
+    assert uploaded == []
