@@ -2034,6 +2034,25 @@ class TestACase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_METHOD_HANDS_THE_CLASS_FIXTURE_TO_A_HELPER = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, cached) -> None:
+        forget(cached)
+"""
+
 THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_ANOTHER_FIXTURE_OF_THE_CLASS = """\
 import pytest
 
@@ -3009,6 +3028,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         ),
         (THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_MODULES_FIXTURE_OF_ITS_OWN_NAME, [17], []),
         (THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_ANOTHER_FIXTURE_OF_THE_CLASS, [16], []),
+        (THE_CASE_WHOSE_METHOD_HANDS_THE_CLASS_FIXTURE_TO_A_HELPER, [7], []),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
@@ -3019,6 +3039,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a helper method that is handed another cache under the name of the class's fixture",
         "a class fixture that requests the module's fixture of its own name",
         "a class fixture that requests another fixture of the class",
+        "a method that hands the class's fixture to a helper",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
