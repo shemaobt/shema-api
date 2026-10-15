@@ -359,3 +359,18 @@ async def test_a_rehearsal_of_p13_scene_3_telling_the_king_david_hands_the_guide
     assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P13_S3_LINES}"), (
         "o ensaio da cena 3 de P13, com o rei Davi, chegava ao Guia sem a linha do R8"
     )
+
+
+async def test_an_unmarked_rehearsal_in_the_familiarization_of_part_2_hands_the_guide_no_readings(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "familiarization", "part": 2})
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, None)
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "um ensaio sem cena marcada, na familiarização da parte 2, ganhava as leituras da cena 2"
+    )
