@@ -20,8 +20,8 @@ settled in the plan:
   The claim sits on the rehearsal's own row instead, because that is the lock a frase and a
   restart take: a claim on the session's row would never meet them. The claim stamps
   `sent_at` and `sent_turn_id` under that lock. The stamp is a conditional
-  `UPDATE … WHERE sent_at IS NULL`, so it holds on SQLite too, where the lock does nothing. The live frases are read under the same lock, and the claim commits on its
-  own. A frase that arrives after the claim is refused as `SCENE_REHEARSAL_SENT`, the refusal
+  `UPDATE … WHERE sent_at IS NULL`, so it holds on SQLite too, where the lock does nothing.
+  The live frases are read under the same lock, and the claim commits on its own. A frase that arrives after the claim is refused as `SCENE_REHEARSAL_SENT`, the refusal
   ADR 0059 gives a sent rehearsal. It is never kept while missing from the sent text.
 - A resend under the same turn id is answered from the stored answer before anything else
   (ADR 0043). It joins an answer still in flight in this process. If neither exists, because
