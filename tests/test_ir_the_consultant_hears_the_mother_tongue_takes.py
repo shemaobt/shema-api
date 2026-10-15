@@ -177,3 +177,19 @@ async def test_the_time_is_the_moment_the_take_was_kept_with_its_offset(
     body = await _read(client, consultant, session.id)
 
     assert [row["recorded_at"] for row in body["takes"]] == ["2026-09-01T10:02:00+00:00"]
+
+
+async def test_a_take_that_kept_no_duration_shows_none_never_one_guessed_from_its_size(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, size_bytes=480_000)
+
+    body = await _read(client, consultant, session.id)
+
+    (row,) = body["takes"]
+    assert "duration_ms" in row
+    assert row["duration_ms"] is None
