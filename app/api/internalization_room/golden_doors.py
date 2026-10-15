@@ -260,4 +260,5 @@ async def play_golden_turn(
         complete=await room.stored_as_done(db, session.id),
         latencyMs=round((time.monotonic() - started) * 1000),
         usage=calls,
+        acceptedIds=outcome.accepted_ids,
     )

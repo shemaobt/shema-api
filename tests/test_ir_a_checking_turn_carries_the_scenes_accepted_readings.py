@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -501,3 +502,29 @@ async def test_the_golden_send_of_a_scene_with_no_ruling_says_nothing_of_accepte
     assert "acceptedIds" not in sent.json(), (
         "a resposta do envio de uma cena sem leituras aceitas trazia a chave vazia"
     )
+
+
+async def test_the_golden_turn_answers_with_the_ids_the_record_keeps_for_it(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+    real_turn = room_service.run_comprehension_turn
+
+    async def _handed_readings(db: Any, session: Any, **kwargs: Any) -> Any:
+        return replace(await real_turn(db, session, **kwargs), accepted_ids=["R5", "R9"])
+
+    monkeypatch.setattr(room_service, "run_comprehension_turn", _handed_readings)
+
+    typed = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": SANDAL[0]}
+    )
+
+    assert typed.status_code == 200, typed.text
+    assert typed.json().get("acceptedIds") == ["R5", "R9"], (
+        "a resposta do turno dourado não dizia quais leituras aceitas o Guia recebeu"
+    )
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, guide = stored.messages
+    assert guide["accepted_ids"] == typed.json()["acceptedIds"]
