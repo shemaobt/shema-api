@@ -45,6 +45,7 @@ from tests.facilitator_route_audit_harness import (
     template_of,
     those_that_read,
 )
+from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -72,6 +73,7 @@ class Bucket:
 @pytest.fixture()
 def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     from app.api.internalization_room import takes as take_routes
+    from app.services.internalization_room import session_takes
 
     store = Bucket()
 
@@ -90,6 +92,8 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     monkeypatch.setattr(question_service, "_store", lambda *a, **kw: store)
     monkeypatch.setattr(question_service, "listen_address", signed_question)
     monkeypatch.setattr(take_routes, "listen_url", signed_take)
+    monkeypatch.setattr(session_takes, "listen_url", signed_take)
+    the_bucket_is_in_memory(monkeypatch)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", sign)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "plataforma", raising=False)
@@ -323,6 +327,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals",
         f"{IR}/facilitator/sessions/{session}/coverage",
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
+        f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
     ]
 
     values = {"session_id": session, "number": 0, "version": 1}
@@ -345,7 +350,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5], reads[6]):
+    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9]):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
@@ -478,6 +483,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
         (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),
