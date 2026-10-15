@@ -404,6 +404,9 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
     assert question.status_code == 200, question.text[:300]
     assert by_handle.content == b"a equipe perguntou"
     assert reply.status_code == 200, reply.text[:300]
+    assert bucket.objects[reply.json()["url"].removeprefix("https://signed.test/")] == (
+        b"a facilitadora respondeu"
+    )
     assert take.status_code == 307, take.text[:300]
     assert turn.status_code == 307, turn.text[:300]
     assert await _row(per_request, IRSession, team.session) == session_before
