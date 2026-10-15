@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -183,4 +184,24 @@ async def test_a_golden_rehearsal_sent_again_under_another_turn_id_is_refused_as
 
     assert again.status_code == 409, again.text
     assert again.json()["code"] == "SCENE_REHEARSAL_SENT"
+    assert agent.guide_inputs == []
+
+
+async def test_a_golden_rehearsal_sent_while_another_send_stands_is_told_it_is_being_sent(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    await db_session.execute(
+        update(IRSceneRehearsal)
+        .where(IRSceneRehearsal.id == rehearsal_id)
+        .values(sent_at=datetime.now(UTC), sent_turn_id="turno-em-voo")
+    )
+    await db_session.commit()
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id, "turno-novo")
+
+    assert sent.status_code == 409, sent.text
+    assert sent.json()["code"] == "SCENE_REHEARSAL_SENDING"
     assert agent.guide_inputs == []
