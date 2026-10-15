@@ -15,6 +15,7 @@ import json
 import uuid
 import wave
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -80,11 +81,16 @@ class Guide:
     def __init__(self) -> None:
         self.inputs: list[str] = []
         self.thinks = 0.0
+        self.asked = asyncio.Event()
+        self.holds: asyncio.Event | None = None
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         self.inputs.append(user_content)
+        self.asked.set()
+        if self.holds is not None:
+            await self.holds.wait()
         await asyncio.sleep(self.thinks)
         return GUIDE_LINE
 
@@ -183,6 +189,7 @@ async def an_opened_session(
     opened = await room.client.post(f"{IR}/sessions/{session_id}/turns")
     assert opened.status_code == 200, opened.text
     room.guide.inputs.clear()
+    room.guide.asked.clear()
     return session_id
 
 
@@ -250,12 +257,35 @@ async def read_by_the_desk(room: Room, session_id: str, rehearsal_id: str) -> di
 
 
 async def send(
-    room: Room, session_id: str, rehearsal_id: str, turn_id: str | None = None
+    room: Room,
+    session_id: str,
+    rehearsal_id: str,
+    turn_id: str | None = None,
+    *,
+    closes: str | None = None,
 ) -> httpx.Response:
+    data = {"turn_id": turn_id or str(uuid.uuid4())}
+    if closes is not None:
+        data["closes"] = closes
     return await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send",
-        data={"turn_id": turn_id or str(uuid.uuid4())},
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send", data=data
     )
+
+
+async def claimed_by_hand(
+    db: AsyncSession, rehearsal_id: str, turn_id: str, ago: timedelta
+) -> None:
+    """A claim left on the row by a request that is no longer running, landed nowhere."""
+    from sqlalchemy import update
+
+    from app.db.models.internalization_room import IRSceneRehearsal
+
+    await db.execute(
+        update(IRSceneRehearsal)
+        .where(IRSceneRehearsal.id == rehearsal_id)
+        .values(sent_at=datetime.now(UTC) - ago, sent_turn_id=turn_id)
+    )
+    await db.commit()
 
 
 async def conversation(db: AsyncSession, session_id: str) -> list[dict[str, Any]]:
@@ -503,7 +533,7 @@ async def test_a_frase_set_aside_by_a_restart_is_not_sent(
     )
     assert again.status_code == 200, again.text
 
-    sent = await send(room, session_id, rehearsal_id)
+    sent = await send(room, session_id, rehearsal_id, closes=attempt)
 
     assert sent.status_code == 200, sent.text
     assert room.guide.inputs == [f"{ONE_PT} outra vez"]
@@ -546,11 +576,13 @@ async def test_a_frase_arriving_after_the_send_is_refused(
 
 
 async def test_a_late_failure_under_a_turn_id_that_already_landed_leaves_the_rehearsal_sent(
-    room: Room, db_session: AsyncSession
+    room: Room, db_session: AsyncSession, rival_factory
 ) -> None:
     """The same turn id resent to another instance drafts again; when that draft fails after the
     first one landed, the rehearsal stays sent under the turn that answered it."""
-    from app.services.internalization_room.scene_rehearsals import release_the_send
+    from app.core.config import get_settings
+    from app.db.models.internalization_room import IRSceneRehearsal, IRSession
+    from app.services.internalization_room.scene_rehearsals import send_the_scene_rehearsal
 
     session_id = await an_opened_session(room, db_session)
     rehearsal_id = await a_rehearsal(room, session_id)
@@ -558,8 +590,208 @@ async def test_a_late_failure_under_a_turn_id_that_already_landed_leaves_the_reh
     sent = await send(room, session_id, rehearsal_id, "turno-que-chegou")
     assert sent.status_code == 200, sent.text
 
-    await release_the_send(rehearsal_id, "turno-que-chegou")
+    async def another_instance_fails(**_: Any) -> Any:
+        raise RuntimeError("a outra instância caiu")
+
+    async with rival_factory() as db:
+        with pytest.raises(RuntimeError):
+            await send_the_scene_rehearsal(
+                db,
+                await db.get(IRSession, session_id),
+                await db.get(IRSceneRehearsal, rehearsal_id),
+                turn_id="turno-que-chegou",
+                closes=None,
+                project_id=TABLET_TEAM,
+                bound_s=get_settings().internalization_room_turn_bound_ms / 1000,
+                draft=another_instance_fails,
+            )
 
     assert (await read_by_the_desk(room, session_id, rehearsal_id))["sent_at"] is not None
     late = await send(room, session_id, rehearsal_id, "outro-turno")
     assert late.status_code == 409, late.text
+    assert late.json()["code"] == "SCENE_REHEARSAL_SENT"
+
+
+async def test_a_send_before_the_restart_it_closes_has_landed_is_refused_and_goes_through_once_it_has(  # noqa: E501
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um"), ((5000, 9000), "dois")])
+    attempt = str(uuid.uuid4())
+    for offset, (place, said) in enumerate([((0, 4000), "outro um"), ((5000, 9000), "outro dois")]):
+        held = await a_frase(
+            room, session_id, rehearsal_id, place, said, tone=500 + offset, after_restart=attempt
+        )
+        assert held.status_code == 200, held.text
+
+    early = await send(room, session_id, rehearsal_id, "terminei", closes=attempt)
+
+    assert early.status_code == 409, early.text
+    assert early.json()["code"] == "RESTART_OUT_OF_ORDER"
+    assert room.guide.inputs == []
+    restarted = await room.client.post(
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
+        data={"attempt": attempt},
+    )
+    assert restarted.status_code == 200, restarted.text
+    again = await send(room, session_id, rehearsal_id, "terminei", closes=attempt)
+    assert again.status_code == 200, again.text
+    assert room.guide.inputs == [f"{TWO_PT} outro um outro dois"]
+
+
+async def test_a_send_while_a_frase_waits_on_a_restart_still_on_its_way_is_refused(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    held = await a_frase(
+        room,
+        session_id,
+        rehearsal_id,
+        (0, 4000),
+        "outro um",
+        tone=600,
+        after_restart=str(uuid.uuid4()),
+    )
+    assert held.status_code == 200, held.text
+
+    sent = await send(room, session_id, rehearsal_id)
+
+    assert sent.status_code == 409, sent.text
+    assert sent.json()["code"] == "RESTART_OUT_OF_ORDER"
+    assert room.guide.inputs == []
+
+
+async def test_a_terminei_while_another_is_still_reaching_the_voice_is_told_it_is_being_sent(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    room.guide.holds = asyncio.Event()
+    first = asyncio.create_task(send(room, session_id, rehearsal_id, "tablet-um"))
+    await asyncio.wait_for(room.guide.asked.wait(), timeout=10)
+
+    meanwhile = await send(room, session_id, rehearsal_id, "tablet-dois")
+
+    assert meanwhile.status_code == 409, meanwhile.text
+    assert meanwhile.json()["code"] == "SCENE_REHEARSAL_SENDING"
+    room.guide.holds.set()
+    landed = await asyncio.wait_for(first, timeout=10)
+    assert landed.status_code == 200, landed.text
+    after = await send(room, session_id, rehearsal_id, "tablet-dois")
+    assert after.status_code == 409, after.text
+    assert after.json()["code"] == "SCENE_REHEARSAL_SENT"
+    assert room.guide.inputs == [f"{ONE_PT} um"]
+
+
+async def test_a_release_by_a_draft_whose_claim_a_resend_renewed_leaves_the_rehearsal_being_sent(
+    room: Room, db_session: AsyncSession, rival_factory
+) -> None:
+    """Instance A drafts turn T; T resent to instance B drafts again and renews the claim; A
+    then fails and releases. The rehearsal is still B's to send."""
+    from app.core.config import get_settings
+    from app.db.models.internalization_room import IRSceneRehearsal, IRSession
+    from app.services.internalization_room.scene_rehearsals import send_the_scene_rehearsal
+
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+    a_drafts, b_drafts = asyncio.Event(), asyncio.Event()
+
+    async def instance_a_fails(**_: Any) -> Any:
+        a_drafts.set()
+        await b_drafts.wait()
+        raise RuntimeError("a instância A caiu")
+
+    async def instance_b_drafts(**_: Any) -> Any:
+        b_drafts.set()
+        await asyncio.sleep(3600)
+
+    async def on_an_instance(draft: Any) -> Any:
+        async with rival_factory() as db:
+            session = await db.get(IRSession, session_id)
+            rehearsal = await db.get(IRSceneRehearsal, rehearsal_id)
+            return await send_the_scene_rehearsal(
+                db,
+                session,
+                rehearsal,
+                turn_id="turno-t",
+                closes=None,
+                project_id=TABLET_TEAM,
+                bound_s=bound_s,
+                draft=draft,
+            )
+
+    a = asyncio.create_task(on_an_instance(instance_a_fails))
+    await asyncio.wait_for(a_drafts.wait(), timeout=10)
+    b = asyncio.create_task(on_an_instance(instance_b_drafts))
+    with pytest.raises(RuntimeError):
+        await asyncio.wait_for(a, timeout=10)
+
+    meanwhile = await send(room, session_id, rehearsal_id, "turno-t2")
+
+    b.cancel()
+    assert meanwhile.status_code == 409, meanwhile.text
+    assert meanwhile.json()["code"] == "SCENE_REHEARSAL_SENDING"
+    assert room.guide.inputs == []
+
+
+async def test_a_claim_left_by_a_request_long_gone_is_free_for_a_new_terminei(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    await claimed_by_hand(db_session, rehearsal_id, "turno-perdido", timedelta(hours=1))
+
+    sent = await send(room, session_id, rehearsal_id, "turno-novo")
+
+    assert sent.status_code == 200, sent.text
+    assert room.guide.inputs == [f"{ONE_PT} um"]
+    answered_by = await db_session.execute(
+        text("SELECT sent_turn_id FROM ir_scene_rehearsals WHERE id = :id"), {"id": rehearsal_id}
+    )
+    assert answered_by.scalar_one() == "turno-novo"
+
+
+async def test_the_rehearsal_turns_guide_entry_names_the_sessions_language(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session, language="en")
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "one")])
+
+    sent = await send(room, session_id, rehearsal_id)
+
+    assert sent.status_code == 200, sent.text
+    guide = (await conversation(db_session, session_id))[-1]
+    assert guide["language"] == "en"
+    assert guide["take_ms"] == 40_000
+
+
+async def test_a_send_naming_an_attempt_that_is_not_the_current_one_is_refused(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    attempt = str(uuid.uuid4())
+    restarted = await room.client.post(
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
+        data={"attempt": attempt},
+    )
+    assert restarted.status_code == 200, restarted.text
+    again = await a_frase(
+        room, session_id, rehearsal_id, (0, 4000), "outro um", tone=700, after_restart=attempt
+    )
+    assert again.status_code == 200, again.text
+
+    stale = await send(room, session_id, rehearsal_id)
+
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["code"] == "RESTART_OUT_OF_ORDER"
+    assert room.guide.inputs == []

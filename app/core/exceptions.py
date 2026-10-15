@@ -58,6 +58,7 @@ ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
 #: A frase or restart sent to a scene rehearsal already sent: never accepted, never retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
+ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
@@ -174,6 +175,14 @@ class SceneRehearsalSent(ConflictError):
     """A frase or a restart for a scene rehearsal that was sent, which is frozen for good.
 
     Its own exception so the tablet's outbox can tell it from a conflict worth retrying.
+    """
+
+
+class SceneRehearsalSending(ConflictError):
+    """A send for a scene rehearsal another turn is still sending to the voice, landed nowhere yet.
+
+    Its own exception so the tablet's outbox retries it: that turn may still fail and leave the
+    rehearsal sendable.
     """
 
 
@@ -529,6 +538,15 @@ async def handle_scene_rehearsal_sent(_request: Request, exc: SceneRehearsalSent
     )
 
 
+async def handle_scene_rehearsal_sending(
+    _request: Request, exc: SceneRehearsalSending
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_SCENE_REHEARSAL_SENDING),
+    )
+
+
 async def handle_restart_out_of_order(_request: Request, exc: RestartOutOfOrder) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -698,6 +716,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]

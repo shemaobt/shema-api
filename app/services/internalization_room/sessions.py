@@ -58,6 +58,7 @@ from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
 from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.fail_safe import FailSafe
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import floor, normalize, room_language
 from app.services.internalization_room.live import live
 from app.services.internalization_room.moment import moment_step
@@ -536,7 +537,7 @@ async def append_exchange(
     commit: bool = True,
     scene_rehearsals: list[str] | None = None,
     opening_note: str = "",
-    scene_rehearsal: dict[str, Any] | None = None,
+    scene_rehearsal: SentSceneRehearsal | None = None,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -642,7 +643,7 @@ async def append_exchange(
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
     if scene_rehearsal is not None:
-        guide["scene_rehearsal"] = scene_rehearsal
+        guide["scene_rehearsal"] = scene_rehearsal.model_dump()
     step = (
         None
         if is_panorama(session.pericope)

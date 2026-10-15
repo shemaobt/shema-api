@@ -129,7 +129,7 @@ async def _write_the_turn(
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
             commit=False,
-            scene_rehearsal=None if scene_rehearsal is None else scene_rehearsal.model_dump(),
+            scene_rehearsal=scene_rehearsal,
         )
         hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
         return session
@@ -790,7 +790,7 @@ async def _answer_the_turn(
         deadline=deadline,
         bound_s=bound_s,
         draft=partial(
-            _draft_the_turn,
+            draft_the_turn,
             db,
             session,
             background=background,
@@ -801,7 +801,7 @@ async def _answer_the_turn(
     )
 
 
-async def _draft_the_turn(
+async def draft_the_turn(
     db: AsyncSession,
     session: IRSession,
     *,
