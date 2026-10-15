@@ -62,6 +62,7 @@ async def run_comprehension_turn(
         mother_tongue=speech.mother_tongue,
         take_ms=speech.take_ms,
         interrupted=speech.interrupted,
+        scene_rehearsal=speech.scene_rehearsal,
         session=session,
         messages=messages,
         transcript=speech.text,
