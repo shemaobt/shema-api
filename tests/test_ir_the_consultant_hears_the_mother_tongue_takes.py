@@ -14,8 +14,10 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
+from app.services.internalization_room import takes as takes_service
 from tests.baker import (
     grant_room_app_role,
     make_language,
@@ -27,6 +29,25 @@ from tests.release_harness import ensaio_take, retro_take
 
 IR = "/api/internalization-room"
 P = "P01"
+
+
+class Signer:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    async def __call__(
+        self, bucket: str, key: str, *, expiry_minutes: int, response_content_type: str | None
+    ) -> str:
+        self.calls.append((key, expiry_minutes))
+        return f"https://signed.example/{bucket}/{key}?grant={len(self.calls)}"
+
+
+@pytest.fixture(autouse=True)
+def signer(monkeypatch: pytest.MonkeyPatch) -> Signer:
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    signing = Signer()
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", signing)
+    return signing
 
 
 @pytest.fixture()
@@ -217,3 +238,26 @@ async def test_a_telling_back_and_a_part_recorded_again_are_not_listed_beside_th
     body = await _read(client, consultant, session.id)
 
     assert [(row["take_id"], row["part"]) for row in body["takes"]] == [(again, 1), (second, 2)]
+
+
+async def test_each_take_carries_a_link_of_fifteen_minutes_and_a_second_read_mints_a_fresh_one(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+    signer: Signer,
+) -> None:
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64)
+    await _keep(db_session, session, team, ordinal=2, sha="b" * 64)
+    stored = [f"takes/{session.id}/ensaio/{sha * 64}" for sha in "ab"]
+
+    first = [row["play_url"] for row in (await _read(client, consultant, session.id))["takes"]]
+    second = [row["play_url"] for row in (await _read(client, consultant, session.id))["takes"]]
+
+    assert [url.split("?")[0] for url in first] == [
+        f"https://signed.example/balde-de-teste/{key}" for key in stored
+    ]
+    assert [url.split("?")[0] for url in second] == [url.split("?")[0] for url in first]
+    assert set(first).isdisjoint(second)
+    assert {minutes for _key, minutes in signer.calls} == {15}

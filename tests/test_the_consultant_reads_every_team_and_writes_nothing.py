@@ -66,6 +66,7 @@ class Bucket:
 @pytest.fixture()
 def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     from app.api.internalization_room import takes as take_routes
+    from app.services.internalization_room import session_takes
 
     store = Bucket()
 
@@ -84,6 +85,7 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     monkeypatch.setattr(question_service, "_store", lambda *a, **kw: store)
     monkeypatch.setattr(question_service, "listen_address", signed_question)
     monkeypatch.setattr(take_routes, "listen_url", signed_take)
+    monkeypatch.setattr(session_takes, "listen_url", signed_take)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", sign)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "plataforma", raising=False)

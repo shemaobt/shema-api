@@ -117,6 +117,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.database import get_db
     from app.main import app
     from app.services.internalization_room import questions as question_service
+    from app.services.internalization_room import session_takes
 
     class MemoryStore:
         def __init__(self) -> None:
@@ -142,6 +143,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
+    monkeypatch.setattr(session_takes, "listen_url", _signed_take)
 
     async def _get_db():
         yield db_session
