@@ -338,7 +338,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5]):
+    for url in (reads[0], reads[1], reads[2], reads[5], reads[6]):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
