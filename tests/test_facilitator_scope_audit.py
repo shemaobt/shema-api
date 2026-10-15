@@ -563,12 +563,6 @@ def test_every_facilitator_route_is_covered_by_this_audit() -> None:
 async def test_refusing_routes_holds_a_case_for_every_mounted_route_that_names_a_resource(
     client, db_session
 ) -> None:
-    """The table that says how to ask is checked against the routes that are mounted.
-
-    `REFUSING_TEMPLATES` was already held to the mounted routes; the cases that actually
-    exercise them were not, so a route could lose its case here and both halves of the audit
-    would go on passing without it.
-    """
     owner = await a_facilitator(db_session, email="dono@example.com")
 
     held = {
