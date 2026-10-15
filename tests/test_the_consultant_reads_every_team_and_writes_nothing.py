@@ -39,6 +39,7 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
+from tests.facilitator_route_audit_harness import facilitator_routes, template_of
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -241,6 +242,14 @@ def _answer(response: httpx.Response) -> tuple[int, Any]:
     return response.status_code, body
 
 
+def _session_reads() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and "{session_id}" in path and not path.endswith("/audio")
+    }
+
+
 async def _row(per_request: async_sessionmaker[AsyncSession], table, row_id: str) -> dict:
     async with per_request() as db:
         found = (await db.execute(select(table.__table__).where(table.id == row_id))).one()
@@ -300,9 +309,16 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/release",
         f"{IR}/facilitator/sessions/{session}/releases/1",
         f"{IR}/facilitator/sessions/{session}/retroverificacao",
+        f"{IR}/facilitator/sessions/{session}/scene-rehearsals",
         f"{IR}/facilitator/sessions/{session}/coverage",
     ]
 
+    mounted = _session_reads()
+    listed = {template_of("GET", url) for url in reads}
+    assert listed == mounted, (
+        f"sem leitura: {sorted(mounted - listed)}; "
+        f"leitura sem rota: {sorted(listed - mounted, key=str)}"
+    )
     for url in reads:
         theirs = await client.get(url, headers=desk.readers["facilitator_of_b"])
         consultants = await client.get(url, headers=desk.readers["consultant"])
