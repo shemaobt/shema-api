@@ -378,15 +378,41 @@ async def test_a_rehearsal_recorded_for_scene_2_keeps_scene_2_as_the_teams_label
     assert "S3" not in str(on_the_tablet)
 
 
-async def test_a_scene_that_is_not_one_of_the_passages_is_kept_with_no_label(
+async def test_a_scene_that_is_not_one_of_the_passages_is_kept_as_unknown_not_as_none(
     room: Room, db_session: AsyncSession
 ) -> None:
     session_id = await a_session(db_session)
 
-    kept = await record(room, session_id, scene="S99")
+    foreign = await record(room, session_id, scene="S99")
+    unmarked = await record(room, session_id, audio=recording(40, 2), scene=None)
 
-    assert kept.status_code == 200, kept.text
-    assert (kept.json()["scene"], kept.json()["scene_said"]) == (None, None)
+    assert foreign.status_code == 200, foreign.text
+    assert unmarked.status_code == 200, unmarked.text
+    assert (foreign.json()["scene"], foreign.json()["scene_said"]) == (None, "recording"), (
+        "um rótulo que a passagem não tem era devolvido como se a equipe não tivesse marcado nada"
+    )
+    assert (unmarked.json()["scene"], unmarked.json()["scene_said"]) == (None, None)
+
+
+async def test_the_label_the_passage_lacks_is_remembered_as_sent_beside_the_scene_it_is_not(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+
+    foreign = await record(room, session_id, scene="S99")
+    labelled = await record(room, session_id, audio=recording(40, 2), scene="S2")
+
+    remembered = {}
+    for kept in (foreign, labelled):
+        row = await db_session.execute(
+            text("SELECT scene, scene_foreign FROM ir_scene_rehearsals WHERE id = :id"),
+            {"id": kept.json()["rehearsal_id"]},
+        )
+        remembered[kept.json()["rehearsal_id"]] = tuple(row.one())
+    assert remembered[foreign.json()["rehearsal_id"]] == (None, "S99"), (
+        "o rótulo que a passagem não tem não era guardado como a tablet o mandou"
+    )
+    assert remembered[labelled.json()["rehearsal_id"]] == ("S2", None)
 
 
 async def test_a_second_session_of_the_passage_lists_its_live_scene_rehearsals_before_any_turn(
@@ -929,6 +955,26 @@ async def test_the_reader_shows_the_classifiers_guess_beside_the_teams_label(
 
     (read,) = await read_by_the_reader(room, session_id)
     assert (read["scene"], read["scene_guess"]) == ("S2", "S3")
+
+
+async def test_a_second_tablet_and_the_reader_both_read_a_foreign_label_as_unknown_not_as_none(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    foreign = await record(room, session_id, scene="S99")
+    assert foreign.status_code == 200, foreign.text
+    unmarked = await record(room, session_id, audio=recording(40, 2), scene=None)
+    assert unmarked.status_code == 200, unmarked.text
+
+    on_the_tablet = await read_by_b(room, session_id)
+    on_the_desk = await read_by_the_reader(room, session_id)
+
+    for read in (on_the_tablet, on_the_desk):
+        assert [(each["scene"], each["scene_said"]) for each in read] == [
+            (None, "recording"),
+            (None, None),
+        ], "quem retomava lia o rótulo que a passagem não tem como se ninguém tivesse marcado"
+    assert "S99" not in str(on_the_tablet) + str(on_the_desk)
 
 
 async def test_the_reader_reads_a_frase_that_arrived_after_its_restart_under_that_restart(
