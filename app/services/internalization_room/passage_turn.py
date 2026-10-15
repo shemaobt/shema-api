@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.accepted_readings import (
+    AcceptedItem,
     accepted_ids_for,
     accepted_readings_block,
     accepted_readings_of,
@@ -28,6 +30,8 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
+logger = logging.getLogger(__name__)
+
 
 def _checked_scene(
     scene_rehearsal: SentSceneRehearsal | None, messages: list[dict[str, Any]], pericope_num: str
@@ -41,6 +45,23 @@ def _checked_scene(
         return None
     scenes = scene_ids_for(pericope_num)
     return scenes[moment.part - 1] if 1 <= moment.part <= len(scenes) else None
+
+
+def _readings_for(
+    pericope_num: str, checked: str | None, session_id: str
+) -> tuple[AcceptedItem, ...]:
+    if checked is None:
+        return ()
+    try:
+        return accepted_readings_of(pericope_num).items
+    except Exception as error:
+        logger.warning(
+            "[accepted] session=%s scene=%s: no accepted readings reach the Guide (%s)",
+            session_id,
+            checked,
+            type(error).__name__,
+        )
+        return ()
 
 
 async def run_turn(
@@ -92,7 +113,7 @@ async def run_turn(
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     checked = _checked_scene(scene_rehearsal, messages, pericope_num)
-    items = accepted_readings_of(pericope_num).items if checked else ()
+    items = _readings_for(pericope_num, checked, session_id)
     accepted = accepted_readings_block(items, checked) if checked else ""
     coverage_status = "\n\n".join(
         block

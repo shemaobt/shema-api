@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import httpx
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.services import internalization_room as room_service
-from app.services.internalization_room import hearing, takes
+from app.services.internalization_room import hearing, passage_turn, takes
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app, the_models_answer
@@ -250,3 +251,32 @@ async def test_a_redraft_the_validator_asks_for_is_drafted_under_the_same_accept
     first, second = (after_the_break(system) for system in agent.guide_systems)
     assert first.endswith(f"\n\n{HEADER}\n{P11_S4_R5}")
     assert second == first, "o rascunho pedido pelo Validador perdia as leituras aceitas"
+
+
+async def test_a_register_that_cannot_be_read_leaves_the_turn_whole_and_says_where_never_what(
+    client, monkeypatch, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    def _unreadable(pericope_num: str) -> Any:
+        raise ValueError(f"{pericope_num}: o registro não abre")
+
+    monkeypatch.setattr(passage_turn, "accepted_readings_of", _unreadable)
+
+    with caplog.at_level(logging.WARNING, logger=passage_turn.__name__):
+        sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1]
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, guide = stored.messages
+    assert "accepted_ids" not in guide, "um turno sem leituras guardava ids"
+    said = [
+        record.getMessage() for record in caplog.records if record.name == passage_turn.__name__
+    ]
+    assert len(said) == 1 and session_id in said[0] and "S4" in said[0], (
+        "a falha da leitura do registro passava calada, ou sem dizer a sessão e a cena"
+    )
+    assert "ACCEPTED READINGS" not in said[0]
