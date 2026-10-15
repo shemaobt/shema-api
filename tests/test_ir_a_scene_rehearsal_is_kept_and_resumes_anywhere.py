@@ -957,6 +957,26 @@ async def test_the_reader_shows_the_classifiers_guess_beside_the_teams_label(
     assert (read["scene"], read["scene_guess"]) == ("S2", "S3")
 
 
+async def test_a_second_tablet_and_the_reader_both_read_a_foreign_label_as_unknown_not_as_none(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    foreign = await record(room, session_id, scene="S99")
+    assert foreign.status_code == 200, foreign.text
+    unmarked = await record(room, session_id, audio=recording(40, 2), scene=None)
+    assert unmarked.status_code == 200, unmarked.text
+
+    on_the_tablet = await read_by_b(room, session_id)
+    on_the_desk = await read_by_the_reader(room, session_id)
+
+    for read in (on_the_tablet, on_the_desk):
+        assert [(each["scene"], each["scene_said"]) for each in read] == [
+            (None, "recording"),
+            (None, None),
+        ], "quem retomava lia o rótulo que a passagem não tem como se ninguém tivesse marcado"
+    assert "S99" not in str(on_the_tablet) + str(on_the_desk)
+
+
 async def test_the_reader_reads_a_frase_that_arrived_after_its_restart_under_that_restart(
     room: Room, db_session: AsyncSession
 ) -> None:
