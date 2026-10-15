@@ -68,3 +68,7 @@ def parameters_of(method: str, path: str) -> set[str]:
         if method in route.methods and route.path == path:
             return names_read_by(route)
     return set()
+
+
+def those_that_read(answers: dict[str, int]) -> set[str]:
+    return {path for path, status in answers.items() if status != 307}

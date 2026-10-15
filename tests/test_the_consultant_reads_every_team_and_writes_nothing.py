@@ -43,6 +43,7 @@ from tests.facilitator_route_audit_harness import (
     facilitator_routes,
     parameters_of,
     template_of,
+    those_that_read,
 )
 from tests.stream_harness import opening_status
 
@@ -248,9 +249,7 @@ def _answer(response: httpx.Response) -> tuple[int, Any]:
 
 def _session_reads() -> set[str]:
     return {
-        path
-        for method, path in facilitator_routes()
-        if method == "GET" and "{session_id}" in path and not path.endswith("/audio")
+        path for method, path in facilitator_routes() if method == "GET" and "{session_id}" in path
     }
 
 
@@ -326,7 +325,14 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
     ]
 
-    mounted = _session_reads()
+    values = {"session_id": session, "number": 0, "version": 1}
+    answers = {
+        path: (
+            await client.get(path.format(**values), headers=desk.readers["consultant"])
+        ).status_code
+        for path in _session_reads()
+    }
+    mounted = those_that_read(answers)
     listed = {template_of("GET", url) for url in reads}
     assert listed == mounted, (
         f"sem leitura: {sorted(mounted - listed)}; "
