@@ -233,3 +233,20 @@ async def test_the_turn_keeps_only_the_entry_ids_and_the_block_reaches_no_store_
     ):
         assert "ACCEPTED READINGS" not in text, f"o cabeçalho das leituras aceitas aparecia {where}"
         assert "- R5: A team telling" not in text, f"a linha do R5 aparecia {where}"
+
+
+async def test_a_redraft_the_validator_asks_for_is_drafted_under_the_same_accepted_readings(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    regenerate = json.dumps(
+        {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
+    )
+    agent = the_models_answer(monkeypatch, None, regenerate, None, None)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    first, second = (after_the_break(system) for system in agent.guide_systems)
+    assert first.endswith(f"\n\n{HEADER}\n{P11_S4_R5}")
+    assert second == first, "o rascunho pedido pelo Validador perdia as leituras aceitas"
