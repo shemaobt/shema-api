@@ -530,3 +530,18 @@ async def test_the_golden_send_counts_the_send_back_the_validator_made_on_the_re
     assert sent.json().get("acceptedSendBacks") == 1, (
         "a resposta do envio dourado não contava o reenvio do Validador num turno com leituras"
     )
+
+
+async def test_the_golden_send_counts_every_send_back_of_the_turn_not_only_the_first(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    first, second = regenerating("deu a sandália ao Boaz"), regenerating("o Boaz ficou com ela")
+    the_models_answer(monkeypatch, None, first, None, second)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json().get("acceptedSendBacks") == 2, (
+        "a resposta do envio dourado contava só um dos dois reenvios do mesmo turno"
+    )
