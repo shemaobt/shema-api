@@ -56,3 +56,45 @@ def test_the_guides_name_is_taken_out_across_a_space_only_her_javascript_counts(
     line = "pro facilitador\ufeffDIGITAL FACILITATOR"
 
     assert is_boundary_turn("validated", line, opening=False) is False
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("the human consultant\xc3O?", id="capital-glued-after"),
+        pytest.param("the human consultant\xe3o", id="small-glued-after"),
+        pytest.param("ao consultor\xc9", id="capital-e-glued-after"),
+        pytest.param("\xc3ao consultor", id="capital-glued-before"),
+        pytest.param("\xe9ao consultor", id="small-e-glued-before"),
+        pytest.param("ao consultor\u0663", id="arabic-indic-digit-glued-after"),
+        pytest.param("ao consultor\u03b1", id="greek-letter-glued-after"),
+        pytest.param("pro facilitador\xe3o", id="hers-pro-facilitador-glued"),
+    ],
+)
+def test_a_letter_beyond_ascii_glued_to_a_hand_off_is_not_part_of_its_word(line: str) -> None:
+    assert is_boundary_turn("validated", line, opening=False) is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("ao consultors", id="ascii-letter-after"),
+        pytest.param("xao consultor", id="ascii-letter-before"),
+        pytest.param("ao consultor_", id="underscore-after"),
+        pytest.param("ao consultor9", id="ascii-digit-after"),
+    ],
+)
+def test_an_ascii_word_character_glued_to_a_hand_off_still_hides_it(line: str) -> None:
+    assert is_boundary_turn("validated", line, opening=False) is False
+
+
+def test_the_guides_name_is_taken_out_when_a_letter_beyond_ascii_follows_it() -> None:
+    line = "pro facilitador digital\xc3o"
+
+    assert is_boundary_turn("validated", line, opening=False) is False
+
+
+def test_the_guides_name_is_not_taken_out_when_an_ascii_letter_follows_it() -> None:
+    line = "pro facilitador digitals"
+
+    assert is_boundary_turn("validated", line, opening=False) is True

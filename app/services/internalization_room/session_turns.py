@@ -34,10 +34,12 @@ _OUTCOMES: dict[str, TurnOutcomeCode] = {
 _JS_SPACE = (
     "[\\t\\n\\v\\f\\r \\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
 )
+_JS_WORD = "[A-Za-z0-9_]"
+_JS_EDGE = f"(?:(?<={_JS_WORD})(?!{_JS_WORD})|(?<!{_JS_WORD})(?={_JS_WORD}))"
 
 
 def _as_javascript(pattern: str) -> re.Pattern[str]:
-    return re.compile(pattern.replace(r"\s", _JS_SPACE), re.IGNORECASE)
+    return re.compile(pattern.replace(r"\s", _JS_SPACE).replace(r"\b", _JS_EDGE), re.IGNORECASE)
 
 
 _SELF_NAME = _as_javascript(r"\b(facilitador(a)?\s+digital|digital\s+facilitator)\b")
