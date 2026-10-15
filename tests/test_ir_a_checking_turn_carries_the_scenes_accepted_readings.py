@@ -487,3 +487,17 @@ async def test_the_golden_send_answers_with_the_ids_of_the_readings_the_guide_wa
     await db_session.refresh(stored)
     *_, guide = stored.messages
     assert guide["accepted_ids"] == sent.json()["acceptedIds"]
+
+
+async def test_the_golden_send_of_a_scene_with_no_ruling_says_nothing_of_accepted_ids(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S3")
+
+    assert sent.status_code == 200, sent.text
+    assert "acceptedIds" not in sent.json(), (
+        "a resposta do envio de uma cena sem leituras aceitas trazia a chave vazia"
+    )
