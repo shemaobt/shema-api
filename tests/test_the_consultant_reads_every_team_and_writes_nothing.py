@@ -39,6 +39,7 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
+from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -86,6 +87,7 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     monkeypatch.setattr(question_service, "listen_address", signed_question)
     monkeypatch.setattr(take_routes, "listen_url", signed_take)
     monkeypatch.setattr(session_takes, "listen_url", signed_take)
+    the_bucket_is_in_memory(monkeypatch)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", sign)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "plataforma", raising=False)

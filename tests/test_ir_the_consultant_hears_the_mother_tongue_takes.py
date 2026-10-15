@@ -25,7 +25,9 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import ensaio_take, retro_take
+from tests.room_harness import the_bucket_is_in_memory
 
 IR = "/api/internalization-room"
 P = "P01"
@@ -48,6 +50,11 @@ def signer(monkeypatch: pytest.MonkeyPatch) -> Signer:
     signing = Signer()
     monkeypatch.setattr(takes_service, "generate_signed_download_url", signing)
     return signing
+
+
+@pytest.fixture(autouse=True)
+def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    return the_bucket_is_in_memory(monkeypatch)
 
 
 @pytest.fixture()
@@ -107,6 +114,7 @@ async def _keep(
     take.size_bytes = size_bytes
     db.add(take)
     await db.commit()
+    takes_service._store().objects[take.storage_key] = b"audio"
     return take.id
 
 
@@ -261,3 +269,28 @@ async def test_each_take_carries_a_link_of_fifteen_minutes_and_a_second_read_min
     assert [url.split("?")[0] for url in second] == [url.split("?")[0] for url in first]
     assert set(first).isdisjoint(second)
     assert {minutes for _key, minutes in signer.calls} == {15}
+
+
+async def test_a_take_the_bucket_does_not_hold_is_unread_and_the_others_still_answer(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+    bucket: MemoryStore,
+    signer: Signer,
+) -> None:
+    for ordinal, sha in enumerate("abc", start=1):
+        await _keep(db_session, session, team, ordinal=ordinal, sha=sha * 64)
+    del bucket.objects[f"takes/{session.id}/ensaio/{'b' * 64}"]
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["part"], row["unread"], row["play_url"] is None) for row in body["takes"]] == [
+        (1, False, False),
+        (2, True, True),
+        (3, False, False),
+    ]
+    assert [key for key, _minutes in signer.calls] == [
+        f"takes/{session.id}/ensaio/{sha * 64}" for sha in "ac"
+    ]

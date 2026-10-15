@@ -69,6 +69,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -144,6 +145,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
     monkeypatch.setattr(session_takes, "listen_url", _signed_take)
+    the_bucket_is_in_memory(monkeypatch)
 
     async def _get_db():
         yield db_session
