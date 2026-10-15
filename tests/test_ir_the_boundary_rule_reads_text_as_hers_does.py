@@ -37,7 +37,8 @@ JS_SPACES = [
     "\u3000",
     "\ufeff",
 ]
-PYTHON_ONLY_SPACES = ["\x85", "\x1c", "\x1d", "\x1e", "\x1f", "\u180e"]
+PYTHON_ONLY_SPACES = ["\x85", "\x1c", "\x1d", "\x1e", "\x1f"]
+SPACES_IN_NEITHER_ENGINE = ["\u180e"]
 
 
 @pytest.mark.parametrize("space", JS_SPACES, ids=[f"U+{ord(each):04X}" for each in JS_SPACES])
@@ -49,6 +50,15 @@ def test_a_space_her_javascript_counts_joins_the_words_of_a_hand_off(space: str)
     "space", PYTHON_ONLY_SPACES, ids=[f"U+{ord(each):04X}" for each in PYTHON_ONLY_SPACES]
 )
 def test_a_character_only_python_counts_as_a_space_does_not_join_them(space: str) -> None:
+    assert is_boundary_turn("validated", f"ao{space}consultor", opening=False) is False
+
+
+@pytest.mark.parametrize(
+    "space",
+    SPACES_IN_NEITHER_ENGINE,
+    ids=[f"U+{ord(each):04X}" for each in SPACES_IN_NEITHER_ENGINE],
+)
+def test_a_character_that_is_a_space_in_neither_engine_does_not_join_them(space: str) -> None:
     assert is_boundary_turn("validated", f"ao{space}consultor", opening=False) is False
 
 
