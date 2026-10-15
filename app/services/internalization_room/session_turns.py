@@ -31,9 +31,18 @@ _OUTCOMES: dict[str, TurnOutcomeCode] = {
     "fail_safe": "fail_safe",
 }
 
-_SELF_NAME = re.compile(r"\b(facilitador(a)?\s+digital|digital\s+facilitator)\b", re.IGNORECASE)
+_JS_SPACE = (
+    "[\\t\\n\\v\\f\\r \\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+)
+
+
+def _as_javascript(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern.replace(r"\s", _JS_SPACE), re.IGNORECASE)
+
+
+_SELF_NAME = _as_javascript(r"\b(facilitador(a)?\s+digital|digital\s+facilitator)\b")
 _HANDS_OFF = [
-    re.compile(pattern, re.IGNORECASE)
+    _as_javascript(pattern)
     for pattern in (
         r"\b(seu|sua|de\s+vocês|de\s+voces|ao|para\s+o|para\s+a|pro|pra|com\s+o|com\s+a)\s+facilitador(a)?\b",
         r"\bfacilitador(a)?\s+(humano|humana|de\s+vocês|de\s+voces|da\s+equipe)\b",
