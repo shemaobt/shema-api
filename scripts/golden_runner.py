@@ -141,6 +141,7 @@ class Played:
     mechanical: list[str] = field(default_factory=list)
     appStatus: list[str] = field(default_factory=list)
     acceptedIds: list[str] = field(default_factory=list)
+    acceptedSendBacks: int = 0
 
 
 @dataclass
@@ -373,6 +374,7 @@ async def play(
             turnMs=int(reply.get("latencyMs") or round((time.monotonic() - started) * 1000)),
             usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
             acceptedIds=reply.get("acceptedIds", []),
+            acceptedSendBacks=reply.get("acceptedSendBacks", 0),
             appStatus=[
                 fact
                 for fact in (
