@@ -238,3 +238,17 @@ async def test_a_golden_rehearsal_with_no_frase_is_refused_and_stays_unsent(
         select(IRSceneRehearsal.sent_turn_id).where(IRSceneRehearsal.id == rehearsal_id)
     )
     assert claimed is None
+
+
+async def test_a_golden_send_naming_another_sessions_rehearsal_is_not_found_and_unheard(
+    client, monkeypatch
+) -> None:
+    kept_in = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, kept_in)).json()["rehearsalId"]
+    other = await an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, other, rehearsal_id)
+
+    assert sent.status_code == 404, sent.text
+    assert agent.guide_inputs == []
