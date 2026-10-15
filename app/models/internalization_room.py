@@ -881,6 +881,7 @@ class MotherTongueTake(BaseModel):
     part: int | None
     size_kb: int
     fingerprint: str
+    recorded_at: str
 
 
 class MotherTongueTakesResponse(BaseModel):

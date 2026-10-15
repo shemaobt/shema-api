@@ -6,6 +6,7 @@ Every case drives the real application through the door the Desk reads by.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -71,8 +72,11 @@ async def _keep(
     ordinal: int | None,
     sha: str,
     size_bytes: int = 2048,
+    created_at: datetime | None = None,
 ) -> str:
-    take = ensaio_take(session.id, ordinal=ordinal, sha256=sha, project_id=team.id)
+    take = ensaio_take(
+        session.id, ordinal=ordinal, sha256=sha, project_id=team.id, created_at=created_at
+    )
     take.size_bytes = size_bytes
     db.add(take)
     await db.commit()
@@ -158,3 +162,18 @@ async def test_the_fingerprint_is_the_first_twelve_characters_of_the_sha256(
     body = await _read(client, consultant, session.id)
 
     assert [row["fingerprint"] for row in body["takes"]] == ["0123456789ab"]
+
+
+async def test_the_time_is_the_moment_the_take_was_kept_with_its_offset(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    kept_at = datetime(2026, 9, 1, 10, 2, tzinfo=UTC)
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, created_at=kept_at)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [row["recorded_at"] for row in body["takes"]] == ["2026-09-01T10:02:00+00:00"]
