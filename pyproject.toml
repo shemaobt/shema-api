@@ -73,8 +73,6 @@ ignore = ["B008"]
 # The wheel's expected lines are transcribed from the maps, whose verse dash is an en dash
 # through P05 and a hyphen from P06 on. Ruff reads the en dash as a confusable hyphen; the
 # canon's own character is the point, and normalizing it would break the match.
-# Her pinned table of accepted readings is transcribed line for line from her test; a line
-# wrapped to fit would no longer read as the one line the voice receives.
 [tool.ruff.lint.per-file-ignores]
 "scripts/doctrine_allowlist.py" = ["E501"]
 "tests/test_internalization_room_passages.py" = ["RUF001"]
