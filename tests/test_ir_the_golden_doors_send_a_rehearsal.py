@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSceneFrase, IRSceneRehearsal
+from app.services import internalization_room as room_service
 from app.services.internalization_room import hearing, takes
 from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import (
@@ -142,3 +143,28 @@ async def test_a_golden_rehearsal_sent_hands_the_guide_her_note_with_the_count_t
     assert agent.guide_inputs == [handed]
     body = sent.json()
     assert (body["guideText"], body["outcome"], body["transcript"]) == (GUIDE_LINE, "pass", handed)
+
+
+async def test_the_turn_a_golden_rehearsal_leaves_is_a_checking_turn_by_the_servers_mark(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id)
+
+    assert sent.status_code == 200, sent.text
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    note, words, guide = stored.messages[-3:]
+    assert (note["text"], note.get("room_note")) == (TWO_PT, True)
+    assert (words["text"], words.get("room_note")) == (
+        "Noemi disse: voltem. Rute ficou com ela.",
+        None,
+    )
+    assert guide["scene_rehearsal"] == {
+        "rehearsal_id": rehearsal_id,
+        "n": 1,
+        "frases": 2,
+        "scene": "S2",
+    }
