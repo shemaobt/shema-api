@@ -267,7 +267,9 @@ def _reads_that_name_a_team_resource() -> set[str]:
 
 def _audio_doors() -> set[str]:
     return {
-        path for method, path in facilitator_routes() if method == "GET" and path.endswith("/audio")
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and "audio" in path.split("/")
     }
 
 
@@ -383,7 +385,7 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
     ]
     mounted = _audio_doors()
-    covered = {template_of("GET", url) for url in doors if url.endswith("/audio")}
+    covered = {template_of("GET", url) for url in doors}
     assert covered == mounted, (
         f"sem porta: {sorted(mounted - covered)}; "
         f"porta sem rota: {sorted(covered - mounted, key=str)}"
