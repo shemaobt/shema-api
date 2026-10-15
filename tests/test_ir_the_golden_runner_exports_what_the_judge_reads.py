@@ -543,3 +543,35 @@ async def test_the_export_shows_the_accepted_ids_beside_the_turn_that_handed_the
     assert [turn["acceptedIds"] for turn in turns] == [[], ["R5"]], (
         "o relatório não dizia, ao lado do turno, quais leituras aceitas o Guia recebeu"
     )
+
+
+async def test_the_judge_reads_the_same_transcript_of_a_checking_turn_whether_or_not_ids_are_shown(
+    seam, tmp_path, monkeypatch
+) -> None:
+    agent = the_models_answer(monkeypatch)
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+    _report, transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    status = "APP STATUS (what the app told the guide this turn): "
+    scenes = (
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        "S4. Parts with none: S1, S2, S3."
+    )
+    block = (
+        f"[turn 0]\nTEAM: {agent.guide_inputs[0]}\nGUIDE (pass): {GUIDE_LINE}\n\n"
+        f"[turn 1]\n{status}{scenes}\nTEAM: {agent.guide_inputs[1]}\nGUIDE (pass): {GUIDE_LINE}"
+    )
+    assert judge_transcript(played) == block
+    assert transcript.read_text(encoding="utf-8") == block + "\n"
+    assert played[1].acceptedIds == ["R5"]
