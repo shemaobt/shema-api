@@ -69,6 +69,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -117,6 +118,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.database import get_db
     from app.main import app
     from app.services.internalization_room import questions as question_service
+    from app.services.internalization_room import session_takes
 
     class MemoryStore:
         def __init__(self) -> None:
@@ -142,6 +144,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
+    monkeypatch.setattr(session_takes, "listen_url", _signed_take)
+    the_bucket_is_in_memory(monkeypatch)
 
     async def _get_db():
         yield db_session
@@ -388,6 +392,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/mother-tongue-takes", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/scene-rehearsals", {}),
             "ids": (session_id, absent),
@@ -539,6 +549,7 @@ REFUSING_TEMPLATES = {
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/reply"),
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/mother-tongue-takes"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/scene-rehearsals"),
     ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),

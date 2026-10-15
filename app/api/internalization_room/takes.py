@@ -15,15 +15,22 @@ from app.api.internalization_room._deps import device_dep, device_project_dep, l
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
-from app.models.internalization_room import TakeResponse, TakesResponse
+from app.models.internalization_room import (
+    MotherTongueTakesResponse,
+    TakeResponse,
+    TakesResponse,
+)
 from app.services import internalization_room as room
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.session_takes import mother_tongue_takes_of
 from app.services.internalization_room.takes import (
+    TakeStore,
     listen_url,
     store_take,
     take_for_reader,
     take_in_session,
+    take_store,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -173,6 +180,20 @@ async def facilitator_takes(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
     )
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/mother-tongue-takes",
+    response_model=MotherTongueTakesResponse,
+)
+async def read_the_mother_tongue_takes(
+    session_id: str,
+    user: ReaderUser,
+    db: AsyncSession = Depends(get_db),
+    store: TakeStore = Depends(take_store),
+) -> MotherTongueTakesResponse:
+    session = await room.get_session_for_reader(db, user, session_id)
+    return await mother_tongue_takes_of(db, session, store)
 
 
 @router.get(
