@@ -221,3 +221,20 @@ async def test_a_golden_send_closing_an_attempt_that_is_not_the_current_one_is_r
     assert sent.status_code == 409, sent.text
     assert sent.json()["code"] == "RESTART_OUT_OF_ORDER"
     assert agent.guide_inputs == []
+
+
+async def test_a_golden_rehearsal_with_no_frase_is_refused_and_stays_unsent(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id, pieces=[])).json()["rehearsalId"]
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id)
+
+    assert sent.status_code == 422, sent.text
+    assert agent.guide_inputs == []
+    claimed = await db_session.scalar(
+        select(IRSceneRehearsal.sent_turn_id).where(IRSceneRehearsal.id == rehearsal_id)
+    )
+    assert claimed is None
