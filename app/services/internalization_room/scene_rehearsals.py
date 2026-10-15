@@ -7,19 +7,26 @@ aside and keeps a copy of the record as it was. Nothing here is ever deleted (AD
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
     ConflictError,
     FraseOutOfPlace,
     NotFoundError,
     RestartOutOfOrder,
+    SceneRehearsalSending,
     SceneRehearsalSent,
+    SceneRehearsalUntranslated,
     UnknownReferenceError,
     WordlessTelling,
 )
@@ -29,12 +36,22 @@ from app.db.models.internalization_room import (
     IRSceneRestart,
     IRSceneSaid,
     IRSession,
+    IRTurn,
 )
-from app.models.internalization_room import SceneRestartSnapshot, SceneSnapshotFrase
+from app.models.internalization_room import (
+    SceneRestartSnapshot,
+    SceneSnapshotFrase,
+    TurnResponse,
+)
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
-from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal, heard
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.live import live
+from app.services.internalization_room.opening_claim import (
+    Draft,
+    answer_around_the_opening,
+    oldest_live_claim,
+)
 from app.services.internalization_room.takes import (
     TakeStore,
     extension,
@@ -275,9 +292,47 @@ def _closing(restarts: Sequence[IRSceneRestart], attempt: str | None) -> str | N
     return restarts[following].id if following < len(restarts) else None
 
 
-def _refuse_a_sent(rehearsal: IRSceneRehearsal) -> None:
-    if rehearsal.sent_at is not None:
+def _landed(session_id: Any, turn_id: Any) -> Exists:
+    return (
+        select(IRTurn.turn_id)
+        .where(IRTurn.session_id == session_id, IRTurn.turn_id == turn_id)
+        .exists()
+    )
+
+
+async def sent_ones(db: AsyncSession, rehearsals: Sequence[IRSceneRehearsal]) -> set[str]:
+    """The rehearsals that read as sent: a turn landed under their claim. A claim still in
+    flight, or one left by a request long gone, reads unsent."""
+    found = await db.scalars(
+        select(IRSceneRehearsal.id).where(
+            IRSceneRehearsal.id.in_([rehearsal.id for rehearsal in rehearsals]),
+            _landed(IRSceneRehearsal.session_id, IRSceneRehearsal.sent_turn_id),
+        )
+    )
+    return set(found)
+
+
+def _a_claim_lives_since() -> datetime:
+    """The claim time before which a send can no longer be running: its turn bound, after the
+    longest wait for a drafting opening, and thirty seconds more (ADR 0053)."""
+    settings = get_settings()
+    lives_ms = (
+        settings.internalization_room_turn_bound_ms + settings.internalization_room_opening_wait_ms
+    )
+    return oldest_live_claim(lives_ms / 1000)
+
+
+async def _refuse_a_standing_claim(db: AsyncSession, rehearsal: IRSceneRehearsal) -> None:
+    """A claim stands: sent once its turn landed, being sent while it is live (ADR 0063).
+
+    A claim older than a send may live, with no turn landed, is no claim.
+    """
+    if rehearsal.sent_at is None:
+        return
+    if await db.scalar(select(_landed(rehearsal.session_id, rehearsal.sent_turn_id))):
         raise SceneRehearsalSent(f"Scene rehearsal {rehearsal.id} was sent and is frozen")
+    if rehearsal.sent_at >= _a_claim_lives_since():
+        raise SceneRehearsalSending(f"Scene rehearsal {rehearsal.id} is being sent")
 
 
 def _refuse_a_place_outside(rehearsal: IRSceneRehearsal, starts_ms: int, ends_ms: int) -> None:
@@ -367,7 +422,7 @@ async def keep_a_frase(
     already = await _the_same_frase(db, rehearsal.id, sha256)
     if already is not None:
         return already
-    _refuse_a_sent(rehearsal)
+    await _refuse_a_standing_claim(db, rehearsal)
     _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
     if after_restart is not None:
         await _refuse_another_rehearsals_attempt(db, rehearsal, after_restart)
@@ -392,7 +447,7 @@ async def keep_a_frase(
     already = await _the_same_frase(db, rehearsal.id, sha256)
     if already is not None:
         return already
-    _refuse_a_sent(rehearsal)
+    await _refuse_a_standing_claim(db, rehearsal)
     chain_head = (
         None
         if replaces is None
@@ -441,7 +496,7 @@ async def restart_the_scene_translation(
         if already.rehearsal_id != rehearsal.id:
             raise UnknownReferenceError(f"Restart {attempt} belongs to another scene rehearsal")
         return already
-    _refuse_a_sent(rehearsal)
+    await _refuse_a_standing_claim(db, rehearsal)
     done = (await restarts_of(db, [rehearsal.id]))[rehearsal.id]
     if closes != current_attempt(done):
         raise RestartOutOfOrder(
@@ -482,3 +537,126 @@ async def restart_the_scene_translation(
     )
     await db.commit()
     return restart
+
+
+async def send_the_scene_rehearsal(
+    db: AsyncSession,
+    session: IRSession,
+    rehearsal: IRSceneRehearsal,
+    *,
+    turn_id: str,
+    closes: str | None,
+    project_id: str,
+    bound_s: float,
+    draft: Draft,
+) -> TurnResponse:
+    """«terminei»: the rehearsal claimed as sent under `turn_id`, then answered as a team turn.
+
+    The claim is committed before the voice is asked, and released when the turn never lands
+    (ADR 0063).
+    """
+    speech, claimed_at = await _claim_the_send(
+        db, session, rehearsal, turn_id=turn_id, closes=closes
+    )
+    try:
+        return await answer_around_the_opening(
+            db,
+            session,
+            opening=False,
+            turn_id=turn_id,
+            project_id=project_id,
+            hearing=None,
+            heard=speech,
+            deadline=asyncio.get_running_loop().time() + bound_s,
+            bound_s=bound_s,
+            draft=draft,
+        )
+    except BaseException:
+        await db.rollback()
+        await _release_the_send(rehearsal.id, turn_id, claimed_at)
+        raise
+
+
+async def _claim_the_send(
+    db: AsyncSession,
+    session: IRSession,
+    rehearsal: IRSceneRehearsal,
+    *,
+    turn_id: str,
+    closes: str | None,
+) -> tuple[HeardSpeech, datetime]:
+    """The rehearsal stamped sent under `turn_id`, the turn it makes, and when it was claimed.
+
+    Claimed under the rehearsal's lock, which a frase and a restart take too. The send names the
+    attempt it closes, and is refused while that is not the current one; a frase waiting on a
+    restart that never lands is left out. One with no live frase is refused and stays unsent.
+    The same turn id renews its own claim and makes the turn again. The turn's words are the
+    live frases' in recording order, in the session's language, and the recording's length
+    stands as the time the team held the microphone.
+    """
+    rehearsal = await _locked(db, rehearsal.id)
+    standing = rehearsal.sent_at
+    if rehearsal.sent_turn_id != turn_id:
+        await _refuse_a_standing_claim(db, rehearsal)
+    restarts = await restarts_of(db, [rehearsal.id])
+    if closes != current_attempt(restarts[rehearsal.id]):
+        raise RestartOutOfOrder(
+            f"The send of scene rehearsal {rehearsal.id} closes {closes}, which is not its "
+            "current attempt"
+        )
+    frases = (await frases_of(db, restarts))[rehearsal.id]
+    replacing = replaced_by(frases)
+    live_frases = [frase for frase in frases if frase.id not in replacing]
+    if not live_frases:
+        raise SceneRehearsalUntranslated(f"Scene rehearsal {rehearsal.id} has no translated frase")
+    claimed_at = datetime.now(UTC)
+    claimed = await db.execute(
+        update(IRSceneRehearsal)
+        .where(
+            IRSceneRehearsal.id == rehearsal.id,
+            IRSceneRehearsal.sent_at.is_(None)
+            if standing is None
+            else IRSceneRehearsal.sent_at == standing,
+        )
+        .values(sent_at=claimed_at, sent_turn_id=turn_id)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
+        raise SceneRehearsalSending(f"Scene rehearsal {rehearsal.id} is being sent")
+    language = room_language(session.language)
+    speech = HeardSpeech(
+        text=" ".join(frase.transcript.strip() for frase in live_frases),
+        bridge_language=language,
+        language_code=language,
+        take_ms=rehearsal.duration_ms,
+        scene_rehearsal=SentSceneRehearsal(
+            rehearsal_id=rehearsal.id,
+            n=rehearsal.n,
+            frases=len(live_frases),
+            scene=rehearsal.scene,
+        ),
+    )
+    await db.commit()
+    return speech, claimed_at
+
+
+async def _release_the_send(rehearsal_id: str, turn_id: str, claimed_at: datetime) -> None:
+    """Unsend a rehearsal whose turn under `turn_id` never landed, so it can be sent again.
+
+    On a session of its own, as an opening claim is released (ADR 0053), and only the claim this
+    request made: a resend that renewed it holds it now. A turn stored under that id landed,
+    whichever request failed after it, and keeps the rehearsal sent.
+    """
+    async with AsyncSessionLocal() as own:
+        await own.execute(
+            update(IRSceneRehearsal)
+            .where(
+                IRSceneRehearsal.id == rehearsal_id,
+                IRSceneRehearsal.sent_turn_id == turn_id,
+                IRSceneRehearsal.sent_at == claimed_at,
+                ~_landed(IRSceneRehearsal.session_id, turn_id),
+            )
+            .values(sent_at=None, sent_turn_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await own.commit()

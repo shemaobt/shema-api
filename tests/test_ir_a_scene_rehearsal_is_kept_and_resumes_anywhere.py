@@ -244,6 +244,20 @@ async def write(db: AsyncSession, column: str, value: str | None, rehearsal_id: 
     await db.commit()
 
 
+async def sent(db: AsyncSession, rehearsal_id: str) -> None:
+    """The rehearsal sent: stamped under a turn id whose reply was stored."""
+    from app.services.internalization_room.turn_dedup import remember_turn
+
+    session_id = (
+        await db.execute(
+            text("SELECT session_id FROM ir_scene_rehearsals WHERE id = :id"), {"id": rehearsal_id}
+        )
+    ).scalar_one()
+    await remember_turn(db, session_id=session_id, turn_id="turno-da-cena", response={})
+    await write(db, "sent_turn_id", "turno-da-cena", rehearsal_id)
+    await write(db, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+
+
 def key_of(room: Room, audio: bytes) -> str:
     (key,) = [key for key, stored in room.bucket.objects.items() if stored == audio]
     return key
@@ -437,7 +451,7 @@ async def test_a_sent_rehearsal_takes_no_frase_and_is_still_heard(
 ) -> None:
     session_id = await a_session(db_session)
     rehearsal_id = await recorded(room, session_id)
-    await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+    await sent(db_session, rehearsal_id)
 
     frase = await translate(room, session_id, rehearsal_id, (0, 5000), recording(1, 100))
 
@@ -535,7 +549,7 @@ async def test_a_frase_heard_while_the_rehearsal_is_sent_is_refused(
     rehearsal_id = await recorded(room, session_id)
 
     async def send() -> None:
-        await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+        await sent(db_session, rehearsal_id)
 
     room.while_hearing.append(send)
     late = await translate(room, session_id, rehearsal_id, (0, 5000), recording(1, 700))
@@ -717,7 +731,7 @@ async def test_a_frase_of_an_offline_restart_waits_for_that_restart_and_then_cou
 async def test_a_sent_rehearsal_takes_no_restart(room: Room, db_session: AsyncSession) -> None:
     session_id = await a_session(db_session)
     rehearsal_id = await recorded(room, session_id)
-    await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+    await sent(db_session, rehearsal_id)
 
     refused = await restart(room, session_id, rehearsal_id)
 
@@ -950,7 +964,7 @@ async def test_the_reader_reads_a_held_frase_whose_restart_never_landed(
         room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt
     )
     assert held.status_code == 200, held.text
-    await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+    await sent(db_session, rehearsal_id)
     refused = await restart(room, session_id, rehearsal_id, attempt)
     assert refused.status_code == 409, refused.text
 

@@ -1382,6 +1382,28 @@ class SessionTurnsResponse(BaseModel):
     turns: list[SessionTurn]
 
 
+class BoundaryTurn(BaseModel):
+    number: int
+    outcome: TurnOutcomeCode
+    team: str
+    guide: str
+
+
+class SessionBoundaryTurnsResponse(BaseModel):
+    """The turns the boundary rule marks, her «Perguntas de fronteira».
+
+    `number` is the turn's place in `SessionTurnsResponse.turns`, from zero, and the `{number}`
+    of its clip; her «turno n» is `number + 1`. `team` is what the Guide was handed in the
+    team's place, empty when nothing was heard, and `guide` is the line voiced. `count` is
+    the length of `turns`, served so the Desk never counts, and the section is read with no
+    turn marked as well: `count` 0 and `turns` empty.
+    """
+
+    session_id: str
+    count: int
+    turns: list[BoundaryTurn]
+
+
 class BeadState(StrEnum):
     """Her three states: «engajado», «mencionado pelo guia» and «ainda não tocado».
 

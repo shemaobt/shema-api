@@ -6,13 +6,18 @@ from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
 from app.models.internalization_room import (
     ConversationResponse,
+    SessionBoundaryTurnsResponse,
     SessionCoverageResponse,
     SessionTurnsResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.conversation import conversation_of
 from app.services.internalization_room.session_coverage import coverage_of
-from app.services.internalization_room.session_turns import turn_clip_url, turns_of
+from app.services.internalization_room.session_turns import (
+    boundary_turns_of,
+    turn_clip_url,
+    turns_of,
+)
 
 router = APIRouter()
 
@@ -48,6 +53,17 @@ async def read_the_coverage(
 ) -> SessionCoverageResponse:
     session = await room.get_session_for_reader(db, user, session_id)
     return coverage_of(session)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/boundary-turns",
+    response_model=SessionBoundaryTurnsResponse,
+)
+async def read_the_boundary_turns(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> SessionBoundaryTurnsResponse:
+    session = await room.get_session_for_reader(db, user, session_id)
+    return boundary_turns_of(session)
 
 
 @router.get(
