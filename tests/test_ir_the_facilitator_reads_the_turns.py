@@ -779,3 +779,16 @@ async def test_a_checking_turn_the_validator_sent_back_reads_regenerate_then_pas
         "a leitura do consultor não dizia que o Validador devolveu o rascunho do turno"
     )
     assert checked["voice"]["accepted_ids"] == ["R5"]
+
+
+async def test_the_turns_body_of_a_checking_turn_never_carries_the_readings_lines(
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(golden, room, monkeypatch)
+
+    response = await golden.get(_turns_of(room.session_id), headers=room.desk)
+
+    assert response.status_code == 200, response.text[:300]
+    for line in ("ACCEPTED READINGS", "- R5: A team telling", "is correct, not an addition"):
+        assert line not in response.text, f"a leitura do consultor trazia o texto da regra: {line}"
