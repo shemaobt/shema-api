@@ -878,7 +878,7 @@ class MotherTongueTake(BaseModel):
     """One recording of the session in the mother tongue, as the consultant's record lists it."""
 
     take_id: str
-    part: int
+    part: int | None
 
 
 class MotherTongueTakesResponse(BaseModel):

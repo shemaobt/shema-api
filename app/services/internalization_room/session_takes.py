@@ -9,11 +9,12 @@ from app.services.internalization_room.takes import current_parts, takes_of
 
 async def mother_tongue_takes_of(db: AsyncSession, session: IRSession) -> MotherTongueTakesResponse:
     """The recordings of the session in the mother tongue, one per part, in reading order."""
-    parts = current_parts(await takes_of(db, session.id))
-    return MotherTongueTakesResponse(
-        session_id=session.id,
-        takes=[
-            MotherTongueTake(take_id=take.id, part=position)
-            for position, take in enumerate(parts, start=1)
-        ],
-    )
+    rows: list[MotherTongueTake] = []
+    position = 0
+    for take in current_parts(await takes_of(db, session.id)):
+        if take.ordinal is not None:
+            position += 1
+        rows.append(
+            MotherTongueTake(take_id=take.id, part=None if take.ordinal is None else position)
+        )
+    return MotherTongueTakesResponse(session_id=session.id, takes=rows)
