@@ -2969,6 +2969,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
             [],
             [13],
         ),
+        (THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_MODULES_FIXTURE_OF_ITS_OWN_NAME, [17], []),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
@@ -2977,6 +2978,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a method of a subclass that asks for the fixture of its base class",
         "a method of a nested class that asks for the fixture of the class around it",
         "a helper method that is handed another cache under the name of the class's fixture",
+        "a class fixture that requests the module's fixture of its own name",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
