@@ -53,3 +53,12 @@ def template_of(method: str, url: str) -> str | None:
         if method in route.methods and route.path_regex.match(url):
             return route.path
     return None
+
+
+def parameters_of(method: str, path: str) -> set[str]:
+    """The names a mounted route reads from its path and its query string."""
+    for route in _mounted():
+        if method in route.methods and route.path == path:
+            dependant = route.dependant
+            return {p.name for p in dependant.path_params + dependant.query_params}
+    return set()

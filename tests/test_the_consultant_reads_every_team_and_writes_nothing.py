@@ -39,7 +39,11 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
-from tests.facilitator_route_audit_harness import facilitator_routes, template_of
+from tests.facilitator_route_audit_harness import (
+    facilitator_routes,
+    parameters_of,
+    template_of,
+)
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -250,6 +254,14 @@ def _session_reads() -> set[str]:
     }
 
 
+def _reads_that_name_a_team_resource() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and ("{" in path or "team_id" in parameters_of(method, path))
+    }
+
+
 async def _row(per_request: async_sessionmaker[AsyncSession], table, row_id: str) -> dict:
     async with per_request() as db:
         found = (await db.execute(select(table.__table__).where(table.id == row_id))).one()
@@ -443,6 +455,8 @@ async def test_a_facilitator_of_a_who_holds_consultant_is_told_404_when_writing_
 
 
 async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client, desk) -> None:
+    from app.main import app
+
     team = desk["b"]
     reader = desk.readers["facilitator"]
     reads = [
@@ -457,9 +471,24 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
+        (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/release", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/releases/1", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/retroverificacao", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/turns", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", {}),
     ]
+    nudges = f"{DESK}/teams/{team.id}/nudges"
 
+    mounted = _reads_that_name_a_team_resource()
+    covered = {template_of("GET", url) for url, _ in reads} | {template_of("GET", nudges)}
+    assert covered == mounted, (
+        f"sem recusa: {sorted(mounted - covered)}; "
+        f"recusa sem rota: {sorted(covered - mounted, key=str)}"
+    )
     answers = {url: (await client.get(url, headers=reader, **kw)).status_code for url, kw in reads}
+    answers[nudges] = await opening_status(app, nudges, reader)
     listed = await client.get(f"{DESK}/teams", headers=reader)
 
     assert set(answers.values()) == {404}, answers
