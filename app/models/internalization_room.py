@@ -884,8 +884,6 @@ class MotherTongueTake(BaseModel):
     recorded_at: str
     play_url: str | None
     unread: bool
-    #: Null on every row today, and served anyway: a take keeps no duration until ENG-1273
-    #: adds the column, and one that kept none shows none rather than one guessed from its size.
     duration_ms: int | None = None
 
 
