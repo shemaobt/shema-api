@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -13,6 +14,7 @@ from app.services.internalization_room import hearing, takes
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app, the_models_answer
+from tests.turn_harness import the_room_agent_is
 
 HEADER = (
     "ACCEPTED READINGS FOR THE SCENE THIS TELLING CHECKS (a note from the app, in English like "
@@ -193,3 +195,41 @@ async def test_an_unmarked_rehearsal_outside_an_articulation_hands_the_guide_no_
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "um ensaio sem cena marcada, fora de uma articulação, ganhava uma cena por palpite"
     )
+
+
+class Both:
+    def __init__(self) -> None:
+        self.validator_inputs: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            self.validator_inputs.append(f"{system_prompt}\n{user_content}")
+            return json.dumps({"verdict": "pass", "issues": []})
+        return "Obrigado. Vamos ver essa cena juntos."
+
+
+async def test_the_turn_keeps_only_the_entry_ids_and_the_block_reaches_no_store_no_reply_no_validator(  # noqa: E501
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client)
+    models = Both()
+    the_room_agent_is(monkeypatch, turn=models)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+    typed = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": SANDAL[0]}
+    )
+
+    assert (sent.status_code, typed.status_code) == (200, 200), (sent.text, typed.text)
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, checked, _words, ordinary = stored.messages
+    assert checked.get("accepted_ids") == ["R5"], "o turno de conferência não guardava os ids"
+    assert "accepted_ids" not in ordinary, "um turno comum guardava ids de leituras aceitas"
+    for where, text in (
+        ("na conversa guardada", json.dumps(stored.messages, ensure_ascii=False)),
+        ("na resposta do turno", sent.text),
+        ("no que o Validador leu", "\n".join(models.validator_inputs)),
+    ):
+        assert "ACCEPTED READINGS" not in text, f"o cabeçalho das leituras aceitas aparecia {where}"
+        assert "- R5: A team telling" not in text, f"a linha do R5 aparecia {where}"

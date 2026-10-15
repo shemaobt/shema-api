@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.accepted_readings import (
+    accepted_ids_for,
     accepted_readings_block,
     accepted_readings_of,
 )
@@ -90,11 +92,8 @@ async def run_turn(
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     checked = _checked_scene(scene_rehearsal, messages, pericope_num)
-    accepted = (
-        accepted_readings_block(accepted_readings_of(pericope_num).items, checked)
-        if checked
-        else ""
-    )
+    items = accepted_readings_of(pericope_num).items if checked else ()
+    accepted = accepted_readings_block(items, checked) if checked else ""
     coverage_status = "\n\n".join(
         block
         for block in (
@@ -109,7 +108,7 @@ async def run_turn(
         )
         if block
     )
-    return await _voiced_after_validation(
+    outcome = await _voiced_after_validation(
         speaker_system=render(
             cache_break_before(guide_prompt, "{{COVERAGE_STATUS}}"),
             SESSION_LANGUAGE=session_language,
@@ -130,3 +129,4 @@ async def run_turn(
         earlier_passages=earlier,
         first_scene=load_map(pericope_num).scenes[0].title,
     )
+    return replace(outcome, accepted_ids=accepted_ids_for(items, checked)) if checked else outcome
