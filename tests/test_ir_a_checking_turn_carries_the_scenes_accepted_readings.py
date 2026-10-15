@@ -16,7 +16,14 @@ from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.hearing_harness import nothing_settles
-from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app, the_models_answer
+from tests.text_seam_harness import (
+    BEARER,
+    GOLDEN,
+    GUIDE_LINE,
+    RUNNER_KEY,
+    the_app,
+    the_models_answer,
+)
 from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
 
 HEADER = (
@@ -412,6 +419,7 @@ async def test_a_send_back_on_a_turn_that_handed_readings_is_reported_with_the_i
     assert "ACCEPTED READINGS" not in said and "- R5: A team telling" not in said, (
         "o aviso do reenvio repetia as palavras do bloco"
     )
+    assert GUIDE_LINE not in said, "o aviso do reenvio repetia o rascunho do Guia"
 
 
 async def test_every_send_back_of_a_checking_turn_is_reported_not_only_the_first(
