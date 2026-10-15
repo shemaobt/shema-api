@@ -515,3 +515,18 @@ async def test_an_ordinary_golden_turn_says_nothing_of_accepted_ids(client, monk
     assert "acceptedIds" not in typed.json(), (
         "a resposta de um turno comum trazia a chave de leituras aceitas"
     )
+
+
+async def test_the_golden_send_counts_the_send_back_the_validator_made_on_the_readings_turn(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch, None, regenerating("deu a sandália ao Boaz"), None, None)
+
+    sent = await a_sent_rehearsal(client, session_id, "S4")
+
+    assert sent.status_code == 200, sent.text
+    assert len(agent.guide_systems) == 2, "o Validador não mandou o rascunho de volta"
+    assert sent.json().get("acceptedSendBacks") == 1, (
+        "a resposta do envio dourado não contava o reenvio do Validador num turno com leituras"
+    )
