@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
 from app.services.internalization_room import takes as takes_service
+from app.services.platform.storage import StoredObject
 from tests.baker import (
     grant_room_app_role,
     make_language,
@@ -293,4 +294,37 @@ async def test_a_take_the_bucket_does_not_hold_is_unread_and_the_others_still_an
     ]
     assert [key for key, _minutes in signer.calls] == [
         f"takes/{session.id}/ensaio/{sha * 64}" for sha in "ac"
+    ]
+
+
+class StoreThatFailsOn(MemoryStore):
+    def __init__(self, broken: str) -> None:
+        super().__init__()
+        self.broken = broken
+
+    async def stat(self, key: str) -> StoredObject | None:
+        if key == self.broken:
+            raise RuntimeError("the storage did not answer")
+        return await super().stat(key)
+
+
+async def test_a_take_the_storage_fails_to_answer_about_is_unread_and_the_read_still_answers(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failing = StoreThatFailsOn(f"takes/{session.id}/ensaio/{'b' * 64}")
+    monkeypatch.setattr(takes_service, "_store", lambda *_, **__: failing)
+    for ordinal, sha in enumerate("abc", start=1):
+        await _keep(db_session, session, team, ordinal=ordinal, sha=sha * 64)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["part"], row["unread"], row["play_url"] is None) for row in body["takes"]] == [
+        (1, False, False),
+        (2, True, True),
+        (3, False, False),
     ]

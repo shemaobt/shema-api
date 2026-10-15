@@ -16,7 +16,11 @@ from app.utils.stored_time import as_utc
 
 
 async def _link_of(store: TakeStore, take: IRTake) -> str | None:
-    if await store.stat(take.storage_key) is None:
+    try:
+        held = await store.stat(take.storage_key)
+    except Exception:
+        return None
+    if held is None:
         return None
     return await listen_url(take)
 
