@@ -69,6 +69,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.facilitator_route_audit_harness import facilitator_routes, template_of
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -77,37 +78,6 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 #: The only body the force route accepts as a force. Without it the route answers
 #: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
 FORCE = {"json": {"force": True}}
-
-
-def _dependency_calls(dependant) -> set:
-    found = {dependant.call}
-    for sub in dependant.dependencies:
-        found |= _dependency_calls(sub)
-    return found
-
-
-def facilitator_routes() -> list[tuple[str, str]]:
-    """Every mounted route behind the facilitator or the reader gate, as (method, path).
-
-    Derived from the gate objects in each route's dependency tree rather than from the path,
-    because `/facilitator` in a path is a naming convention and this is not. A route added
-    to either family is covered here the moment it is mounted.
-    """
-    from app.api.facilitator._deps import facilitator_role, reader_role
-    from app.main import app
-
-    gates = {facilitator_role.dependency, reader_role.dependency}
-    found = []
-    for route in app.routes:
-        dependant = getattr(route, "dependant", None)
-        if dependant is None:
-            continue
-        calls = {getattr(c, "dependency", c) for c in _dependency_calls(dependant)}
-        if not gates & calls:
-            continue
-        for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
-            found.append((method, route.path))
-    return sorted(found)
 
 
 @pytest.fixture()
@@ -587,6 +557,29 @@ def test_every_facilitator_route_is_covered_by_this_audit() -> None:
         "as rotas de facilitador mudaram e esta auditoria nao acompanhou — "
         f"sem cobertura: {sorted(mounted - covered)}; sobrando na tabela: "
         f"{sorted(covered - mounted)}"
+    )
+
+
+async def test_refusing_routes_holds_a_case_for_every_mounted_route_that_names_a_resource(
+    client, db_session
+) -> None:
+    """The table that says how to ask is checked against the routes that are mounted.
+
+    `REFUSING_TEMPLATES` was already held to the mounted routes; the cases that actually
+    exercise them were not, so a route could lose its case here and both halves of the audit
+    would go on passing without it.
+    """
+    owner = await a_facilitator(db_session, email="dono@example.com")
+
+    held = {
+        (case["method"], template_of(case["method"], case["owned"][0]))
+        for case in await refusing_routes(db_session, owner, "x")
+    }
+    named = set(facilitator_routes()) - FILTERING_TEMPLATES - NOTHING_TO_SCOPE
+
+    assert held == named, (
+        "a tabela de casos nao acompanha as rotas montadas — "
+        f"sem caso: {sorted(named - held)}; caso sem rota: {sorted(held - named, key=str)}"
     )
 
 
