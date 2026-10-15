@@ -26,9 +26,10 @@ recorded on ENG-1321), with the row settled in the plan:
   text.
 - The send names the attempt it closes, the uuid its frases carry, and none before any
   restart. It is refused with 409 `RESTART_OUT_OF_ORDER` when that attempt is not the current
-  one, or while a frase waits on a restart still on its way. The outbox retries it once the
-  restart lands, as it retries a restart that overtook its predecessor (ADR 0059), so a send
-  never freezes an attempt the team had already left.
+  one. The outbox retries it once the restart lands, as it retries a restart that overtook its
+  predecessor (ADR 0059), so a send never freezes an attempt the team had already left. A
+  frase held for a restart that never lands does not block it: a tablet that lost that restart
+  names the attempt the server knows, and the send leaves the held frase out.
 - A frase, a restart or another turn id that meets a standing claim is refused with 409
   `SCENE_REHEARSAL_SENT`, the refusal ADR 0059 gives a sent rehearsal, only once a turn has
   landed under the claim's turn id. While the claim is live and nothing has landed, it is
@@ -54,7 +55,9 @@ recorded on ENG-1321), with the row settled in the plan:
 - `sent_turn_id` names the turn whose reply answered the rehearsal. The Guide's entry of that
   turn keeps which rehearsal it was, how many frases it had, the recording's length, the
   session's language and the scene label as it stood at sending.
-- `sent_at` is the stamp of the claim that stands, so a renewed claim moves it. Once a turn has
-  landed, it is when the rehearsal was sent.
+- `sent_at` is the stamp of the claim that stands, so a renewed claim moves it. A rehearsal
+  reads as sent, to the tablet and to the reader alike, only once a turn has landed under its
+  claim, and `sent_at` is then when it was sent. A claim in flight, or one left by a request
+  long gone, reads unsent.
 - The same turn id resent to another instance while the first draft runs still drafts twice,
   as the turns door does: `answer_once` joins only within one process.

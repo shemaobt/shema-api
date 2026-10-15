@@ -640,7 +640,7 @@ async def test_a_send_before_the_restart_it_closes_has_landed_is_refused_and_goe
     assert room.guide.inputs == [f"{TWO_PT} outro um outro dois"]
 
 
-async def test_a_send_while_a_frase_waits_on_a_restart_still_on_its_way_is_refused(
+async def test_a_frase_whose_restart_never_lands_does_not_block_a_send_naming_the_current_attempt(
     room: Room, db_session: AsyncSession
 ) -> None:
     session_id = await an_opened_session(room, db_session)
@@ -659,9 +659,8 @@ async def test_a_send_while_a_frase_waits_on_a_restart_still_on_its_way_is_refus
 
     sent = await send(room, session_id, rehearsal_id)
 
-    assert sent.status_code == 409, sent.text
-    assert sent.json()["code"] == "RESTART_OUT_OF_ORDER"
-    assert room.guide.inputs == []
+    assert sent.status_code == 200, sent.text
+    assert room.guide.inputs == [f"{ONE_PT} um"]
 
 
 async def test_a_terminei_while_another_is_still_reaching_the_voice_is_told_it_is_being_sent(
@@ -849,3 +848,18 @@ async def test_a_restart_while_the_rehearsal_is_being_sent_is_told_so(
 
     assert restarted.status_code == 409, restarted.text
     assert restarted.json()["code"] == "SCENE_REHEARSAL_SENDING"
+
+
+async def test_a_rehearsal_whose_claim_went_stale_reads_unsent_to_the_tablet_and_the_desk(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await an_opened_session(room, db_session)
+    rehearsal_id = await a_rehearsal(room, session_id)
+    await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
+    await claimed_by_hand(db_session, rehearsal_id, "turno-perdido", timedelta(hours=1))
+
+    on_the_tablet = await the_rehearsal(room, session_id, rehearsal_id)
+    on_the_desk = await read_by_the_desk(room, session_id, rehearsal_id)
+
+    assert on_the_tablet["sent_at"] is None
+    assert on_the_desk["sent_at"] is None

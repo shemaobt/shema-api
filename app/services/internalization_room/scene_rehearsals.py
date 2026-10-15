@@ -300,6 +300,18 @@ def _landed(session_id: Any, turn_id: Any) -> Exists:
     )
 
 
+async def sent_ones(db: AsyncSession, rehearsals: Sequence[IRSceneRehearsal]) -> set[str]:
+    """The rehearsals that read as sent: a turn landed under their claim. A claim still in
+    flight, or one left by a request long gone, reads unsent."""
+    found = await db.scalars(
+        select(IRSceneRehearsal.id).where(
+            IRSceneRehearsal.id.in_([rehearsal.id for rehearsal in rehearsals]),
+            _landed(IRSceneRehearsal.session_id, IRSceneRehearsal.sent_turn_id),
+        )
+    )
+    return set(found)
+
+
 def _a_claim_lives_since() -> datetime:
     """The claim time before which a send can no longer be running: its turn bound, after the
     longest wait for a drafting opening, and thirty seconds more (ADR 0053)."""
@@ -576,22 +588,21 @@ async def _claim_the_send(
     """The rehearsal stamped sent under `turn_id`, the turn it makes, and when it was claimed.
 
     Claimed under the rehearsal's lock, which a frase and a restart take too. The send names the
-    attempt it closes, and is refused while that is not the current one or a frase waits on a
-    restart still on its way. One with no live frase is refused and stays unsent. The same turn
-    id renews its own claim and makes the turn again. The turn's words are the live frases' in
-    recording order, in the session's language, and the recording's length stands as the time
-    the team held the microphone.
+    attempt it closes, and is refused while that is not the current one; a frase waiting on a
+    restart that never lands is left out. One with no live frase is refused and stays unsent.
+    The same turn id renews its own claim and makes the turn again. The turn's words are the
+    live frases' in recording order, in the session's language, and the recording's length
+    stands as the time the team held the microphone.
     """
     rehearsal = await _locked(db, rehearsal.id)
     standing = rehearsal.sent_at
     if rehearsal.sent_turn_id != turn_id:
         await _refuse_a_standing_claim(db, rehearsal)
     restarts = await restarts_of(db, [rehearsal.id])
-    held = (await held_frases(db, restarts))[rehearsal.id]
-    if closes != current_attempt(restarts[rehearsal.id]) or held:
+    if closes != current_attempt(restarts[rehearsal.id]):
         raise RestartOutOfOrder(
             f"The send of scene rehearsal {rehearsal.id} closes {closes}, which is not its "
-            "current attempt, or a frase waits on a restart still on its way"
+            "current attempt"
         )
     frases = (await frases_of(db, restarts))[rehearsal.id]
     replacing = replaced_by(frases)

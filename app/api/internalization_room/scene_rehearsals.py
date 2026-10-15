@@ -70,12 +70,17 @@ def _recorded_at(rehearsal: IRSceneRehearsal) -> str:
     return as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else ""
 
 
-def _sent_at(rehearsal: IRSceneRehearsal) -> str | None:
-    return as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None
+def _sent_at(rehearsal: IRSceneRehearsal, sent: set[str]) -> str | None:
+    if rehearsal.sent_at is None or rehearsal.id not in sent:
+        return None
+    return as_utc(rehearsal.sent_at).isoformat()
 
 
 def _view(
-    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+    rehearsal: IRSceneRehearsal,
+    frases: list[IRSceneFrase],
+    restarts: list[IRSceneRestart],
+    sent: set[str],
 ) -> SceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return SceneRehearsalView(
@@ -89,7 +94,7 @@ def _view(
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
-        sent_at=_sent_at(rehearsal),
+        sent_at=_sent_at(rehearsal, sent),
         after_restart=scenes.current_attempt(restarts),
         frases=[_frase_view(frase, replacing) for frase in frases],
     )
@@ -111,6 +116,7 @@ def _reader_view(
     restarts: list[IRSceneRestart],
     set_aside: dict[str, list[IRSceneFrase]],
     held: dict[str, list[IRSceneFrase]],
+    sent: set[str],
 ) -> ReaderSceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return ReaderSceneRehearsalView(
@@ -124,7 +130,7 @@ def _reader_view(
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
-        sent_at=_sent_at(rehearsal),
+        sent_at=_sent_at(rehearsal, sent),
         after_restart=scenes.current_attempt(restarts),
         frases=[_reader_frase_view(frase, replacing) for frase in frases],
         scene_guess=rehearsal.scene_guess,
@@ -145,7 +151,8 @@ def _reader_view(
 async def _the_record(db: AsyncSession, rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
     restarts = await scenes.restarts_of(db, [rehearsal.id])
     frases = await scenes.frases_of(db, restarts)
-    return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+    sent = await scenes.sent_ones(db, [rehearsal])
+    return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], sent)
 
 
 async def _session(db: AsyncSession, session_id: str, project_id: str) -> IRSession:
@@ -197,10 +204,11 @@ async def list_scene_rehearsals(
     ids = [rehearsal.id for rehearsal in rehearsals]
     restarts = await scenes.restarts_of(db, ids)
     frases = await scenes.frases_of(db, restarts)
+    sent = await scenes.sent_ones(db, rehearsals)
     return SceneRehearsalsResponse(
         pericope=session.pericope,
         scene_rehearsals=[
-            _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+            _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], sent)
             for rehearsal in rehearsals
         ],
     )
@@ -376,6 +384,7 @@ async def facilitator_scene_rehearsals(
     frases = await scenes.frases_of(db, restarts)
     set_aside = await scenes.set_aside_frases(db, ids)
     held = await scenes.held_frases(db, restarts)
+    sent = await scenes.sent_ones(db, rehearsals)
     return ReaderSceneRehearsalsResponse(
         session_id=session.id,
         scene_rehearsals=[
@@ -385,6 +394,7 @@ async def facilitator_scene_rehearsals(
                 restarts[rehearsal.id],
                 set_aside,
                 held[rehearsal.id],
+                sent,
             )
             for rehearsal in rehearsals
         ],
