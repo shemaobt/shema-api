@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
+from app.services.internalization_room.sessions import append_exchange
+from app.services.internalization_room.validated_turn import TurnOutcome
 from tests.baker import (
     grant_room_app_role,
     make_language,
@@ -63,6 +65,21 @@ async def session(db_session: AsyncSession, team: Project) -> IRSession:
     return await open_ir_session(db_session, pericope=P, project_id=team.id)
 
 
+async def _opening(db: AsyncSession, session: IRSession, guide: str) -> IRSession:
+    return await append_exchange(db, session, team_utterance="", guide_response=guide)
+
+
+async def _turn(
+    db: AsyncSession, session: IRSession, team: str, guide: str, **outcome: Any
+) -> IRSession:
+    heard = TurnOutcome(
+        speech=guide, transcript=team, guide_heard=team, mother_tongue=False, **outcome
+    )
+    return await append_exchange(
+        db, session, team_utterance=team, guide_response=guide, outcome=heard
+    )
+
+
 async def _boundary_turns(
     client: httpx.AsyncClient, headers: dict[str, str], session_id: str
 ) -> dict[str, Any]:
@@ -79,3 +96,34 @@ async def test_a_session_with_no_boundary_turn_reads_an_empty_list_that_is_still
     body = await _boundary_turns(client, consultant, session.id)
 
     assert body == {"session_id": session.id, "count": 0, "turns": []}
+
+
+async def test_two_marked_turns_among_ordinary_ones_read_as_a_count_of_two_oldest_first(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session = await _opening(db_session, session, "Olá! Vamos começar pela primeira parte.")
+    session = await _turn(
+        db_session, session, "Foi Deus que mandou a fome?", "Perguntem ao seu facilitador."
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "Quem saiu de Belém?",
+        "Elimeleque saiu de Belém com a mulher e os dois filhos.",
+    )
+    session = await _turn(
+        db_session,
+        session,
+        "",
+        "Desculpa, não consegui ouvir direito. Podem repetir?",
+        used_fail_safe=True,
+        fixed_line="D1",
+    )
+
+    body = await _boundary_turns(client, consultant, session.id)
+
+    assert body["count"] == 2
+    assert [turn["number"] for turn in body["turns"]] == [1, 3]
