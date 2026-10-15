@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -364,3 +365,39 @@ async def test_the_owner_and_a_consultant_read_it_and_another_projects_reader_an
     }
 
     assert answers == {"owner": 200, "consultant": 200, "stranger": 404, "nobody": 401}
+
+
+async def test_a_session_that_recorded_nothing_answers_an_empty_list_not_an_error(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+) -> None:
+    body = await _read(client, consultant, session.id)
+
+    assert body == {"session_id": session.id, "takes": []}
+
+
+def _as_stored(row: Any) -> dict[str, Any]:
+    return {column.key: getattr(row, column.key) for column in row.__mapper__.column_attrs}
+
+
+async def test_reading_the_takes_changes_neither_the_session_nor_a_take(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    from app.db.models.internalization_room import IRTake
+
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64)
+    (take,) = (await db_session.execute(select(IRTake))).scalars().all()
+    await db_session.refresh(session)
+    before = (_as_stored(session), _as_stored(take))
+
+    await _read(client, consultant, session.id)
+    await _read(client, consultant, session.id)
+    await db_session.refresh(session)
+    await db_session.refresh(take)
+
+    assert (_as_stored(session), _as_stored(take)) == before
