@@ -492,3 +492,54 @@ async def test_the_runner_steps_her_moment_from_every_reply_as_her_http_driver_d
         "fechamento passa à cena 2 só porque a cena 1 voltou, o ensaio sem marca de agora passa à "
         "3, reabrir a 3 pra entender não é abrir a próxima, e a cena 4 aberta na 3 é cedo demais"
     )
+
+
+def _her_checking_script(tmp_path: Path) -> Path:
+    path = tmp_path / "P11-a-telling-checked.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P11-a-telling-checked",
+                "pericopeId": "P11",
+                "language": "Brazilian Portuguese",
+                "why": "a scene 4 telling that gives the sandal to Boaz",
+                "turns": [
+                    {"kickoff": True},
+                    {
+                        "rehearsal": {
+                            "pieces": ["Ele tirou a sandália e deu pro Boaz."],
+                            "sceneId": "S4",
+                        },
+                        "sceneRehearsals": ["S4"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+async def test_the_export_shows_the_accepted_ids_beside_the_turn_that_handed_the_guide_readings(
+    seam, tmp_path, monkeypatch
+) -> None:
+    the_models_answer(monkeypatch)
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+
+    report, _transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    turns = json.loads(report.read_text(encoding="utf-8"))["turns"]
+    assert [turn["acceptedIds"] for turn in turns] == [[], ["R5"]], (
+        "o relatório não dizia, ao lado do turno, quais leituras aceitas o Guia recebeu"
+    )
