@@ -124,3 +124,17 @@ async def test_the_same_words_typed_hand_the_guide_no_accepted_readings(
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "as mesmas palavras digitadas levavam as leituras aceitas"
     )
+
+
+async def test_a_rehearsal_of_a_scene_with_no_ruling_hands_the_guide_no_accepted_readings(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    sent = await a_sent_rehearsal(client, session_id, "S3")
+
+    assert sent.status_code == 200, sent.text
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "a cena 3 de P11, sem nenhuma regra, levava um cabeçalho sem linhas"
+    )
