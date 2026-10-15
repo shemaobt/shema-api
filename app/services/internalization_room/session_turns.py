@@ -18,6 +18,7 @@ from app.models.internalization_room import (
     TurnVoiceSide,
 )
 from app.services.internalization_room.conversation import the_conversation
+from app.services.internalization_room.name_check import stored_opening_note
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -33,9 +34,21 @@ _OUTCOMES: dict[str, TurnOutcomeCode] = {
     "fail_safe": "fail_safe",
 }
 
-_SELF_NAME = re.compile(r"\b(facilitador(a)?\s+digital|digital\s+facilitator)\b", re.IGNORECASE)
+_JS_SPACE = (
+    "[\\t\\n\\v\\f\\r \\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+)
+_PYTHON_ONLY_FOLDS = str.maketrans("\u0130\u0131\u017f\u212a", "\x00\x00\x00\x00")
+_JS_WORD = "[A-Za-z0-9_]"
+_JS_EDGE = f"(?:(?<={_JS_WORD})(?!{_JS_WORD})|(?<!{_JS_WORD})(?={_JS_WORD}))"
+
+
+def _as_javascript(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern.replace(r"\s", _JS_SPACE).replace(r"\b", _JS_EDGE), re.IGNORECASE)
+
+
+_SELF_NAME = _as_javascript(r"\b(facilitador(a)?\s+digital|digital\s+facilitator)\b")
 _HANDS_OFF = [
-    re.compile(pattern, re.IGNORECASE)
+    _as_javascript(pattern)
     for pattern in (
         r"\b(seu|sua|de\s+vocês|de\s+voces|ao|para\s+o|para\s+a|pro|pra|com\s+o|com\s+a)\s+facilitador(a)?\b",
         r"\bfacilitador(a)?\s+(humano|humana|de\s+vocês|de\s+voces|da\s+equipe)\b",
@@ -62,7 +75,7 @@ def is_boundary_turn(outcome: TurnOutcomeCode, text: str, *, opening: bool) -> b
         return True
     if opening:
         return False
-    spoken = _SELF_NAME.sub(" ", text)
+    spoken = _SELF_NAME.sub(" ", text.translate(_PYTHON_ONLY_FOLDS))
     return any(pattern.search(spoken) for pattern in _HANDS_OFF)
 
 
@@ -84,11 +97,12 @@ def turns_of(session: IRSession) -> SessionTurnsResponse:
 
 
 def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
+    kickoff = stored_opening_note(session)
     marked = [
         BoundaryTurn(
             number=number,
             outcome=turn.voice.outcome,
-            team=(turn.team.guide_heard if turn.team else None) or "",
+            team=(turn.team.guide_heard if turn.team else kickoff) or "",
             guide=turn.voice.text,
         )
         for number, turn in enumerate(turns_of(session).turns)

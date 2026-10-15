@@ -1394,9 +1394,11 @@ class SessionBoundaryTurnsResponse(BaseModel):
 
     `number` is the turn's place in `SessionTurnsResponse.turns`, from zero, and the `{number}`
     of its clip; her «turno n» is `number + 1`. `team` is what the Guide was handed in the
-    team's place, empty when nothing was heard, and `guide` is the line voiced. `count` is
-    the length of `turns`, served so the Desk never counts, and the section is read with no
-    turn marked as well: `count` 0 and `turns` empty.
+    team's place: on the opening, her stored kickoff note as her transcript prints it, empty
+    when the session stored none, and on any other turn the words heard, empty when nothing
+    was heard. `guide` is the line voiced.
+    `count` is the length of `turns`, served so the Desk never counts, and the section is read
+    with no turn marked as well: `count` 0 and `turns` empty.
     """
 
     session_id: str
