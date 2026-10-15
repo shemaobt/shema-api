@@ -481,41 +481,6 @@ def _shape(body, *ids: str):
     return out
 
 
-#: Templates of the same set, for matching against the mounted paths.
-REFUSING_TEMPLATES = {
-    ("POST", f"{DESK}/devices/claim"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/coverage"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/boundary-turns"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns/{{number}}/audio"),
-    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
-    ("PATCH", f"{DESK}/devices/{{device_id}}"),
-    ("DELETE", f"{DESK}/devices/{{device_id}}"),
-    ("POST", f"{DESK}/devices/{{device_id}}/attended"),
-    ("DELETE", f"{DESK}/devices/{{device_id}}/attended"),
-    ("GET", f"{DESK}/teams/{{team_id}}"),
-    ("GET", f"{DESK}/teams/{{team_id}}/devices"),
-    ("GET", f"{DESK}/teams/{{team_id}}/coverage"),
-    ("GET", f"{DESK}/teams/{{team_id}}/pericopes"),
-    ("GET", f"{DESK}/teams/{{team_id}}/sessions"),
-    ("GET", f"{DESK}/teams/{{team_id}}/nudges"),
-    ("GET", f"{IR}/facilitator/questions"),
-    ("GET", f"{IR}/facilitator/questions/{{question_id}}/audio"),
-    ("GET", f"{IR}/facilitator/questions/audio/{{handle}}"),
-    ("POST", f"{IR}/facilitator/questions/{{question_id}}/reply"),
-    ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/scene-rehearsals"),
-    ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
-    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
-    ("DELETE", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
-    ("POST", f"{IR}/facilitator/projects/{{project_id}}/passages/{{pericope}}/archive"),
-}
-
 #: Routes that name no resource and cannot refuse: they answer with a list, and the scoping
 #: shows as a row that is absent rather than a status. Checked by its own case below.
 FILTERING_TEMPLATES = {
@@ -550,15 +515,21 @@ def test_the_audit_is_not_empty() -> None:
     )
 
 
-def test_every_facilitator_route_is_covered_by_this_audit() -> None:
-    """A route in neither group is a route this file silently skips.
+async def test_every_facilitator_route_is_covered_by_this_audit(client, db_session) -> None:
+    """A route in no group is a route this file silently skips.
 
-    The set of routes is derived; what is written by hand is how to *ask* each one. This is
-    what stops the two drifting apart — a new facilitator route fails here until somebody
-    says which kind of scoping it has.
+    The set of routes is derived; what is written by hand is how to *ask* each one, in
+    `refusing_routes`, and the derivation proves that table complete. This is what stops
+    the two drifting apart — a new facilitator route fails here until somebody says which
+    kind of scoping it has.
     """
+    owner = await a_facilitator(db_session, email="dono@example.com")
     mounted = set(facilitator_routes())
-    covered = REFUSING_TEMPLATES | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
+    held = {
+        (case["method"], template_of(case["method"], case["owned"][0]))
+        for case in await refusing_routes(db_session, owner, "x")
+    }
+    covered = held | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
 
     assert mounted == covered, (
         "as rotas de facilitador mudaram e esta auditoria nao acompanhou — "
