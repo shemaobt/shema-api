@@ -40,6 +40,15 @@ P11_S4_R5 = (
     "- R5: A team telling 'and gave it to Boaz' is correct, not an addition. "
     "The voice accepts it and does not correct or remark on it."
 )
+P13_S3_LINES = (
+    "- R5: A telling 'she took care of him' or 'she raised him' keeps the meaning; accept it "
+    "without comment.\n"
+    "- R8: A team telling 'King David' ('o rei Davi') is a nuance: the voice names it once "
+    "\N{EM DASH} 'a hist\u00f3ria d\u00e1 s\u00f3 o nome dele, Davi' ('the story gives only his "
+    "name, David') \N{EM DASH} without a send-back, and moves on.\n"
+    "- R9: A telling that recalls Boaz's words at the gate \N{EM DASH} he bought Ruth to raise "
+    "up the name of the dead \N{EM DASH} is correct; accept it without comment."
+)
 SANDAL = ["Ele tirou a sandália e deu pro Boaz."]
 
 
@@ -320,4 +329,33 @@ async def test_a_marked_rehearsal_sent_late_at_the_ensaio_final_is_still_checked
     assert sent.status_code == 200, sent.text
     assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P11_S4_R5}"), (
         "um ensaio marcado, enviado tarde, depois do envio, perdia as leituras aceitas da cena"
+    )
+
+
+async def test_a_rehearsal_of_p13_scene_3_telling_the_king_david_hands_the_guide_the_nuance_line(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client, "P13")
+    agent = the_models_answer(monkeypatch)
+
+    kept = await client.post(
+        f"{GOLDEN}/rehearsal",
+        json={
+            "sessionId": session_id,
+            "sceneId": "S3",
+            "pieces": ["Ela criou o filho do rei Davi."],
+        },
+    )
+    sent = await client.post(
+        f"{GOLDEN}/rehearsal/send",
+        json={
+            "sessionId": session_id,
+            "rehearsalId": kept.json()["rehearsalId"],
+            "turnId": "turno-1",
+        },
+    )
+
+    assert sent.status_code == 200, sent.text
+    assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P13_S3_LINES}"), (
+        "o ensaio da cena 3 de P13, com o rei Davi, chegava ao Guia sem a linha do R8"
     )
