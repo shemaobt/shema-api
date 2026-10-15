@@ -323,6 +323,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/retroverificacao",
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals",
         f"{IR}/facilitator/sessions/{session}/coverage",
+        f"{IR}/facilitator/sessions/{session}/boundary-turns",
     ]
 
     mounted = _session_reads()
@@ -469,6 +470,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/questions/{team.question}/audio", {}),
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
         (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),

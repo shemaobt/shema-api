@@ -94,6 +94,7 @@ COVERED = {
     ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/audio"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/restart"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/send"),
 }
 
 #: Routes that already resolve their session through the ownership rule, proved by a suite
@@ -235,7 +236,8 @@ def cases(owned: Owned) -> list[dict]:
     `expects` says how the owner's call is read: `"get"` for a plain 200, `"stream"` for an
     SSE response only ever checked by its status (consuming its body would hang the case,
     since the stream never ends on its own), `"redirect"` for the 307 the take-audio route
-    answers with instead of a body.
+    answers with instead of a body, `"untranslated"` for the 422 the send door answers a scene
+    rehearsal with no frase, which the owner reaches only past the ownership rule.
     """
     s, t, r = owned.session.id, owned.take.id, owned.scene.id
     return [
@@ -295,6 +297,13 @@ def cases(owned: Owned) -> list[dict]:
             method="POST",
             path=f"/sessions/{s}/scene-rehearsals/{r}/restart",
             data={"attempt": "0f0f0f0f-0000-4000-8000-000000000001"},
+        ),
+        _case(
+            "scene-send",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/send",
+            expects="untranslated",
+            data={"turn_id": "turno-da-cena"},
         ),
     ]
 
@@ -368,7 +377,7 @@ async def _send(
     return resp.status_code
 
 
-_EXPECTED_OWNER_STATUS = {"get": 200, "stream": 200, "redirect": 307}
+_EXPECTED_OWNER_STATUS = {"get": 200, "stream": 200, "redirect": 307, "untranslated": 422}
 
 #: The tags `cases()` builds, named once so the parametrization does not have to construct a
 #: throwaway `Owned` just to read them off.
@@ -387,6 +396,7 @@ TAGS = [
     "scene-audio",
     "scene-frase",
     "scene-restart",
+    "scene-send",
 ]
 
 
@@ -437,6 +447,9 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
     elif tag == "scene-restart":
         restarts = await restarts_of(db, [owned.scene.id])
         assert restarts[owned.scene.id] == [], "um estranho recomeçou a cena de outro projeto"
+    elif tag == "scene-send":
+        await db.refresh(owned.scene)
+        assert owned.scene.sent_at is None, "um estranho enviou a cena de outro projeto"
     elif tag == "needs-person":
         session = await get_session(db, owned.session.id)
         assert session.status is IRSessionStatus.IN_PROGRESS, (
