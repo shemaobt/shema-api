@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -453,4 +454,18 @@ def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> N
     named = [line for line in spoken if "resgatador" in line.lower() or "redeemer" in line.lower()]
     assert not named, (
         f"a roda dizia o nome do resgatador antes de a equipe abrir a passagem: {named}"
+    )
+
+
+def test_the_passage_lines_say_the_room_speaks_the_language_the_team_chose() -> None:
+    written = (Path(passage_lines.__file__).parent / "prompts" / "passage_lines.md").read_text(
+        encoding="utf-8"
+    )
+    (note,) = [block for block in written.split("\n\n") if "**One block per language.**" in block]
+
+    assert "the language the tablet is set to" not in written, (
+        "as linhas da passagem ainda diziam que a sala fala a língua do tablet"
+    )
+    assert "the session's language, which the team chose" in note, (
+        "a nota de um bloco por língua não dizia que a língua da sessão é a escolha da equipe"
     )

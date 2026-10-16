@@ -44,6 +44,7 @@ from app.models.internalization_room import (
     SceneSnapshotFrase,
     TurnResponse,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal, heard
 from app.services.internalization_room.languages import room_language
@@ -101,7 +102,10 @@ async def keep_scene_rehearsal(
         store=store,
     )
     duration_ms = await measure_ms(audio)
-    label = scene if scene in scene_ids_for(pericope) else None
+    label = None
+    if scene:
+        with reading_the_canon_of(session.canon_pin):
+            label = scene if scene in scene_ids_for(pericope) else None
     foreign = scene if scene and label is None else None
     last = await db.scalar(
         select(func.max(IRSceneRehearsal.n)).where(IRSceneRehearsal.session_id == session_id)

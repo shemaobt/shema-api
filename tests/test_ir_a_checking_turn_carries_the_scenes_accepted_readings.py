@@ -4,24 +4,25 @@ import json
 import logging
 from typing import Any
 
-import httpx
 import pytest
-from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.services import internalization_room as room_service
-from app.services.internalization_room import hearing, passage_turn, takes
+from app.services.internalization_room import passage_turn
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import SentSceneRehearsal
-from app.services.internalization_room.llm import CACHE_BREAK
-from tests.hearing_harness import nothing_settles
+from tests.golden_rehearsal_harness import (
+    SANDAL,
+    Both,
+    a_golden_client,
+    a_sent_rehearsal,
+    after_the_break,
+    an_open_session,
+    the_room_stands_in,
+)
 from tests.text_seam_harness import (
-    BEARER,
     GOLDEN,
     GUIDE_LINE,
-    RUNNER_KEY,
-    the_app,
     the_models_answer,
 )
 from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
@@ -56,63 +57,12 @@ P13_S3_LINES = (
     "- R9: A telling that recalls Boaz's words at the gate \N{EM DASH} he bought Ruth to raise "
     "up the name of the dead \N{EM DASH} is correct; accept it without comment."
 )
-SANDAL = ["Ele tirou a sandália e deu pro Boaz."]
 
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
-    )
-    the_models_answer(monkeypatch)
-    nothing_settles(monkeypatch)
-
-    async def _never_heard(*_: Any, **__: Any) -> Any:
-        raise AssertionError("a porta dourada pediu ao reconhecedor que ouvisse uma frase")
-
-    def _never_stored(*_: Any, **__: Any) -> Any:
-        raise AssertionError("a porta dourada tocou o balde")
-
-    monkeypatch.setattr(hearing, "transcribe_audio", _never_heard)
-    monkeypatch.setattr(hearing, "transcribe_audio_detailed", _never_heard)
-    monkeypatch.setattr(takes, "_store", _never_stored)
-    transport = ASGITransport(app=the_app(db_session))
-    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=BEARER) as c:
+    async with a_golden_client(db_session, monkeypatch) as c:
         yield c
-
-
-async def an_open_session(client: httpx.AsyncClient, pericope: str = "P11") -> str:
-    created = await client.post(
-        f"{GOLDEN}/session", json={"pericopeId": pericope, "language": "Brazilian Portuguese"}
-    )
-    assert created.status_code == 200, created.text
-    session_id = str(created.json()["sessionId"])
-    opened = await client.post(
-        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
-    )
-    assert opened.status_code == 200, opened.text
-    return session_id
-
-
-async def a_sent_rehearsal(
-    client: httpx.AsyncClient, session_id: str, scene: str | None, turn_id: str = "turno-1"
-) -> httpx.Response:
-    kept = await client.post(
-        f"{GOLDEN}/rehearsal", json={"sessionId": session_id, "sceneId": scene, "pieces": SANDAL}
-    )
-    assert kept.status_code == 200, kept.text
-    return await client.post(
-        f"{GOLDEN}/rehearsal/send",
-        json={
-            "sessionId": session_id,
-            "rehearsalId": kept.json()["rehearsalId"],
-            "turnId": turn_id,
-        },
-    )
-
-
-def after_the_break(system_prompt: str) -> str:
-    return system_prompt.partition(CACHE_BREAK)[2]
 
 
 async def test_a_rehearsal_of_p11_scene_4_ends_the_guides_room_facts_with_her_header_and_r5_alone(
@@ -174,14 +124,6 @@ async def test_a_rehearsal_sent_outside_ruth_3_and_4_hands_the_guide_no_accepted
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "um ensaio de Rute 1 levava leituras aceitas que ela só deu para Rute 3 e 4"
     )
-
-
-async def the_room_stands_in(db: AsyncSession, session_id: str, moment: dict[str, Any]) -> None:
-    stored = await room_service.get_session(db, session_id)
-    *earlier, guide = [dict(message) for message in stored.messages or []]
-    guide["moment"] = {"before": {"at": "familiarization"}, "after": moment, "by": []}
-    stored.messages = [*earlier, guide]
-    await db.commit()
 
 
 async def test_an_unmarked_rehearsal_in_the_articulation_of_part_4_is_checked_as_scene_4(
@@ -251,17 +193,6 @@ async def test_an_unmarked_rehearsal_outside_an_articulation_hands_the_guide_no_
     assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
         "um ensaio sem cena marcada, fora de uma articulação, ganhava uma cena por palpite"
     )
-
-
-class Both:
-    def __init__(self) -> None:
-        self.validator_inputs: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            self.validator_inputs.append(f"{system_prompt}\n{user_content}")
-            return json.dumps({"verdict": "pass", "issues": []})
-        return "Obrigado. Vamos ver essa cena juntos."
 
 
 async def test_the_turn_keeps_only_the_entry_ids_and_the_block_reaches_no_store_no_reply_no_validator(  # noqa: E501

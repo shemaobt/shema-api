@@ -43,6 +43,7 @@ async def run_comprehension_turn(
     guide_prompt: str,
     validator_prompt: str,
     settings: Settings,
+    scene_rehearsals: list[str] | None = None,
 ) -> TurnOutcome:
     """One passage turn: what was heard, and what the room says back.
 
@@ -73,6 +74,7 @@ async def run_comprehension_turn(
         pericope=pericope,
         settings=settings,
         earlier_passages=stamp,
+        scene_rehearsals=scene_rehearsals,
     )
     if stamp is not session.earlier_passages:
         session.earlier_passages = stamp

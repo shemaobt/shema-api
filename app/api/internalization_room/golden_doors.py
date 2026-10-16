@@ -93,7 +93,9 @@ def _heard(payload: GoldenTurnRequest, *, language: str) -> HeardSpeech:
     return HeardSpeech(text=payload.teamText or "", bridge_language=language, interrupted=cut)
 
 
-def _scene_rehearsals(payload: GoldenTurnRequest, pericope: str) -> list[str] | None:
+def _scene_rehearsals(
+    payload: GoldenTurnRequest | GoldenRehearsalSendRequest, pericope: str
+) -> list[str] | None:
     """Her carried list of rehearsed scenes, refused when it names a scene the passage lacks."""
     if payload.sceneRehearsals is None:
         return None
@@ -148,6 +150,8 @@ async def send_golden_rehearsal(
 ) -> GoldenTurnResponse:
     session = await room.get_session(db, payload.sessionId)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, payload.rehearsalId)
+    with reading_the_canon_of(session.canon_pin):
+        rehearsed = _scene_rehearsals(payload, session.pericope)
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     background = BackgroundTasks()
     started = time.monotonic()
@@ -168,6 +172,7 @@ async def send_golden_rehearsal(
                 opening=False,
                 halted=session.status is IRSessionStatus.NEEDS_PERSON,
                 bound_s=bound_s,
+                scene_rehearsals=rehearsed,
             ),
         )
         await background()
@@ -230,6 +235,7 @@ async def play_golden_turn(
             guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
             validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
             settings=get_settings(),
+            scene_rehearsals=rehearsed,
         )
         session = await room.append_exchange(
             db,

@@ -202,7 +202,7 @@ async def test_the_ledger_served_is_byte_for_byte_the_one_the_guide_reads_next(
 
     heard = guide.systems[0].partition(CACHE_BREAK)[2].lstrip("\n")
     assert heard.startswith(ledger)
-    assert heard[len(ledger) :].startswith("\n\nMOMENT:")
+    assert heard[len(ledger) :].startswith("\n\nSCENE REHEARSALS:")
     assert "WORKED WITH BY THE TEAM (engaged): S1 (1:1-2)" in ledger
     assert (
         "RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:\n  being: Naomi\n  place: Bethlehem\n"

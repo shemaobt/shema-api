@@ -149,6 +149,7 @@ async def speak_back(
     earlier_passages: dict[str, str] | None,
     interrupted: bool = False,
     scene_rehearsal: SentSceneRehearsal | None = None,
+    scene_rehearsals: list[str] | None = None,
 ) -> TurnOutcome:
     """The Guide's reply to the team's turn, or the inaudible ladder's line in its place.
 
@@ -187,5 +188,6 @@ async def speak_back(
         session_id=session.id,
         earlier_passages=earlier_passages,
         scene_rehearsal=scene_rehearsal,
+        scene_rehearsals=scene_rehearsals,
     )
     return handed.kept_apart(outcome)

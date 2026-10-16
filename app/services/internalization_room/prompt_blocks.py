@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum, auto
+from typing import Any
 
 from app.core.room_enums import EarlierPassageStatus
 from app.services.internalization_room.canon.book_material import (
@@ -135,6 +137,35 @@ class RoomFact(Enum):
 
 def room_facts_block(facts: dict[RoomFact, str]) -> str:
     return "\n\n".join(facts[fact] for fact in RoomFact if facts.get(fact))
+
+
+def sent_scene_ids(messages: list[dict[str, Any]], arriving: str | None) -> list[str]:
+    """The scene labels this session's rehearsals carried when sent, as her `sentSceneIds`.
+
+    A label given after the send is not on the turn's record, so the fact never guesses it.
+    """
+    kept = [
+        message["scene_rehearsal"]["scene"]
+        for message in messages
+        if (message.get("scene_rehearsal") or {}).get("scene")
+    ]
+    return [*kept, arriving] if arriving else kept
+
+
+def scene_rehearsals_line(scene_ids: list[str], reached: Iterable[str]) -> str:
+    """Her SCENE REHEARSALS fact, verbatim (`src/turn/sceneRehearsals.ts`, app 18fa7c4)."""
+    if not scene_ids:
+        return ""
+    sent = set(reached)
+
+    def listed(ids: list[str]) -> str:
+        return ", ".join(ids) if ids else "none"
+
+    return (
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        f"{listed([s for s in scene_ids if s in sent])}. "
+        f"Parts with none: {listed([s for s in scene_ids if s not in sent])}."
+    )
 
 
 def _stamped_earlier(

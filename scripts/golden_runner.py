@@ -82,7 +82,10 @@ from app.api.internalization_room.text_seam import _collecting_model_calls
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
-from app.services.internalization_room.prompt_blocks import earlier_passages_line
+from app.services.internalization_room.prompt_blocks import (
+    earlier_passages_line,
+    scene_rehearsals_line,
+)
 from app.services.internalization_room.sessions import book_of
 from app.services.internalization_room.turn_instructions import opening_note
 from scripts.golden_checks import (
@@ -251,18 +254,6 @@ def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
     return carried
 
 
-def scene_rehearsals_fact(scene_ids: list[str], sent: list[str]) -> str:
-    def listed(ids: list[str]) -> str:
-        return ", ".join(ids) if ids else "none"
-
-    reached = [scene for scene in scene_ids if scene in sent]
-    missing = [scene for scene in scene_ids if scene not in sent]
-    return (
-        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
-        f"{listed(reached)}. Parts with none: {listed(missing)}."
-    )
-
-
 def interrupted_note(language: str) -> str:
     if _portuguese(language):
         return "[A equipe interrompeu a sua fala anterior neste ponto.]"
@@ -313,21 +304,21 @@ async def open_session(script: Script, client: httpx.AsyncClient) -> str:
 
 
 async def send_rehearsal(
-    turn: ScriptTurn, client: httpx.AsyncClient, session_id: str
+    turn: ScriptTurn, client: httpx.AsyncClient, session_id: str, scene_rehearsals: list[str] | None
 ) -> dict[str, Any]:
     kept = await client.post(
         "golden/rehearsal",
         json={"sessionId": session_id, "sceneId": turn.rehearsalScene, "pieces": turn.rehearsal},
     )
     kept.raise_for_status()
-    sent = await client.post(
-        "golden/rehearsal/send",
-        json={
-            "sessionId": session_id,
-            "rehearsalId": kept.json()["rehearsalId"],
-            "turnId": str(uuid.uuid4()),
-        },
-    )
+    body: dict[str, Any] = {
+        "sessionId": session_id,
+        "rehearsalId": kept.json()["rehearsalId"],
+        "turnId": str(uuid.uuid4()),
+    }
+    if scene_rehearsals is not None:
+        body["sceneRehearsals"] = scene_rehearsals
+    sent = await client.post("golden/rehearsal/send", json=body)
     sent.raise_for_status()
     reply: dict[str, Any] = sent.json()
     return reply
@@ -359,7 +350,7 @@ async def play(
         started = time.monotonic()
         if turn.rehearsal is not None:
             expected = ""
-            reply = await send_rehearsal(turn, client, session_id)
+            reply = await send_rehearsal(turn, client, session_id, carried[idx])
         else:
             body, expected = request_for(turn, script, session_id, carried[idx])
             answered = await client.post("golden/turn", json=body)
@@ -379,7 +370,7 @@ async def play(
             appStatus=[
                 fact
                 for fact in (
-                    scene_rehearsals_fact(scene_ids, sent) if sent is not None else "",
+                    scene_rehearsals_line(scene_ids, sent) if sent is not None else "",
                     earlier,
                 )
                 if fact

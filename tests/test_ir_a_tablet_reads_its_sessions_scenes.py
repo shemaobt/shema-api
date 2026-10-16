@@ -9,8 +9,6 @@ vendored canon.
 
 from __future__ import annotations
 
-import io
-import wave
 from pathlib import Path
 from typing import Any
 
@@ -23,17 +21,13 @@ from tests.canon_harness import the_canon_moves_on
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.scene_rehearsal_harness import (
+    KEPT_APPEAL,
+    recording,
+    the_kept_p02_tells_its_appeals_as_one_scene,
+)
 
 NEW_PIN = "a" * 40
-KEPT_APPEAL = "The kept appeal"
-
-
-def _the_kept_p02_tells_its_appeals_as_one_scene(tree: Path) -> None:
-    told = tree / "vendor" / "meaning-map" / "P02-Ruth-1-6-14.md"
-    text = told.read_text(encoding="utf-8")
-    text = text.replace("### Scene 3 — Second appeal and the split", "")
-    text = text.replace("### Scene 2 — First appeal and refusal", f"### Scene 2 — {KEPT_APPEAL}")
-    told.write_text(text, encoding="utf-8")
 
 
 @pytest.fixture()
@@ -58,17 +52,6 @@ async def the_scenes(client: httpx.AsyncClient, session_id: str) -> list[dict[st
     answered = await scenes_of(client, session_id)
     assert answered.status_code == 200, answered.text
     return list(answered.json()["scenes"])
-
-
-def recording(tone: int) -> bytes:
-    """Two seconds of 16 kHz mono WAV whose bytes differ by `tone`."""
-    out = io.BytesIO()
-    with wave.open(out, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(16_000)
-        wav.writeframes(tone.to_bytes(2, "little", signed=True) * 32_000)
-    return out.getvalue()
 
 
 async def test_the_tablet_reads_its_sessions_scenes_in_passage_order_with_ids_and_portuguese_titles(
@@ -103,7 +86,7 @@ async def test_a_session_open_when_a_new_canon_is_published_reads_the_scenes_it_
 ) -> None:
     session_id = await a_session(db_session, "P02", language="en")
     the_canon_moves_on(
-        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_tells_its_appeals_as_one_scene
+        monkeypatch, tmp_path, NEW_PIN, keeping=the_kept_p02_tells_its_appeals_as_one_scene
     )
 
     assert await the_scenes(client, session_id) == [
@@ -167,7 +150,7 @@ async def test_every_scene_id_the_door_answers_is_a_label_the_keep_stores_as_the
         kept = await client.post(
             f"{PREFIX}/sessions/{session_id}/scene-rehearsals",
             data={"scene": scene_id},
-            files={"file": ("cena.wav", recording(tone), "audio/wav")},
+            files={"file": ("cena.wav", recording(2, tone), "audio/wav")},
         )
         assert kept.status_code == 200, kept.text
         stored.append(kept.json()["scene"])
