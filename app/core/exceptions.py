@@ -56,6 +56,8 @@ ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
+#: A scene label that is not one of the passage's scenes.
+ERROR_CODE_UNKNOWN_SCENE: Final = "UNKNOWN_SCENE"
 #: A frase, restart or send for a scene rehearsal whose send landed: never accepted, never
 #: retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
@@ -291,6 +293,10 @@ class WordlessTelling(ValidationError):
 
 class FraseOutOfPlace(ValidationError):
     """A scene frase that ends before it starts, or past the end of its scene recording."""
+
+
+class UnknownScene(ValidationError):
+    """A scene label given to a scene rehearsal that is not one of its passage's scenes."""
 
 
 class IdempotencyKeyReused(ValidationError):
@@ -564,6 +570,13 @@ async def handle_frase_out_of_place(_request: Request, exc: FraseOutOfPlace) -> 
     )
 
 
+async def handle_unknown_scene(_request: Request, exc: UnknownScene) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_UNKNOWN_SCENE),
+    )
+
+
 async def handle_idempotency_key_in_flight(
     _request: Request, exc: IdempotencyKeyInFlight
 ) -> JSONResponse:
@@ -718,6 +731,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
+    app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
