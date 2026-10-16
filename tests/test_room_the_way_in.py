@@ -58,7 +58,9 @@ TEAM_DOORS = [
     ("POST", "/sessions/{session_id}/scene-rehearsals"),
     ("GET", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio"),
     ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases"),
+    ("GET", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio"),
     ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/scene"),
     ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send"),
     ("GET", "/sessions/{session_id}/scenes"),
     ("POST", "/sessions/{session_id}/segments/{segment_id}/divide"),
@@ -114,6 +116,7 @@ def knock(
     filled = path.format(
         book="Ruth",
         device_id="aparelho",
+        frase_id="frase",
         line="A-1",
         handle="nada",
         question_id="pergunta",

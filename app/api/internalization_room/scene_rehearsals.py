@@ -258,6 +258,28 @@ async def listen_to_scene_rehearsal(
     )
 
 
+@router.get(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+    dependencies=[linked_tablet_dep],
+)
+async def listen_to_scene_frase(
+    session_id: str,
+    rehearsal_id: str,
+    frase_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """A frase's own audio, any frase of the rehearsal, on any tablet of the team."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    frase = await scenes.frase_in_rehearsal(db, rehearsal, frase_id)
+    await db.commit()
+    return RedirectResponse(await listen_url(frase), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
 @router.post(
     "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
     response_model=SceneRehearsalView,
@@ -316,6 +338,25 @@ async def restart_scene_translation(
         db, rehearsal, attempt=str(attempt), closes=None if closes is None else str(closes)
     )
     return await _the_record(db, rehearsal)
+
+
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/scene",
+    response_model=SceneRehearsalView,
+    dependencies=[linked_tablet_dep],
+)
+async def label_scene_rehearsal(
+    session_id: str,
+    rehearsal_id: str,
+    scene: str = Form(...),
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SceneRehearsalView:
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    labelled = await scenes.label_the_scene(db, rehearsal, scene)
+    return await _the_record(db, labelled)
 
 
 @router.post(
