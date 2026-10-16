@@ -39,6 +39,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room import scene_rehearsals as scenes
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.part_names import passage_scenes
 from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
@@ -355,7 +356,8 @@ async def label_scene_rehearsal(
     """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
-    labelled = await scenes.label_the_scene(db, rehearsal, scene)
+    with reading_the_canon_of(session.canon_pin):
+        labelled = await scenes.label_the_scene(db, rehearsal, scene)
     return await _the_record(db, labelled)
 
 
