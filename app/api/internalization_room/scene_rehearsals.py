@@ -25,6 +25,8 @@ from app.db.models.internalization_room import (
 )
 from app.models.internalization_room import (
     HeldAttemptView,
+    PassageScenesResponse,
+    PassageSceneView,
     ReaderSceneFraseView,
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
@@ -38,6 +40,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.part_names import passage_scenes
 from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
 from app.services.internalization_room.turn_dedup import answer_once, answered_turn
 from app.utils.stored_time import as_utc
@@ -211,6 +214,26 @@ async def list_scene_rehearsals(
             _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], sent)
             for rehearsal in rehearsals
         ],
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/scenes",
+    response_model=PassageScenesResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def list_passage_scenes(
+    session_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> PassageScenesResponse:
+    """The session's scenes in passage order, titled in its language; a panorama has none."""
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    return PassageScenesResponse(
+        scenes=[
+            PassageSceneView(scene_id=scene_id, title=title)
+            for scene_id, title in passage_scenes(session)
+        ]
     )
 
 

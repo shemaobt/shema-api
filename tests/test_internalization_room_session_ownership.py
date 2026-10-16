@@ -95,6 +95,7 @@ COVERED = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/restart"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/send"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scenes"),
 }
 
 #: Routes that already resolve their session through the ownership rule, proved by a suite
@@ -305,6 +306,7 @@ def cases(owned: Owned) -> list[dict]:
             expects="untranslated",
             data={"turn_id": "turno-da-cena"},
         ),
+        _case("passage-scenes", method="GET", path=f"/sessions/{s}/scenes"),
     ]
 
 
@@ -397,6 +399,7 @@ TAGS = [
     "scene-frase",
     "scene-restart",
     "scene-send",
+    "passage-scenes",
 ]
 
 
