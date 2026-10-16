@@ -329,8 +329,7 @@ async def label_scene_rehearsal(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SceneRehearsalView:
-    """The team's scene label given after the recording, on a sent rehearsal too: said later.
-    A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
     labelled = await scenes.label_the_scene(db, rehearsal, scene)
