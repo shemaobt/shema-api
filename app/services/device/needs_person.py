@@ -87,17 +87,16 @@ async def record_needs_person(db: AsyncSession, device_id: str) -> tuple[datetim
             attended_lifted_since=None,
         )
     )
-    await db.commit()
     await db.refresh(device)
 
-    since = device.needs_person_since
+    since, team_id = device.needs_person_since, device.project_id
     if since is None:
         raise ConflictError(NOT_LINKED)
-    if is_the_demo_team(device.project_id):
+    if await is_the_demo_team(db, team_id):
         visited(device, by=None)
-        await db.commit()
+    await db.commit()
 
-    return since, device.project_id
+    return since, team_id
 
 
 async def clear_needs_person(db: AsyncSession, device_id: str) -> None:

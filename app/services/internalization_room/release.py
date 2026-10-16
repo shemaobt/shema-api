@@ -468,7 +468,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
-    if is_the_demo_team(session.project_id):
+    if await is_the_demo_team(db, session.project_id):
         raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     telling_back = back_translation_of(session)

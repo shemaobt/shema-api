@@ -55,16 +55,15 @@ def _as_shown(typed: str) -> str:
     return f"{kept[:3]}-{kept[3:]}" if len(kept) == 7 else kept
 
 
-async def _demo_team_or_404(db: AsyncSession) -> str:
+async def _demo_team_or_404(db: AsyncSession = Depends(get_db)) -> str:
     team_id = await the_demo_team(db)
     if team_id is None:
         raise NotFoundError("Not Found")
     return team_id
 
 
-@router.get("/demo", response_class=HTMLResponse)
-async def the_demo_page(db: AsyncSession = Depends(get_db)) -> HTMLResponse:
-    await _demo_team_or_404(db)
+@router.get("/demo", response_class=HTMLResponse, dependencies=[Depends(_demo_team_or_404)])
+async def the_demo_page() -> HTMLResponse:
     return _page()
 
 
@@ -72,10 +71,11 @@ async def the_demo_page(db: AsyncSession = Depends(get_db)) -> HTMLResponse:
 @limiter.limit(f"{DEMO_RATE_LIMIT_PER_MINUTE}/minute", key_func=_the_whole_page)
 async def spend_on_the_demo_team(
     request: Request,
-    code: str = Form(max_length=32),
+    team_id: str = Depends(_demo_team_or_404),
+    code: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
 ) -> HTMLResponse:
-    team_id = await _demo_team_or_404(db)
+    """The setting is read before the limit is counted, so a closed page stays a 404."""
     try:
         await claim_device(db, code=_as_shown(code), project_id=team_id)
     except InvalidClaimCodeError:

@@ -24,6 +24,7 @@ from app.core.enums import ProjectRole
 from app.core.rate_limit import limiter
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRTakeKind
+from app.db.models.project import Project
 from app.services.auth.issue_tokens import issue_tokens
 from app.services.device.claim_device import claim_device
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
@@ -119,8 +120,10 @@ def the_demo_team_is(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture()
-def configured(the_demo_team_is, demo: Team) -> Team:
+async def configured(client, the_demo_team_is, demo: Team) -> Team:
+    """The demo team, once the page has served it: serving it is what marks the team."""
     the_demo_team_is(demo.id)
+    assert (await client.get(PAGE)).status_code == 200
     return demo
 
 
@@ -320,6 +323,28 @@ async def test_with_no_demo_team_the_page_answers_404_and_nothing_is_spent(
     assert (await the_link(client, device_id)).status_code == 204
 
 
+async def test_with_no_demo_team_the_page_answers_404_however_often_it_is_asked(
+    client, the_demo_team_is
+) -> None:
+    the_demo_team_is("")
+
+    answers = {(await typed_on_the_page(client, "AAA-AAAA")).status_code for _ in range(11)}
+
+    assert answers == {404}
+
+
+async def test_a_missing_or_overlong_code_is_refused_with_the_one_answer(
+    client, configured: Team
+) -> None:
+    unknown = await typed_on_the_page(client, "AAA-AAAA")
+    missing = await client.post(PAGE, data={})
+    overlong = await typed_on_the_page(client, "A" * 33)
+
+    assert {missing.status_code, overlong.status_code} == {400}
+    assert missing.text == unknown.text
+    assert overlong.text == unknown.text
+
+
 async def test_a_configured_id_that_names_no_team_is_no_demo_team(client, the_demo_team_is) -> None:
     the_demo_team_is(str(uuid.uuid4()))
     device_id, code = await a_code_on_the_tablet(client)
@@ -435,6 +460,42 @@ async def test_a_real_teams_halt_still_calls_a_person_while_a_demo_team_is_confi
     assert linked.device_id in await queued_device_ids(client, real)
 
 
+async def test_after_the_window_closes_the_demo_teams_halts_are_still_attended(
+    client, configured: Team, the_demo_team_is, db_session: AsyncSession
+) -> None:
+    tablet = await a_tablet_linked_through_the_page(client)
+    session_id = await a_session_with_one_turn(client, db_session, tablet)
+    the_demo_team_is("")
+
+    asked = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+    halted = await client.post(
+        f"{IR}/devices/{tablet['X-Room-Device']}/needs-person", headers=tablet
+    )
+
+    assert asked.json()["needs_person"] is False
+    assert halted.status_code == 200, halted.text[:300]
+    assert session_id not in await queued_session_ids(client, configured)
+    assert tablet["X-Room-Device"] not in await queued_device_ids(client, configured)
+
+
+async def test_a_real_team_is_never_marked_as_the_demo_team(
+    client, configured: Team, real: Team, db_session: AsyncSession
+) -> None:
+    await a_tablet_linked_through_the_page(client)
+    await a_linked_tablet(db_session, team_id=real.id)
+
+    async def marked(team: Team) -> bool:
+        row = await db_session.execute(
+            select(Project.is_demo_team)
+            .where(Project.id == team.id)
+            .execution_options(populate_existing=True)
+        )
+        return row.scalar_one()
+
+    assert await marked(configured) is True
+    assert await marked(real) is False
+
+
 # --- The Desk -----------------------------------------------------------------------------
 
 
@@ -508,6 +569,23 @@ async def test_the_desks_refine_artifact_refuses_the_demo_team(
     read = await client.get(desk_release(session.id), headers=configured.desk)
 
     assert read.status_code == 409, read.text[:300]
+
+
+async def test_after_the_window_closes_the_demo_teams_release_is_still_refused(
+    client, configured: Team, the_demo_team_is, db_session: AsyncSession
+) -> None:
+    tablet = await a_tablet_linked_through_the_page(client)
+    session = await ready_session(db_session, project_id=configured.id)
+    the_demo_team_is("")
+
+    approved = await client.post(team_release(session.id), headers=tablet)
+    forced = await client.post(
+        desk_release(session.id), headers=configured.desk, json={"force": True}
+    )
+
+    assert approved.json()["blockers"] == ["demo_team_never_releases"]
+    assert forced.status_code == 409, forced.text[:300]
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_a_real_teams_release_is_minted_as_before_while_a_demo_team_is_configured(

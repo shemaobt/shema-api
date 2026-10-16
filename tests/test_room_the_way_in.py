@@ -82,9 +82,11 @@ CLAIM_DOORS = [
 ]
 
 #: The doors under the prefix that are neither the team's nor the claim's: a facilitator
-#: signs in to the first, the golden runner presents its own key to the next two, and a store
-#: reviewer's browser types a claim code into the last (ADR 0064).
-NOT_THE_TABLETS = ("/facilitator/", "/golden/", "/text-seam/", "/demo")
+#: signs in to the first, the golden runner presents its own key to the other two.
+NOT_THE_TABLETS = ("/facilitator/", "/golden/", "/text-seam/")
+
+#: The page a store reviewer's browser types a claim code into (ADR 0064), by its exact path.
+THE_REVIEWERS_PAGE = {("GET", "/demo"), ("POST", "/demo")}
 
 
 @pytest.fixture()
@@ -355,7 +357,7 @@ def test_the_door_tables_are_every_door_a_tablet_can_call() -> None:
         for method in route.methods - {"HEAD", "OPTIONS"}
     }
 
-    assert doors == set(TEAM_DOORS) | set(CLAIM_DOORS)
+    assert doors == set(TEAM_DOORS) | set(CLAIM_DOORS) | THE_REVIEWERS_PAGE
 
 
 @pytest.mark.parametrize(("method", "path"), TEAM_DOORS)

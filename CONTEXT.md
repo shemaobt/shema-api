@@ -457,8 +457,8 @@ _Avoid_: api key, token, password, Chave do runner
 The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it, or the demo page while a **Demo team** is configured.
 _Avoid_: código, pairing code, device code, credential
 
-**Demo team** (`INTERNALIZATION_ROOM_DEMO_TEAM_ID`):
-The one team per environment, named by configuration by its team id and never by its name, whose claim codes anyone may spend on the demo page while it is configured, so a store reviewer alone reaches a passage. It never calls a person (the server attends its halts at once) and never releases to Refine. With no configuration there is no demo team and no page.
+**Demo team** (`is_demo_team`):
+The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server attends its halts at once) and never releases to Refine, with or without the configuration.
 _Avoid_: test team, sandbox, reviewer team, equipe demo
 
 **Device credential** (`X-Device-Credential`):

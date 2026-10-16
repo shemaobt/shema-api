@@ -969,10 +969,11 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
     _a_new_ask(session, kind=HaltKind.BLOCKING)
-    written = await _written(db, session, commit=True)
-    if is_the_demo_team(written.project_id):
-        return await attend(db, written, by=None)
-    return written
+    if await is_the_demo_team(db, session.project_id):
+        await db.flush()
+        await db.refresh(session, ["status", "halts_raised"])
+        return await attend(db, session, by=None)
+    return await _written(db, session, commit=True)
 
 
 async def raise_a_warning(
@@ -986,7 +987,7 @@ async def raise_a_warning(
     """
     _a_new_ask(session, kind=HaltKind.WARNING)
     session.warned_at = datetime.now(UTC)
-    if is_the_demo_team(session.project_id):
+    if await is_the_demo_team(db, session.project_id):
         session.attended_at = session.warned_at
     return await _written(db, session, commit=commit)
 
