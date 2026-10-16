@@ -87,7 +87,7 @@ async def _turn(coverage_state: dict[str, str], earlier_passages: dict[str, str]
     )
 
 
-async def test_the_earlier_passages_line_follows_the_ledger_and_the_moment_comes_after_it(
+async def test_the_earlier_passages_line_follows_the_ledger_and_the_scene_rehearsals_and_the_moment_comes_after_it(  # noqa: E501
     recording: _Recording,
 ) -> None:
     await _turn(initial_state(P), {"P01": "approved", "P02": "started"})
@@ -97,7 +97,7 @@ async def test_the_earlier_passages_line_follows_the_ledger_and_the_moment_comes
         f"{coverage_status_block(initial_state(P), P)}\n\n{NO_SCENE_REHEARSED}"
         f"\n\n{EARLIER_APPROVED_STARTED}"
         f"\n\n{FAMILIARIZATION}"
-    ), "a linha das passagens anteriores não vinha logo depois do ledger, no fim do que o Guia lê"
+    ), "a linha das passagens anteriores não vinha depois do ledger e das cenas ensaiadas"
 
 
 async def test_what_the_guide_reads_before_the_ledger_is_the_same_on_two_turns_of_a_session(

@@ -146,7 +146,9 @@ async def test_a_rehearsal_labelled_with_a_scene_the_passage_lacks_is_counted_fo
     await typed(client, session_id, "Vamos continuar.")
 
     facts = after_the_break(agent.guide_systems[-1])
-    assert her_line("none", "S1, S2, S3") in facts
+    assert her_line("none", "S1, S2, S3") in facts, (
+        "um ensaio marcado com uma cena que a passagem não tem era contado para alguma cena"
+    )
     assert "S99" not in facts, "a cena que a passagem não tem aparecia nos fatos da voz"
 
 
@@ -172,7 +174,9 @@ async def test_a_labelled_rehearsal_of_the_current_scene_2_moves_the_moment_to_a
 
     await sent(client, session_id, "S2", 1)
 
-    assert her_line("S2", "S1, S3") in after_the_break(agent.guide_systems[-1])
+    assert her_line("S2", "S1, S3") in after_the_break(agent.guide_systems[-1]), (
+        "o turno do ensaio marcado da cena 2 não dizia à voz que S2 chegou"
+    )
     stored = await room_service.get_session(db_session, session_id)
     await db_session.refresh(stored)
     *_, guide = stored.messages
