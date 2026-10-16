@@ -371,16 +371,22 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
 
 async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_session_and_the_question_are_unchanged(  # noqa: E501
-    client, desk, per_request
+    client, desk, per_request, db_session, bucket
 ) -> None:
     team = desk["b"]
     reader = desk.readers["consultant"]
+    answered = await db_session.get(IRQuestion, team.question)
+    answered.reply_audio_key = f"internalization-room/questions/{team.question}/resposta-1.m4a"
+    answered.status = IRQuestionStatus.ANSWERED
+    await db_session.commit()
+    await bucket.put(answered.reply_audio_key, b"a facilitadora respondeu", "audio/mp4")
     session_before = await _row(per_request, IRSession, team.session)
     question_before = await _row(per_request, IRQuestion, team.question)
 
     doors = [
         f"{IR}/facilitator/questions/{team.question}/audio",
         f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}",
+        f"{IR}/facilitator/questions/{team.question}/reply/audio",
         f"{IR}/facilitator/takes/{team.take}/audio",
         f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
     ]
@@ -391,10 +397,16 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
 
-    question, by_handle, take, turn = [await client.get(url, headers=reader) for url in doors]
+    question, by_handle, reply, take, turn = [
+        await client.get(url, headers=reader) for url in doors
+    ]
 
     assert question.status_code == 200, question.text[:300]
     assert by_handle.content == b"a equipe perguntou"
+    assert reply.status_code == 200, reply.text[:300]
+    assert bucket.objects[reply.json()["url"].removeprefix("https://signed.test/")] == (
+        b"a facilitadora respondeu"
+    )
     assert take.status_code == 307, take.text[:300]
     assert turn.status_code == 307, turn.text[:300]
     assert await _row(per_request, IRSession, team.session) == session_before
@@ -502,6 +514,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{DESK}/sessions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions/{team.question}/audio", {}),
+        (f"{IR}/facilitator/questions/{team.question}/reply/audio", {}),
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),

@@ -49,6 +49,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
@@ -224,6 +225,13 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     # to do with scope. A shared fixture would make this file fail for the wrong reason.
     heard_id = await _a_question_of(db, owner, f"h{tag}")
     reply_id = await _a_question_of(db, owner, f"r{tag}")
+    replied = await _a_question_of(db, owner, f"y{tag}")
+    await db.execute(
+        update(IRQuestion)
+        .where(IRQuestion.id == replied)
+        .values(reply_audio_key=f"internalization-room/questions/{replied}/resposta-1.m4a")
+    )
+    await db.commit()
     resolve_id = await _a_question_of(db, owner, f"v{tag}")
     await _a_question_of(db, owner, f"k{tag}")
     #: The key route names its resource by key, so the bytes have to exist for the owner's
@@ -335,6 +343,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/questions/{heard_id}/audio", {}),
             "absent": (f"{IR}/facilitator/questions/{absent}/audio", {}),
             "ids": (heard_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/questions/{replied}/reply/audio", {}),
+            "absent": (f"{IR}/facilitator/questions/{absent}/reply/audio", {}),
+            "ids": (replied, absent),
         },
         {
             "method": "GET",
