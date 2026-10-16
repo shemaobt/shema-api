@@ -666,7 +666,7 @@ async def test_a_place_typed_in_portuguese_files_the_project_where_its_coordinat
 ) -> None:
     """``África do Sul`` is the country the export spells ``South Africa``: the approval files the
     project in Africa, the Admin reads that region at the conference, and once confirmed with the
-    place kept as typed, Africa's coordination reaches it."""
+    place kept as typed, Africa's coordination reaches it in the collection and on the record."""
     async with pending_client(db_session) as client:
         filing = await open_filing(db_session, client, shema_app, form_app)
         await filing.decided(db_session, people_location="África do Sul")
@@ -685,7 +685,9 @@ async def test_a_place_typed_in_portuguese_files_the_project_where_its_coordinat
             role_key="coordinator",
             regions=[ShemaRegionKey.AFRICA],
         )
-        reached = await client.get(PROJECTS, headers=await auth_header(db_session, coordinator))
+        headers = await auth_header(db_session, coordinator)
+        reached = await client.get(PROJECTS, headers=headers)
+        record = await client.get(f"{PROJECTS}/{project.id}", headers=headers)
 
     assert filed_region is ShemaRegionKey.AFRICA
     assert [entry["region"] for entry in listed.json()] == ["africa"]
@@ -693,6 +695,8 @@ async def test_a_place_typed_in_portuguese_files_the_project_where_its_coordinat
     await db_session.refresh(project)
     assert (project.location, project.region_key) == ("África do Sul", ShemaRegionKey.AFRICA)
     assert [item["id"] for item in reached.json()["items"]] == [project.id]
+    assert record.status_code == 200, record.text
+    assert record.json()["location"] == "África do Sul"
 
 
 async def test_the_conference_shows_the_region_confirming_writes_not_the_one_filed(

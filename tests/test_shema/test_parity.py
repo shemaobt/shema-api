@@ -36,8 +36,9 @@ synonyms the console and this server now list cannot ride in it without making i
 ``src/utils/__tests__/countryRegion.json`` of the same repository, copied byte for byte at
 :data:`SPELLINGS_VENDORED_FROM`: the console's ``COUNTRY_REGION`` and ``COUNTRY_SYNONYMS`` as
 data, which ``countryRegion.test.ts`` holds against ``src/constants/regions.ts`` over there and the
-last block of this file holds against ``app/utils/shema_derivations.py`` here. A spelling added on
-one side only fails on that side.
+last block of this file holds against ``app/utils/shema_derivations.py`` here. Each side fails when
+its tables leave the file; the file itself crosses by copy, which no test sees, so a spelling
+changes as a diff to it in both repositories — re-emitted over there, re-vendored here.
 """
 
 from __future__ import annotations
@@ -405,9 +406,11 @@ def test_a_synonym_moves_the_region_and_never_the_country_shown() -> None:
         ("África do Sul, Cidade do Cabo", ShemaRegionKey.AFRICA),
         ("Lima, Perú", ShemaRegionKey.OTHER),
         ("Perú, Lima", ShemaRegionKey.SOUTH_AMERICA),
+        (", África do Sul", ShemaRegionKey.AFRICA),
     ],
 )
 def test_only_the_first_item_names_the_country(location: str, region: ShemaRegionKey) -> None:
     """``docs/shema.md`` §6.1, unchanged by OBT-591: a city typed first falls to ``other`` even
-    when a country the map lists follows it."""
+    when a country the map lists follows it. The first item is the first that is not blank —
+    the console's ``getCountry`` reads it the same way since OBT-591."""
     assert get_region(location) is region
