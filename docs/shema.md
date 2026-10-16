@@ -1855,6 +1855,13 @@ this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor
 >   **The two surfaces walk the same gates in the same order** (`pending_image_gates`), so the
 >   flag cannot reopen what the route closes. No migration: the flag is computed.
 >
+> - **The intake-link list narrows by `?projectId=`** (OBT-589, 16/oct/2026). `GET /api/shema/intake-links`
+>   read the filter as `project_id`, a name no client sends, so the list came back whole and each
+>   *Revoke* sat beside links of every project. The router now reads the camelCase alias, as
+>   `GET /api/shema/audit` does; the service and the scope join are untouched, so the filter only
+>   narrows — an id outside the caller's regions answers `[]`, and without it the list is every link
+>   on the projects the coordination reaches.
+>
 > **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
 > and withdrawal from an already-distributed file — is untouched by anything above.
