@@ -14,7 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import (
+    IRSceneFrase,
+    IRSceneRehearsal,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
@@ -254,7 +260,9 @@ async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IR
     return take
 
 
-async def listen_url(take: IRTake | IRSceneRehearsal, *, settings: Settings | None = None) -> str:
+async def listen_url(
+    take: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
+) -> str:
     """A short-lived signed URL, so the bytes never pass through the API.
 
     A rehearsal take is the whole passage; proxying minutes of audio through the

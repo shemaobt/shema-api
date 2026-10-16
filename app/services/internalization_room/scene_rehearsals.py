@@ -28,6 +28,7 @@ from app.core.exceptions import (
     SceneRehearsalSent,
     SceneRehearsalUntranslated,
     UnknownReferenceError,
+    UnknownScene,
     WordlessTelling,
 )
 from app.db.models.internalization_room import (
@@ -191,6 +192,38 @@ async def scene_rehearsal_in_session(
     )
     if rehearsal is None:
         raise NotFoundError(f"Internalization room scene rehearsal {rehearsal_id} not found")
+    return rehearsal
+
+
+async def frase_in_rehearsal(
+    db: AsyncSession, rehearsal: IRSceneRehearsal, frase_id: str
+) -> IRSceneFrase:
+    """Any frase the rehearsal ever had, current, replaced or set aside, and no other's."""
+    frase = await db.scalar(
+        select(IRSceneFrase).where(
+            IRSceneFrase.id == frase_id, IRSceneFrase.rehearsal_id == rehearsal.id
+        )
+    )
+    if frase is None:
+        raise NotFoundError(f"Scene frase {frase_id} not found in scene rehearsal {rehearsal.id}")
+    return frase
+
+
+async def label_the_scene(
+    db: AsyncSession, rehearsal: IRSceneRehearsal, scene: str
+) -> IRSceneRehearsal:
+    """The team's scene label given after the recording, sent or not: said later.
+
+    A scene the passage lacks is refused and changes nothing; the label already standing is
+    kept as it was said.
+    """
+    if scene not in scene_ids_for(rehearsal.pericope):
+        raise UnknownScene(f"{scene} is not a scene of {rehearsal.pericope}")
+    rehearsal = await _locked(db, rehearsal.id)
+    if scene != rehearsal.scene:
+        rehearsal.scene = scene
+        rehearsal.scene_said = IRSceneSaid.LATER
+    await db.commit()
     return rehearsal
 
 
