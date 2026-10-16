@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import io
 import json
 import uuid
-import wave
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,6 +16,7 @@ from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.room_harness import the_room_speaks
+from tests.scene_rehearsal_harness import recording
 from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
@@ -27,18 +26,6 @@ P11_S4_R5 = (
     "- R5: A team telling 'and gave it to Boaz' is correct, not an addition. "
     "The voice accepts it and does not correct or remark on it."
 )
-
-
-def recording(seconds: float, tone: int) -> bytes:
-    frames = int(seconds * 16_000)
-    sample = (tone % 30_000).to_bytes(2, "little", signed=True)
-    out = io.BytesIO()
-    with wave.open(out, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(16_000)
-        wav.writeframes(sample * frames)
-    return out.getvalue()
 
 
 class Guide:
