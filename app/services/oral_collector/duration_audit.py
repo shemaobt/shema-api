@@ -36,6 +36,12 @@ class Unreadable:
 
 
 @dataclass(frozen=True)
+class Measurement:
+    seconds: float | None
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class ProjectHours:
     project_id: str
     before: float
@@ -74,16 +80,16 @@ async def audit_durations(
     for recording in counted:
         stored = recording.duration_seconds or 0.0
         stored_seconds_by_project[recording.project_id] += stored
-        measured = await _measured_seconds(gcs_oc_bucket(), recording.gcs_url)
-        if isinstance(measured, str):
-            unreadable.append(Unreadable(recording.id, recording.project_id, measured))
-        elif abs(measured - stored) > TOLERANCE_SECONDS:
+        measurement = await _measure(gcs_oc_bucket(), recording.gcs_url)
+        if measurement.seconds is None:
+            unreadable.append(Unreadable(recording.id, recording.project_id, measurement.reason))
+        elif abs(measurement.seconds - stored) > TOLERANCE_SECONDS:
             divergent.append(
                 Divergent(
                     recording.id,
                     recording.project_id,
                     stored,
-                    measured,
+                    measurement.seconds,
                     recording.gcs_url,
                     recording.duration_seconds,
                 )
@@ -117,25 +123,25 @@ async def audit_durations(
     )
 
 
-async def _measured_seconds(bucket: str, gcs_url: str | None) -> float | str:
+async def _measure(bucket: str, gcs_url: str | None) -> Measurement:
     blob_name = gcs_utils.blob_name_from_url(gcs_url) if gcs_url else None
     if blob_name is None:
-        return "no file address"
+        return Measurement(None, "no file address")
     try:
         audio = await gcs_utils.download_gcs_object(bucket, blob_name)
     except NotFound:
-        return "file not found"
+        return Measurement(None, "file not found")
     except Exception as error:
-        return f"could not read the file: {type(error).__name__}: {error}"
+        return Measurement(None, f"could not read the file: {type(error).__name__}: {error}")
     try:
         ms = await asyncio.wait_for(measure_ms(audio), MEASURE_TIMEOUT_SECONDS)
     except TimeoutError:
-        return f"measurement timed out after {MEASURE_TIMEOUT_SECONDS:g} s"
+        return Measurement(None, f"measurement timed out after {MEASURE_TIMEOUT_SECONDS:g} s")
     if ms is None:
-        return "ffprobe could not read the file"
+        return Measurement(None, "ffprobe could not read the file")
     if ms <= 0:
-        return "file has no audio length"
-    return ms / 1000
+        return Measurement(None, "file has no audio length")
+    return Measurement(ms / 1000)
 
 
 def _hours_of_touched_projects(
