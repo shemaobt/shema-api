@@ -249,7 +249,7 @@ async def listen_to_scene_frase(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    """A frase's own audio, for listening to a sent rehearsal on any tablet of the team."""
+    """A frase's own audio, any frase of the rehearsal, on any tablet of the team."""
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
     frase = await scenes.frase_in_rehearsal(db, rehearsal, frase_id)

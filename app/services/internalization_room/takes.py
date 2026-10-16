@@ -261,21 +261,22 @@ async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IR
 
 
 async def listen_url(
-    take: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
+    recording: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
 ) -> str:
-    """A short-lived signed URL, so the bytes never pass through the API.
+    """A short-lived signed URL to a stored recording, so the bytes never pass through the API.
 
-    A rehearsal take is the whole passage; proxying minutes of audio through the
-    application server buys nothing over letting storage serve it.
+    A rehearsal take is the whole passage and a scene rehearsal a whole scene; proxying minutes
+    of audio through the application server buys nothing over letting storage serve it, and a
+    frase is served the same way.
     """
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
     return await generate_signed_download_url(
         cfg.gcs_platform_bucket,
-        take.storage_key,
+        recording.storage_key,
         expiry_minutes=LISTEN_MINUTES,
-        response_content_type=take.content_type,
+        response_content_type=recording.content_type,
     )
 
 
