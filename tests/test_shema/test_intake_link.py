@@ -300,7 +300,8 @@ async def test_the_listing_narrows_to_the_project_asked_and_never_widens(
         role_key="coordinator",
         regions=[ShemaRegionKey.AFRICA],
     )
-    await mint(client, await auth_header(db_session, africa), project_id="wolof-dakar")
+    elsewhere = await mint(client, await auth_header(db_session, africa), project_id="wolof-dakar")
+    assert elsewhere.status_code == 201
     await mint(client, headers, project_id="guarani-mbya")
     await mint(client, headers, project_id="kaingang-rs")
 
