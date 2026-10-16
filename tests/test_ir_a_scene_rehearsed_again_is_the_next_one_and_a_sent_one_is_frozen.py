@@ -285,3 +285,21 @@ async def test_a_scene_the_sessions_pinned_canon_lacks_is_no_label_at_the_keep_a
     assert refused.status_code == 422, refused.text
     assert refused.json()["code"] == "UNKNOWN_SCENE"
     assert (await the_record(room, session_id, rehearsal_id))["scene"] is None
+
+
+async def test_a_rehearsal_with_no_label_is_kept_though_the_sessions_pinned_canon_is_not_kept_here(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    await db_session.execute(
+        text("UPDATE ir_sessions SET canon_pin = :pin WHERE id = :id"),
+        {"pin": "b" * 40, "id": session_id},
+    )
+    await db_session.commit()
+
+    kept = await record(room, session_id, scene=None)
+
+    assert kept.status_code == 200, (
+        f"um ensaio sem cena era recusado porque o cânone da sessão não está guardado: {kept.text}"
+    )
+    assert kept.json()["scene"] is None
