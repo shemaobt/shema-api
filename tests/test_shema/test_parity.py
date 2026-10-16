@@ -320,14 +320,13 @@ THE_25: list[tuple[str, str, str, str, str]] = [
     ("Micronesia", "oceania", "Micronésia", "Micronesia", "Micronesia"),
 ]
 
-#: The second standard form of a language that has two, which the table above has no column
-#: for: Spanish as the UN writes it beside the RAE, and English without the diacritics the UN drops.
+#: The second standard forms the table above does not already hold: Spanish as the UN writes it
+#: beside the RAE, and English without the diacritics the UN drops. The UN's other forms coincide
+#: with a spelling above — ``Guinea-Bissau`` and ``Fiji`` with the export's, ``Timor-Leste`` with
+#: the Portuguese — so a row here for them would prove nothing about the synonyms.
 SECOND_FORMS: list[tuple[str, str]] = [
-    ("Guinea-Bissau", "africa"),
     ("Sao Tome and Principe", "africa"),
-    ("Timor-Leste", "asia"),
     ("Papua Nueva Guinea", "oceania"),
-    ("Fiji", "oceania"),
 ]
 
 
@@ -373,6 +372,7 @@ def test_each_country_resolves_alike_in_portuguese_spanish_and_english(
 
 @pytest.mark.parametrize(("spelling", "region"), SECOND_FORMS)
 def test_a_languages_second_standard_form_resolves_too(spelling: str, region: str) -> None:
+    assert spelling in COUNTRY_SYNONYMS
     assert get_region(spelling).value == region
 
 
