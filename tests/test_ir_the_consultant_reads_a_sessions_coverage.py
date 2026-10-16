@@ -106,7 +106,7 @@ def _labels(body: dict[str, Any]) -> dict[str, str]:
     return {bead["key"]: bead["label_en"] for group in body["groups"] for bead in group["beads"]}
 
 
-async def test_the_beads_come_grouped_by_kind_in_her_order_each_with_the_maps_label(
+async def test_the_beads_come_grouped_by_kind_in_her_order_each_with_the_catalogues_label(
     client: httpx.AsyncClient, consultant: dict[str, str], session: IRSession
 ) -> None:
     body = await _coverage(client, consultant, session.id)

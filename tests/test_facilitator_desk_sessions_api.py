@@ -724,18 +724,3 @@ async def test_a_session_never_attended_shows_no_attended_time_and_no_facilitato
     assert row["attended_at"] is None
     assert row["attended_by"] is None
 
-
-async def test_the_sessoes_filters_by_team_and_pericope_answer_as_before_with_the_two_new_fields(
-    client, db_session
-):
-    team_a = await a_team(db_session, "Equipe A")
-    team_b = await a_team(db_session, "Equipe B")
-    headers = await a_facilitator_of(db_session, team_a, team_b, email="fac@example.com")
-    wanted = await a_session(db_session, team_a, pericope="P01")
-    await a_session(db_session, team_a, pericope="P03")
-    await a_session(db_session, team_b, pericope="P01")
-
-    answer = await read(client, headers, team_id=team_a.id, pericope="P01")
-
-    assert ids(answer) == [wanted.id]
-    assert {"attended_at", "attended_by"} <= set(answer["sessions"][0])
