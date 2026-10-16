@@ -477,6 +477,7 @@ async def test_the_admin_reads_the_pending_projects(db_session, shema_app, form_
     assert entry["location"] == "Peru, Vale Teste"
     assert entry["team"] == ""
     assert entry["locationWithheld"] is False
+    assert entry["region"] == "south-america"
     assert [member["email"] for member in entry["members"]] == ["", "", HOLDER]
 
 
@@ -655,6 +656,124 @@ async def test_the_flag_is_a_decision_the_body_must_state(db_session, shema_app,
     assert res.status_code == 422
     await db_session.refresh(project)
     assert project.pending_confirmation is True
+
+
+# --- the region the place puts it in (OBT-591) --------------------------------------------------
+
+
+async def test_a_place_typed_in_portuguese_files_the_project_where_its_coordination_reaches_it(
+    db_session, shema_app, form_app
+) -> None:
+    """``África do Sul`` is the country the export spells ``South Africa``: the approval files the
+    project in Africa, the Admin reads that region at the conference, and once confirmed with the
+    place kept as typed, Africa's coordination reaches it."""
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session, people_location="África do Sul")
+        [project] = await filed_projects(db_session)
+        filed_region = project.region_key
+        listed = await client.get(PENDING, headers=filing.admin_headers)
+        body = confirmation()
+        del body["location"]
+        confirmed = await client.post(
+            confirm_path(project.id), json=body, headers=filing.admin_headers
+        )
+        coordinator = await make_scoped_user(
+            db_session,
+            shema_app,
+            email="coord-africa@shema.example",
+            role_key="coordinator",
+            regions=[ShemaRegionKey.AFRICA],
+        )
+        reached = await client.get(PROJECTS, headers=await auth_header(db_session, coordinator))
+
+    assert filed_region is ShemaRegionKey.AFRICA
+    assert [entry["region"] for entry in listed.json()] == ["africa"]
+    assert confirmed.status_code == 200, confirmed.text
+    await db_session.refresh(project)
+    assert (project.location, project.region_key) == ("África do Sul", ShemaRegionKey.AFRICA)
+    assert [item["id"] for item in reached.json()["items"]] == [project.id]
+
+
+async def test_the_conference_shows_the_region_confirming_writes_not_the_one_filed(
+    db_session, shema_app, form_app
+) -> None:
+    """A project filed before the map listed the team's spelling holds ``other``. The list derives
+    the region again, as the confirmation does, so the Admin reads what will be written."""
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session, people_location="Moçambique")
+        [project] = await filed_projects(db_session)
+        project.region_key = ShemaRegionKey.OTHER
+        await db_session.commit()
+        listed = await client.get(PENDING, headers=filing.admin_headers)
+        body = confirmation()
+        del body["location"]
+        confirmed = await client.post(
+            confirm_path(project.id), json=body, headers=filing.admin_headers
+        )
+
+    assert [entry["region"] for entry in listed.json()] == ["africa"]
+    assert confirmed.status_code == 200, confirmed.text
+    await db_session.refresh(project)
+    assert project.region_key is ShemaRegionKey.AFRICA
+
+
+async def test_a_city_typed_before_the_country_stays_in_other_and_the_conference_says_so(
+    db_session, shema_app, form_app
+) -> None:
+    """``docs/shema.md`` §6.1 is not moved: the first item names the country, and a city there is
+    ``other`` though a listed country follows it. The Admin reads ``other`` before confirming, and
+    the place corrected to the country first files the project in its region."""
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session, people_location="Cidade do Cabo, África do Sul")
+        [project] = await filed_projects(db_session)
+        filed_region = project.region_key
+        listed = await client.get(PENDING, headers=filing.admin_headers)
+        confirmed = await client.post(
+            confirm_path(project.id),
+            json=confirmation(location="África do Sul, Cidade do Cabo"),
+            headers=filing.admin_headers,
+        )
+
+    assert filed_region is ShemaRegionKey.OTHER
+    assert [entry["region"] for entry in listed.json()] == ["other"]
+    assert confirmed.status_code == 200, confirmed.text
+    await db_session.refresh(project)
+    assert project.region_key is ShemaRegionKey.AFRICA
+
+
+@pytest.mark.parametrize("place", ["África do Sul", "Laos"])
+async def test_the_flag_is_never_inferred_from_the_country_and_the_admin_still_states_it(
+    db_session, shema_app, form_app, place: str
+) -> None:
+    """OBT-591 moves the region and nothing else. Neither a country the map now recognises nor one
+    it does not list — which the seed's fail-closed rule would flag (§9.5) — files the project
+    sensitive, and a confirmation that leaves ``sensitiveCountry`` out is still refused."""
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session, people_location=place)
+        [project] = await filed_projects(db_session)
+        filed_sensitive = project.sensitive_country
+        listed = await client.get(PENDING, headers=filing.admin_headers)
+        silent = confirmation(location=place)
+        del silent["sensitiveCountry"]
+        refused = await client.post(
+            confirm_path(project.id), json=silent, headers=filing.admin_headers
+        )
+        stated = await client.post(
+            confirm_path(project.id),
+            json=confirmation(location=place),
+            headers=filing.admin_headers,
+        )
+
+    assert filed_sensitive is False
+    assert listed.json()[0]["locationWithheld"] is False
+    assert refused.status_code == 422
+    assert stated.status_code == 200, stated.text
+    await db_session.refresh(project)
+    assert project.sensitive_country is False
 
 
 async def test_confirming_adds_accounts_and_invites_the_rest(
