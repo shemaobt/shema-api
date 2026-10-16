@@ -7,18 +7,21 @@ assertions read the printed report and the rows afterwards.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from google.api_core.exceptions import Forbidden, NotFound
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.enums import SplittingStatus, UploadStatus
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
-from app.services.oral_collector import gcs_utils
+from app.services.oral_collector import duration_audit, gcs_utils
 from scripts import fix_recording_durations
 from tests.baker import (
     make_language,
@@ -34,11 +37,14 @@ class FakeBucket:
         self.objects: dict[tuple[str, str], bytes] = {}
         self.reads: list[tuple[str, str]] = []
         self.refused: set[str] = set()
+        self.while_reading: dict[str, Callable[[], Awaitable[None]]] = {}
 
     async def download(self, bucket_name: str, blob_name: str) -> bytes:
         self.reads.append((bucket_name, blob_name))
         if blob_name in self.refused:
             raise Forbidden(f"Access denied: {bucket_name}/{blob_name}")
+        if blob_name in self.while_reading:
+            await self.while_reading[blob_name]()
         try:
             return self.objects[(bucket_name, blob_name)]
         except KeyError:
@@ -325,3 +331,62 @@ async def test_the_run_names_the_bucket_it_reads(
 
     assert STAGING_BUCKET in out.splitlines()[0]
     assert {bucket_name for bucket_name, _blob in seed.bucket.reads} == {STAGING_BUCKET}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"gcs_url": f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/replaced.wav"},
+        {"duration_seconds": 1900.0},
+        {"splitting_status": SplittingStatus.ARCHIVED_AFTER_SPLIT},
+    ],
+    ids=["new file", "new stored duration", "archived after split"],
+)
+async def test_a_divergent_recording_that_changes_during_the_run_is_reported_and_not_overwritten(
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    change: dict[str, Any],
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    changing = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    wrong = await seed.a_recording(project, stored=3600.0, file_seconds=1)
+
+    async def the_app_changes_it() -> None:
+        await db_session.execute(
+            update(OC_Recording).where(OC_Recording.id == changing.id).values(**change)
+        )
+        await db_session.commit()
+
+    seed.bucket.while_reading[gcs_utils.blob_name_from_url(changing.gcs_url)] = the_app_changes_it
+
+    out = await a_run(capsys, "--write")
+
+    assert lines_naming(out, changing.id, "changed during the run, skipped")
+    assert await stored_now(db_session, changing) == change.get("duration_seconds", 1894.0)
+    assert await stored_now(db_session, wrong) == 1.0
+    assert the_line_naming(out, "written").split()[-1] == "1"
+
+
+async def test_a_file_whose_measurement_never_ends_is_listed_as_unreadable_and_its_probe_is_killed(
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    hanging = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    pid_file = tmp_path / "probe.pid"
+    probe = tmp_path / "ffprobe"
+    probe.write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 600\n")
+    probe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(duration_audit, "MEASURE_TIMEOUT_SECONDS", 0.5)
+
+    out = await a_run(capsys, "--write")
+
+    assert "timed out" in the_line_naming(out, hanging.id, "unreadable")
+    assert await stored_now(db_session, hanging) == 1894.0
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)

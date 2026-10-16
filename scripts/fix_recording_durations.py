@@ -60,6 +60,8 @@ async def run(argv: list[str]) -> int:
         print(
             f"unreadable  {unreadable.recording_id}  {unreadable.project_id}  {unreadable.reason}"
         )
+    for changed in audit.changed_during_the_run:
+        print(f"changed during the run, skipped  {changed.recording_id}  {changed.project_id}")
     print(f"divergent: {len(audit.divergent)}")
     print(f"unreadable: {len(audit.unreadable)}")
     if args.write:

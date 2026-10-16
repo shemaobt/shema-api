@@ -1,5 +1,6 @@
 """The hours' recordings measured on their own file, and the stored durations that disagree."""
 
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -14,6 +15,7 @@ from app.services.oral_collector.stats_service import counted_recording_conditio
 from app.services.platform.audio_duration import measure_ms
 
 TOLERANCE_SECONDS = 1.0
+MEASURE_TIMEOUT_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,8 @@ class Divergent:
     project_id: str
     stored_seconds: float
     measured_seconds: float
+    gcs_url: str
+    stored_as_read: float | None
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,7 @@ class DurationAudit:
     divergent: list[Divergent]
     unreadable: list[Unreadable]
     hours: list[ProjectHours]
+    changed_during_the_run: list[Divergent]
     written: int
 
 
@@ -73,22 +78,42 @@ async def audit_durations(
         if isinstance(measured, str):
             unreadable.append(Unreadable(recording.id, recording.project_id, measured))
         elif abs(measured - stored) > TOLERANCE_SECONDS:
-            divergent.append(Divergent(recording.id, recording.project_id, stored, measured))
+            divergent.append(
+                Divergent(
+                    recording.id,
+                    recording.project_id,
+                    stored,
+                    measured,
+                    recording.gcs_url,
+                    recording.duration_seconds,
+                )
+            )
 
+    written: list[Divergent] = []
+    changed: list[Divergent] = []
     if write and divergent:
         async with sessions.begin() as db:
             for row in divergent:
-                await db.execute(
+                result = await db.execute(
                     update(OC_Recording)
-                    .where(OC_Recording.id == row.recording_id)
+                    .where(
+                        OC_Recording.id == row.recording_id,
+                        OC_Recording.gcs_url == row.gcs_url,
+                        OC_Recording.duration_seconds.is_not_distinct_from(row.stored_as_read),
+                        *counted_recording_conditions(),
+                    )
                     .values(duration_seconds=row.measured_seconds)
                 )
+                (written if result.rowcount == 1 else changed).append(row)
 
     return DurationAudit(
         divergent=divergent,
         unreadable=unreadable,
-        hours=_hours_of_touched_projects(stored_seconds_by_project, divergent),
-        written=len(divergent) if write else 0,
+        hours=_hours_of_touched_projects(
+            stored_seconds_by_project, [row for row in divergent if row not in changed]
+        ),
+        changed_during_the_run=changed,
+        written=len(written),
     )
 
 
@@ -102,7 +127,10 @@ async def _measured_seconds(bucket: str, gcs_url: str | None) -> float | str:
         return "file not found"
     except GoogleAPICallError as error:
         return f"bucket refused the read: {error.code} {error.message}"
-    ms = await measure_ms(audio)
+    try:
+        ms = await asyncio.wait_for(measure_ms(audio), MEASURE_TIMEOUT_SECONDS)
+    except TimeoutError:
+        return f"measurement timed out after {MEASURE_TIMEOUT_SECONDS:g} s"
     if ms is None:
         return "ffprobe could not read the file"
     return ms / 1000
