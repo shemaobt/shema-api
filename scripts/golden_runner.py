@@ -254,10 +254,6 @@ def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
     return carried
 
 
-def scene_rehearsals_fact(scene_ids: list[str], sent: list[str]) -> str:
-    return scene_rehearsals_line(scene_ids, sent)
-
-
 def interrupted_note(language: str) -> str:
     if _portuguese(language):
         return "[A equipe interrompeu a sua fala anterior neste ponto.]"
@@ -374,7 +370,7 @@ async def play(
             appStatus=[
                 fact
                 for fact in (
-                    scene_rehearsals_fact(scene_ids, sent) if sent is not None else "",
+                    scene_rehearsals_line(scene_ids, sent) if sent is not None else "",
                     earlier,
                 )
                 if fact
