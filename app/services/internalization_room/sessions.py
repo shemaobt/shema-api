@@ -1084,6 +1084,8 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRS
     because somebody noted a visit is not. ``lifted_halt`` is what separates the two cases,
     and it is written here rather than worked out later because afterwards there is nothing
     left to work it out from.
+
+    ``by`` is None when nobody went: the server attends a demo team's halt itself (ADR 0064).
     """
     if session.attended_at is None:
         session.attended_at = datetime.now(UTC)

@@ -82,8 +82,9 @@ CLAIM_DOORS = [
 ]
 
 #: The doors under the prefix that are neither the team's nor the claim's: a facilitator
-#: signs in to the first, the golden runner presents its own key to the other two.
-NOT_THE_TABLETS = ("/facilitator/", "/golden/", "/text-seam/")
+#: signs in to the first, the golden runner presents its own key to the next two, and a store
+#: reviewer's browser types a claim code into the last (ADR 0064).
+NOT_THE_TABLETS = ("/facilitator/", "/golden/", "/text-seam/", "/demo")
 
 
 @pytest.fixture()

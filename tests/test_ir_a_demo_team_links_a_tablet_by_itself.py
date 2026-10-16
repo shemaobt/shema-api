@@ -25,6 +25,7 @@ from app.core.rate_limit import limiter
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRTakeKind
 from app.services.auth.issue_tokens import issue_tokens
+from app.services.device.claim_device import claim_device
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
@@ -255,22 +256,44 @@ async def test_the_page_spends_a_shown_code_on_the_demo_team_and_the_tablets_nex
     assert (await session_row(db_session, session_id)).project_id == configured.id
 
 
-async def test_a_spent_code_and_an_unknown_code_are_refused_with_the_same_answer(
+async def test_a_code_the_desk_spent_and_an_unknown_code_are_refused_with_the_same_answer(
     client, configured: Team, real: Team, db_session: AsyncSession
 ) -> None:
-    claimed_by_the_desk = await a_linked_tablet(db_session, team_id=real.id)
+    device_id, code = await a_code_on_the_tablet(client)
+    await claim_device(db_session, code=code, project_id=real.id)
+
+    spent = await typed_on_the_page(client, code)
+    unknown = await typed_on_the_page(client, "AAA-AAAA")
+
+    assert spent.status_code == 400
+    assert unknown.status_code == 400
+    assert REFUSAL in spent.text
+    assert spent.text == unknown.text
+    assert (await the_link(client, device_id)).json()["project_id"] == real.id
+
+
+async def test_a_code_the_page_already_spent_is_refused_and_stays_on_the_demo_team(
+    client, configured: Team
+) -> None:
     device_id, code = await a_code_on_the_tablet(client)
     assert (await typed_on_the_page(client, code)).status_code == 200
 
-    spent_again = await typed_on_the_page(client, code)
-    unknown = await typed_on_the_page(client, "AAA-AAAA")
+    again = await typed_on_the_page(client, code)
 
-    assert spent_again.status_code == 400
-    assert unknown.status_code == 400
-    assert REFUSAL in spent_again.text
-    assert spent_again.text == unknown.text
+    assert again.status_code == 400
+    assert REFUSAL in again.text
     assert (await the_link(client, device_id)).json()["project_id"] == configured.id
-    assert (await device_row(db_session, claimed_by_the_desk.device_id)).project_id == real.id
+
+
+async def test_a_code_typed_in_lower_case_with_spaces_is_spent_as_the_desk_would(
+    client, configured: Team
+) -> None:
+    device_id, code = await a_code_on_the_tablet(client)
+
+    spent = await typed_on_the_page(client, f"  {code.lower()} ")
+
+    assert spent.status_code == 200, spent.text[:300]
+    assert (await the_link(client, device_id)).json()["project_id"] == configured.id
 
 
 async def test_with_no_demo_team_the_page_answers_404_and_nothing_is_spent(
