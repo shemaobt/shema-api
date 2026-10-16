@@ -4,7 +4,7 @@ import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
 
-from google.api_core.exceptions import GoogleAPICallError, NotFound
+from google.api_core.exceptions import NotFound
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -125,14 +125,16 @@ async def _measured_seconds(bucket: str, gcs_url: str | None) -> float | str:
         audio = await gcs_utils.download_gcs_object(bucket, blob_name)
     except NotFound:
         return "file not found"
-    except GoogleAPICallError as error:
-        return f"bucket refused the read: {error.code} {error.message}"
+    except Exception as error:
+        return f"could not read the file: {type(error).__name__}: {error}"
     try:
         ms = await asyncio.wait_for(measure_ms(audio), MEASURE_TIMEOUT_SECONDS)
     except TimeoutError:
         return f"measurement timed out after {MEASURE_TIMEOUT_SECONDS:g} s"
     if ms is None:
         return "ffprobe could not read the file"
+    if ms <= 0:
+        return "file has no audio length"
     return ms / 1000
 
 

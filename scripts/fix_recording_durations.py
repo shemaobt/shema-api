@@ -9,14 +9,12 @@ import asyncio
 import shutil
 import sys
 
-from app.core.database import AsyncSessionLocal
-from app.services.oral_collector.constants import gcs_oc_bucket
-from app.services.oral_collector.duration_audit import audit_durations
-from app.services.platform.audio_duration import PROBE
-
 HOW_TO_RUN = """\
-Reads the bucket GCS_OC_BUCKET names and the database DATABASE_URL names.
-Production's recordings live in tripod-image-uploads. Dry-run first on a Neon branch:
+Reads the bucket GCS_OC_BUCKET names and the database DATABASE_URL names, and prints both
+before reading anything. Production's recordings live in tripod-image-uploads; reading them
+needs Google credentials:
+  gcloud auth application-default login
+Dry-run first on a Neon branch:
   DATABASE_URL=<branch> GCS_OC_BUCKET=tripod-image-uploads \\
     uv run python -m scripts.fix_recording_durations
 Then the same with --write on the branch, check it, and only then on production.
@@ -38,13 +36,22 @@ def _parser() -> argparse.ArgumentParser:
 
 async def run(argv: list[str]) -> int:
     args = _parser().parse_args(argv)
+
+    from app.core.database import AsyncSessionLocal, engine
+    from app.services.oral_collector.constants import gcs_oc_bucket
+    from app.services.oral_collector.duration_audit import audit_durations
+    from app.services.platform.audio_duration import PROBE
+
     if shutil.which(PROBE) is None:
         print(
             f"{PROBE} is not installed: nothing can be measured, nothing was read.", file=sys.stderr
         )
         return 2
 
-    print(f"bucket: {gcs_oc_bucket()}", flush=True)
+    print(f"bucket: {gcs_oc_bucket()}")
+    database = engine.url
+    print(f"database: {database.database}" + (f" on {database.host}" if database.host else ""))
+    sys.stdout.flush()
     audit = await audit_durations(AsyncSessionLocal, write=args.write)
 
     for row in audit.divergent:

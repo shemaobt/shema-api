@@ -7,14 +7,19 @@ assertions read the printed report and the rows afterwards.
 
 from __future__ import annotations
 
+import io
 import os
+import subprocess
+import sys
+import wave
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 from google.api_core.exceptions import Forbidden, NotFound
-from sqlalchemy import select, update
+from google.auth.exceptions import RefreshError
+from sqlalchemy import make_url, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -36,13 +41,13 @@ class FakeBucket:
     def __init__(self) -> None:
         self.objects: dict[tuple[str, str], bytes] = {}
         self.reads: list[tuple[str, str]] = []
-        self.refused: set[str] = set()
+        self.failing: dict[str, Exception] = {}
         self.while_reading: dict[str, Callable[[], Awaitable[None]]] = {}
 
     async def download(self, bucket_name: str, blob_name: str) -> bytes:
         self.reads.append((bucket_name, blob_name))
-        if blob_name in self.refused:
-            raise Forbidden(f"Access denied: {bucket_name}/{blob_name}")
+        if blob_name in self.failing:
+            raise self.failing[blob_name]
         if blob_name in self.while_reading:
             await self.while_reading[blob_name]()
         try:
@@ -225,19 +230,57 @@ async def test_a_recording_whose_file_is_missing_is_listed_as_unreadable_and_lef
     assert await stored_now(db_session, missing) == 1894.0
 
 
-async def test_a_recording_whose_file_the_bucket_refuses_to_read_is_listed_as_unreadable_and_the_run_goes_on(  # noqa: E501
-    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    "failure",
+    [
+        Forbidden("Access denied"),
+        RefreshError("Reauthentication is needed"),
+        ConnectionError("Connection reset by peer"),
+    ],
+    ids=["bucket refuses", "credentials expire", "connection drops"],
+)
+async def test_a_recording_whose_file_cannot_be_read_from_the_bucket_is_listed_as_unreadable_and_the_run_goes_on(  # noqa: E501
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    failure: Exception,
 ) -> None:
     project = await seed.a_project("Projeto Um")
     refused = await seed.a_recording(project, stored=1894.0, file_seconds=2)
-    seed.bucket.refused.add(gcs_utils.blob_name_from_url(refused.gcs_url))
+    seed.bucket.failing[gcs_utils.blob_name_from_url(refused.gcs_url)] = failure
     wrong = await seed.a_recording(project, stored=3600.0, file_seconds=1)
 
     out = await a_run(capsys, "--write")
 
-    assert "unreadable" in the_line_naming(out, refused.id)
+    unreadable = the_line_naming(out, refused.id)
+    assert "unreadable" in unreadable and type(failure).__name__ in unreadable
     assert await stored_now(db_session, refused) == 1894.0
     assert await stored_now(db_session, wrong) == 1.0
+
+
+def one_frame_of_audio() -> bytes:
+    out = io.BytesIO()
+    with wave.open(out, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8000)
+        audio.writeframes(b"\0\0")
+    return out.getvalue()
+
+
+async def test_a_recording_whose_file_has_no_audio_length_is_listed_as_unreadable_never_zeroed(
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    empty = await seed.a_recording(project, stored=1894.0, file_seconds=None)
+    seed.bucket.objects[(STAGING_BUCKET, gcs_utils.blob_name_from_url(empty.gcs_url))] = (
+        one_frame_of_audio()
+    )
+
+    out = await a_run(capsys, "--write")
+
+    assert "unreadable" in the_line_naming(out, empty.id)
+    assert await stored_now(db_session, empty) == 1894.0
 
 
 async def test_a_recording_stored_at_120_seconds_whose_file_measures_119_4_is_neither_listed_nor_changed(  # noqa: E501
@@ -390,3 +433,31 @@ async def test_a_file_whose_measurement_never_ends_is_listed_as_unreadable_and_i
     assert await stored_now(db_session, hanging) == 1894.0
     with pytest.raises(ProcessLookupError):
         os.kill(int(pid_file.read_text()), 0)
+
+
+async def test_the_run_names_the_database_it_reads_before_reading_it(
+    seed: Seeder, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    await seed.a_recording(project, stored=1894.0, file_seconds=2)
+
+    out = await a_run(capsys)
+
+    assert make_url(os.environ["DATABASE_URL"]).database in out.splitlines()[1]
+
+
+@pytest.mark.fresh_interpreter
+def test_the_help_says_how_to_run_it_without_a_database_configured(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parent.parent
+
+    shown = subprocess.run(
+        [sys.executable, "-m", "scripts.fix_recording_durations", "--help"],
+        cwd=tmp_path,
+        env={"PATH": os.environ["PATH"], "HOME": os.environ["HOME"], "PYTHONPATH": str(root)},
+        capture_output=True,
+        text=True,
+    )
+
+    assert shown.returncode == 0, shown.stderr
+    assert "gcloud auth application-default login" in shown.stdout
+    assert "GCS_OC_BUCKET=tripod-image-uploads" in shown.stdout
