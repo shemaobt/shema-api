@@ -431,7 +431,7 @@ The scenes whose recorded and translated scene rehearsal has reached the Guide a
 _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
 
 **Scene rehearsal** (`ir_scene_rehearsals`; ensaio da cena):
-One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, frozen once sent, never heard by the recognizer or the voice.
+One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, a label the passage lacks kept apart as the team sent it, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, frozen once sent but for its scene label, never heard by the recognizer or the voice.
 _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
 
 **Rehearsal turn** («terminei»):

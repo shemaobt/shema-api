@@ -28,6 +28,7 @@ from app.core.exceptions import (
     SceneRehearsalSent,
     SceneRehearsalUntranslated,
     UnknownReferenceError,
+    UnknownScene,
     WordlessTelling,
 )
 from app.db.models.internalization_room import (
@@ -79,7 +80,8 @@ async def keep_scene_rehearsal(
 ) -> IRSceneRehearsal:
     """Store the scene as sent and number it in its session; the same bytes are the same one.
 
-    A scene that is not one of the passage's is kept as no label, never as the team's word.
+    A scene that is not one of the passage's is kept as no label, never as the team's word, and
+    as the label the tablet sent beside it, so the rehearsal reads as marked.
     Two keeps at once can read the same last number: the unique index refuses the second,
     which walks to the next number, the house loop ``speaker_service`` uses. A loser that
     carried the same bytes answers with the winner instead.
@@ -100,6 +102,7 @@ async def keep_scene_rehearsal(
     )
     duration_ms = await measure_ms(audio)
     label = scene if scene in scene_ids_for(pericope) else None
+    foreign = scene if scene and label is None else None
     last = await db.scalar(
         select(func.max(IRSceneRehearsal.n)).where(IRSceneRehearsal.session_id == session_id)
     )
@@ -113,7 +116,8 @@ async def keep_scene_rehearsal(
             device_id=device_id,
             duration_ms=duration_ms,
             scene=label,
-            scene_said=IRSceneSaid.RECORDING if label else None,
+            scene_said=IRSceneSaid.RECORDING if scene else None,
+            scene_foreign=foreign,
             storage_key=stored.storage_key,
             size_bytes=stored.size_bytes,
             sha256=stored.sha256,
@@ -188,6 +192,38 @@ async def scene_rehearsal_in_session(
     )
     if rehearsal is None:
         raise NotFoundError(f"Internalization room scene rehearsal {rehearsal_id} not found")
+    return rehearsal
+
+
+async def frase_in_rehearsal(
+    db: AsyncSession, rehearsal: IRSceneRehearsal, frase_id: str
+) -> IRSceneFrase:
+    """Any frase the rehearsal ever had, current, replaced or set aside, and no other's."""
+    frase = await db.scalar(
+        select(IRSceneFrase).where(
+            IRSceneFrase.id == frase_id, IRSceneFrase.rehearsal_id == rehearsal.id
+        )
+    )
+    if frase is None:
+        raise NotFoundError(f"Scene frase {frase_id} not found in scene rehearsal {rehearsal.id}")
+    return frase
+
+
+async def label_the_scene(
+    db: AsyncSession, rehearsal: IRSceneRehearsal, scene: str
+) -> IRSceneRehearsal:
+    """The team's scene label given after the recording, sent or not: said later.
+
+    A scene the passage lacks is refused and changes nothing; the label already standing is
+    kept as it was said.
+    """
+    if scene not in scene_ids_for(rehearsal.pericope):
+        raise UnknownScene(f"{scene} is not a scene of {rehearsal.pericope}")
+    rehearsal = await _locked(db, rehearsal.id)
+    if scene != rehearsal.scene:
+        rehearsal.scene = scene
+        rehearsal.scene_said = IRSceneSaid.LATER
+    await db.commit()
     return rehearsal
 
 
@@ -641,7 +677,7 @@ async def _claim_the_send(
             rehearsal_id=rehearsal.id,
             n=rehearsal.n,
             frases=len(live_frases),
-            scene=rehearsal.scene,
+            scene=rehearsal.scene or rehearsal.scene_foreign,
         ),
     )
     await db.commit()

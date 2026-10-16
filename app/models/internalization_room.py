@@ -931,6 +931,15 @@ class SceneRehearsalsResponse(BaseModel):
     scene_rehearsals: list[SceneRehearsalView]
 
 
+class PassageSceneView(BaseModel):
+    scene_id: str
+    title: str
+
+
+class PassageScenesResponse(BaseModel):
+    scenes: list[PassageSceneView]
+
+
 class SceneSnapshotFrase(BaseModel):
     frase_id: str
     starts_ms: int
@@ -1364,6 +1373,7 @@ class TurnVoiceSide(BaseModel):
     boundary: bool
     attempts: int
     trace: list[TurnTraceStep]
+    accepted_ids: list[str]
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None

@@ -188,6 +188,7 @@ def _voice_side(
             if attempt.get("draft") or not attempt.get("note")
         ),
         trace=[TurnTraceStep.model_validate(step) for step in guide.get("attempts") or []],
+        accepted_ids=guide.get("accepted_ids") or [],
         recognition_ms=guide.get("recognition_ms"),
         reply_ms=guide.get("reply_ms"),
         synthesis_ms=guide.get("synthesis_ms"),

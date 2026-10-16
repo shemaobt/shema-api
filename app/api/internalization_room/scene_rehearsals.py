@@ -25,6 +25,8 @@ from app.db.models.internalization_room import (
 )
 from app.models.internalization_room import (
     HeldAttemptView,
+    PassageScenesResponse,
+    PassageSceneView,
     ReaderSceneFraseView,
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
@@ -38,6 +40,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.part_names import passage_scenes
 from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
 from app.services.internalization_room.turn_dedup import answer_once, answered_turn
 from app.utils.stored_time import as_utc
@@ -215,6 +218,26 @@ async def list_scene_rehearsals(
 
 
 @router.get(
+    "/sessions/{session_id}/scenes",
+    response_model=PassageScenesResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def list_passage_scenes(
+    session_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> PassageScenesResponse:
+    """The session's scenes in passage order, titled in its language; a panorama has none."""
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    return PassageScenesResponse(
+        scenes=[
+            PassageSceneView(scene_id=scene_id, title=title)
+            for scene_id, title in passage_scenes(session)
+        ]
+    )
+
+
+@router.get(
     "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     response_class=RedirectResponse,
@@ -233,6 +256,28 @@ async def listen_to_scene_rehearsal(
     return RedirectResponse(
         await listen_url(rehearsal), status_code=status.HTTP_307_TEMPORARY_REDIRECT
     )
+
+
+@router.get(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+    dependencies=[linked_tablet_dep],
+)
+async def listen_to_scene_frase(
+    session_id: str,
+    rehearsal_id: str,
+    frase_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """A frase's own audio, any frase of the rehearsal, on any tablet of the team."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    frase = await scenes.frase_in_rehearsal(db, rehearsal, frase_id)
+    await db.commit()
+    return RedirectResponse(await listen_url(frase), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.post(
@@ -293,6 +338,25 @@ async def restart_scene_translation(
         db, rehearsal, attempt=str(attempt), closes=None if closes is None else str(closes)
     )
     return await _the_record(db, rehearsal)
+
+
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/scene",
+    response_model=SceneRehearsalView,
+    dependencies=[linked_tablet_dep],
+)
+async def label_scene_rehearsal(
+    session_id: str,
+    rehearsal_id: str,
+    scene: str = Form(...),
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SceneRehearsalView:
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    labelled = await scenes.label_the_scene(db, rehearsal, scene)
+    return await _the_record(db, labelled)
 
 
 @router.post(

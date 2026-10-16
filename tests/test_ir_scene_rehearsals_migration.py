@@ -19,10 +19,17 @@ DEFAULT_REVISION = "20261013_scene02"
 FRASES_REVISION = "20261013_scene03"
 RESTARTS_REVISION = "20261013_scene04"
 DROP_REVISION = "20261014_scene05"
+FOREIGN_REVISION = "20261015_scene06"
 PREVIOUS_REVISION = "20261012_spine02"
 
 SCENE_TABLES = {"ir_scene_rehearsals"}
 SESSION = "a0000000-0000-0000-0000-000000000001"
+A_REHEARSAL = (
+    "INSERT INTO ir_scene_rehearsals (id, session_id, pericope, n, device_id, storage_key,"
+    " size_bytes, sha256, crc32c, content_type, scene, scene_said, scene_foreign)"
+    " VALUES ('r-1', :session, 'P03', 1, 'tablet-a', 'k', 1, 'abc', 'c', 'audio/wav',"
+    " NULL, 'recording', 'S99')"
+)
 A_SESSION = (
     "INSERT INTO ir_sessions (id, project_id, pericope, language, status, messages,"
     " after_panorama, coverage_state, back_translation, created_at, updated_at)"
@@ -122,3 +129,27 @@ async def test_the_kept_takes_column_is_gone_at_head_and_returns_as_empty_on_dow
 
     assert up.returncode == 0, up.stderr
     assert "kept_takes" not in await columns_of(url, "ir_sessions")
+
+
+async def test_the_foreign_scene_column_comes_and_goes_with_its_migration_and_the_row_stays(
+    tmp_path,
+) -> None:
+    url = await _at(tmp_path, FOREIGN_REVISION)
+    assert "scene_foreign" in await columns_of(url, "ir_scene_rehearsals")
+    await _execute(url, A_REHEARSAL, {"session": SESSION})
+
+    down = run_alembic(url, "downgrade", DROP_REVISION)
+
+    assert down.returncode == 0, down.stderr
+    assert "scene_foreign" not in await columns_of(url, "ir_scene_rehearsals")
+    said = await scalar(url, "SELECT scene_said FROM ir_scene_rehearsals WHERE id = 'r-1'", {})
+    assert said == "recording"
+
+    up = run_alembic(url, "upgrade", FOREIGN_REVISION)
+
+    assert up.returncode == 0, up.stderr
+    assert "scene_foreign" in await columns_of(url, "ir_scene_rehearsals")
+    unmarked = await scalar(
+        url, "SELECT count(*) FROM ir_scene_rehearsals WHERE scene_foreign IS NULL", {}
+    )
+    assert unmarked == 1, "a coluna voltava preenchida em uma linha que a descera sem ela"
