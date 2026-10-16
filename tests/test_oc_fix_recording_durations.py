@@ -7,12 +7,10 @@ assertions read the printed report and the rows afterwards.
 
 from __future__ import annotations
 
-import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import Forbidden, NotFound
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,35 +26,19 @@ from tests.baker import (
     make_oc_taxonomy,
     make_project,
 )
-from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET
-
-
-def a_tone(seconds: float) -> bytes:
-    with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / "tone.wav"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                f"sine=duration={seconds}:sample_rate=8000",
-                str(out),
-            ],
-            check=True,
-        )
-        return out.read_bytes()
+from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET, a_tone
 
 
 class FakeBucket:
     def __init__(self) -> None:
         self.objects: dict[tuple[str, str], bytes] = {}
         self.reads: list[tuple[str, str]] = []
+        self.refused: set[str] = set()
 
     async def download(self, bucket_name: str, blob_name: str) -> bytes:
         self.reads.append((bucket_name, blob_name))
+        if blob_name in self.refused:
+            raise Forbidden(f"Access denied: {bucket_name}/{blob_name}")
         try:
             return self.objects[(bucket_name, blob_name)]
         except KeyError:
@@ -234,6 +216,21 @@ async def test_a_recording_whose_file_is_missing_is_listed_as_unreadable_and_lef
 
     assert "unreadable" in the_line_naming(out, missing.id)
     assert await stored_now(db_session, missing) == 1894.0
+
+
+async def test_a_recording_whose_file_the_bucket_refuses_to_read_is_listed_as_unreadable_and_the_run_goes_on(  # noqa: E501
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    refused = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    seed.bucket.refused.add(gcs_utils.blob_name_from_url(refused.gcs_url))
+    wrong = await seed.a_recording(project, stored=3600.0, file_seconds=1)
+
+    out = await a_run(capsys, "--write")
+
+    assert "unreadable" in the_line_naming(out, refused.id)
+    assert await stored_now(db_session, refused) == 1894.0
+    assert await stored_now(db_session, wrong) == 1.0
 
 
 async def test_a_recording_stored_at_120_seconds_whose_file_measures_119_4_is_neither_listed_nor_changed(  # noqa: E501

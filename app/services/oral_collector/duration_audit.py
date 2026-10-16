@@ -3,7 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import GoogleAPICallError, NotFound
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -40,7 +40,6 @@ class ProjectHours:
 
 @dataclass(frozen=True)
 class DurationAudit:
-    bucket: str
     divergent: list[Divergent]
     unreadable: list[Unreadable]
     hours: list[ProjectHours]
@@ -50,7 +49,6 @@ class DurationAudit:
 async def audit_durations(
     sessions: async_sessionmaker[AsyncSession], *, write: bool
 ) -> DurationAudit:
-    bucket = gcs_oc_bucket()
     async with sessions() as db:
         counted = (
             await db.execute(
@@ -65,13 +63,13 @@ async def audit_durations(
             )
         ).all()
 
-    stored_seconds: dict[str, float] = defaultdict(float)
+    stored_seconds_by_project: dict[str, float] = defaultdict(float)
     divergent: list[Divergent] = []
     unreadable: list[Unreadable] = []
     for recording in counted:
         stored = recording.duration_seconds or 0.0
-        stored_seconds[recording.project_id] += stored
-        measured = await _measured_seconds(bucket, recording.gcs_url)
+        stored_seconds_by_project[recording.project_id] += stored
+        measured = await _measured_seconds(gcs_oc_bucket(), recording.gcs_url)
         if isinstance(measured, str):
             unreadable.append(Unreadable(recording.id, recording.project_id, measured))
         elif abs(measured - stored) > TOLERANCE_SECONDS:
@@ -87,10 +85,9 @@ async def audit_durations(
                 )
 
     return DurationAudit(
-        bucket=bucket,
         divergent=divergent,
         unreadable=unreadable,
-        hours=_hours_of_touched_projects(stored_seconds, divergent),
+        hours=_hours_of_touched_projects(stored_seconds_by_project, divergent),
         written=len(divergent) if write else 0,
     )
 
@@ -103,6 +100,8 @@ async def _measured_seconds(bucket: str, gcs_url: str | None) -> float | str:
         audio = await gcs_utils.download_gcs_object(bucket, blob_name)
     except NotFound:
         return "file not found"
+    except GoogleAPICallError as error:
+        return f"bucket refused the read: {error.code} {error.message}"
     ms = await measure_ms(audio)
     if ms is None:
         return "ffprobe could not read the file"
@@ -110,7 +109,7 @@ async def _measured_seconds(bucket: str, gcs_url: str | None) -> float | str:
 
 
 def _hours_of_touched_projects(
-    stored_seconds: dict[str, float], divergent: list[Divergent]
+    stored_seconds_by_project: dict[str, float], divergent: list[Divergent]
 ) -> list[ProjectHours]:
     change: dict[str, float] = defaultdict(float)
     for row in divergent:
@@ -118,8 +117,8 @@ def _hours_of_touched_projects(
     return [
         ProjectHours(
             project_id,
-            round(stored_seconds[project_id] / 3600, 2),
-            round((stored_seconds[project_id] + delta) / 3600, 2),
+            round(stored_seconds_by_project[project_id] / 3600, 2),
+            round((stored_seconds_by_project[project_id] + delta) / 3600, 2),
         )
         for project_id, delta in change.items()
     ]

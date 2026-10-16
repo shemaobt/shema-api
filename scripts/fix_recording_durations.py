@@ -10,6 +10,7 @@ import shutil
 import sys
 
 from app.core.database import AsyncSessionLocal
+from app.services.oral_collector.constants import gcs_oc_bucket
 from app.services.oral_collector.duration_audit import audit_durations
 from app.services.platform.audio_duration import PROBE
 
@@ -43,9 +44,9 @@ async def run(argv: list[str]) -> int:
         )
         return 2
 
+    print(f"bucket: {gcs_oc_bucket()}", flush=True)
     audit = await audit_durations(AsyncSessionLocal, write=args.write)
 
-    print(f"bucket: {audit.bucket}")
     for row in audit.divergent:
         print(
             f"{row.recording_id}  {row.project_id}  "
