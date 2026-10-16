@@ -14,8 +14,8 @@
 > **Length.** One breath. This is heard many times while the team turns the wheel looking for
 > the passage they want, so it must not become a paragraph to sit through.
 
-> **One block per language.** The room speaks the language the tablet is set to, so every
-> language it claims needs all fourteen lines. A language with none written falls back to the
+> **One block per language.** The room speaks the session's language, which the team chose, so
+> every language it claims needs all fourteen lines. A language with none written falls back to the
 > floor rather than emptying the wheel — an empty wheel tells a team the book is finished.
 > That fallback is for the passage lines only. The panorama's line is offered in a language
 > only when it is written in that language, or not at all: a missing `panorama-xx` block takes
