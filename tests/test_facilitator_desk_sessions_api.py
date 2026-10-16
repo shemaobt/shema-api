@@ -723,4 +723,3 @@ async def test_a_session_never_attended_shows_no_attended_time_and_no_facilitato
 
     assert row["attended_at"] is None
     assert row["attended_by"] is None
-
