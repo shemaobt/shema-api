@@ -676,6 +676,26 @@ are *never normalised* (FE-44 §5.1, §5.3 — `COUNTRY_REGION` is keyed on the 
 spelling, `São Tomé e Príncipe` in Portuguese and `East Timor` in English), and `[0, 0]` means
 *no coordinate* rather than a place in the Gulf of Guinea.
 
+**How a spelling becomes a region — listed synonyms, which is still not normalising (OBT-591,
+16/oct/2026).** A project the mesa's approval files (§6.11) carries the place the team typed in
+the form, in the language the team writes, and `África do Sul` fell to `other` — out of reach of
+the coordination of Africa. The answer is a list, not a reading of the string:
+`COUNTRY_SYNONYMS` in `app/utils/shema_derivations.py` names the Portuguese, Spanish and English
+spellings of the 25 countries the map knows — `África do Sul`, `Sudáfrica` — each pointing at the
+export's spelling (`South Africa`), never at a region, so a synonym can neither add a country nor
+move one. A spelling is recognised because it is written there, exactly: accents, case and
+spacing as listed, nothing title-cased, transliterated or looked up. Where a language has two
+standard forms both are listed — Spanish as the RAE and the UN write it, English with and without
+the diacritics the UN drops. So the rule above holds: `location` is stored as typed, the country a
+card or a facet shows is the one typed, and only `region_key` reads the synonym. A spelling the
+list does not have still falls to `other`, and the Admin reads that region before confirming
+(§6.11). The console's copy, `src/constants/regions.ts`, holds the same two tables under §6.5's
+mechanism: `countryRegion.json`, emitted by the console and vendored byte for byte into
+`tests/test_shema/`, which each side's test holds its own tables against (`test_parity.py` here).
+The file crosses by copy, which no test sees — a spelling changes in both repositories or not at
+all. The console's `getCountry` reads the first item that is not blank, as `countries_named`
+does, so a place reads alike on both sides.
+
 ### 4.10 Permissions / role_permissions — **Not usable**
 
 `permissions` and `role_permissions` exist as tables in `app/db/models/auth.py` and are **not
@@ -973,6 +993,14 @@ edits **their region**. `RegionKey` is one of seven fixed keys —
 `south-america`, `north-america`, `africa`, `asia`, `oceania`, `europe`, `other` — and a
 project's region is **derived** from the first country in its `location` string
 (`getCountry` → `COUNTRY_REGION` → `other`), never stored as a membership.
+
+**The first country, and only the first — kept by decision when OBT-591 taught the map other
+spellings (16/oct/2026).** `Cidade do Cabo, África do Sul` names a city first and derives to
+`other`, though its second item is a country the map lists. The first-country rule is one
+definition, `countries_named`, shared with the import's fail-closed flag (BE-16), and moving it
+for this case would move it there too. So the rule stays and the case is caught where a person
+can fix it: the Admin's conference of a project the approval filed shows the region it will
+write, and warns when that region is `other` (§6.11). How a country's spelling resolves is §4.9's.
 
 Three shapes were available. The decision is the third.
 
@@ -1682,6 +1710,10 @@ not different.**
   copied byte for byte with a CI check against its source), applied to an acceptance artifact
   instead of a vocabulary. BE-05 owns the vendoring; every issue that implements a derivation
   extends the replay.
+- **`countryRegion.json` is the second artifact, and the only other one** (OBT-591): the
+  console's region tables — the export's 25 spellings and the synonyms listed for them — as
+  data. It cannot ride in `dataJsParity.json`, which is the prototype's output over the export
+  and knows no spelling the export does not hold; §4.9 says how a spelling becomes a region.
 - **Two of the nine are timezone traps and both are already documented failures on the
   frontend.** The year boundary is read **from the ISO date by field**, never through a
   `Date` (FE-44 §7.8 — it is what makes the ETEN year correct). And the progress stamp is
@@ -2171,7 +2203,13 @@ gains a project **pending confirmation**, and the Admin confirms or discards it.
   composes, and decides them through `_scope.filed_projects`.
 - **Only the Admin reads and decides**, behind `AdminUser`, with the standing read fresh on each
   act (`_grant_rules.require_admin_in`). The list is built for the Admin's reader
-  (`readership`): the place as typed, by `COORDINATION_EVERYWHERE` (§6.4).
+  (`readership`): the place as typed, by `COORDINATION_EVERYWHERE` (§6.4). Beside it, since
+  OBT-591, the region confirming writes if the place is kept (`region`) — derived on the read by
+  the owner the confirmation calls, never the `region_key` stored at the filing, which a map that
+  learned a spelling since would contradict. The console shows that region under the place, from
+  its own copy of the map once the Admin edits it, and warns when it is `other`: no regional
+  coordination would reach the project. That is where a place typed city-first (§6.1) or in a
+  spelling the map does not list (§4.9) is caught, before it is written.
 - **Confirming** applies the Admin's adjustments and the flag — `sensitiveCountry` has no default
   in the body, so a client that forgets it is refused rather than read as *not sensitive*; a
   `languageCode`, `location` or `team` left out keeps what was filed (`model_fields_set`, as the
@@ -2194,7 +2232,7 @@ gains a project **pending confirmation**, and the Admin confirms or discards it.
 
 | Route | Body | Answers |
 |---|---|---|
-| `GET /pending-projects` | — | `[{id, languageName, languageCode, location, team, requestId, requestName, filedAt, members: [{name, role, email}], locationWithheld}]`, oldest first, `Cache-Control: private, no-store` |
+| `GET /pending-projects` | — | `[{id, languageName, languageCode, location, team, requestId, requestName, filedAt, members: [{name, role, email}], locationWithheld, region}]`, oldest first, `Cache-Control: private, no-store` |
 | `POST /projects/{id}/confirm` | `{languageName, languageCode?, location?, team?, sensitiveCountry, members?: [{name?, email?}]}` | `{id, languageName, requestIds, joined: [{email, userId}], invited: [{email, inviteId, inviteUrl, emailSent}], withoutEmail}` — each link once |
 | `POST /projects/{id}/reject` | `{reason}` | `{id, reason, discardedAt, requestId, requestProjectId: null, detail}` |
 
@@ -2210,7 +2248,9 @@ reason, a malformed address: 422, FastAPI's field errors.
 **Open, and named.** GATE §9.5's fail-closed rule — *an unrecognised country is sensitive until
 confirmed* — is the seed's; a project filed by an approval is born not sensitive because the issue
 says so, and the Admin decides at the conference. Whether the client wants the seed's rule here
-too is a question for Karina. The request link stays valid after its project is confirmed;
+too is a question for Karina. OBT-591 left this alone: a synonym moves the region and nothing
+else, the flag is still never inferred from a country's name, and `sensitiveCountry` is still
+required to confirm. The request link stays valid after its project is confirmed;
 revoking it is the Admin's act.
 
 ### 6.12 Seam J — a sensitive project's prayer request passes the coordination — **Decided; OBT-575**

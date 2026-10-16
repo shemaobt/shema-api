@@ -90,7 +90,8 @@ class ShemaRegionKey(enum.StrEnum):
     ``other`` is not a leftover bin to be cleaned up later: two records have an empty
     ``location`` and land here legitimately, and ``COUNTRY_REGION`` is keyed on the
     export's exact spellings — ``São Tomé e Príncipe`` in Portuguese, ``East Timor`` in
-    English — so anything unmapped falls here by design rather than by mistake.
+    English — plus the synonyms ``COUNTRY_SYNONYMS`` lists, so anything unmapped falls here
+    by design rather than by mistake.
     """
 
     SOUTH_AMERICA = "south-america"

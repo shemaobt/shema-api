@@ -99,14 +99,15 @@ the 18 the product added. So a glob written on the three column names alone walk
 past ``source["prayerRequests"]``.
 
 **``region_key`` is stored and maintained, which is §10's second open question and this
-issue's answer.** It is derived — ``location.split(",")[0]`` through ``COUNTRY_REGION``,
-falling back to ``other`` — and computing it per query would make the one predicate every
-list query carries (``docs/shema.md`` §6.1's ``RegionScope``) unsargable over a growing table.
+issue's answer.** It is derived — ``location.split(",")[0]`` through ``COUNTRY_REGION`` and
+the spellings ``COUNTRY_SYNONYMS`` lists for it (OBT-591), falling back to ``other`` — and
+computing it per query would make the one predicate every list query carries
+(``docs/shema.md`` §6.1's ``RegionScope``) unsargable over a growing table.
 So it is a column, written by the same service that writes ``location``, from the single
 owner in ``app/utils/shema_derivations.py``. It is deliberately **not** a generated column:
-the derivation is a lookup over 25 country strings kept in Python, and expressing it in DDL
-would be a second copy of a map whose whole value is that there is one. Never a hand-typed
-field.
+the derivation is a lookup over 25 countries and their listed spellings, kept in Python, and
+expressing it in DDL would be a second copy of a map whose whole value is that there is one.
+Never a hand-typed field.
 
 **``source`` is BE-16's, and it is here so BE-16 does not need a migration.** The seed
 interprets: ``DD/MM/YYYY`` becomes a real date, ``team`` and ``ywamBase`` become one column,
