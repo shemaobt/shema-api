@@ -437,9 +437,12 @@ class PassageView(BaseModel):
     #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
     #: the one entry with no beads of its own.
     kind: Literal["passage", "panorama"]
-    #: Where to fetch the line that names this passage aloud. There is no text field: the
-    #: team does not read, so a passage the room cannot say is a passage it cannot offer.
+    #: Where to fetch the line that names this passage aloud. The team does not read, so a
+    #: passage the room cannot say is a passage it cannot offer.
     audio_url: str
+    #: The passage's Scripture reference as its Meaning Map's heading writes it, for the
+    #: facilitator's menu. The panorama has none.
+    reference: str | None = None
     beads: int = 0
     absence_index: int = -1
     #: The team holds a live Release of this passage, from any tablet, forced or not.

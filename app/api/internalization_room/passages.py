@@ -11,6 +11,7 @@ from app.core.exceptions import ValidationError
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
 from app.services.internalization_room.canon.elements import absence_index, element_keys
+from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.earlier_passages import approved_pericopes
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.passage_lines import PANORAMA, offered, panorama_line_for
@@ -40,6 +41,7 @@ async def _voiced(
         pericope=pericope_num,
         kind="passage",
         audio_url=clip_url(voiced.key),
+        reference=load_map(pericope_num).reference,
         beads=len(element_keys(pericope_num, book=book)),
         absence_index=absence_index(pericope_num, book=book),
         approved=approved,
