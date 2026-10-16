@@ -988,7 +988,7 @@ async def raise_a_warning(
     _a_new_ask(session, kind=HaltKind.WARNING)
     session.warned_at = datetime.now(UTC)
     if await is_the_demo_team(db, session.project_id):
-        session.attended_at = session.warned_at
+        _visited(session, by=None)
     return await _written(db, session, commit=commit)
 
 
@@ -1088,15 +1088,20 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRS
 
     ``by`` is None when nobody went: the server attends a demo team's halt itself (ADR 0064).
     """
+    _visited(session, by=by)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def _visited(session: IRSession, *, by: str | None) -> None:
+    """What a visit writes, leaving the transaction open: the stamp, and the lift."""
     if session.attended_at is None:
         session.attended_at = datetime.now(UTC)
         session.attended_by = by
     if session.status is IRSessionStatus.NEEDS_PERSON:
         session.lifted_halt = HaltKind.BLOCKING.value
         session.status = halt.a_lift_restores()
-    await db.commit()
-    await db.refresh(session)
-    return session
 
 
 async def unattend(db: AsyncSession, session: IRSession) -> IRSession:

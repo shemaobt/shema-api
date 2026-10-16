@@ -220,6 +220,30 @@ async def a_session_with_one_turn(client: httpx.AsyncClient, db: AsyncSession, t
     return session_id
 
 
+async def a_rehearsal(client: httpx.AsyncClient, session_id: str, tablet) -> str:
+    kept = await client.post(
+        f"{IR}/sessions/{session_id}/takes",
+        headers=tablet,
+        data={"kind": IRTakeKind.ENSAIO.value, "scope": "P01"},
+        files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
+    )
+    assert kept.status_code == 200, kept.text[:300]
+    return kept.json()["take_id"]
+
+
+async def one_stretch_told_until_it_is_hard(
+    client: httpx.AsyncClient, session_id: str, tablet, take_id: str
+) -> None:
+    for _ in range(RETELLS_BEFORE_A_WARNING):
+        telling = await client.post(
+            f"{IR}/sessions/{session_id}/back-translation/chunks",
+            headers=tablet,
+            data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", "retelling": "true"},
+            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        )
+        assert telling.status_code == 200, telling.text[:300]
+
+
 async def the_queue(client: httpx.AsyncClient, team: Team) -> dict:
     listed = await client.get(f"{IR}/facilitator/sessions", headers=team.desk)
     assert listed.status_code == 200, listed.text[:300]
@@ -396,27 +420,9 @@ async def test_a_demo_teams_hard_stretch_keeps_its_warning_attended_and_calls_no
 ) -> None:
     tablet = await a_tablet_linked_through_the_page(client)
     session_id = await a_session_with_one_turn(client, db_session, tablet)
-    kept = await client.post(
-        f"{IR}/sessions/{session_id}/takes",
-        headers=tablet,
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": "P01"},
-        files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
-    )
-    assert kept.status_code == 200, kept.text[:300]
+    take_id = await a_rehearsal(client, session_id, tablet)
 
-    for _ in range(RETELLS_BEFORE_A_WARNING):
-        telling = await client.post(
-            f"{IR}/sessions/{session_id}/back-translation/chunks",
-            headers=tablet,
-            data={
-                "take_id": kept.json()["take_id"],
-                "starts_ms": "0",
-                "ends_ms": "9000",
-                "retelling": "true",
-            },
-            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-        )
-        assert telling.status_code == 200, telling.text[:300]
+    await one_stretch_told_until_it_is_hard(client, session_id, tablet, take_id)
 
     assert len(await marks(db_session, session_id)) == 1
     state = (await client.get(f"{IR}/sessions/{session_id}", headers=tablet)).json()
@@ -425,6 +431,26 @@ async def test_a_demo_teams_hard_stretch_keeps_its_warning_attended_and_calls_no
     written = await session_row(db_session, session_id)
     assert written.attended_at is not None
     assert written.attended_by is None
+
+
+async def test_a_warning_on_a_demo_room_already_halted_lifts_the_halt_with_it(
+    client, configured: Team, db_session: AsyncSession
+) -> None:
+    tablet = await a_tablet_linked_through_the_page(client)
+    session_id = await a_session_with_one_turn(client, db_session, tablet)
+    take_id = await a_rehearsal(client, session_id, tablet)
+    await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+    undone = await client.delete(
+        f"{IR}/facilitator/sessions/{session_id}/attended", headers=configured.desk
+    )
+    assert undone.json()["status"] == "needs_person", undone.text[:300]
+
+    await one_stretch_told_until_it_is_hard(client, session_id, tablet, take_id)
+
+    state = (await client.get(f"{IR}/sessions/{session_id}", headers=tablet)).json()
+    assert state["status"] == "in_progress"
+    assert state["halt"] is None
+    assert session_id not in await queued_session_ids(client, configured)
 
 
 async def test_a_demo_tablet_that_asks_for_a_person_without_a_session_is_attended_at_once(

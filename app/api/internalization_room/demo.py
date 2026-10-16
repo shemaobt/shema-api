@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.core.rate_limit import limiter
+from app.services.device.claim_code import as_shown
 from app.services.device.claim_device import InvalidClaimCodeError, claim_device
 from app.services.device.demo_team import the_demo_team
 
@@ -49,12 +50,6 @@ def _the_whole_page() -> str:
     return "demo"
 
 
-def _as_shown(typed: str) -> str:
-    """The code as the tablet shows it, whatever the reviewer's keyboard put between its halves."""
-    kept = "".join(character for character in typed if character.isalnum()).upper()
-    return f"{kept[:3]}-{kept[3:]}" if len(kept) == 7 else kept
-
-
 async def _demo_team_or_404(db: AsyncSession = Depends(get_db)) -> str:
     team_id = await the_demo_team(db)
     if team_id is None:
@@ -77,7 +72,7 @@ async def spend_on_the_demo_team(
 ) -> HTMLResponse:
     """The setting is read before the limit is counted, so a closed page stays a 404."""
     try:
-        await claim_device(db, code=_as_shown(code), project_id=team_id)
+        await claim_device(db, code=as_shown(code), project_id=team_id)
     except InvalidClaimCodeError:
         return _page(InvalidClaimCodeError.MESSAGE, status_code=400)
     return _page(LINKED)
