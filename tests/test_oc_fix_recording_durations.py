@@ -138,7 +138,7 @@ def the_line_naming(out: str, *tokens: str) -> str:
 async def two_divergent_and_one_correct(seed: Seeder) -> dict[str, OC_Recording | str]:
     first = await seed.a_project("Projeto Um")
     wrong_in_first = await seed.a_recording(first, stored=1894.0, file_seconds=2)
-    right_in_first = await seed.a_recording(first, stored=3.0, file_seconds=3)
+    right_in_first = await seed.a_recording(first, stored=72.0, file_seconds=72)
     second = await seed.a_project("Projeto Dois")
     wrong_in_second = await seed.a_recording(second, stored=3600.0, file_seconds=1)
     return {
@@ -159,18 +159,19 @@ async def test_a_dry_run_lists_the_two_divergent_recordings_with_stored_and_meas
 
     wrong_in_first = the_line_naming(out, rows["wrong_in_first"].id)
     assert rows["first"] in wrong_in_first
-    assert "1894.0" in wrong_in_first and "2.0" in wrong_in_first
+    assert "stored 1894.000 s" in wrong_in_first and "measured 2.000 s" in wrong_in_first
     wrong_in_second = the_line_naming(out, rows["wrong_in_second"].id)
     assert rows["second"] in wrong_in_second
-    assert "3600.0" in wrong_in_second and "1.0" in wrong_in_second
+    assert "stored 3600.000 s" in wrong_in_second and "measured 1.000 s" in wrong_in_second
     assert not lines_naming(out, rows["right_in_first"].id)
 
     first_hours = the_line_naming(out, "hours", rows["first"])
-    assert f"{round((1894 + 3) / 3600, 2):.2f}" in first_hours
-    assert f"{round((2 + 3) / 3600, 2):.2f}" in first_hours
+    before, after = round((1894 + 72) / 3600, 2), round((2 + 72) / 3600, 2)
+    assert f"before {before:.2f}  after {after:.2f}" in first_hours
     second_hours = the_line_naming(out, "hours", rows["second"])
-    assert f"{round(3600 / 3600, 2):.2f}" in second_hours
-    assert f"{round(1 / 3600, 2):.2f}" in second_hours
+    before, after = round(3600 / 3600, 2), round(1 / 3600, 2)
+    assert f"before {before:.2f}  after {after:.2f}" in second_hours
+    assert the_line_naming(out, "divergent").split()[-1] == "2"
 
     assert await stored_now(db_session, rows["wrong_in_first"]) == 1894.0
     assert await stored_now(db_session, rows["wrong_in_second"]) == 3600.0
@@ -185,7 +186,7 @@ async def test_a_write_run_gives_the_two_divergent_recordings_their_measured_dur
 
     assert await stored_now(db_session, rows["wrong_in_first"]) == 2.0
     assert await stored_now(db_session, rows["wrong_in_second"]) == 1.0
-    assert await stored_now(db_session, rows["right_in_first"]) == 3.0
+    assert await stored_now(db_session, rows["right_in_first"]) == 72.0
     assert the_line_naming(out, "written").split()[-1] == "2"
 
 
@@ -203,7 +204,7 @@ async def test_a_second_write_run_changes_no_row_and_finds_nothing_divergent(
     assert the_line_naming(out, "written").split()[-1] == "0"
     assert await stored_now(db_session, rows["wrong_in_first"]) == 2.0
     assert await stored_now(db_session, rows["wrong_in_second"]) == 1.0
-    assert await stored_now(db_session, rows["right_in_first"]) == 3.0
+    assert await stored_now(db_session, rows["right_in_first"]) == 72.0
 
 
 async def test_a_recording_whose_file_is_missing_is_listed_as_unreadable_and_left_as_it_is(
