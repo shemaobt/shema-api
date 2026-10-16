@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import wave
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -18,9 +19,21 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.sessions import create_session
+from tests.canon_harness import the_canon_moves_on
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_bucket_is_in_memory
+
+NEW_PIN = "a" * 40
+KEPT_APPEAL = "The kept appeal"
+
+
+def _the_kept_p02_tells_its_appeals_as_one_scene(tree: Path) -> None:
+    told = tree / "vendor" / "meaning-map" / "P02-Ruth-1-6-14.md"
+    text = told.read_text(encoding="utf-8")
+    text = text.replace("### Scene 3 — Second appeal and the split", "")
+    text = text.replace("### Scene 2 — First appeal and refusal", f"### Scene 2 — {KEPT_APPEAL}")
+    told.write_text(text, encoding="utf-8")
 
 
 @pytest.fixture()
@@ -79,6 +92,23 @@ async def test_an_english_session_reads_the_maps_own_titles(
         "Hearing and setting out",
         "First appeal and refusal",
         "Second appeal and the split",
+    ]
+
+
+async def test_a_session_open_when_a_new_canon_is_published_reads_the_scenes_it_opened_with(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    session_id = await a_session(db_session, "P02", language="en")
+    the_canon_moves_on(
+        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_tells_its_appeals_as_one_scene
+    )
+
+    assert await the_scenes(client, session_id) == [
+        {"scene_id": "S1", "title": "Hearing and setting out"},
+        {"scene_id": "S2", "title": KEPT_APPEAL},
     ]
 
 

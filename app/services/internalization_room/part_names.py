@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.services.internalization_room.canon.elements import scene_code
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.canon.titles import scene_title
@@ -76,15 +77,6 @@ class Addresses:
         return self.by_stretch.get(segment_id or "", "")
 
 
-def scene_titles(session: IRSession) -> list[str]:
-    language = room_language(session.language)
-    with reading_the_canon_of(session.canon_pin):
-        return [
-            scene_title(session.pericope, scene.number, scene.title, language)
-            for scene in load_map(session.pericope).scenes
-        ]
-
-
 def passage_scenes(session: IRSession) -> list[tuple[str, str]]:
     if is_panorama(session.pericope):
         return []
@@ -92,11 +84,15 @@ def passage_scenes(session: IRSession) -> list[tuple[str, str]]:
     with reading_the_canon_of(session.canon_pin):
         return [
             (
-                f"S{scene.number}",
+                scene_code(scene.number),
                 scene_title(session.pericope, scene.number, scene.title, language),
             )
             for scene in load_map(session.pericope).scenes
         ]
+
+
+def scene_titles(session: IRSession) -> list[str]:
+    return [title for _, title in passage_scenes(session)]
 
 
 def addresses_for(
