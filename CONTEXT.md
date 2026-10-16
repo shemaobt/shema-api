@@ -454,8 +454,12 @@ _Avoid_: api key, token, password, Chave do runner
 ### Build
 
 **Claim code**:
-The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it, or the demo page while a **Demo team** is configured.
 _Avoid_: código, pairing code, device code, credential
+
+**Demo team** (`INTERNALIZATION_ROOM_DEMO_TEAM_ID`):
+The one team per environment, named by configuration by its team id and never by its name, whose claim codes anyone may spend on the demo page while it is configured, so a store reviewer alone reaches a passage. It never calls a person (the server attends its halts at once) and never releases to Refine. With no configuration there is no demo team and no page.
+_Avoid_: test team, sandbox, reviewer team, equipe demo
 
 **Device credential** (`X-Device-Credential`):
 The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.
