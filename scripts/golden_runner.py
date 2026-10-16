@@ -82,7 +82,10 @@ from app.api.internalization_room.text_seam import _collecting_model_calls
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
-from app.services.internalization_room.prompt_blocks import earlier_passages_line
+from app.services.internalization_room.prompt_blocks import (
+    earlier_passages_line,
+    scene_rehearsals_line,
+)
 from app.services.internalization_room.sessions import book_of
 from app.services.internalization_room.turn_instructions import opening_note
 from scripts.golden_checks import (
@@ -252,15 +255,7 @@ def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
 
 
 def scene_rehearsals_fact(scene_ids: list[str], sent: list[str]) -> str:
-    def listed(ids: list[str]) -> str:
-        return ", ".join(ids) if ids else "none"
-
-    reached = [scene for scene in scene_ids if scene in sent]
-    missing = [scene for scene in scene_ids if scene not in sent]
-    return (
-        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
-        f"{listed(reached)}. Parts with none: {listed(missing)}."
-    )
+    return scene_rehearsals_line(scene_ids, sent)
 
 
 def interrupted_note(language: str) -> str:

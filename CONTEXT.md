@@ -427,7 +427,7 @@ This team's status on each earlier passage of the book (approved, started, or no
 _Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
 
 **Scene rehearsals**:
-The scenes whose recorded and translated scene rehearsal has reached the Guide as of a turn, the whole list each time; an empty list is the fact that none has.
+The scenes whose recorded and translated scene rehearsal has reached the Guide as of a turn, the whole list each time; an empty list is the fact that none has. Counted from each **Rehearsal turn**'s scene label as it stood at sending: a rehearsal sent with no label, with one the passage lacks, or labelled only after sending counts for no scene.
 _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
 
 **Scene rehearsal** (`ir_scene_rehearsals`; ensaio da cena):
@@ -435,7 +435,7 @@ One scene recorded whole in the mother tongue, with its record: the recording as
 _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
 
 **Rehearsal turn** («terminei»):
-The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the words of its live **Scene frases** in recording order, handed to the Guide with no recording and no recognizer. The scene label is kept on the record and never handed to the Guide.
+The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the words of its live **Scene frases** in recording order, handed to the Guide with no recording and no recognizer. The scene label is kept on the record as it stood at sending and reaches the Guide only as a scene id in **Scene rehearsals**.
 _Avoid_: checking turn, Team turn
 
 **Scene frase** (`ir_scene_frases`):

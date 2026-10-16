@@ -65,10 +65,14 @@ async def an_open_session(client: httpx.AsyncClient, pericope: str = "P11") -> s
 
 
 async def a_sent_rehearsal(
-    client: httpx.AsyncClient, session_id: str, scene: str | None, turn_id: str = "turno-1"
+    client: httpx.AsyncClient,
+    session_id: str,
+    scene: str | None,
+    turn_id: str = "turno-1",
+    pieces: list[str] = SANDAL,
 ) -> httpx.Response:
     kept = await client.post(
-        f"{GOLDEN}/rehearsal", json={"sessionId": session_id, "sceneId": scene, "pieces": SANDAL}
+        f"{GOLDEN}/rehearsal", json={"sessionId": session_id, "sceneId": scene, "pieces": pieces}
     )
     assert kept.status_code == 200, kept.text
     return await client.post(
@@ -96,9 +100,11 @@ async def the_room_stands_in(db: AsyncSession, session_id: str, moment: dict[str
 class Both:
     def __init__(self) -> None:
         self.validator_inputs: list[str] = []
+        self.guide_systems: list[str] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             self.validator_inputs.append(f"{system_prompt}\n{user_content}")
             return json.dumps({"verdict": "pass", "issues": []})
+        self.guide_systems.append(system_prompt)
         return "Obrigado. Vamos ver essa cena juntos."

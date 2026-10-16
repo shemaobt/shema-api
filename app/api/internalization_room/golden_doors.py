@@ -230,6 +230,7 @@ async def play_golden_turn(
             guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
             validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
             settings=get_settings(),
+            scene_rehearsals=rehearsed,
         )
         session = await room.append_exchange(
             db,

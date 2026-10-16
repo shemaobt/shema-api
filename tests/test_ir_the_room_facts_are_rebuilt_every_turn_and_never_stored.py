@@ -36,6 +36,10 @@ EARLIER_APPROVED_STARTED = (
     f"Started, not approved yet: Ruth 1:6{EN}14."
 )
 EARLIER_BOTH_APPROVED = f"EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1{EN}5, Ruth 1:6{EN}14."
+NO_SCENE_REHEARSED = (
+    "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+    "none. Parts with none: S1, S2, S3."
+)
 FAMILIARIZATION = (
     "MOMENT: Familiarization \N{EM DASH} the whole passage; no part has been opened yet."
 )
@@ -90,7 +94,8 @@ async def test_the_earlier_passages_line_follows_the_ledger_and_the_moment_comes
 
     after_the_break = recording.guide[0].partition(CACHE_BREAK)[2]
     assert after_the_break == (
-        f"{coverage_status_block(initial_state(P), P)}\n\n{EARLIER_APPROVED_STARTED}"
+        f"{coverage_status_block(initial_state(P), P)}\n\n{NO_SCENE_REHEARSED}"
+        f"\n\n{EARLIER_APPROVED_STARTED}"
         f"\n\n{FAMILIARIZATION}"
     ), "a linha das passagens anteriores não vinha logo depois do ledger, no fim do que o Guia lê"
 

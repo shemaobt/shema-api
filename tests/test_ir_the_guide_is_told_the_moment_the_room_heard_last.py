@@ -17,6 +17,10 @@ VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P01"
 EM = "\N{EM DASH}"
 FAMILIARIZATION = f"MOMENT: Familiarization {EM} the whole passage; no part has been opened yet."
+NO_SCENE_REHEARSED = (
+    "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+    "none. Parts with none: S1, S2, S3, S4."
+)
 
 
 class _Recording:
@@ -59,9 +63,9 @@ async def test_the_opening_tells_the_guide_the_room_is_in_the_familiarization(
     await _turn([], opening=True)
 
     ledger = coverage_status_block(initial_state(P), P)
-    assert recording.guide[0].partition(CACHE_BREAK)[2] == f"{ledger}\n\n{FAMILIARIZATION}", (
-        "a abertura não dizia ao Guia que a sala estava na Familiarização"
-    )
+    assert recording.guide[0].partition(CACHE_BREAK)[2] == (
+        f"{ledger}\n\n{NO_SCENE_REHEARSED}\n\n{FAMILIARIZATION}"
+    ), "a abertura não dizia ao Guia que a sala estava na Familiarização"
 
 
 async def test_the_turn_after_scene_two_opened_tells_the_guide_its_internalization_is_open(
@@ -141,7 +145,7 @@ async def test_a_stored_part_the_passage_does_not_have_gives_the_guide_no_moment
     await _turn(_left_at(moment))
 
     ledger = coverage_status_block(initial_state(P), P)
-    assert recording.guide[0].partition(CACHE_BREAK)[2] == ledger, (
+    assert recording.guide[0].partition(CACHE_BREAK)[2] == f"{ledger}\n\n{NO_SCENE_REHEARSED}", (
         "o Guia ouvia uma parte que a passagem não tem, depois que o número de cenas mudou"
     )
 
@@ -183,7 +187,7 @@ async def test_a_session_begun_before_the_moment_was_read_tells_the_guide_no_mom
     await _turn([{"role": "guide", "text": "Vamos pra Internalização da cena 2."}])
 
     ledger = coverage_status_block(initial_state(P), P)
-    assert recording.guide[0].partition(CACHE_BREAK)[2] == ledger, (
+    assert recording.guide[0].partition(CACHE_BREAK)[2] == f"{ledger}\n\n{NO_SCENE_REHEARSED}", (
         "uma sessão de antes do momento ganhou um momento que ninguém leu"
     )
 

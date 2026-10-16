@@ -24,6 +24,8 @@ from app.services.internalization_room.prompt_blocks import (
     earlier_passages_line,
     meaning_map_block,
     room_facts_block,
+    scene_rehearsals_line,
+    sent_scene_ids,
     validator_map_block,
 )
 from app.services.internalization_room.render import render
@@ -99,6 +101,7 @@ async def run_turn(
     prepared_pericope: str | None = None,
     earlier_passages: dict[str, str] | None = None,
     scene_rehearsal: SentSceneRehearsal | None = None,
+    scene_rehearsals: list[str] | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -115,6 +118,9 @@ async def run_turn(
 
     `earlier_passages` is the session's stamp of this team's status on the earlier passages;
     its fact line rides beside the coverage block, after the cache break, as in her app.
+
+    `scene_rehearsals` is a golden turn's carried list of reached scenes; without one, the
+    reached scenes are the labels the session's rehearsals carried when sent, this one's too.
     """
     cfg = settings or get_settings()
 
@@ -133,12 +139,20 @@ async def run_turn(
     checked = _checked_scene(scene_rehearsal, messages, pericope_num)
     items = _readings_for(pericope_num, checked, session_id)
     accepted = accepted_readings_block(items, checked) if checked else ""
+    reached = (
+        scene_rehearsals
+        if scene_rehearsals is not None
+        else sent_scene_ids(messages, scene_rehearsal.scene if scene_rehearsal else None)
+    )
     coverage_status = "\n\n".join(
         block
         for block in (
             coverage_status_block(coverage_state, pericope_num),
             room_facts_block(
                 {
+                    RoomFact.SCENE_REHEARSALS: scene_rehearsals_line(
+                        scene_ids_for(pericope_num), reached
+                    ),
                     RoomFact.EARLIER_PASSAGES: earlier,
                     RoomFact.MOMENT: moment_fact(messages, pericope_num),
                     RoomFact.ACCEPTED_READINGS: accepted,
