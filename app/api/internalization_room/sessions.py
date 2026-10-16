@@ -108,6 +108,7 @@ async def _write_the_turn(
     outcome: room.TurnOutcome,
     opening: bool,
     scene_rehearsal: SentSceneRehearsal | None = None,
+    scene_rehearsals: list[str] | None = None,
 ) -> IRSession:
     with stage("db_write"):
         if opening:
@@ -130,6 +131,7 @@ async def _write_the_turn(
             scene=_scene_of(session, outcome.transcript),
             commit=False,
             scene_rehearsal=scene_rehearsal,
+            scene_rehearsals=scene_rehearsals,
         )
         hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
         return session
@@ -850,6 +852,7 @@ async def draft_the_turn_as_text(
     speech_heard: HeardSpeech,
     deadline: float,
     bound_s: float,
+    scene_rehearsals: list[str] | None = None,
 ) -> TurnResponse:
     reply, _outcome, _language = await _keep_the_turn(
         db,
@@ -861,6 +864,7 @@ async def draft_the_turn_as_text(
         speech_heard=speech_heard,
         deadline=deadline,
         bound_s=bound_s,
+        scene_rehearsals=scene_rehearsals,
     )
     return reply
 
@@ -876,6 +880,7 @@ async def _keep_the_turn(
     speech_heard: HeardSpeech,
     deadline: float,
     bound_s: float,
+    scene_rehearsals: list[str] | None = None,
 ) -> tuple[TurnResponse, room.TurnOutcome | None, str]:
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
@@ -935,12 +940,18 @@ async def _keep_the_turn(
                     guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
                     validator_prompt=validator_prompt,
                     settings=get_settings(),
+                    scene_rehearsals=scene_rehearsals,
                 )
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     session = await _write_the_turn(
-        db, session, outcome=outcome, opening=opening, scene_rehearsal=speech_heard.scene_rehearsal
+        db,
+        session,
+        outcome=outcome,
+        opening=opening,
+        scene_rehearsal=speech_heard.scene_rehearsal,
+        scene_rehearsals=scene_rehearsals,
     )
 
     response_turn_id = turn_id or str(uuid.uuid4())

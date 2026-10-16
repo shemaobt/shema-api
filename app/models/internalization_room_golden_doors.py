@@ -64,6 +64,9 @@ class GoldenRehearsalSendRequest(BaseModel):
     rehearsalId: str = Field(max_length=36)
     turnId: str = Field(max_length=64)
     closes: uuid.UUID | None = None
+    #: The full carried list of scene ids whose scene rehearsal has reached the Guide,
+    #: this one's included; absence is no fact at all.
+    sceneRehearsals: list[str] | None = None
 
 
 class GoldenTurnResponse(BaseModel):

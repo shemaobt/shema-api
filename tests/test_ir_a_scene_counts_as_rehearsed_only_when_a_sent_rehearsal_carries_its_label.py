@@ -246,3 +246,33 @@ async def test_a_scene_labelled_only_after_its_rehearsal_was_sent_is_not_counted
     assert her_line("none", "S1, S2, S3") in after_the_break(agent.guide_systems[-1]), (
         "a cena marcada depois do envio era contada como ensaiada"
     )
+
+
+async def test_a_golden_send_carrying_a_list_tells_the_voice_that_list_and_keeps_it_on_the_turn(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client, "P02")
+    kept = await client.post(
+        f"{GOLDEN}/rehearsal",
+        json={"sessionId": session_id, "sceneId": None, "pieces": ["A cena contada."]},
+    )
+    agent = the_models_answer(monkeypatch)
+
+    send = await client.post(
+        f"{GOLDEN}/rehearsal/send",
+        json={
+            "sessionId": session_id,
+            "rehearsalId": kept.json()["rehearsalId"],
+            "turnId": "turno-1",
+            "sceneRehearsals": ["S1"],
+        },
+    )
+
+    assert send.status_code == 200, send.text
+    assert her_line("S1", "S2, S3") in after_the_break(agent.guide_systems[-1]), (
+        "o envio dourado com a lista levada não dizia à voz que S1 chegou"
+    )
+    stored = await room_service.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    *_, guide = stored.messages
+    assert guide["scene_rehearsals"] == ["S1"], "o turno do envio dourado não guardava a lista"
