@@ -14,6 +14,12 @@ team typed, so it leaves through :class:`~app.models.shema_privacy.LeavingShape`
 **Three reads for the whole list**, never one per project: the projects, their proposed members,
 and the requests' registered names. The name is read off the request rather than copied onto the
 project, because it is the request's (A0) and a project has no column for it.
+
+**The region is the one confirming writes, derived now** (OBT-591). The confirmation re-derives
+it from the place it keeps (``confirm_project``), so the list asks the same owner the same
+question — ``_redaction.derive_region`` — instead of reading the ``region_key`` stored at the
+filing: a project filed before the map learned ``África do Sul`` holds ``other`` there and would
+show the Admin a region the confirmation does not write.
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ from app.db.models.resource_request import RRRequest
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_pending_member import ShemaProjectPendingMember
 from app.models.shema_pending import PendingMember, PendingProject
+from app.services.shema._redaction import derive_region
 from app.services.shema._scope import Readership, pending_projects
 
 
@@ -63,6 +70,7 @@ async def list_pending_projects(
                 "request_id": project.source_request_id or "",
                 "request_name": names.get(project.source_request_id or "", ""),
                 "members": members.get(project.id, []),
+                "region": derive_region(project),
             }
         )
         for project in projects
