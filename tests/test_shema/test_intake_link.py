@@ -283,6 +283,37 @@ async def test_the_listing_shows_the_links_and_never_their_tokens(
     assert token not in response.text
 
 
+async def test_the_listing_narrows_to_the_project_asked_and_never_widens(
+    client, db_session, shema_app, headers, project
+) -> None:
+    """``projectId`` is read by its alias: two projects of one region, one of another."""
+    other = await make_shema_project(
+        db_session, project_id="kaingang-rs", region_key=ShemaRegionKey.SOUTH_AMERICA
+    )
+    other.location = "Brazil"
+    await db_session.commit()
+    await make_shema_project(db_session, project_id="wolof-dakar", region_key=ShemaRegionKey.AFRICA)
+    africa = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="africa-list@shema.test",
+        role_key="coordinator",
+        regions=[ShemaRegionKey.AFRICA],
+    )
+    await mint(client, await auth_header(db_session, africa), project_id="wolof-dakar")
+    await mint(client, headers, project_id="guarani-mbya")
+    await mint(client, headers, project_id="kaingang-rs")
+
+    everything = await client.get(LINKS, headers=headers)
+    narrowed = await client.get(LINKS, params={"projectId": "guarani-mbya"}, headers=headers)
+    outside = await client.get(LINKS, params={"projectId": "wolof-dakar"}, headers=headers)
+
+    assert {row["projectId"] for row in everything.json()} == {"guarani-mbya", "kaingang-rs"}
+    assert [row["projectId"] for row in narrowed.json()] == ["guarani-mbya"]
+    assert outside.status_code == 200
+    assert outside.json() == []
+
+
 async def test_an_unknown_token_is_refused(client, db_session, shema_app) -> None:
     assert (await client.get(f"{PREFIX}/intake/not-a-token-this-server-issued")).status_code == 404
 
