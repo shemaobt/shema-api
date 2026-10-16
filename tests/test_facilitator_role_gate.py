@@ -63,6 +63,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/facilitator/sessions"): {},
     ("GET", "/api/internalization-room/facilitator/questions"): {},
     ("GET", "/api/internalization-room/facilitator/questions/{question_id}/audio"): {},
+    ("GET", "/api/internalization-room/facilitator/questions/{question_id}/reply/audio"): {},
     ("GET", "/api/internalization-room/facilitator/questions/audio/{handle}"): {},
     ("POST", "/api/internalization-room/facilitator/questions/{question_id}/reply"): {
         "files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}

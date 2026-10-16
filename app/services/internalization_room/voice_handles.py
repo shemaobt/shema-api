@@ -106,7 +106,7 @@ def team_audio_url(key: str) -> str:
 
 
 def facilitator_audio_url(key: str) -> str:
-    """The address the facilitator's app is handed for a team's recorded question.
+    """The address the facilitator's app is handed for a team's recorded question or its reply.
 
     Served by the signed-in route, because a facilitator holds no device key.
     """
