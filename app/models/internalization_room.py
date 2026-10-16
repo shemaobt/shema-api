@@ -930,6 +930,15 @@ class SceneRehearsalsResponse(BaseModel):
     scene_rehearsals: list[SceneRehearsalView]
 
 
+class PassageSceneView(BaseModel):
+    scene_id: str
+    title: str
+
+
+class PassageScenesResponse(BaseModel):
+    scenes: list[PassageSceneView]
+
+
 class SceneSnapshotFrase(BaseModel):
     frase_id: str
     starts_ms: int

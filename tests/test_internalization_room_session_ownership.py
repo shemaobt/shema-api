@@ -96,6 +96,7 @@ COVERED = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/restart"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/send"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scenes"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/scene"),
     (
         "GET",
@@ -328,6 +329,7 @@ def cases(owned: Owned) -> list[dict]:
             expects="untranslated",
             data={"turn_id": "turno-da-cena"},
         ),
+        _case("passage-scenes", method="GET", path=f"/sessions/{s}/scenes"),
         _case(
             "scene-label",
             method="POST",
@@ -432,6 +434,7 @@ TAGS = [
     "scene-frase",
     "scene-restart",
     "scene-send",
+    "passage-scenes",
     "scene-label",
     "scene-frase-audio",
 ]
