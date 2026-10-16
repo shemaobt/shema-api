@@ -125,7 +125,7 @@ def configured(the_demo_team_is, demo: Team) -> Team:
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+async def room_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The room and the Desk on one app, because a demo team is read from both sides."""
     from fastapi import FastAPI
     from slowapi import _rate_limit_exceeded_handler
@@ -158,11 +158,20 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     limiter.reset()
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as c:
-        yield c
+    yield test_app
     limiter.reset()
+
+
+def a_caller_at(app: Any, address: str) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=ASGITransport(app=app, client=(address, 4321)), base_url="http://test"
+    )
+
+
+@pytest.fixture()
+async def client(room_app):
+    async with a_caller_at(room_app, "198.51.100.1") as c:
+        yield c
 
 
 # --- what the tablet, the reviewer and the facilitator do ---------------------------------
@@ -285,15 +294,19 @@ async def test_a_code_the_page_already_spent_is_refused_and_stays_on_the_demo_te
     assert (await the_link(client, device_id)).json()["project_id"] == configured.id
 
 
-async def test_a_code_typed_in_lower_case_with_spaces_is_spent_as_the_desk_would(
+async def test_a_code_typed_with_a_space_or_a_mobile_dash_in_lower_case_is_spent(
     client, configured: Team
 ) -> None:
-    device_id, code = await a_code_on_the_tablet(client)
+    spaced_device, spaced = await a_code_on_the_tablet(client)
+    dashed_device, dashed = await a_code_on_the_tablet(client)
 
-    spent = await typed_on_the_page(client, f"  {code.lower()} ")
+    by_space = await typed_on_the_page(client, f"  {spaced.lower().replace('-', ' ')} ")
+    by_dash = await typed_on_the_page(client, dashed.replace("-", "\u2013"))
 
-    assert spent.status_code == 200, spent.text[:300]
-    assert (await the_link(client, device_id)).json()["project_id"] == configured.id
+    assert by_space.status_code == 200, by_space.text[:300]
+    assert by_dash.status_code == 200, by_dash.text[:300]
+    assert (await the_link(client, spaced_device)).json()["project_id"] == configured.id
+    assert (await the_link(client, dashed_device)).json()["project_id"] == configured.id
 
 
 async def test_with_no_demo_team_the_page_answers_404_and_nothing_is_spent(
@@ -316,12 +329,15 @@ async def test_a_configured_id_that_names_no_team_is_no_demo_team(client, the_de
     assert (await the_link(client, device_id)).status_code == 204
 
 
-async def test_the_page_takes_ten_codes_a_minute_from_one_caller(client, configured: Team) -> None:
+async def test_the_page_takes_ten_codes_a_minute_whoever_sends_them(
+    client, room_app, configured: Team
+) -> None:
     for _ in range(10):
         assert (await typed_on_the_page(client, "AAA-AAAA")).status_code == 400
 
     device_id, code = await a_code_on_the_tablet(client)
-    eleventh = await typed_on_the_page(client, code)
+    async with a_caller_at(room_app, "203.0.113.9") as another:
+        eleventh = await typed_on_the_page(another, code)
 
     assert eleventh.status_code == 429
     assert (await the_link(client, device_id)).status_code == 204

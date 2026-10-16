@@ -20,12 +20,16 @@ nothing for it (ENG-1629).
   English HTML form with no login, no script and no external asset. The reviewer types the code
   the tablet shows, and `POST` of the same URL (form field `code`) spends it on the demo team
   through `claim_device`, the spend under the Desk's claim: single use, expiry, the same write
-  guard. The tablet's next poll of `link` finds it spent and collects its own credential. With
+  guard. The page reads the code as the tablet shows it: it keeps only the letters and digits
+  the reviewer typed, in capitals, and puts the hyphen back when seven are left, so a space or a
+  phone keyboard's dash in place of the hyphen still links. The tablet's next poll of `link` finds it spent and collects its own credential. With
   no demo team both answer 404.
 - Every refusal is one answer: 400 with "That claim code is not valid.". The Desk names three
   refusals because its caller is an authenticated facilitator. This caller is anonymous, and
   telling a spent code from an unknown one would tell it which codes exist.
-- The `POST` takes 10 codes a minute from one address, through the house limiter.
+- The `POST` takes 10 codes a minute in all, in one bucket for every caller, through the house
+  limiter. Not per address: the app trusts `X-Forwarded-For` from any host, so an address is
+  whatever the caller writes, and a bucket per address would cost a guesser nothing.
 - The demo team never calls a person. Each of its halts is attended by the server at once,
   with no one as `attended_by`: the session's blocking halt and its warning, and a tablet's halt
   with no session. The halt is still written and counted, so the room's history shows it.
@@ -48,9 +52,12 @@ nothing for it (ENG-1629).
 - While configured, anyone who finds the page can link a tablet to the demo team and run the
   voice at our cost.
 - Worse, anyone who guesses a live code of a real team's tablet still waiting for its
-  facilitator links that tablet to the demo team. The limit is per address, so it is a toll,
-  not a ceiling. So the setting is on only during a store review window, and unset after it.
-  A facilitator unlinks a stray tablet from the Desk as usual.
+  facilitator links that tablet to the demo team. The limit is a toll, not a ceiling: its bucket
+  lives in each instance's memory, so N instances take N times 10 codes a minute. So the setting
+  is on only during a store review window, and unset after it. A facilitator unlinks a stray
+  tablet from the Desk as usual.
+- Anyone who fills the bucket locks the page for everyone, the reviewer included, until the
+  minute passes. The reviewer is told 429 and types the code again later.
 - The tablet's refused approval raises a halt, which the server attends at once, so the
   reviewer's room resumes.
 - The demo team is an ordinary team: the Desk lists it under its own name, and Zerar cleans it.
