@@ -27,6 +27,17 @@ tolerated.** The artifact was produced over the **raw** export, where ``startDat
 stores a real ``date`` column cannot reproduce a parse failure and must not try. The frontend's
 own ``parity.test.ts`` records the same divergence from the other side, asserts it is exactly
 those eight records, and asserts nothing else moves — and so does this file.
+
+**The spellings are a second artifact, because of where the first one comes from (OBT-591).**
+``dataJsParity.json`` is the prototype's output, regenerated from ``data.js``, and the prototype
+knows the export's 25 country spellings and no other — so the Portuguese, Spanish and English
+synonyms the console and this server now list cannot ride in it without making it say something
+``data.js`` never said. ``countryRegion.json`` beside this file is
+``src/utils/__tests__/countryRegion.json`` of the same repository, copied byte for byte at
+:data:`SPELLINGS_VENDORED_FROM`: the console's ``COUNTRY_REGION`` and ``COUNTRY_SYNONYMS`` as
+data, which ``countryRegion.test.ts`` holds against ``src/constants/regions.ts`` over there and the
+last block of this file holds against ``app/utils/shema_derivations.py`` here. A spelling added on
+one side only fails on that side.
 """
 
 from __future__ import annotations
@@ -39,8 +50,14 @@ from typing import Any
 
 import pytest
 
-from app.db.models.shema_enums import ShemaHealthLevel, ShemaProjectStatus
-from app.utils.shema_derivations import derive, get_region
+from app.db.models.shema_enums import ShemaHealthLevel, ShemaProjectStatus, ShemaRegionKey
+from app.utils.shema_derivations import (
+    COUNTRY_REGION,
+    COUNTRY_SYNONYMS,
+    derive,
+    get_country,
+    get_region,
+)
 
 HERE = Path(__file__).parent
 
@@ -55,6 +72,13 @@ EXPORT: list[dict[str, Any]] = json.loads(
 )
 
 REFERENCE_DATE = date.fromisoformat(PARITY["referenceDate"])
+
+#: The commit of ``shemaobt/project-management-ecosystem`` ``countryRegion.json`` was copied from.
+SPELLINGS_VENDORED_FROM = "450bf061af1bfeb3885a202bd2e68de4ba77191d"
+
+SPELLINGS: dict[str, dict[str, str]] = json.loads(
+    (HERE / "countryRegion.json").read_text(encoding="utf-8")
+)
 
 #: The eight records the export dated as ``DD/MM/YYYY``. They are the whole of the divergence
 #: above, listed rather than computed so that a ninth one appearing is a failure and not a
@@ -253,3 +277,137 @@ def test_the_region_counts_are_the_ones_the_contract_publishes() -> None:
         "other": 2,
     }
     assert "europe" not in counts
+
+
+# --- how a spelling becomes a region (OBT-591) -------------------------------------------------
+
+#: The 25 countries of the map as OBT-591's decision states them: the export's spelling, the
+#: region it resolves to today, and the name in Portuguese, Spanish and English. Written by hand
+#: from the decision and not read off either table, so a spelling dropped from both the console
+#: and this server — which the vendored copy would never notice — fails here.
+THE_25: list[tuple[str, str, str, str, str]] = [
+    ("Brazil", "south-america", "Brasil", "Brasil", "Brazil"),
+    ("Peru", "south-america", "Peru", "Perú", "Peru"),
+    ("Colombia", "south-america", "Colômbia", "Colombia", "Colombia"),
+    ("Mexico", "north-america", "México", "México", "Mexico"),
+    ("Panama", "north-america", "Panamá", "Panamá", "Panama"),
+    ("United States", "north-america", "Estados Unidos", "Estados Unidos", "United States"),
+    ("Canada", "north-america", "Canadá", "Canadá", "Canada"),
+    ("Egypt", "africa", "Egito", "Egipto", "Egypt"),
+    ("Mozambique", "africa", "Moçambique", "Mozambique", "Mozambique"),
+    ("South Africa", "africa", "África do Sul", "Sudáfrica", "South Africa"),
+    ("South Sudan", "africa", "Sudão do Sul", "Sudán del Sur", "South Sudan"),
+    ("Sudan", "africa", "Sudão", "Sudán", "Sudan"),
+    ("Guinea-Bissau", "africa", "Guiné-Bissau", "Guinea-Bisáu", "Guinea-Bissau"),
+    (
+        "São Tomé e Príncipe",
+        "africa",
+        "São Tomé e Príncipe",
+        "Santo Tomé y Príncipe",
+        "São Tomé and Príncipe",
+    ),
+    ("Togo", "africa", "Togo", "Togo", "Togo"),
+    ("Uganda", "africa", "Uganda", "Uganda", "Uganda"),
+    ("India", "asia", "Índia", "India", "India"),
+    ("China", "asia", "China", "China", "China"),
+    ("Indonesia", "asia", "Indonésia", "Indonesia", "Indonesia"),
+    ("East Timor", "asia", "Timor-Leste", "Timor Oriental", "East Timor"),
+    ("Nepal", "asia", "Nepal", "Nepal", "Nepal"),
+    ("Australia", "oceania", "Austrália", "Australia", "Australia"),
+    ("Papua New Guinea", "oceania", "Papua-Nova Guiné", "Papúa Nueva Guinea", "Papua New Guinea"),
+    ("Fiji", "oceania", "Fiji", "Fiyi", "Fiji"),
+    ("Micronesia", "oceania", "Micronésia", "Micronesia", "Micronesia"),
+]
+
+#: The second standard form of a language that has two, which the table above has no column
+#: for: Spanish as the UN writes it beside the RAE, and English without the diacritics the UN drops.
+SECOND_FORMS: list[tuple[str, str]] = [
+    ("Guinea-Bissau", "africa"),
+    ("Sao Tome and Principe", "africa"),
+    ("Timor-Leste", "asia"),
+    ("Papua Nueva Guinea", "oceania"),
+    ("Fiji", "oceania"),
+]
+
+
+def test_the_vendored_spellings_say_where_they_came_from() -> None:
+    assert len(SPELLINGS_VENDORED_FROM) == 40 and not SPELLINGS_VENDORED_FROM.endswith("-dirty")
+    assert SPELLINGS.keys() == {"countries", "synonyms"}
+
+
+def test_the_server_lists_exactly_the_consoles_spellings() -> None:
+    """The DoD's *the same spellings as the server*, read from this side: both tables, entry for
+    entry. Compared as two dicts so a failure names the spelling that drifted."""
+    countries = {country: region.value for country, region in COUNTRY_REGION.items()}
+    synonyms = dict(COUNTRY_SYNONYMS)
+    assert countries == SPELLINGS["countries"]
+    assert synonyms == SPELLINGS["synonyms"]
+
+
+def test_every_spelling_the_console_knows_resolves_here_to_the_region_it_reads() -> None:
+    """The tables being equal is not the resolution being equal: this runs the reader."""
+    expected = dict(SPELLINGS["countries"])
+    expected.update(
+        {
+            spelling: SPELLINGS["countries"][country]
+            for spelling, country in SPELLINGS["synonyms"].items()
+        }
+    )
+    assert {spelling: get_region(spelling).value for spelling in expected} == expected
+
+
+def test_the_map_is_the_25_countries_of_the_export() -> None:
+    assert len(THE_25) == 25
+    assert {row[0] for row in THE_25} == COUNTRY_REGION.keys()
+
+
+@pytest.mark.parametrize(("export", "region", "pt", "es", "en"), THE_25, ids=[r[0] for r in THE_25])
+def test_each_country_resolves_alike_in_portuguese_spanish_and_english(
+    export: str, region: str, pt: str, es: str, en: str
+) -> None:
+    """The export's spelling resolves as it did before OBT-591, and the three names with it."""
+    assert get_region(export).value == region
+    assert {get_region(name).value for name in (pt, es, en)} == {region}
+
+
+@pytest.mark.parametrize(("spelling", "region"), SECOND_FORMS)
+def test_a_languages_second_standard_form_resolves_too(spelling: str, region: str) -> None:
+    assert get_region(spelling).value == region
+
+
+def test_a_synonym_names_a_country_of_the_map_and_never_shadows_one() -> None:
+    """A synonym points at an export spelling, so it can neither add a 26th country nor move one;
+    and a synonym equal to an export spelling would be an entry that changes nothing."""
+    assert set(COUNTRY_SYNONYMS.values()) <= COUNTRY_REGION.keys()
+    assert not COUNTRY_SYNONYMS.keys() & COUNTRY_REGION.keys()
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    ["Africa do Sul", "áfrica do sul", "ÁFRICA DO SUL", "África  do Sul", "south africa", "EUA"],
+)
+def test_a_spelling_is_listed_and_never_normalised(spelling: str) -> None:
+    """``docs/shema.md`` §4.9: recognised because written, exactly. Accent, case and spacing are
+    part of the spelling — a near miss is ``other``, which the Admin reads at the conference."""
+    assert get_region(spelling) is ShemaRegionKey.OTHER
+
+
+def test_a_synonym_moves_the_region_and_never_the_country_shown() -> None:
+    """The place is stored as typed, so a card, a facet and the prayer wall show the team's word."""
+    assert get_country("África do Sul") == "África do Sul"
+    assert get_region("África do Sul") is ShemaRegionKey.AFRICA
+
+
+@pytest.mark.parametrize(
+    ("location", "region"),
+    [
+        ("Cidade do Cabo, África do Sul", ShemaRegionKey.OTHER),
+        ("África do Sul, Cidade do Cabo", ShemaRegionKey.AFRICA),
+        ("Lima, Perú", ShemaRegionKey.OTHER),
+        ("Perú, Lima", ShemaRegionKey.SOUTH_AMERICA),
+    ],
+)
+def test_only_the_first_item_names_the_country(location: str, region: ShemaRegionKey) -> None:
+    """``docs/shema.md`` §6.1, unchanged by OBT-591: a city typed first falls to ``other`` even
+    when a country the map lists follows it."""
+    assert get_region(location) is region
