@@ -689,9 +689,12 @@ standard forms both are listed — Spanish as the RAE and the UN write it, Engli
 the diacritics the UN drops. So the rule above holds: `location` is stored as typed, the country a
 card or a facet shows is the one typed, and only `region_key` reads the synonym. A spelling the
 list does not have still falls to `other`, and the Admin reads that region before confirming
-(§6.11). The console's copy, `src/constants/regions.ts`, holds the same two tables, and §6.5's
-mechanism keeps them equal: `countryRegion.json`, emitted by the console and vendored byte for byte
-into `tests/test_shema/`, replayed by `test_parity.py`.
+(§6.11). The console's copy, `src/constants/regions.ts`, holds the same two tables under §6.5's
+mechanism: `countryRegion.json`, emitted by the console and vendored byte for byte into
+`tests/test_shema/`, which each side's test holds its own tables against (`test_parity.py` here).
+The file crosses by copy, which no test sees — a spelling changes in both repositories or not at
+all. The console's `getCountry` reads the first item that is not blank, as `countries_named`
+does, so a place reads alike on both sides.
 
 ### 4.10 Permissions / role_permissions — **Not usable**
 
@@ -1707,6 +1710,10 @@ not different.**
   copied byte for byte with a CI check against its source), applied to an acceptance artifact
   instead of a vocabulary. BE-05 owns the vendoring; every issue that implements a derivation
   extends the replay.
+- **`countryRegion.json` is the second artifact, and the only other one** (OBT-591): the
+  console's region tables — the export's 25 spellings and the synonyms listed for them — as
+  data. It cannot ride in `dataJsParity.json`, which is the prototype's output over the export
+  and knows no spelling the export does not hold; §4.9 says how a spelling becomes a region.
 - **Two of the nine are timezone traps and both are already documented failures on the
   frontend.** The year boundary is read **from the ISO date by field**, never through a
   `Date` (FE-44 §7.8 — it is what makes the ETEN year correct). And the progress stamp is
