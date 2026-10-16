@@ -163,6 +163,8 @@ def _item(
         state=_state(session, end.state),
         last_activity_at=as_utc(session.updated_at),
         ended_at=end.ended_at,
+        attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
+        attended_by=session.attended_by,
         turns=sum(
             1
             for line in session.messages or []

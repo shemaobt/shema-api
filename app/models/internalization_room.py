@@ -1417,21 +1417,19 @@ class SessionBoundaryTurnsResponse(BaseModel):
     turns: list[BoundaryTurn]
 
 
-class BeadState(StrEnum):
-    """Her three states: «engajado», «mencionado pelo guia» and «ainda não tocado».
+class SessionCoverageBead(BaseModel):
+    """One bead of a session's necklace, as the full necklace's `ElementCoverage` names it.
 
-    The words are the Desk's. The server serves these keys so the client never computes a state.
+    `scene` is the scene key the full necklace groups the bead under and null for a rule of
+    the whole passage; `status` is the recorded coverage value, one of the four, unfolded.
     """
 
-    ENGAGED = "engaged"
-    SURFACED = "surfaced"
-    UNTOUCHED = "untouched"
-
-
-class SessionCoverageBead(BaseModel):
     key: str
-    label: str
-    state: BeadState
+    kind: ElementKind
+    label_pt: str | None
+    label_en: str
+    scene: str | None
+    status: CoverageStatus
 
 
 class SessionCoverageGroup(BaseModel):
@@ -1445,9 +1443,8 @@ class SessionCoverageResponse(BaseModel):
     `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
     «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
     «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
-    listed. Each bead carries the map's element label as written, in the map's own English,
-    which is what her record shows (`e.label`). The Portuguese names of the beads live in
-    `labelled_elements`, which the Desk's session portrait (`team_sessions.py`) reads.
+    listed. Each bead carries both labels, its scene and its recorded status, so the Desk can
+    regroup a session's beads in the scene strands of the full necklace.
 
     `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
     coverage when the read happens by the code that renders it for the Guide: what the voice

@@ -42,8 +42,6 @@ from tests.canon_harness import the_canon_moves_on
 from tests.turn_harness import the_room_agent_is
 
 NEW_PIN = "a" * 40
-BEINGS = '"beings_in_scene": {\n        "entries": [\n'
-ELIMELECH = '          {"being_id": "B2", "role_in_scene": "DECEASED_KIN"},\n'
 IR = "/api/internalization-room"
 P = "P01"
 HER_KINDS = [
@@ -105,27 +103,27 @@ async def _coverage(
 
 
 def _labels(body: dict[str, Any]) -> dict[str, str]:
-    return {bead["key"]: bead["label"] for group in body["groups"] for bead in group["beads"]}
+    return {bead["key"]: bead["label_en"] for group in body["groups"] for bead in group["beads"]}
 
 
-async def test_the_beads_come_grouped_by_kind_in_her_order_each_with_the_maps_label(
+async def test_the_beads_come_grouped_by_kind_in_her_order_each_with_the_catalogues_label(
     client: httpx.AsyncClient, consultant: dict[str, str], session: IRSession
 ) -> None:
     body = await _coverage(client, consultant, session.id)
 
     assert [group["kind"] for group in body["groups"]] == HER_KINDS
     labels = _labels(body)
-    assert labels["L1:arc"] == "Level-1 arc"
+    assert labels["L1:arc"] == "The arc of the whole passage"
     assert labels["scene:S1"] == "Famine and exile to Moab"
     assert labels["being:S1:B2"] == "Elimelech"
-    assert labels["place:S1:PL1"] == "Bethlehem"
+    assert labels["place:S1:PL1"] == "Bethlehem of Judah"
 
 
 def _states(body: dict[str, Any]) -> dict[str, str]:
-    return {bead["key"]: bead["state"] for group in body["groups"] for bead in group["beads"]}
+    return {bead["key"]: bead["status"] for group in body["groups"] for bead in group["beads"]}
 
 
-async def test_each_bead_carries_one_of_her_three_states(
+async def test_each_bead_carries_the_status_its_coverage_recorded(
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,
@@ -138,11 +136,10 @@ async def test_each_bead_carries_one_of_her_three_states(
 
     assert states["scene:S1"] == "engaged"
     assert states["being:S1:B3"] == "surfaced"
-    assert states["being:S1:B2"] == "untouched"
-    assert set(states.values()) == {"engaged", "surfaced", "untouched"}
+    assert states["being:S1:B2"] == "not_encountered"
 
 
-async def test_a_bead_stored_at_the_retired_partial_state_reads_mentioned_and_no_old_word_appears(
+async def test_a_session_whose_coverage_recorded_an_element_as_partially_engaged_serves_that_bead_as_partially_engaged(  # noqa: E501
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,
@@ -151,14 +148,65 @@ async def test_a_bead_stored_at_the_retired_partial_state_reads_mentioned_and_no
     session.coverage_state = {"scene:S1": "partially_engaged", "scene:S2": "engaged"}
     await db_session.commit()
 
-    answer = await client.get(
-        f"{IR}/facilitator/sessions/{session.id}/coverage", headers=consultant
+    states = _states(await _coverage(client, consultant, session.id))
+
+    assert states["scene:S1"] == "partially_engaged"
+    assert states["scene:S2"] == "engaged"
+
+
+async def test_every_bead_of_a_session_on_a_passage_with_three_scenes_names_its_scene_and_grouping_them_by_scene_gives_the_full_necklaces_strands(  # noqa: E501
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    three = await open_ir_session(db_session, pericope="P03", project_id=team.id)
+    await db_session.commit()
+
+    body = await _coverage(client, consultant, three.id)
+    necklace = await client.get(
+        f"/api/facilitator/teams/{team.id}/coverage",
+        params={"pericope": "P03"},
+        headers=consultant,
     )
 
-    assert answer.status_code == 200, answer.text
-    assert _states(answer.json())["scene:S1"] == "surfaced"
-    for word in ("partially_engaged", "partial", "aflorado", "parcialmente", "not_encountered"):
-        assert word not in answer.text
+    assert necklace.status_code == 200, necklace.text
+
+    def strands(beads: list[dict[str, Any]]) -> dict[str | None, set[str]]:
+        grouped: dict[str | None, set[str]] = {}
+        for bead in beads:
+            grouped.setdefault(bead["scene"], set()).add(bead["key"])
+        return grouped
+
+    served = [bead for group in body["groups"] for bead in group["beads"]]
+    assert strands(served) == strands(necklace.json())
+    assert {"scene:S1", "scene:S2", "scene:S3", None} <= set(strands(served))
+
+
+async def test_a_sessions_beads_carry_the_elements_portuguese_and_english_labels(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    three = await open_ir_session(db_session, pericope="P03", project_id=team.id)
+    await db_session.commit()
+
+    body = await _coverage(client, consultant, three.id)
+    necklace = await client.get(
+        f"/api/facilitator/teams/{team.id}/coverage",
+        params={"pericope": "P03"},
+        headers=consultant,
+    )
+
+    wanted = {bead["key"]: (bead["label_pt"], bead["label_en"]) for bead in necklace.json()}
+    served = {
+        bead["key"]: (bead["label_pt"], bead["label_en"])
+        for group in body["groups"]
+        for bead in group["beads"]
+    }
+    assert served == wanted
+    assert served["scene:S1"][0] is not None
 
 
 class _RecordingGuide:
@@ -235,7 +283,7 @@ async def test_a_turn_that_engaged_an_element_shows_it_engaged_on_the_next_read(
     await apply_coverage(db_session, session.id, settled)
     after = await _coverage(client, consultant, session.id)
 
-    assert _states(before)["scene:S1"] == "untouched"
+    assert _states(before)["scene:S1"] == "not_encountered"
     assert "WORKED WITH BY THE TEAM (engaged): (nothing yet" in before["ledger"]
     assert _states(after)["scene:S1"] == "engaged"
     assert "WORKED WITH BY THE TEAM (engaged): S1 (1:1-2)\n" in after["ledger"]
@@ -268,7 +316,7 @@ async def test_a_passage_with_no_coverage_elements_is_flagged_apart_from_a_panor
 ) -> None:
     assert (await _coverage(client, consultant, session.id))["no_elements"] is False
 
-    monkeypatch.setattr(session_coverage, "elements_for", lambda pericope: ())
+    monkeypatch.setattr(session_coverage, "labelled_elements", lambda pericope: [])
     body = await _coverage(client, consultant, session.id)
 
     assert body["no_elements"] is True
@@ -316,9 +364,11 @@ async def test_a_reader_of_another_project_is_refused_as_the_other_reader_routes
     }
 
 
-def _the_kept_p03_names_elimelech(tree: Path) -> None:
-    (page,) = (tree / "vendor" / "meaning-coordinates").glob("P03-*.md")
-    page.write_text(page.read_text(encoding="utf-8").replace(BEINGS, BEINGS + ELIMELECH))
+def _the_kept_p03_calls_naomi_noemi(tree: Path) -> None:
+    labels = tree / "element-labels" / "ruth.json"
+    catalogue = json.loads(labels.read_text(encoding="utf-8"))
+    catalogue["P03"]["being:S1:B3"]["en"] = "Noemi"
+    labels.write_text(json.dumps(catalogue, ensure_ascii=False), encoding="utf-8")
 
 
 async def test_a_session_opened_under_an_older_canon_is_read_in_that_canon(
@@ -331,10 +381,9 @@ async def test_a_session_opened_under_an_older_canon_is_read_in_that_canon(
 ) -> None:
     older = await open_ir_session(db_session, pericope="P03", project_id=team.id)
     await db_session.commit()
-    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_names_elimelech)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_calls_naomi_noemi)
 
     body = await _coverage(client, consultant, older.id)
 
-    assert _labels(body)["being:S1:B2"] == "Elimelech"
-    assert "Elimelech" in body["ledger"]
-    assert _states(body)["being:S1:B2"] == "untouched"
+    assert _labels(body)["being:S1:B3"] == "Noemi"
+    assert _states(body)["being:S1:B3"] == "not_encountered"

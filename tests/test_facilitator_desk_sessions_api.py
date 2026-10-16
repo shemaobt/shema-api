@@ -693,3 +693,33 @@ async def test_a_passage_with_no_session_answers_an_empty_page(client, db_sessio
     answer = await read(client, headers, team_id=team.id, pericope="P09")
 
     assert answer == {"sessions": [], "next_cursor": None}
+
+
+async def test_a_session_attended_by_a_facilitator_shows_that_time_and_that_facilitator_on_its_sessoes_row(  # noqa: E501
+    client, db_session
+):
+    team = await a_team(db_session, "Equipe A")
+    user = await make_user(db_session, email="fac@example.com")
+    await make_project_user_access(db_session, team.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_facilitator_app_role(db_session, user.id)
+    headers = await auth_header(db_session, user)
+    session = await a_session(db_session, team)
+    attended = await room.attend(db_session, session, by=user.id)
+
+    (row,) = (await read(client, headers))["sessions"]
+
+    assert row["attended_by"] == user.id
+    assert datetime.fromisoformat(row["attended_at"]) == attended.attended_at.replace(tzinfo=UTC)
+
+
+async def test_a_session_never_attended_shows_no_attended_time_and_no_facilitator_on_its_sessoes_row(  # noqa: E501
+    client, db_session
+):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    await a_session(db_session, team)
+
+    (row,) = (await read(client, headers))["sessions"]
+
+    assert row["attended_at"] is None
+    assert row["attended_by"] is None
