@@ -12,6 +12,7 @@ import wave
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -29,6 +30,7 @@ from tests.hard_stretch_harness import MemoryStore
 IR = "/api/internalization-room"
 P = "P01"
 SAID = "a frase traduzida pela equipe"
+KEPT_APPEAL = "The kept appeal"
 
 
 def recording(seconds: float, tone: int) -> bytes:
@@ -45,6 +47,14 @@ def recording(seconds: float, tone: int) -> bytes:
 
 
 SCENE = recording(40, 1)
+
+
+def the_kept_p02_tells_its_appeals_as_one_scene(tree: Path) -> None:
+    told = tree / "vendor" / "meaning-map" / "P02-Ruth-1-6-14.md"
+    text = told.read_text(encoding="utf-8")
+    text = text.replace("### Scene 3 — Second appeal and the split", "")
+    text = text.replace("### Scene 2 — First appeal and refusal", f"### Scene 2 — {KEPT_APPEAL}")
+    told.write_text(text, encoding="utf-8")
 
 
 @dataclass

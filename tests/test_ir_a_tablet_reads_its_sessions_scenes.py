@@ -21,18 +21,13 @@ from tests.canon_harness import the_canon_moves_on
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_bucket_is_in_memory
-from tests.scene_rehearsal_harness import recording
+from tests.scene_rehearsal_harness import (
+    KEPT_APPEAL,
+    recording,
+    the_kept_p02_tells_its_appeals_as_one_scene,
+)
 
 NEW_PIN = "a" * 40
-KEPT_APPEAL = "The kept appeal"
-
-
-def _the_kept_p02_tells_its_appeals_as_one_scene(tree: Path) -> None:
-    told = tree / "vendor" / "meaning-map" / "P02-Ruth-1-6-14.md"
-    text = told.read_text(encoding="utf-8")
-    text = text.replace("### Scene 3 — Second appeal and the split", "")
-    text = text.replace("### Scene 2 — First appeal and refusal", f"### Scene 2 — {KEPT_APPEAL}")
-    told.write_text(text, encoding="utf-8")
 
 
 @pytest.fixture()
@@ -91,7 +86,7 @@ async def test_a_session_open_when_a_new_canon_is_published_reads_the_scenes_it_
 ) -> None:
     session_id = await a_session(db_session, "P02", language="en")
     the_canon_moves_on(
-        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_tells_its_appeals_as_one_scene
+        monkeypatch, tmp_path, NEW_PIN, keeping=the_kept_p02_tells_its_appeals_as_one_scene
     )
 
     assert await the_scenes(client, session_id) == [
