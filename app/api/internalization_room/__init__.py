@@ -6,6 +6,7 @@ from app.api.internalization_room import (
     back_translation,
     conversation,
     coverage_channel,
+    demo,
     devices,
     fixed_lines,
     golden_doors,
@@ -42,6 +43,7 @@ for _sub in (
     golden_doors,
     text_seam_back_translation,
     archives,
+    demo,
 ):
     for route in _sub.router.routes:
         router.routes.append(route)

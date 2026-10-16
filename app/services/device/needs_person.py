@@ -37,6 +37,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.device import Device
+from app.services.device.attended import visited
+from app.services.device.demo_team import is_the_demo_team
 from app.services.device.get_device import get_device
 from app.services.project.facilitated_scope import confined_to
 
@@ -88,10 +90,14 @@ async def record_needs_person(db: AsyncSession, device_id: str) -> tuple[datetim
     await db.commit()
     await db.refresh(device)
 
-    if device.needs_person_since is None:
+    since = device.needs_person_since
+    if since is None:
         raise ConflictError(NOT_LINKED)
+    if is_the_demo_team(device.project_id):
+        visited(device, by=None)
+        await db.commit()
 
-    return device.needs_person_since, device.project_id
+    return since, device.project_id
 
 
 async def clear_needs_person(db: AsyncSession, device_id: str) -> None:

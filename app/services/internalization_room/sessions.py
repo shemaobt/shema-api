@@ -36,6 +36,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room import PlayedTake
+from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -968,7 +969,10 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
     _a_new_ask(session, kind=HaltKind.BLOCKING)
-    return await _written(db, session, commit=True)
+    written = await _written(db, session, commit=True)
+    if is_the_demo_team(written.project_id):
+        return await attend(db, written, by=None)
+    return written
 
 
 async def raise_a_warning(
@@ -982,6 +986,8 @@ async def raise_a_warning(
     """
     _a_new_ask(session, kind=HaltKind.WARNING)
     session.warned_at = datetime.now(UTC)
+    if is_the_demo_team(session.project_id):
+        session.attended_at = session.warned_at
     return await _written(db, session, commit=commit)
 
 
@@ -1054,7 +1060,7 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     return session.person_arrived_at
 
 
-async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
+async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRSession:
     """A facilitator says they went to this room, which ends every halt standing.
 
     **Both kinds, and that had to be decided rather than assumed.** A warning refuses nothing
