@@ -36,6 +36,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room import PlayedTake
+from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -968,6 +969,10 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
     _a_new_ask(session, kind=HaltKind.BLOCKING)
+    if await is_the_demo_team(db, session.project_id):
+        await db.flush()
+        await db.refresh(session, ["status", "halts_raised"])
+        return await attend(db, session, by=None)
     return await _written(db, session, commit=True)
 
 
@@ -982,6 +987,8 @@ async def raise_a_warning(
     """
     _a_new_ask(session, kind=HaltKind.WARNING)
     session.warned_at = datetime.now(UTC)
+    if await is_the_demo_team(db, session.project_id):
+        _visited(session, by=None)
     return await _written(db, session, commit=commit)
 
 
@@ -1054,7 +1061,7 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     return session.person_arrived_at
 
 
-async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
+async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRSession:
     """A facilitator says they went to this room, which ends every halt standing.
 
     **Both kinds, and that had to be decided rather than assumed.** A warning refuses nothing
@@ -1078,16 +1085,23 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
     because somebody noted a visit is not. ``lifted_halt`` is what separates the two cases,
     and it is written here rather than worked out later because afterwards there is nothing
     left to work it out from.
+
+    ``by`` is None when nobody went: the server attends a demo team's halt itself (ADR 0064).
     """
+    _visited(session, by=by)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def _visited(session: IRSession, *, by: str | None) -> None:
+    """What a visit writes, leaving the transaction open: the stamp, and the lift."""
     if session.attended_at is None:
         session.attended_at = datetime.now(UTC)
         session.attended_by = by
     if session.status is IRSessionStatus.NEEDS_PERSON:
         session.lifted_halt = HaltKind.BLOCKING.value
         session.status = halt.a_lift_restores()
-    await db.commit()
-    await db.refresh(session)
-    return session
 
 
 async def unattend(db: AsyncSession, session: IRSession) -> IRSession:

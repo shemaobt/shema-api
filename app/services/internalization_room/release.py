@@ -44,6 +44,7 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.language import Language
 from app.db.models.project import Project
+from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -467,6 +468,8 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
+    if await is_the_demo_team(db, session.project_id):
+        raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     telling_back = back_translation_of(session)
     stretches = await final_segments(db, session.id)
