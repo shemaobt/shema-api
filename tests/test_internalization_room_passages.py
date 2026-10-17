@@ -213,6 +213,34 @@ async def test_every_passage_the_wheel_offers_says_its_own_kind(
     assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
 
 
+async def test_each_passage_carries_its_reference_as_the_maps_heading_writes_it(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
+
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
+
+    by_pericope = {view.pericope: view.reference for view in answer.passages}
+    assert by_pericope["P01"] == "Ruth 1:1–5"
+    assert by_pericope["P06"] == "Ruth 2:8-16"
+
+
+async def test_the_panorama_carries_no_reference(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute, o livro")
+
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
+
+    panorama = answer.passages[0]
+    assert panorama.kind == "panorama"
+    assert panorama.reference is None
+
+
 async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
