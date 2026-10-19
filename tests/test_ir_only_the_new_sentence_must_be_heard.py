@@ -40,6 +40,7 @@ async def _laid_in(
     store: MemoryStore,
     *,
     heard_before: bool,
+    sentence: float = 1.0,
 ) -> tuple[str, str, str]:
     session, (one, two), ((_, middle, _), _) = await rehearsed_in_wav(
         db, store, [[(0, 1000), (1000, 2000), (2000, 3000)], [(0, 2000)]]
@@ -54,7 +55,7 @@ async def _laid_in(
         PlayedTake(take_id=two.id, played_ranges=[(0, 2000)], clip_duration_ms=2000),
     ]
     await save_back_translation(db, session, state)
-    laid = await re_record(client, session.id, middle.id, spoken(1.0))
+    laid = await re_record(client, session.id, middle.id, spoken(sentence))
     return session.id, laid.json()["segments"][1]["take_id"], two.id
 
 
@@ -75,6 +76,10 @@ async def test_a_part_heard_before_needs_only_its_new_sentence_heard(
 ) -> None:
     session_id, laid, other = await _laid_in(client, db_session, store, heard_before=True)
 
+    kept = await stored_telling_back(db_session, await get_session(db_session, session_id))
+    assert unheard_parts(kept, [laid, other]) == [laid], (
+        "a frase nova apagava o que a equipe já tinha ouvido da outra parte"
+    )
     almost = await _unheard_after_playing(db_session, session_id, laid, other, [(1000, 1800)])
     short = await _unheard_after_playing(db_session, session_id, laid, other, [(1000, 1650)])
 
@@ -96,3 +101,17 @@ async def test_a_part_never_heard_before_is_heard_whole_after_the_lay_in(
         "uma parte que ninguém ouviu passava como ouvida por causa da frase nova"
     )
     assert whole == []
+
+
+async def test_a_long_new_sentence_is_heard_with_at_most_three_quarters_of_a_second_unplayed(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session_id, laid, other = await _laid_in(
+        client, db_session, store, heard_before=True, sentence=2.0
+    )
+
+    almost = await _unheard_after_playing(db_session, session_id, laid, other, [(1000, 2700)])
+    short = await _unheard_after_playing(db_session, session_id, laid, other, [(1000, 2600)])
+
+    assert almost == []
+    assert short == [laid], "uma frase longa passava como ouvida com mais de 0,75 s por tocar"

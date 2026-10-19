@@ -68,3 +68,19 @@ def test_the_audio_before_and_after_the_sentence_is_the_same_byte_for_byte() -> 
     assert laid[-RATE:] == after, "o áudio depois da frase mudava com a emenda"
     assert len(laid) == int(3.4 * RATE)
     assert spliced.ends_ms == 2400, "a frase nova não terminava onde a emenda a pôs"
+
+
+def test_the_new_sentence_fades_in_and_out_inside_itself_only() -> None:
+    part = [1500] * (3 * RATE)
+
+    laid = _samples(
+        splice_sentence(_pcm(_wav(part)), 1000, 2000, _pcm(_wav(_seconds(1.0, 9000)))).audio
+    )
+
+    assert (laid[RATE - 1], laid[RATE], laid[RATE + 64], laid[RATE + 128]) == (
+        1500,
+        0,
+        4500,
+        9000,
+    ), "a frase nova entrava sem rampa, com um estalo na emenda"
+    assert (laid[2 * RATE - 1], laid[2 * RATE]) == (0, 1500)

@@ -330,3 +330,19 @@ async def test_a_frase_of_a_part_recorded_again_whole_takes_no_sentence(
     ), "uma frase de uma parte já regravada inteira recebia uma frase nova"
     assert store.objects == kept
     assert [one.take_id for one in await final_segments(db_session, session.id)] == standing
+
+
+async def test_a_sentence_id_already_laid_in_is_not_sent_again_for_another_frase(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((first, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    recorded = spoken(1.0)
+    await re_record(client, session.id, middle.id, recorded, sentence_id="sentence-0008")
+
+    refused = await re_record(client, session.id, first.id, recorded, sentence_id="sentence-0008")
+
+    assert (refused.status_code, refused.json().get("code")) == (409, "SENTENCE_ID_REUSED"), (
+        "o mesmo id numa outra frase respondia como se ela tivesse recebido a frase nova"
+    )
