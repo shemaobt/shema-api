@@ -2,6 +2,7 @@ from typing import Any
 
 import pytest
 
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.moment import _described, _Line, moment_step
 
 SCENES = ["S1", "S2", "S3", "S4"]
@@ -455,3 +456,42 @@ def test_her_closing_opens_the_next_scene_once_its_marked_rehearsal_came_back() 
         "o ensaio marcado da cena 2 tinha voltado e o fechamento não abriu a cena 3"
     )
     assert (step.by, step.ignored) == (["part_closing"], [])
+
+
+@pytest.mark.parametrize("scene", [None, "S9"], ids=["unmarked", "a label the passage lacks"])
+def test_her_closing_opens_the_next_scene_when_an_unmarked_rehearsal_arrives_as_the_turn(
+    scene: str | None,
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.after.as_json() == {"at": "internalization", "part": 3}, (
+        "o ensaio sem cena chegou neste turno e o fechamento não abriu a cena 3"
+    )
+
+
+@pytest.mark.parametrize("scene", [None, "S1"], ids=["unmarked", "another scene"])
+def test_her_closing_stays_in_the_articulation_after_an_earlier_rehearsal_not_marked_for_it(
+    scene: str | None,
+) -> None:
+    heard = [
+        {
+            "role": "guide",
+            "text": "",
+            "scene_rehearsal": _rehearsed(scene),
+            "moment": {"after": SCENE_TWO_PRACTISED},
+        },
+        {"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}},
+    ]
+
+    step = moment_step(heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.after.as_json()["part"] == 2, (
+        "um ensaio que não era da cena 2 fez o fechamento abrir a cena 3"
+    )

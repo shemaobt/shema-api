@@ -237,12 +237,15 @@ def moment_step(
     parts = len(scenes)
     reached = sent_scene_ids(messages, arriving.scene if arriving else None)
     back = {scenes.index(scene) + 1 for scene in reached if scene in scenes}
+    unmarked = arriving is not None and arriving.scene not in scenes
     after = before
     by: list[Cause] = []
     ignored: list[str] = []
     earlier = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
-        declined = _declined(after, line, parts=parts, earlier=earlier, back=back)
+        declined = _declined(
+            after, line, parts=parts, earlier=earlier, back=back, unmarked=unmarked
+        )
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
         if declined:
             ignored.append(f"{_described(line)}: {declined}")
@@ -271,7 +274,7 @@ def _described(line: _Line) -> str:
 
 
 def _declined(
-    moment: Moment, line: _Line, *, parts: int, earlier: bool, back: set[int]
+    moment: Moment, line: _Line, *, parts: int, earlier: bool, back: set[int], unmarked: bool
 ) -> str | None:
     """Her `step()` reasons for a line it declines, in her order and her words (`moment.ts`
     :149-189), for the Observation Room. Her closing in an Articulation is declined for want of
@@ -293,7 +296,7 @@ def _declined(
     if line.cause == "part_closing" and moment.at == "articulation" and moment.part is not None:
         if moment.part >= parts:
             return "after the last part"
-        if moment.part not in back:
+        if not unmarked and moment.part not in back:
             return f"no scene rehearsal of part {moment.part} has come back"
     if line.cause == "familiarization_closing" and moment.at != "familiarization":
         return "outside the Familiarization"
