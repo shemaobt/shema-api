@@ -185,7 +185,7 @@ async def replace(
     if not text.strip():
         raise WordlessTelling()
 
-    crossed = await room.capture_and_note_a_hard_stretch(
+    _, crossed = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,

@@ -29,7 +29,6 @@ from app.services.internalization_room.nudge_channel import nudge, nudge_stretch
 from app.services.internalization_room.segments import (
     refuse_a_slice_that_is_not_one,
     refuse_a_telling_over_part_of_a_frase,
-    sits_at,
 )
 from app.services.internalization_room.takes import (
     current_parts,
@@ -156,7 +155,7 @@ async def add_chunk(
     )
     if not text.strip():
         raise WordlessTelling()
-    warned = await room.capture_and_note_a_hard_stretch(
+    captured, warned = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,
@@ -177,9 +176,7 @@ async def add_chunk(
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
-        frase=next(
-            numbers[one.id] for one in standing if sits_at(one, rehearsal.id, starts_ms, ends_ms)
-        ),
+        frase=numbers.get(captured.id),
     )
 
 

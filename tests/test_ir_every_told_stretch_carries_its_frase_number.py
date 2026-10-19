@@ -251,3 +251,29 @@ async def test_after_the_translation_starts_over_the_numbering_starts_over_with_
     )
     read = await _segments_of_the_read(client, session.id)
     assert [one.get("frase") for one in read] == [1, 2]
+
+
+async def test_a_first_telling_sent_at_an_untold_pieces_address_is_answered_with_its_own_number(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    nothing_is_read_ahead(monkeypatch)
+    the_transcriber_says(monkeypatch, ["a metade que faltava, contada de volta"])
+    session, _parts = await rehearsed_in_parts(db_session, 2)
+    standing = await final_segments(db_session, session.id)
+    tail = await a_piece_still_to_be_told(db_session, session, standing[0])
+
+    told = await _tell(
+        client,
+        session.id,
+        tail.take_id,
+        starts_ms=tail.starts_ms,
+        ends_ms=tail.ends_ms,
+        retelling=False,
+    )
+
+    assert told.status_code == 200, told.text
+    assert told.json().get("frase") == 2, (
+        "a frase contada no endereço de um trecho por contar derrubava a resposta, depois de"
+        " o trecho já estar guardado"
+    )
