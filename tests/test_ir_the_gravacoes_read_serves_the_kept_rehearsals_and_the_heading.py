@@ -23,6 +23,7 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.release_harness import ensaio_take
 
 IR = "/api/internalization-room"
 P = "P01"
@@ -337,3 +338,51 @@ async def test_a_session_a_zerar_archived_lists_its_own_zerar_and_not_the_live_w
         ("Palavras de S1", False),
         ("Palavras de S2", True),
     ]
+
+
+async def _recorded(
+    db: AsyncSession, session: IRSession, team: Project, ordinals: list[int | None]
+) -> None:
+    for number, ordinal in enumerate(ordinals):
+        db.add(
+            ensaio_take(session.id, ordinal=ordinal, sha256=str(number) * 64, project_id=team.id)
+        )
+    await db.commit()
+
+
+async def test_a_passage_recorded_with_no_part_number_is_told_whole(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _recorded(db_session, session, team, [None])
+
+    body = await _read(client, consultant, session.id)
+
+    assert body["recording_grain"] == "whole"
+
+
+async def test_a_passage_recorded_in_numbered_parts_is_told_in_parts(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _recorded(db_session, session, team, [1, 2])
+
+    body = await _read(client, consultant, session.id)
+
+    assert body["recording_grain"] == "parts"
+
+
+async def test_a_session_that_recorded_nothing_claims_no_grain(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+) -> None:
+    body = await _read(client, consultant, session.id)
+
+    assert body["recording_grain"] is None

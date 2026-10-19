@@ -13,6 +13,7 @@ from app.models.internalization_room import (
     MotherTongueTakesResponse,
 )
 from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
+from app.services.internalization_room.release import _recording_grain
 from app.services.internalization_room.session_turns import TeamTurn, team_turn_of
 from app.services.internalization_room.takes import (
     TakeStore,
@@ -57,7 +58,10 @@ async def mother_tongue_takes_of(
             )
         )
     return MotherTongueTakesResponse(
-        session_id=session.id, takes=rows, kept_rehearsals=await kept_rehearsals_of(db, session)
+        session_id=session.id,
+        takes=rows,
+        kept_rehearsals=await kept_rehearsals_of(db, session),
+        recording_grain=_recording_grain(parts) if parts else None,
     )
 
 
