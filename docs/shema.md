@@ -1886,6 +1886,17 @@ this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor
 >   the box's refusals say `NOT_SHARED` on the wire and differ in the log, as the item's do.
 >   **The two surfaces walk the same gates in the same order** (`pending_image_gates`), so the
 >   flag cannot reopen what the route closes. No migration: the flag is computed.
+> - **The inbox says when the name is not the language's own** (OBT-600, 19/oct/2026 — API-PRIV-041
+>   of the E2E pass of 14/oct). `GET /forms/submissions` and `GET /forms/submissions/{id}` print the
+>   name off the project, never the archived copy, through `language_name_for` (§6.4, OBT-560) — so
+>   for the OBT Lab, on a sensitive project with no public name, the region key. The row did not say
+>   so, and the console printed *africa* in the inbox and in *Quem ainda não reportou* where every
+>   other surface says *Projeto sensível — África*. Each row now carries `languageNameWithheld`, by
+>   the predicate the leaving shapes use (`reads_the_truth`): `true` for the OBT Lab on a withheld
+>   project, whether the name is the public one or the key; `false` for coordination, for the
+>   Resource Circle (OBT-571) and on an open project. `as_received` is the one place the row is
+>   named, so the rows the two import routes answer carry it too. No rule is new: OBT-560's, carried
+>   to a path that is not a shape (`tests/test_shema/test_inbox_name.py`, per reader).
 >
 > - **The intake-link list narrows by `?projectId=`** (OBT-589, 16/oct/2026). `GET /api/shema/intake-links`
 >   read the filter as `project_id`, a name no client sends, so the list came back whole and each

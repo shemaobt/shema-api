@@ -10,10 +10,11 @@ blocking the team — are actually read by the person who decides what to do abo
 the query instead of beside it, so a later ``LIMIT`` cannot page past a scope.
 
 **Nothing here is a leaving shape and nothing here names a place.** ``ReceivedSubmission`` is
-FE-44's frozen six keys plus two; the detail adds the form and the answers. None of them
+FE-44's frozen six keys plus three; the detail adds the form and the answers. None of them
 declares a field of a place, a base or a contact, so BE-04's route audit has nothing to hold —
 which is a fact about the shape rather than an exemption, and it is why this module adds no
-line to ``COORDINATION_ROUTES``.
+line to ``COORDINATION_ROUTES``. The language's name is the one key that can name a place, and
+it is read for the reader by :func:`as_received`, with the bit that says so (OBT-560, OBT-600).
 
 **An answer the import applies is readable on the record, so this read does not serve it — and
 that sentence is only true once the import has run.** The rule is the second half, and it is
@@ -90,20 +91,35 @@ from app.utils.stored_time import as_utc
 
 
 def as_received(
-    submission: ShemaSubmission, definition_version: int, language_name: str
+    submission: ShemaSubmission,
+    definition_version: int,
+    project: ShemaProject,
+    readership: Readership,
 ) -> ReceivedSubmission:
-    """One row on the wire — the kind is a constant because only the Pulse is archivable.
+    """One row on the wire, named for whoever reads it — the kind is a constant because only the
+    Pulse is archivable.
 
     ``kind`` is read off :data:`~app.utils.shema_forms.PULSE_KIND` rather than off a column,
     because there is no column: BE-02 left it out so that a table with one value could not
     invite a second, and a server that archived a ``health`` submission would have landed a
     kind that by definition never travelled (FE-44 §5.7).
+
+    **The name is read off the project, never the archived copy** (OBT-560). The archive keeps
+    the name the Pulse arrived under, and for a sensitive project that name can name the place:
+    OBT Lab reads this inbox and is not coordination. **And the row says when it is not the
+    language's own** (OBT-600) — ``languageNameWithheld``, by ``reads_the_truth``, the predicate
+    ``language_name_for`` answers the name by — so a screen handed the region key says *Projeto
+    sensível — África* instead of printing *africa*, as it does for every leaving shape.
+    ``readership`` is asked for rather than defaulted: every caller has one, and the row is the
+    one place the name is decided.
     """
+    reader = readership.reader_of(project.region_key)
     return ReceivedSubmission(
         id=submission.id,
         kind=PULSE_KIND,
         project_id=submission.project_id,
-        language_name=language_name,
+        language_name=language_name_for(project, reader),
+        language_name_withheld=not reads_the_truth(project, reader),
         submitted_by=submission.submitted_by,
         received_at=as_utc(submission.received_at).date(),
         definition_version=definition_version,
@@ -177,19 +193,9 @@ async def list_submissions(
     if project_id is not None:
         stmt = stmt.where(ShemaSubmission.project_id == project_id)
     return [
-        as_received(submission, version, inbox_name(project, readership))
+        as_received(submission, version, project, readership)
         for submission, version, project in (await db.execute(stmt)).all()
     ]
-
-
-def inbox_name(project: ShemaProject, readership: Readership) -> str:
-    """The name this inbox may print — read off the project, never the archived copy (OBT-560).
-
-    The archive keeps the name the Pulse arrived under, and for a sensitive project that name can
-    name the place: OBT Lab reads this inbox and is not coordination. ``readership`` defaults to
-    nobody coordinating, so a caller that forgets it prints less, never more.
-    """
-    return language_name_for(project, readership.reader_of(project.region_key))
 
 
 async def read_submission(
@@ -225,7 +231,7 @@ async def read_submission(
 
     submission, version, project = row
     definition = await db.get(ShemaFormDefinition, submission.definition_id)
-    received = as_received(submission, version, inbox_name(project, readership))
+    received = as_received(submission, version, project, readership)
     reads_text = reads_the_truth(project, readership.reader_of(project.region_key))
     answers = archived_answers(submission)
     return ReceivedSubmissionDetail(

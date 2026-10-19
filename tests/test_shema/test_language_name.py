@@ -23,10 +23,11 @@ import pytest
 import app.models
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema_form import ShemaSubmission
 from app.models.shema_privacy import NAME_FIELDS, LeavingShape, ShemaReader
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import NO_COORDINATION, Readership, RegionScope
-from app.services.shema.read_submission import inbox_name
+from app.services.shema.read_submission import as_received
 
 for _module in pkgutil.iter_modules(app.models.__path__):
     if _module.name.startswith("shema"):
@@ -172,11 +173,27 @@ def test_the_paths_that_are_not_shapes_follow_the_same_rule() -> None:
     assert language_name_for(_project(PUBLIC, sensitive=False), ShemaReader.OUTSIDE) == REAL
 
 
+def _inbox_row(project: ShemaProject, readership: Readership) -> tuple[str, bool]:
+    """The name an inbox row prints, and its bit — off the project, never the archived copy."""
+    submission = ShemaSubmission(
+        id="s-1",
+        project_id=project.id,
+        language_name=REAL,
+        submitted_by="",
+        received_at=datetime(2026, 10, 14, tzinfo=UTC),
+    )
+    row = as_received(submission, 1, project, readership)
+    return row.language_name, row.language_name_withheld
+
+
 def test_the_inbox_prints_the_name_its_reader_may_read() -> None:
-    """OBT Lab reads the Pulse inbox and is not coordination; a readership is per region."""
-    assert inbox_name(_project(PUBLIC), NO_COORDINATION) == PUBLIC
+    """OBT Lab reads the Pulse inbox and is not coordination; a readership is per region. The row
+    says when the name is not the language's own, as a shape does (OBT-600)."""
     everywhere = Readership(coordination=RegionScope(global_=True, regions=frozenset()))
-    assert inbox_name(_project(PUBLIC), everywhere) == REAL
+    assert _inbox_row(_project(PUBLIC), NO_COORDINATION) == (PUBLIC, True)
+    assert _inbox_row(_project(None), NO_COORDINATION) == (ShemaRegionKey.AFRICA.value, True)
+    assert _inbox_row(_project(PUBLIC), everywhere) == (REAL, False)
+    assert _inbox_row(_project(PUBLIC, sensitive=False), NO_COORDINATION) == (REAL, False)
 
 
 @pytest.mark.parametrize("shape", _shapes(), ids=lambda shape: shape.__name__)
