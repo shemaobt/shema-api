@@ -225,6 +225,7 @@ class LaidInSentence(BaseModel):
     ends_ms: int
     sha256: str
     storage_key: str
+    heard_before: bool
 
 
 class BackTranslationState(BaseModel):
@@ -460,7 +461,29 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
         and entry.clip_duration_ms
         and played_ranges_cover_clip(entry.played_ranges, entry.clip_duration_ms)
     }
-    return sorted(set(rehearsal_take_ids) - heard)
+    laid = {sentence.take_id: sentence for sentence in state.sentences}
+    played = {entry.take_id: entry.played_ranges for entry in state.played_by_take}
+
+    def is_heard(take_id: str) -> bool:
+        sentence = laid.get(take_id)
+        if sentence is None:
+            return take_id in heard
+        return (sentence.heard_before or take_id in heard) and _stretch_heard(
+            played.get(take_id, []), sentence.starts_ms, sentence.ends_ms
+        )
+
+    return sorted(take_id for take_id in set(rehearsal_take_ids) if not is_heard(take_id))
+
+
+def _stretch_heard(played: list[tuple[int, int]], starts_ms: int, ends_ms: int) -> bool:
+    covered, reach = 0, starts_ms
+    for start, end in sorted(played):
+        since, until = max(start, reach), min(end, ends_ms)
+        if until > since:
+            covered += until - since
+            reach = until
+    length = ends_ms - starts_ms
+    return length - covered <= min(PLAYBACK_TOLERANCE_MS, length / 2)
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own

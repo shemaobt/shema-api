@@ -12,6 +12,7 @@ from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRT
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     LaidInSentence,
+    unheard_parts,
 )
 from app.services.internalization_room.fail_safe import her_line
 from app.services.internalization_room.languages import room_language
@@ -165,6 +166,7 @@ async def lay_in_a_sentence(
             one.ends_ms += shift
         one.take_id = take.id
     state = back_translation_of(session)
+    heard_before = not unheard_parts(state, [part.id])
     state.sentences.append(
         LaidInSentence(
             sentence_id=sentence_id,
@@ -175,6 +177,7 @@ async def lay_in_a_sentence(
             ends_ms=spliced.ends_ms,
             sha256=raw.sha256,
             storage_key=raw.storage_key,
+            heard_before=heard_before,
         )
     )
     await _unchecked(state)
