@@ -150,6 +150,23 @@ class RecordVersionConflict(ConflictError):
         self.expected = expected
 
 
+class ImpossibleDates(ValidationError):
+    """A finish before a beginning — the 400 it always was, carrying the field it is about.
+
+    Its own exception for :class:`RecordVersionConflict`'s reason: the router is what puts the
+    body on the wire, and the repository's ``BAD_REQUEST`` is a sentence the console cannot
+    place. Measured in the E2E run of 14/oct/2026 (OBT-601): the ficha said *recusa sem campo*
+    and stayed on the tab the coordinator was on, where every field error FastAPI raises lands
+    them on the field. :attr:`errors` is that same ``{type, loc, msg}``, located in the record;
+    the router puts it under ``body``. A caller that does not render it — the import, the Pulse
+    — answers the plain 400 with the sentence, which is what ``str()`` is.
+    """
+
+    def __init__(self, detail: str, errors: list[dict[str, Any]]) -> None:
+        super().__init__(detail)
+        self.errors = errors
+
+
 async def _conflict(
     db: AsyncSession, project: ShemaProject, expected: int, readership: Readership
 ) -> RecordVersionConflict:
@@ -277,15 +294,35 @@ def _refuse_impossible_dates(merged: dict[str, Any]) -> None:
     one of them: 8 export records carry a ``start_date``, none carries a ``deadline``, and
     ``getDeadlineInfo`` already classifies an overdue one as a state the screen shows rather
     than an error. What is refused is a finish before a beginning.
+
+    **The refusal names the field it is about** (OBT-601), by the client's own key — ``deadline``
+    is spelt the same on the wire and in the column. The located message says what is wrong and
+    not the value it refused, as ``app/api/shema/_routing.py`` asks of this module's validators;
+    the sentence keeps both dates, as it always has.
     """
     start = merged.get("start_date")
-    problems = [
-        f"{label} {value.isoformat()} is before the start date {start.isoformat()}"
+    if not isinstance(start, date):
+        return
+    late = [
+        (label, value)
         for label, value in (("deadline", merged.get("deadline")),)
-        if isinstance(start, date) and isinstance(value, date) and value < start
+        if isinstance(value, date) and value < start
     ]
-    if problems:
-        raise ValidationError("; ".join(problems))
+    if late:
+        raise ImpossibleDates(
+            "; ".join(
+                f"{label} {value.isoformat()} is before the start date {start.isoformat()}"
+                for label, value in late
+            ),
+            [
+                {
+                    "type": "date_order",
+                    "loc": [label],
+                    "msg": f"before the start date ({start.isoformat()})",
+                }
+                for label, _ in late
+            ],
+        )
 
 
 def _stamp_completion(project: ShemaProject, completed: date | None) -> list[FieldChange]:

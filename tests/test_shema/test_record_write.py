@@ -552,15 +552,69 @@ async def test_a_record_may_still_carry_more_translated_than_its_scope(
     assert response.json()["derived"]["progress"] == pytest.approx(624.0)
 
 
-async def test_a_deadline_before_the_start_is_refused(client, db_session, headers) -> None:
+#: The refusal of a deadline before a start of 2026-01-10, located as the console places a field
+#: error: the record is the body, and the message says what is wrong and not what was sent.
+DEADLINE_BEFORE_THE_START = {
+    "type": "date_order",
+    "loc": ["body", "deadline"],
+    "msg": "before the start date (2026-01-10)",
+}
+
+
+async def test_a_deadline_before_the_start_is_refused_on_its_field(
+    client, db_session, headers
+) -> None:
+    """OBT-601: the sentence stays where it always was, and the field travels beside it.
+
+    A deadline sent alone is read against the start the row already holds, so the refusal is the
+    service's and not the body model's — and it used to leave as a sentence the ficha could not
+    place, which said *recusa sem campo* and stayed on the tab the coordinator was on.
+    """
     created = await _create(client, headers, startDate="2026-01-10")
     response = await client.patch(
         f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"deadline": "2025-12-01"},
         headers={**headers, "If-Match": _etag(created)},
     )
-    assert response.status_code == 400
-    assert "before the start date" in response.text
+
+    assert response.status_code == 400, response.text
+    assert response.json() == {
+        "detail": "deadline 2025-12-01 is before the start date 2026-01-10",
+        "code": "BAD_REQUEST",
+        "errors": [DEADLINE_BEFORE_THE_START],
+    }
+    stored = await db_session.get(ShemaProject, "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+    assert (stored.deadline, stored.version) == (None, 1)
+
+
+async def test_a_deadline_on_or_after_the_start_is_written(client, headers) -> None:
+    """The other half of PME-FIC-019: only a finish before a beginning is refused."""
+    created = await _create(client, headers, startDate="2026-01-10")
+    response = await client.patch(
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        json={"deadline": "2026-01-10"},
+        headers={**headers, "If-Match": _etag(created)},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["deadline"] == "2026-01-10"
+
+
+async def test_a_create_with_its_deadline_before_its_start_is_refused_on_its_field(
+    client, db_session, headers
+) -> None:
+    """A new record's ficha saves through the ``POST``, and its refusal lands the same way.
+
+    Answered by the router and not by a handler, so nothing raised past the request: what keeps
+    the flushed row out is that nobody committed it. ``get_db`` closes a request's session with
+    no commit, and this harness shares one, so the test ends the transaction itself.
+    """
+    response = await _create(client, headers, startDate="2026-01-10", deadline="2025-12-01")
+
+    assert response.status_code == 400, response.text
+    assert response.json()["errors"] == [DEADLINE_BEFORE_THE_START]
+    await db_session.rollback()
+    assert await db_session.get(ShemaProject, NEW["id"]) is None
 
 
 @pytest.mark.parametrize("day", ["not-a-day", "2020-01-01"])
