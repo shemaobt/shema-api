@@ -20,12 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import llm, usage
 from tests.room_harness import (
-    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
     room_client,
-    stretch_on,
 )
 
 ANALYST_MS = 70
@@ -131,19 +129,4 @@ async def test_letting_the_read_go_before_the_verdict_is_timed_on_its_own_not_hi
     assert answered.status_code == 200, answered.text
     assert "db_let_go" in _stages(caplog), (
         "o COMMIT que solta a leitura antes do veredito só aparecia somado no total"
-    )
-
-
-async def test_letting_the_read_go_before_naming_an_untold_stretch_is_timed_on_its_own_too(
-    client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
-) -> None:
-    session, (part,) = await rehearsed_in_parts(db_session, 1)
-    await a_piece_still_to_be_told(db_session, session, await stretch_on(db_session, session, part))
-
-    with caplog.at_level(logging.INFO):
-        answered = await press_terminei(client, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert "db_let_go" in _stages(caplog), (
-        "o COMMIT que solta a leitura antes do recado do não contado só aparecia somado no total"
     )

@@ -22,7 +22,7 @@ from app.services.internalization_room.back_translation import Finding
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
-from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
+from app.services.internalization_room.fail_safe import process_line
 from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import room_language
@@ -188,30 +188,6 @@ router.add_api_route(
 )
 
 
-async def _the_untold_errand(
-    db: AsyncSession,
-    session: IRSession,
-    state: room.BackTranslationState,
-    *,
-    segment_id: str,
-) -> BackTranslationVerdictResponse:
-    """Say the H family over a stretch nobody has told back, and step the waiting ladder."""
-    waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
-    with stage("db_let_go"):
-        await db.commit()
-    spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
-    state.waited += 1
-    await room.save_back_translation(db, session, state)
-    return BackTranslationVerdictResponse(
-        session_id=session.id,
-        audio_url=clip_url(spoken.key),
-        fixed_line="",
-        checked=False,
-        untold_segment_id=segment_id,
-        findings_remaining=0,
-    )
-
-
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
@@ -249,16 +225,9 @@ async def finish(
     Worse, a subset that reads clean is indistinguishable from a whole one that reads clean,
     and `checked` is what strikes the passage off the wheel for good.
 
-    The H family says so out loud rather than leaving the team with silence. Deliberately not
-    the D family below: that one says the room could not hear, which is false here — it heard
-    everything — and it asks the team to repeat what they already told instead of telling what
-    they have not.
-
-    It is the one line of that file the room speaks rather than the app plays. The fail-safes
-    are shipped as audio because they have to work when nothing else does — no network, no
-    model — and this is not that: the gate fires with the server answering normally, before
-    the analyst is called, and the verdict a few lines below is already synthesized. Shipping
-    it would have meant a new app release before the team could hear anything at all.
+    That refusal is `FRASE_AWAITING`, asked first as hers is (`bt/check/route.ts:68`), and it
+    names the stretch on `untold_segment_id` so the tablet opens it. The room says nothing over
+    it: the H family it used to speak here is ours, not hers, and no line of hers says it.
 
     A **Part** no stretch is a slice of refuses nothing. Her check runs with it, and her analyst
     names what the passage is missing; the room used to send the team back to it with the H
@@ -269,8 +238,8 @@ async def finish(
     would answer is a list of what is missing from the passage, and over a part nobody played
     that sentence is about audio the team never listened to — the room would voice it as if
     the work were done, on a reading of a passage they were still walking through. So the
-    refusal names the parts, says her P-unheard line, and spends nothing: no reading, no turn
-    on the waiting ladder, which belongs to the untold errand, and no line in the conversation.
+    refusal names the parts, says her P-unheard line, and spends nothing: no reading and no line
+    in the conversation.
     Nothing is saved either, because nothing changed: the report above is already stored.
 
     Pressed again over the same stretches, the room serves the verdict it already reached and
@@ -341,7 +310,12 @@ async def _finished(
 
     untold = room.first_untold(final)
     if untold is not None:
-        return await _the_untold_errand(db, session, state, segment_id=untold.id)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            checked=False,
+            untold_segment_id=untold.id,
+            refusal=CheckRefusal.FRASE_AWAITING,
+        )
 
     takes = await takes_of(db, session.id)
 

@@ -15,12 +15,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.room_harness import (
-    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
     room_client,
-    stretch_on,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -71,21 +69,4 @@ async def test_the_verdict_is_read_and_voiced_with_the_database_let_go_not_held_
     assert held == {"analyst": False, "guide": False, "validator": False, "voice": False}, (
         "as leituras do terminei abriam a transação e a conexão ficava presa pelo analista,"
         " pelo Falante, pelo Validador e pela voz"
-    )
-
-
-async def test_a_stretch_nobody_told_back_is_named_out_loud_with_the_database_let_go(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
-) -> None:
-    session, (part,) = await rehearsed_in_parts(db_session, 1)
-    waiting = await a_piece_still_to_be_told(
-        db_session, session, await stretch_on(db_session, session, part)
-    )
-
-    answered = await press_terminei(client, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["untold_segment_id"] == waiting.id
-    assert held == {"voice": False}, (
-        "o recado do trecho não contado sintetizava a fala com a leitura ainda aberta"
     )

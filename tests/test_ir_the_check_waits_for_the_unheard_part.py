@@ -150,7 +150,7 @@ async def test_an_untold_stretch_is_the_first_errand(
     assert body["untold_segment_id"] is not None
     assert body["unheard_take_ids"] == []
     assert analyst.readings == 0
-    assert (await stored_telling_back(db_session, session)).waited == 1
+    assert body["refusal"] == "FRASE_AWAITING"
 
 
 async def test_a_second_press_serves_the_stored_verdict_without_re_checking(

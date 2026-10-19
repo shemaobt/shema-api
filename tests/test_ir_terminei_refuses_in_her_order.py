@@ -23,6 +23,7 @@ from tests.release_harness import PREFIX, P
 from tests.room_harness import (
     Analyst,
     Room,
+    a_piece_still_to_be_told,
     another_rehearsal_take,
     played_every_part,
     press_terminei,
@@ -30,6 +31,7 @@ from tests.room_harness import (
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    stretch_on,
     the_analyst_reads,
     the_room_speaks,
 )
@@ -169,3 +171,26 @@ async def test_the_unheard_refusal_names_her_line_by_position_and_synthesizes_no
 
     assert line.status_code == 200, line.text
     assert room.said == [UNHEARD_LINE]
+
+
+async def test_a_frase_awaiting_its_translation_is_refused_first_and_no_h_line_is_said(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room
+) -> None:
+    session, (first, second) = await rehearsed_in_parts(db_session, 2)
+    piece = await a_piece_still_to_be_told(
+        db_session, session, await stretch_on(db_session, session, second)
+    )
+    was = await stored_telling_back(db_session, session)
+
+    answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["refusal"] == "FRASE_AWAITING", "a frase que espera vem antes da parte não ouvida"
+    assert body["untold_segment_id"] == piece.id
+    assert body["unheard_take_ids"] == []
+    assert body["audio_url"] == ""
+    assert body["fixed_line"] == ""
+    assert room.said == [], "as falas H não são dela e nunca são ditas"
+    assert analyst.readings == 0
+    assert (await stored_telling_back(db_session, session)).waited == was.waited
