@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
@@ -268,84 +267,6 @@ async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     )
 
 
-async def test_the_room_tells_the_team_instead_of_going_quiet(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
-) -> None:
-    """Scenario 2 of the gate, and scenario 1 of the speaking: the team hears something.
-
-    Written against playable audio rather than the name of a file, which is what this path
-    used to answer with. Naming a line the tablet may not carry is not the same as being
-    heard, and that is the whole of what changed.
-    """
-    session_id, _ = await _two_stretches_told(client)
-    await _leave_it_waiting_to_be_told(db_session, session_id)
-
-    answered = await _finish(client, db_session, session_id)
-    body = answered.json()
-
-    assert body["audio_url"], "a equipe tem de ter o que tocar, sem depender do pacote do app"
-    assert body["fixed_line"] == "", "endereço e fala pré-aprovada nunca vêm juntos"
-    assert spoken, "e alguma coisa tem de ter sido dita para haver endereço"
-
-
-async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
-) -> None:
-    """Scenario 2. The words, not just the fact that there were words.
-
-    The D family is the one this must never be: it says the room could not hear, which is
-    false — it heard everything — and it asks the team to repeat what they already told.
-    """
-    session_id, _ = await _two_stretches_told(client)
-    await _leave_it_waiting_to_be_told(db_session, session_id)
-
-    await _finish(client, db_session, session_id)
-
-    assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE)
-    assert spoken[-1] not in utterances(FailSafe.INAUDIBLE, LANGUAGE)
-
-
-async def test_the_room_does_not_say_the_same_thing_twice_running(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
-) -> None:
-    """Scenario 3, and the reason three lines were written instead of one.
-
-    Nothing about the session changes between two presses in this state — no exchange is
-    appended, because the gate answers before the turn loop — so a rotation keyed on the
-    conversation stands still and the room repeats itself word for word.
-    """
-    session_id, _ = await _two_stretches_told(client)
-    await _leave_it_waiting_to_be_told(db_session, session_id)
-
-    await _finish(client, db_session, session_id)
-    await _finish(client, db_session, session_id)
-
-    assert len(spoken) == 2
-    assert spoken[0] != spoken[1], (
-        "uma sala que responde duas vezes seguidas com a mesma frase soa como máquina "
-        "travada, que é a impressão que as três linhas existem para evitar"
-    )
-    assert set(spoken) <= set(utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE))
-
-
-async def test_the_other_families_are_still_played_from_the_app(
-    client: httpx.AsyncClient, analyst: Analyst, spoken: list[str], db_session: AsyncSession
-) -> None:
-    """Scenario 5. Only this one line moved; the fail-safes stay where they belong.
-
-    They exist to work when the rest does not — no network, no model — so a slice that
-    quietly dragged them onto the synthesis path would take away the one property they
-    are for.
-    """
-    session_id = await _open_session(client)
-
-    body = (await _finish(client, db_session, session_id)).json()
-
-    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))
-    assert body["audio_url"] == ""
-    assert spoken == [], "nada foi sintetizado no caminho de 'não ouvi nada'"
-
-
 async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -394,21 +315,3 @@ async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
     assert analyst.readings == 1
     assert body["checked"] is True
     assert body["fixed_line"] == "", "o caminho normal fala pela síntese, não por fala fixa"
-
-
-async def test_a_telling_back_with_no_stretch_at_all_answers_as_before(
-    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
-) -> None:
-    """Scenario 6. There is already a path for this one, and it is not this one.
-
-    Nothing was told back, so the honest thing is that the room heard nothing — not that a
-    stretch is waiting, because there is no stretch.
-    """
-    session_id = await _open_session(client)
-
-    answered = await _finish(client, db_session, session_id)
-    body = answered.json()
-
-    assert analyst.readings == 0
-    assert body["checked"] is False
-    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))

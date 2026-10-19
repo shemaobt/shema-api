@@ -126,38 +126,30 @@ async def _team_release_blocked(
 ) -> TeamReleaseResponse:
     """The refused half of the team's answer, its ground derived the finish route's way.
 
-    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` land only where their own
-    blocker fired — but that is the gate's rule, not this function's:
-    `compose_internalization_release` appends `untold_stretch` exactly when `first_untold`
-    finds one, `untold_part` exactly when `untold_parts` is non-empty, and
-    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over a
-    rehearsed part. Asking the same service helpers `terminei` already reads its own answer
-    from (`app/api/internalization_room/back_translation.py`), unconditionally once inside the
-    one short-circuit below, answers exactly the body the gate's own append order already
-    promises; the one guard left is there only to skip the `takes_of` query when nothing needs
-    it. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
+    `unheard_take_ids` and `untold_segment_id` land only where their own blocker fired — but
+    that is the gate's rule, not this function's: `compose_internalization_release` appends
+    `untold_stretch` exactly when `first_untold` finds one, and
+    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over the current
+    parts of a rehearsed session. Asking the same service helpers `terminei` already reads its
+    own answer from (`app/api/internalization_room/back_translation.py`), unconditionally once
+    inside the one short-circuit below, answers exactly the body the gate's own append order
+    already promises; the one guard left is there only to skip the reads when nothing needs
+    them. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
     and re-deriving the ground after the refusal keeps
     `compose_internalization_release`'s return type untouched.
     """
-    untold_take_ids: list[str] = []
     unheard_take_ids: list[str] = []
     untold_segment_id: str | None = None
     if GROUNDED_BLOCKERS & set(blockers):
         final = await room.final_segments(db, session.id)
         untold = room.first_untold(final)
         untold_segment_id = untold.id if untold else None
-        rehearsed = room.rehearsed_parts(final)
-        if "untold_part" in blockers:
-            takes = await takes_of(db, session.id)
-            untold_take_ids = [
-                part.id for part in room.untold_parts(current_parts(takes), rehearsed)
-            ]
+        takes = await takes_of(db, session.id)
         state = room.back_translation_of(session)
-        unheard_take_ids = room.unheard_parts(state, rehearsed)
+        unheard_take_ids = room.unheard_parts(state, [part.id for part in current_parts(takes)])
     return TeamReleaseResponse(
         session_id=session.id,
         blockers=blockers,
-        untold_take_ids=untold_take_ids,
         unheard_take_ids=unheard_take_ids,
         untold_segment_id=untold_segment_id,
     )

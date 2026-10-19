@@ -825,3 +825,32 @@ async def test_the_listening_report_names_each_part(
         PART_MS,
         PART_MS,
     ]
+
+
+async def test_a_part_recorded_again_and_never_played_has_its_row_in_the_listening(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session, (first, second, third) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    fresh = await record_the_part_again(db_session, session, second, sha256="d" * 64)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    state = await _read(db_session, session)
+    await report_playback(
+        db_session,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id=part.id, played_ranges=[(0, PART_MS)], clip_duration_ms=PART_MS)
+            for part in (first, third)
+        ],
+        played_ranges=[(0, PART_MS)],
+        clip_duration_ms=PART_MS,
+    )
+
+    file = await _the_file(client, session.id, desk)
+
+    assert {one["take_id"]: one["heard"] for one in file["listening"]} == {
+        first.id: True,
+        fresh.id: False,
+        third.id: True,
+    }, "a parte regravada e nunca ouvida sumia da escuta, que o terminei e a aprovação cobram"

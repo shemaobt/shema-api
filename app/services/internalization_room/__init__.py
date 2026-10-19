@@ -10,7 +10,6 @@ from app.services.internalization_room.back_translation import (
     segments_block,
     the_finding_that_leads,
     unheard_parts,
-    untold_parts,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hard_stretches import (
@@ -143,5 +142,4 @@ __all__ = [
     "told_back",
     "unattend",
     "unheard_parts",
-    "untold_parts",
 ]

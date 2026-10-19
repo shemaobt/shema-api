@@ -32,7 +32,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.exceptions import ERROR_CODE_UPSTREAM
 from app.db.models.internalization_room import (
     IRPromptKey,
     IRSegment,
@@ -562,8 +561,9 @@ async def test_a_provider_that_is_down_is_still_an_upstream_failure(
     with caplog.at_level(logging.WARNING):
         answered = await _finish(client, db_session, session_id)
 
-    assert answered.status_code == 502, answered.text
-    assert answered.json()["code"] == ERROR_CODE_UPSTREAM
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["refusal"] == "CHECK_UNAVAILABLE"
+    assert answered.json()["used_fail_safe"] is False
     assert UPSTREAM_LOG_LINE in caplog.text
 
 

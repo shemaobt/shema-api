@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,12 +7,13 @@ from app.api.internalization_room._deps import device_dep, device_project_dep, l
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError, WordlessTelling
+from app.core.exceptions import UpstreamServiceError, ValidationError, WordlessTelling
 from app.core.stage_clock import stage, stopwatch
 from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
+    CheckRefusal,
     FindingView,
     FinishBackTranslationRequest,
     VerdictHeardRequest,
@@ -21,7 +24,7 @@ from app.services.internalization_room.back_translation import Finding
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
-from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
+from app.services.internalization_room.fail_safe import process_line
 from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import room_language
@@ -37,6 +40,8 @@ from app.services.internalization_room.takes import (
     takes_of,
 )
 from app.services.internalization_room.voice_handles import clip_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -190,42 +195,6 @@ router.add_api_route(
 )
 
 
-async def _the_untold_errand(
-    db: AsyncSession,
-    session: IRSession,
-    state: room.BackTranslationState,
-    *,
-    segment_id: str | None = None,
-    take_ids: list[str] | None = None,
-) -> BackTranslationVerdictResponse:
-    """Say the H family over ground nobody has told back, and step the waiting ladder.
-
-    One errand over two grounds: a stretch standing with nothing said on it, and a current
-    **Part** no standing stretch is a slice of. The room says the same thing over both — the
-    family names no frase, so it is true of either — and the ladder belongs to the errand and
-    not to the ground, which is why a press spent on one advances the line the next press
-    speaks over the other.
-
-    The answer names its ground on its own field and leaves the other empty, so the app decides
-    by the field and never by what is missing from the body.
-    """
-    waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
-    with stage("db_let_go"):
-        await db.commit()
-    spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
-    state.waited += 1
-    await room.save_back_translation(db, session, state)
-    return BackTranslationVerdictResponse(
-        session_id=session.id,
-        audio_url=clip_url(spoken.key),
-        fixed_line="",
-        checked=False,
-        untold_segment_id=segment_id,
-        untold_take_ids=take_ids or [],
-        findings_remaining=0,
-    )
-
-
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
@@ -245,12 +214,11 @@ async def finish(
     off the wheel for good, on a telling-back that never happened. A finished passage never
     returns to the wheel, by design, so there is no undo for that.
 
-    The answer is never the badge, then. The D family stood here — *"I could not make anything
-    out, can you tell me again?"* — and a team that has recorded and told nothing back no longer
-    reaches it: their recording is a current part with nothing over it, which the untold errand
-    below answers first and answers truly, because nothing was said for the room to fail to hear
-    (ADR 0027). What is left for D is a session carrying no rehearsal take at all, which is the
-    one shape where there is no part to send them to.
+    The answer is never the badge, then: it is the refusal `NOTHING_TRANSLATED`, and the room
+    says nothing over it. Her screen shows «ainda não tem frase traduzida» and voices no line;
+    the D family stood here and told the team the room could not hear them, when nothing had
+    been said for it to fail to hear. It is the last refusal asked, as hers is
+    (`bt/check/route.ts:78`).
 
     Only the stretches the team actually explained are read. A stretch whose mother-tongue
     recording was replaced is waiting to be told again and carries nothing they said, so it
@@ -264,35 +232,21 @@ async def finish(
     Worse, a subset that reads clean is indistinguishable from a whole one that reads clean,
     and `checked` is what strikes the passage off the wheel for good.
 
-    The H family says so out loud rather than leaving the team with silence. Deliberately not
-    the D family below: that one says the room could not hear, which is false here — it heard
-    everything — and it asks the team to repeat what they already told instead of telling what
-    they have not.
+    That refusal is `FRASE_AWAITING`, asked first as hers is (`bt/check/route.ts:68`), and it
+    names the stretch on `untold_segment_id` so the tablet opens it. The room says nothing over
+    it: the H family it used to speak here is ours, not hers, and no line of hers says it.
 
-    It is the one line of that file the room speaks rather than the app plays. The fail-safes
-    are shipped as audio because they have to work when nothing else does — no network, no
-    model — and this is not that: the gate fires with the server answering normally, before
-    the analyst is called, and the verdict a few lines below is already synthesized. Shipping
-    it would have meant a new app release before the team could hear anything at all.
+    A **Part** no stretch is a slice of refuses nothing. Her check runs with it, and her analyst
+    names what the passage is missing; the room used to send the team back to it with the H
+    family first, which no line of hers says.
 
-    The same errand is owed over a **Part** no stretch is a slice of, and it is asked second.
-    A part recorded again arrives carrying nobody's words — its predecessor's stretches went
-    with the recording they explained (ADR 0023) — so the reading above finds nothing waiting
-    and the passage could be conferred with a scene nobody had told back in it. The question
-    is the takes' to answer and not the stretches': which recording is current is the number
-    the tablet sent, which is why this is asked of `current_parts` and not of `first_untold`.
-    It sits between the stretch and the listening, the order the release gate lists the three
-    blockers in, because a part nobody told is owed a telling before it is owed a playing, and
-    it spends what the stretch spends — the same family of lines, the same turn of the waiting
-    ladder — because in the room it is the same errand said over different ground.
-
-    Told back is not the same as heard, and the third errand is asked after the other two.
+    Told back is not the same as heard, and the listening is asked after the stretch.
     While any current part of the rehearsal is unheard, the analyst is not asked either: what it
     would answer is a list of what is missing from the passage, and over a part nobody played
     that sentence is about audio the team never listened to — the room would voice it as if
     the work were done, on a reading of a passage they were still walking through. So the
-    refusal names the parts, says her P-unheard line, and spends nothing: no reading, no turn
-    on the waiting ladder, which belongs to the untold errand, and no line in the conversation.
+    refusal names the parts, says her P-unheard line, and spends nothing: no reading and no line
+    in the conversation.
     Nothing is saved either, because nothing changed: the report above is already stored.
 
     Pressed again over the same stretches, the room serves the verdict it already reached and
@@ -317,6 +271,11 @@ async def finish(
     team told back anything new. A press that reached the analyst and then failed saves no
     verdict, so the press after it does the whole turn rather than serving one the team never
     heard.
+
+    That failure — the analyst, the Speaker or the verdict's voice unavailable — answers the
+    refusal `CHECK_UNAVAILABLE`, never a 502 the tablet reads as a lost connection. Her check
+    saves nothing on it either (`bt/check/route.ts:90-97`), her screen says «não deu para
+    conferir agora — tentem de novo», and `terminei` again is the retry.
     """
     with stopwatch("[bt-timing]", session_id):
         session = await room.session_for_room_caller(db, session_id, project_id)
@@ -363,48 +322,32 @@ async def _finished(
 
     untold = room.first_untold(final)
     if untold is not None:
-        return await _the_untold_errand(db, session, state, segment_id=untold.id)
-
-    rehearsed = room.rehearsed_parts(final)
-    takes = await takes_of(db, session.id)
-    untold_ground = room.untold_parts(current_parts(takes), rehearsed)
-    if untold_ground:
-        return await _the_untold_errand(
-            db, session, state, take_ids=[part.id for part in untold_ground]
-        )
-
-    unheard = room.unheard_parts(state, rehearsed)
-    if unheard:
-        line, _ = process_line("P", "unheard", session.language)
-        with stage("db_let_go"):
-            await db.commit()
-        spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(spoken.key),
-            fixed_line="",
+            checked=False,
+            untold_segment_id=untold.id,
+            refusal=CheckRefusal.FRASE_AWAITING,
+        )
+
+    takes = await takes_of(db, session.id)
+
+    unheard = room.unheard_parts(state, [part.id for part in current_parts(takes)])
+    if unheard:
+        _, line = process_line("P", "unheard", session.language)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            fixed_line=line,
             checked=False,
             unheard_take_ids=unheard,
             findings_remaining=0,
+            refusal=CheckRefusal.PART_UNHEARD,
         )
 
     if not told:
-        # An analyst asked to compare nothing against the map answers with no findings,
-        # and no findings is what `checked` is made of — so pressing `terminei` over an
-        # empty back translation blessed the passage and the app struck it off the wheel
-        # for good, on a telling-back that never happened. The room says it did not hear
-        # anything, which is the line family written for exactly this.
-        _, line = choose(
-            FailSafe.INAUDIBLE,
-            session.language,
-            turn=len(session.messages or []),
-        )
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url="",
-            fixed_line=line,
             checked=False,
-            findings_remaining=0,
+            refusal=CheckRefusal.NOTHING_TRANSLATED,
         )
 
     stored = state.the_verdict_to_serve(told)
@@ -429,21 +372,31 @@ async def _finished(
 
     with stage("db_let_go"):
         await db.commit()
-    with reading_the_canon_of(session.canon_pin):
-        verdict = await room.check_the_telling_back(
-            session,
-            state=state,
-            told=told,
-            takes=takes,
-            settings=get_settings(),
-        )
-    with stage("voice"):
-        voiced = (
-            None
-            if verdict.outcome.fixed_line
-            else (
-                await room.synthesize_facilitator_speech(verdict.said, language=session.language)
-            )[0]
+    try:
+        with reading_the_canon_of(session.canon_pin):
+            verdict = await room.check_the_telling_back(
+                session,
+                state=state,
+                told=told,
+                takes=takes,
+                settings=get_settings(),
+            )
+        with stage("voice"):
+            voiced = (
+                None
+                if verdict.outcome.fixed_line
+                else (
+                    await room.synthesize_facilitator_speech(
+                        verdict.said, language=session.language
+                    )
+                )[0]
+            )
+    except UpstreamServiceError as failure:
+        logger.warning("Upstream service failure: %s", failure)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            checked=False,
+            refusal=CheckRefusal.CHECK_UNAVAILABLE,
         )
     with stage("db_write"):
         session = await room.save_the_spoken_verdict(

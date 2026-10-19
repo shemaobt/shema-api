@@ -185,9 +185,7 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     assert answer.status_code == 200
     body = answer.json()
     assert body["checked"] is False
-    assert body["fixed_line"].startswith("D"), (
-        "a sala diz que não ouviu nada, que é a família escrita para isto"
-    )
+    assert body["refusal"] == "NOTHING_TRANSLATED"
 
 
 async def test_a_transcriber_outage_counts_nothing_and_is_a_wordless_refusal(

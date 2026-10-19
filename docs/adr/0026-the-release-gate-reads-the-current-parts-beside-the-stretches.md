@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0068: no untold_part blocker, and the listening asks every current part
 date: 2026-09-17
 ---
 
