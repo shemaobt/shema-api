@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended 19 Oct 2026 by ENG-1221 (FRASE_AWAITING voices her N-6 by position)
 date: 2026-10-19
 ---
 
@@ -19,8 +19,12 @@ Decided, as hers (ENG-1197):
   `NOTHING_TRANSLATED`. Each is a value of `refusal` on the 200 answer, documented on
   `CheckRefusal`; the tablet turns it into her screen line. `STRETCH_UNTRANSLATED` is the door a
   joined recording will fill and is not sent yet.
-- Only `PART_UNHEARD` is voiced, as her P-unheard line by position (`fixed_line: "P2"`) through
-  `GET /fixed-lines`. The other refusals say nothing, as hers do.
+- Two refusals are voiced, each as her line by position through `GET /fixed-lines`:
+  `PART_UNHEARD` as her P-unheard (`fixed_line: "P2"`), and `FRASE_AWAITING` as her N-6
+  (`fixed_line: "N5"`) when the frase awaiting is a re-recorded sentence (ENG-1221: «Ainda falta
+  traduzir a frase que vocês regravaram.»; ENG-1197's order names N-6 for it). A frase awaiting
+  for any other reason, `STRETCH_UNTRANSLATED` and `NOTHING_TRANSLATED` say nothing, as hers do.
+  (Amended 19 Oct 2026 with ENG-1221's server half; the first text voiced `PART_UNHEARD` alone.)
 - A part with nothing told over it is no refusal: the check runs and her analyst names what is
   missing. `untold_take_ids` leaves the answer and `untold_part` leaves the release gate.
 - The listening is asked of every current part, told or not, at *terminei* and at the release,

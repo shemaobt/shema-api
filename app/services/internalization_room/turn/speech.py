@@ -187,5 +187,6 @@ async def speak_back(
         earlier_passages=earlier_passages,
         scene_rehearsal=scene_rehearsal,
         scene_rehearsals=scene_rehearsals,
+        retellings=session.retellings,
     )
     return handed.kept_apart(outcome)

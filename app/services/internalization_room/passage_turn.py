@@ -13,6 +13,7 @@ from app.services.internalization_room.canon.accepted_readings import (
 )
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.classify_coverage import Retelling
 from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
@@ -22,6 +23,7 @@ from app.services.internalization_room.prompt_blocks import (
     RoomFact,
     coverage_status_block,
     earlier_passages_line,
+    kept_rehearsals_line,
     meaning_map_block,
     room_facts_block,
     scene_rehearsals_line,
@@ -47,6 +49,11 @@ def _checked_scene(
         return None
     scenes = scene_ids_for(pericope_num)
     return scenes[moment.part - 1] if 1 <= moment.part <= len(scenes) else None
+
+
+def _kept_scopes(retellings: dict[str, Any] | None) -> list[str]:
+    told = [Retelling.model_validate(entry) for entry in (retellings or {}).values()]
+    return [retelling.scope for retelling in told if retelling.kept is not None]
 
 
 def _readings_for(
@@ -101,6 +108,7 @@ async def run_turn(
     earlier_passages: dict[str, str] | None = None,
     scene_rehearsal: SentSceneRehearsal | None = None,
     scene_rehearsals: list[str] | None = None,
+    retellings: dict[str, Any] | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -153,8 +161,11 @@ async def run_turn(
                     RoomFact.SCENE_REHEARSALS: scene_rehearsals_line(
                         scene_ids_for(pericope_num), reached
                     ),
+                    RoomFact.KEPT_REHEARSALS: kept_rehearsals_line(
+                        scene_ids_for(pericope_num), _kept_scopes(retellings)
+                    ),
                     RoomFact.EARLIER_PASSAGES: earlier,
-                    RoomFact.MOMENT: moment_fact(messages, pericope_num),
+                    RoomFact.MOMENT: moment_fact(messages, pericope_num, reached),
                     RoomFact.ACCEPTED_READINGS: accepted,
                 }
             ),

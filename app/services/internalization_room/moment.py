@@ -404,19 +404,24 @@ def _moved(moment: Moment, line: _Line) -> Moment:
     return Moment(at="familiarization", closed=True)
 
 
-def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
+def moment_fact(messages: list[dict[str, Any]], pericope_num: str, reached: list[str]) -> str:
     """Her MOMENT fact (`src/turn/moment.ts` renderMoment, app 18fa7c4): where the room is,
     read from the lines the team heard — information for the Guide, never an instruction."""
     moment = moment_at_turn_start(messages)
     if moment is None:
         return ""
-    parts = len(scene_ids_for(pericope_num))
+    scenes = scene_ids_for(pericope_num)
+    parts = len(scenes)
     if moment.part is not None and not 1 <= moment.part <= parts:
         return ""
     if moment.at == "internalization":
         return f"MOMENT: Internalization of part {moment.part} of {parts} {_DASH} the part is open."
     if moment.at == "articulation":
-        given = f" {_DASH} its fenced block has been given" if moment.fenced else ""
+        given = ""
+        if moment.fenced:
+            given = f" {_DASH} its fenced block has been given"
+        elif moment.part is not None and scenes[moment.part - 1] in reached:
+            given = f" {_DASH} a scene rehearsal of this part has reached you"
         return f"MOMENT: Articulation of part {moment.part} of {parts}{given}."
     if moment.at == "ensaio_final":
         return f"MOMENT: Ensaio Final (Final Rehearsal) {_DASH} the send-off has been given."

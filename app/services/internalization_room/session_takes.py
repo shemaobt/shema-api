@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import asyncio
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake
 from app.models.internalization_room import (
+    KeptRehearsal,
     KeptTakeView,
     MotherTongueTake,
     MotherTongueTakesResponse,
 )
 from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
+from app.services.internalization_room.release import _recording_grain
+from app.services.internalization_room.session_turns import TeamTurn, team_turn_of
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
@@ -53,15 +57,62 @@ async def mother_tongue_takes_of(
                 unread=link is None,
             )
         )
-    return MotherTongueTakesResponse(session_id=session.id, takes=rows)
+    approved_at = (
+        await db.execute(
+            select(IRRelease.approved_at)
+            .where(IRRelease.session_id == session.id)
+            .order_by(IRRelease.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return MotherTongueTakesResponse(
+        session_id=session.id,
+        takes=rows,
+        kept_rehearsals=await kept_rehearsals_of(db, session),
+        recording_grain=_recording_grain(parts) if parts else None,
+        finished_at=None if approved_at is None else as_utc(approved_at).isoformat(),
+    )
 
 
-async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
+def _latest_kept_of_each_scope(session: IRSession) -> dict[str, tuple[int, KeptRecording]]:
     latest: dict[str, tuple[int, KeptRecording]] = {}
     for number, entry in sorted((int(n), e) for n, e in (session.retellings or {}).items()):
         told = Retelling.model_validate(entry)
         if told.kept is not None:
             latest[told.scope] = (number, told.kept)
+    return latest
+
+
+async def kept_rehearsals_of(db: AsyncSession, session: IRSession) -> list[KeptRehearsal]:
+    siblings = (
+        (
+            await db.execute(
+                select(IRSession).where(
+                    IRSession.project_id == session.project_id,
+                    IRSession.pericope == session.pericope,
+                    IRSession.language == session.language,
+                    IRSession.archive_id == session.archive_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    latest: dict[str, tuple[TeamTurn, int, bool]] = {}
+    for sibling in siblings:
+        for scope, (number, _) in _latest_kept_of_each_scope(sibling).items():
+            turn = team_turn_of(sibling, number)
+            if scope not in latest or turn.at > latest[scope][0].at:
+                latest[scope] = (turn, number, sibling.id != session.id)
+    told = latest.values()
+    return [
+        KeptRehearsal(turn_number=number, words=turn.words, from_other_session=other)
+        for turn, number, other in sorted(told, key=lambda each: each[0].at)
+    ]
+
+
+async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
+    latest = _latest_kept_of_each_scope(session)
     ordered = sorted(latest.items(), key=lambda kept: kept[1][0])
     links = await asyncio.gather(
         *(

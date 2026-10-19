@@ -134,6 +134,9 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/listened-whole"): (
         "test_ir_a_joined_recording_is_checked_on_its_own.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/segments/{{segment_id}}/sentence"): (
+        "test_ir_a_team_re_records_one_whole_sentence.py"
+    ),
 }
 
 
