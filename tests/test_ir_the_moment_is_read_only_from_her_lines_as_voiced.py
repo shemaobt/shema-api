@@ -707,3 +707,36 @@ def test_a_scene_told_ahead_is_kept_before_what_the_reply_declined() -> None:
         "part_closing: no scene rehearsal of part 2 has come back — heard as a scene opening "
         "with no number: a marked scene rehearsal of part 3 will move the moment",
     ], "o ensaio que chegou com o turno veio depois do que a resposta recusou"
+
+
+@pytest.mark.parametrize(
+    ("moment", "scene"),
+    [
+        (ENSAIO_FINAL, "S2"),
+        (SCENE_TWO_FENCED, "S1"),
+        (SCENE_TWO_FENCED, "S2"),
+        (SCENE_TWO_OPEN, "S1"),
+        (SCENE_TWO_OPEN, "S2"),
+    ],
+    ids=[
+        "after the send-off",
+        "an earlier scene",
+        "the scene being practised",
+        "an earlier scene from an internalization",
+        "the open scene",
+    ],
+)
+def test_a_marked_rehearsal_of_this_scene_or_an_earlier_one_moves_nothing_and_notes_nothing(
+    moment: dict[str, Any], scene: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert (step.after.as_json(), step.by, step.ignored) == (moment, [], []), (
+        "um ensaio que não estava adiantado mexeu no momento ou entrou na lista de ignoradas"
+    )

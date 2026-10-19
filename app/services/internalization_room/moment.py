@@ -296,6 +296,8 @@ def _scene(moment: Moment) -> int:
 
 
 def _arrived(moment: Moment, part: int) -> tuple[Moment, str | None]:
+    if moment.at == "ensaio_final":
+        return moment, None
     following = _scene(moment) + 1
     if moment.numberless_opening and part == following:
         return Moment(at="articulation", part=part), None
