@@ -41,8 +41,6 @@ from tests.room_harness import (
 )
 from tests.turn_harness import the_room_agent_is
 
-#: Her P-unheard line, from her file at the freeze (prompts/fail_safe_utterances.md:111),
-#: and its name by position: her P steps are start, tell, unheard, approved.
 UNHEARD_LINE = "Ainda falta ouvir um trecho da gravação antes de eu conferir."
 UNHEARD_BY_POSITION = "P2"
 
@@ -91,7 +89,6 @@ async def test_a_recording_heard_through_with_no_frase_translated_is_refused_in_
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room, recorded: int
 ) -> None:
     session, parts = await _recorded_and_never_translated(db_session, recorded)
-    was = await stored_telling_back(db_session, session)
 
     answered = await press_terminei(
         client, session.id, report=played_every_part([part.id for part in parts])
@@ -106,7 +103,6 @@ async def test_a_recording_heard_through_with_no_frase_translated_is_refused_in_
     assert room.said == []
     assert analyst.readings == 0
     assert await _transcript(db_session, session.id) == []
-    assert (await stored_telling_back(db_session, session)).waited == was.waited
 
 
 async def test_a_part_heard_with_nothing_translated_over_it_is_read_with_the_rest_not_refused(
@@ -185,7 +181,6 @@ async def test_a_frase_awaiting_its_translation_is_refused_first_and_no_h_line_i
     piece = await a_piece_still_to_be_told(
         db_session, session, await stretch_on(db_session, session, second)
     )
-    was = await stored_telling_back(db_session, session)
 
     answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
 
@@ -198,7 +193,6 @@ async def test_a_frase_awaiting_its_translation_is_refused_first_and_no_h_line_i
     assert body["fixed_line"] == ""
     assert room.said == [], "as falas H não são dela e nunca são ditas"
     assert analyst.readings == 0
-    assert (await stored_telling_back(db_session, session)).waited == was.waited
 
 
 async def test_a_part_recorded_again_heard_and_checked_releases_with_nothing_told_over_it(

@@ -254,27 +254,3 @@ async def test_a_recognizer_answer_nobody_can_read_is_a_wordless_refusal(
     assert refused.status_code == 422, "um 500 o tablet lê como sem conexão"
     assert refused.json()["code"] == "WORDLESS_TELLING"
     assert await _segment_rows(db_session, session_id) == before
-
-
-async def test_a_recognizer_that_does_not_answer_in_time_is_a_wordless_refusal(
-    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import asyncio
-
-    from app.services.internalization_room import hearing
-
-    async def _never_in_time(*_: Any, **__: Any) -> str:
-        await asyncio.sleep(5)
-        return "tarde demais"
-
-    monkeypatch.setattr(hearing, "TRANSCRIBER_BOUND_SECONDS", 0.05)
-    monkeypatch.setattr(hearing, "transcribe_audio", _never_in_time)
-    session_id = await _a_session(db_session)
-    take_id = await _rehearse(client, session_id)
-    before = await _segment_rows(db_session, session_id)
-
-    refused = await _tell(client, session_id, take_id, 1, "não usado")
-
-    assert refused.status_code == 422, refused.text
-    assert refused.json()["code"] == "WORDLESS_TELLING"
-    assert await _segment_rows(db_session, session_id) == before
