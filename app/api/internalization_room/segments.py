@@ -262,9 +262,9 @@ async def re_record_the_sentence(
 
     `segment_id` is the frase whose sentence the team recorded again; it is always a whole
     sentence, never a piece of one (Marcia, 21 September), and a frase that still counts: one
-    told again, retired with its part or divided answers `STRETCH_NO_LONGER_COUNTS` (400). `sentence_id` is minted by the tablet
-    for this one recording and sent again with every retry of it. `file` is the raw recording,
-    WAV PCM16 at the part's own rate and channels.
+    told again, retired with its part or divided answers `STRETCH_NO_LONGER_COUNTS` (400).
+    `sentence_id` is minted by the tablet for this one recording and sent again with every retry
+    of it. `file` is the raw recording, WAV PCM16 at the part's own rate and channels.
 
     The new sentence keeps 0.2 s of its silence on each side and replaces the old one inside the
     part; the audio before and after it is the same bytes, and the frases after it move by the

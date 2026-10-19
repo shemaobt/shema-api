@@ -76,7 +76,7 @@ async def lay_in_a_sentence(
     audio: bytes,
     device_id: str,
     store: TakeStore,
-) -> IRTake:
+) -> None:
     await db.execute(select(IRSession.id).where(IRSession.id == session.id).with_for_update())
     await db.refresh(session)
     await db.refresh(segment)
@@ -94,7 +94,7 @@ async def lay_in_a_sentence(
                 "SENTENCE_ID_REUSED",
                 f"Sentence {sentence_id} was already laid in with another recording",
             )
-        return await take_by_id(db, laid_before.take_id)
+        return
     if segment.id not in {one.id for one in await final_segments(db, session.id)}:
         raise StretchNoLongerCounts("A frase that no longer counts takes no sentence")
     part = await take_by_id(db, segment.take_id)
@@ -189,7 +189,6 @@ async def lay_in_a_sentence(
     await _unchecked(state)
     await save_back_translation(db, session, state, commit=False, rule=_unchecked)
     await db.commit()
-    return take
 
 
 async def _unchecked(standing: BackTranslationState) -> None:
@@ -202,8 +201,11 @@ def _sentence_key(session_id: str, sha256: str) -> str:
 
 
 async def the_sentence_awaiting(db: AsyncSession, session: IRSession) -> AwaitingSentence | None:
+    laid = back_translation_of(session).sentences
+    if not laid:
+        return None
     told = told_back(await final_segments(db, session.id))
-    for entry in reversed(back_translation_of(session).sentences):
+    for entry in reversed(laid):
         for number, frase in enumerate(told, start=1):
             if (frase.id, frase.take_id) == (entry.segment_id, entry.take_id):
                 return AwaitingSentence(

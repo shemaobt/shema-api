@@ -48,7 +48,6 @@ def seconds(count: float, value: int) -> list[int]:
 
 
 def spoken(length: float, *, silence: float = 0.3) -> bytes:
-    """A sentence of `length` seconds of voice, with `silence` seconds of quiet on each side."""
     return wav(seconds(silence, 0) + seconds(length, 9000) + seconds(silence, 0))
 
 
@@ -63,7 +62,6 @@ async def rehearsed_in_wav(
     *,
     content_type: str = WAV,
 ) -> tuple[IRSession, list[IRTake], list[list[IRSegment]]]:
-    """One WAV part per entry of `parts`, its bytes in `store`, a frase told over each span."""
     session = await create_session(db, pericope=P, project_id=TABLET_TEAM, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     takes, frases = [], []
