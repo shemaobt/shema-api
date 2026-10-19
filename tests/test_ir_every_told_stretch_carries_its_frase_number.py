@@ -5,6 +5,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import segments as segments_api
+from app.services import internalization_room as room_package
+from app.services.internalization_room import back_translation
 from app.services.internalization_room.segments import final_segments
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
@@ -203,3 +205,49 @@ async def test_a_missing_element_after_frase_two_says_frase_two_and_points_at_th
     )
     read = await client.get(f"{PREFIX}/sessions/{session.id}")
     assert read.json()["back_translation"]["findings"] == expected
+
+
+async def test_the_voices_block_and_the_views_number_their_stretches_with_one_function(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    the_room_speaks(monkeypatch)
+    original = back_translation.frase_numbers
+
+    def ten_further(told: list) -> dict[str, int]:
+        return {segment_id: number + 10 for segment_id, number in original(told).items()}
+
+    monkeypatch.setattr(back_translation, "frase_numbers", ten_further)
+    monkeypatch.setattr(room_package, "frase_numbers", ten_further)
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    block = analyst.shown[-1]
+    assert [f"[frase {number}" in block for number in (11, 12, 13)] == [True, True, True], (
+        "a sala numerava as frases para a analista por conta própria, e as telas por outra"
+    )
+    read = await _segments_of_the_read(client, session.id)
+    assert [one.get("frase") for one in read] == [11, 12, 13]
+
+
+async def test_after_the_translation_starts_over_the_numbering_starts_over_with_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    nothing_is_read_ahead(monkeypatch)
+    the_transcriber_says(monkeypatch, ["a terceira parte, de novo", "a primeira parte, de novo"])
+    session, parts = await rehearsed_in_parts_of(db_session, [1, 1, 1])
+
+    restarted = await client.post(f"{PREFIX}/sessions/{session.id}/back-translation/restart")
+    assert restarted.json()["segments"] == []
+    third = await _tell(client, session.id, parts[2].id, starts_ms=0, ends_ms=1000)
+    first = await _tell(client, session.id, parts[0].id, starts_ms=0, ends_ms=1000)
+
+    assert [third.json().get("frase"), first.json().get("frase")] == [1, 1], (
+        "o número da frase seguia contando as que a equipe já tinha jogado fora"
+    )
+    read = await _segments_of_the_read(client, session.id)
+    assert [one.get("frase") for one in read] == [1, 2]
