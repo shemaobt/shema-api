@@ -204,7 +204,11 @@ async def test_terminei_right_after_a_lay_in_is_refused_with_her_line_and_reads_
         "fixed_line": "N5",
         "checked": False,
     }, "o «terminei» conferia a tradução antiga sobre a frase nova"
-    named = await client.get(f"{PREFIX}/fixed-lines/{answer['fixed_line']}", params={"language": "pt"})
-    assert named.status_code == 200, "a fala do «terminei» é o NOME da linha dela, lido por posição, como P2"
+    named = await client.get(
+        f"{PREFIX}/fixed-lines/{answer['fixed_line']}", params={"language": "pt"}
+    )
+    assert named.status_code == 200, (
+        "a fala do «terminei» é o NOME da linha dela, lido por posição, como P2"
+    )
     assert named.json()["audio_url"], "o nome N5 é servido por posição, como P2 na parte não ouvida"
     assert analyst.readings == 0, "o analista lia a passagem com a frase regravada sem tradução"
