@@ -78,7 +78,7 @@ async def test_the_frase_awaits_its_translation_under_its_own_number_with_her_li
     ) == AwaitingSentence(
         segment_id=middle.id,
         frase=2,
-        line="Ainda falta traduzir a frase que vocês regravaram.",
+        line="N5",
     ), "a frase regravada perdia o número ou a fala dela"
 
 
@@ -201,7 +201,10 @@ async def test_terminei_right_after_a_lay_in_is_refused_with_her_line_and_reads_
     } == {
         "refusal": "FRASE_AWAITING",
         "untold_segment_id": middle.id,
-        "fixed_line": "Ainda falta traduzir a frase que vocês regravaram.",
+        "fixed_line": "N5",
         "checked": False,
     }, "o «terminei» conferia a tradução antiga sobre a frase nova"
+    named = await client.get(f"{PREFIX}/fixed-lines/{answer['fixed_line']}", params={"language": "pt"})
+    assert named.status_code == 200, "a fala do «terminei» é o NOME da linha dela, lido por posição, como P2"
+    assert named.json()["audio_url"], "o nome N5 é servido por posição, como P2 na parte não ouvida"
     assert analyst.readings == 0, "o analista lia a passagem com a frase regravada sem tradução"
