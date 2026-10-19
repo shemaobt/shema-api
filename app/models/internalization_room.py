@@ -265,6 +265,7 @@ class CoverageView(BaseModel):
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 
 Cause = Literal[
+    "scene_rehearsal",
     "entrance",
     "articulation_entrance",
     "where_we_are",
