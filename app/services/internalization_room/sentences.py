@@ -25,8 +25,6 @@ from app.services.internalization_room.back_translation import (
     frase_numbers,
     unheard_parts,
 )
-from app.services.internalization_room.fail_safe import her_line
-from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.segments import current_segments, final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
@@ -214,7 +212,7 @@ async def the_sentence_awaiting(db: AsyncSession, session: IRSession) -> Awaitin
             return AwaitingSentence(
                 segment_id=entry.segment_id,
                 frase=numbers[entry.segment_id],
-                line=her_line("N5", room_language(session.language)) or "",
+                line="N5",
             )
     return None
 
