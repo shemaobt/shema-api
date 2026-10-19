@@ -165,7 +165,7 @@ async def run_turn(
                         scene_ids_for(pericope_num), _kept_scopes(retellings)
                     ),
                     RoomFact.EARLIER_PASSAGES: earlier,
-                    RoomFact.MOMENT: moment_fact(messages, pericope_num),
+                    RoomFact.MOMENT: moment_fact(messages, pericope_num, reached),
                     RoomFact.ACCEPTED_READINGS: accepted,
                 }
             ),
