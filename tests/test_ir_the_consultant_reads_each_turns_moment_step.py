@@ -134,11 +134,79 @@ async def test_a_turn_stored_before_moments_existed_reads_no_moment(
     assert answered.json()["turns"][0]["voice"]["moment"] is None
 
 
-def test_the_published_schema_of_a_step_lists_the_seven_causes_that_can_move_the_room() -> None:
+async def test_a_step_a_scene_rehearsal_moved_is_served_to_the_desk_with_its_cause(
+    client, db_session, room_app
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, project)
+    session = await create_session(db_session, project_id=project.id, language="pt", pericope=P)
+    session.messages = [
+        {
+            "role": "guide",
+            "text": "A cena dois chegou.",
+            "at": "2026-10-19T12:00:00+00:00",
+            "moment": {
+                "before": {"at": "articulation", "part": 1, "fenced": True},
+                "after": {"at": "articulation", "part": 2, "fenced": False},
+                "by": ["scene_rehearsal"],
+            },
+        }
+    ]
+    await db_session.commit()
+
+    answered = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/turns", headers=desk)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert answered.json()["turns"][0]["voice"]["moment"]["by"] == ["scene_rehearsal"], (
+        "um passo movido por um ensaio de cena derrubava a leitura de turnos da mesa"
+    )
+
+
+async def test_a_closing_heard_as_a_numberless_opening_is_served_with_the_opening_it_kept(
+    client, db_session, room_app
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, project)
+    session = await create_session(db_session, project_id=project.id, language="pt", pericope=P)
+    session.messages = [
+        {
+            "role": "guide",
+            "text": "Se já entenderam, me digam e a gente vai pro ensaio.",
+            "at": "2026-10-19T12:00:00+00:00",
+            "moment": {
+                "before": {"at": "articulation", "part": 2, "fenced": True},
+                "after": {
+                    "at": "articulation",
+                    "part": 2,
+                    "fenced": True,
+                    "numberlessOpening": True,
+                },
+                "by": ["part_closing"],
+            },
+        }
+    ]
+    await db_session.commit()
+
+    answered = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/turns", headers=desk)
+
+    assert answered.status_code == 200, answered.text[:300]
+    moment = answered.json()["turns"][0]["voice"]["moment"]
+    assert moment["after"] == {
+        "at": "articulation",
+        "part": 2,
+        "closed": False,
+        "fenced": True,
+        "numberlessOpening": True,
+    }, "a mesa via o fechamento mover o momento sem ver o que ele guardou"
+    assert moment["before"] == {"at": "articulation", "part": 2, "closed": False, "fenced": True}
+
+
+def test_the_published_schema_of_a_step_lists_the_eight_causes_that_can_move_the_room() -> None:
     published = TurnMomentStep.model_json_schema()["properties"]["by"]["items"]
 
     assert published == {
         "enum": [
+            "scene_rehearsal",
             "entrance",
             "articulation_entrance",
             "where_we_are",
