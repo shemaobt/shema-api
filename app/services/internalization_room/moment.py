@@ -183,6 +183,7 @@ class Moment:
             part=stored.get("part"),
             closed=stored.get("closed", False),
             fenced=stored.get("fenced", False),
+            numberless_opening=stored.get("numberlessOpening", False),
         )
 
 
@@ -238,12 +239,17 @@ def moment_step(
     if before is None:
         return None
     parts = len(scenes)
+    marked = arriving.scene if arriving is not None else None
     if reached is None:
-        reached = sent_scene_ids(messages, arriving.scene if arriving else None)
+        reached = sent_scene_ids(messages, marked)
     back = {scenes.index(scene) + 1 for scene in reached if scene in scenes}
-    unmarked = arriving is not None and arriving.scene not in scenes
+    unmarked = arriving is not None and marked not in scenes
     after = before
     by: list[Cause] = []
+    if marked is not None and marked in scenes:
+        after = _arrived(before, scenes.index(marked) + 1)
+        if after != before:
+            by.append("scene_rehearsal")
     ignored: list[str] = []
     earlier = False
     anchored = False
@@ -281,6 +287,12 @@ _NUMBERED = ("entrance", "articulation_entrance", "where_we_are")
 
 def _scene(moment: Moment) -> int:
     return -1 if moment.at == "ensaio_final" else moment.part or 0
+
+
+def _arrived(moment: Moment, part: int) -> Moment:
+    if moment.numberless_opening and part == _scene(moment) + 1:
+        return Moment(at="articulation", part=part)
+    return moment
 
 
 class _Line(NamedTuple):

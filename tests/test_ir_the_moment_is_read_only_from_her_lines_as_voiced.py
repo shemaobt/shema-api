@@ -536,3 +536,36 @@ def test_her_closing_after_a_scene_the_passage_lacks_is_kept_with_her_numberless
         "part_closing: another moment line came earlier in the same reply — heard as a scene "
         "opening with no number: a marked scene rehearsal of part 1 will move the moment",
     ], "o número fora da passagem não ancora o fechamento, e a nota dela sumiu"
+
+
+@pytest.mark.parametrize(
+    ("opened", "scene", "practised"),
+    [
+        (
+            {"at": "articulation", "part": 1, "fenced": True, "numberlessOpening": True},
+            "S2",
+            {"at": "articulation", "part": 2, "fenced": False},
+        ),
+        (
+            {"at": "familiarization", "numberlessOpening": True},
+            "S1",
+            {"at": "articulation", "part": 1, "fenced": False},
+        ),
+    ],
+    ids=["the next scene", "the first scene"],
+)
+def test_a_marked_rehearsal_of_the_scene_a_numberless_opening_opened_moves_to_its_articulation(
+    opened: dict[str, Any], scene: str, practised: dict[str, Any]
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": opened}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.after.as_json() == practised, (
+        "a cena aberta sem número foi ensaiada e a sala não foi pra Articulação dela"
+    )
+    assert (step.before.as_json(), step.by) == (opened, ["scene_rehearsal"])
