@@ -19,7 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
 from app.core.config import get_settings
-from app.core.exceptions import ProviderNotConfigured, UpstreamServiceError
+from app.core.exceptions import (
+    ProviderNotConfigured,
+    UpstreamServiceError,
+    upstream_or_validation_error,
+)
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.voice_handles import clip_url
@@ -39,7 +43,7 @@ class Voice:
 
     def __init__(self) -> None:
         self.asked: list[str] = []
-        self.refuses: set[str] = set()
+        self.refuses: dict[str, Exception] = {}
 
     def key_of(self, text: str) -> str:
         return f"tts/v/{abs(hash(text))}.mp3"
@@ -47,7 +51,7 @@ class Voice:
     async def __call__(self, text: str, **_: object) -> tuple[SimpleNamespace, bool]:
         self.asked.append(text)
         if text in self.refuses:
-            raise UpstreamServiceError("ElevenLabs answered 503")
+            raise self.refuses[text]
         return SimpleNamespace(key=self.key_of(text)), False
 
 
@@ -219,7 +223,22 @@ async def test_ruth_p08_to_p14_are_offered_and_each_opens_a_session(
 async def test_a_passage_whose_line_cannot_be_voiced_is_offered_with_no_sound_and_the_list_is_still_served(  # noqa: E501
     client: httpx.AsyncClient, tablet: dict[str, str], voice: Voice
 ) -> None:
-    voice.refuses.add("Rute 1:1\N{EN DASH}5")
+    voice.refuses["Rute 1:1\N{EN DASH}5"] = UpstreamServiceError("ElevenLabs answered 503")
+
+    listed = {entry["pericope"]: entry for entry in await the_list_of(client, tablet, "Ruth")}
+
+    assert "Rute 1:1\N{EN DASH}5" in voice.asked
+    assert listed["P01"]["audio_url"] is None
+    assert all(listed[pericope]["audio_url"] for pericope in RUTH[1:])
+    assert listed["OV-Ruth"]["audio_url"]
+
+
+async def test_a_line_the_voice_provider_refuses_is_offered_with_no_sound_and_the_list_is_still_served(  # noqa: E501
+    client: httpx.AsyncClient, tablet: dict[str, str], voice: Voice
+) -> None:
+    voice.refuses["Rute 1:1\N{EN DASH}5"] = upstream_or_validation_error(
+        422, "TTS request failed with status 422"
+    )
 
     listed = {entry["pericope"]: entry for entry in await the_list_of(client, tablet, "Ruth")}
 
