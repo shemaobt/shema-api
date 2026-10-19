@@ -564,8 +564,8 @@ class BackTranslationVerdictResponse(BaseModel):
 
     `findings` is every finding of the check, in the analyst's order, as a kind, a frase number
     and a stretch, and never the analyst's note. It rides beside the leading finding and does
-    not replace it. An errand answer, which is not a check's, carries no list: the session
-    read is the standing truth, and a tablet that needs the marks after an errand reads them
+    not replace it. A refusal, which is not a check's answer, carries no list: the session
+    read is the standing truth, and a tablet that needs the marks after a refusal reads them
     there.
     """
 

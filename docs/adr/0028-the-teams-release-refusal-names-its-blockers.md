@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0068: untold_part and untold_take_ids are gone; two blockers name ground
 date: 2026-09-18
 ---
 

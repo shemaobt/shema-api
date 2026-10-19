@@ -202,9 +202,8 @@ def _listening(
 ) -> list[RetroverificationListening]:
     """The report part by part, with the parts nobody heard named as such.
 
-    Asked of the parts the stretches standing now are slices of, which is the subject both the
-    check and the release ask about: a part leaves the question by being recorded over and by
-    nothing else.
+    Asked of the parts the stretches standing now are slices of: a part leaves the question by
+    being recorded over and by nothing else.
     """
     unheard = set(unheard_parts(telling_back, parts))
     reported = {entry.take_id: entry for entry in telling_back.played_by_take}

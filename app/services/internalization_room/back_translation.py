@@ -396,10 +396,9 @@ def played_ranges_cover_clip(
 def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
     """The parts of the rehearsal the current stretches are slices of, sorted.
 
-    The subject of the listening question, and the one both askers have to agree on: the check
-    refuses on it before the analyst, and the release blocks on it at the handoff. Asked of the
-    stretches that count — a stretch whose audio was replaced names a recording no part is any
-    more — so a part leaves the question by being recorded over and by nothing else.
+    Asked of the stretches that count — a stretch whose audio was replaced names a recording no
+    part is any more — so a part leaves this list by being recorded over and by nothing else.
+    The listening is asked of every current part instead (ADR 0068).
     """
     return sorted({stretch.take_id for stretch in stretches})
 
