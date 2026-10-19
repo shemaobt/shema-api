@@ -673,6 +673,47 @@ class VerdictHeardResponse(BaseModel):
     marked: bool
 
 
+class ListenedWholeResponse(BaseModel):
+    """What follows the team's full listen of the recording, before any «terminei».
+
+    Only a joined recording is ever checked by itself, and only once a passage record: when
+    `automatic_check` is true the tablet says `fixed_line`, her N-2, reads «conferindo…» on
+    «terminei» and presses the finish itself, with no tap. Otherwise the tablet does what it
+    does after a listen today.
+    """
+
+    session_id: str
+    automatic_check: bool = Field(
+        default=False,
+        description=(
+            "True when the room checks this recording now with no tap: say `fixed_line`, then "
+            "call `back-translation/finish` as «terminei» does. Never true on a recording no "
+            "join touched, nor once the passage record holds a check."
+        ),
+    )
+    fixed_line: str = Field(
+        default="",
+        description="Her line to say now, by position (`GET /fixed-lines`); empty for none.",
+    )
+    refusal: CheckRefusal | None = Field(
+        default=None,
+        description=(
+            "`STRETCH_UNTRANSLATED` when a joined recording still has something to translate, "
+            "whatever the record holds: say `fixed_line`, her N-3, show «falta traduzir um "
+            "trecho — ouçam e traduzam, depois toquem em 'terminei'» with the scenes, and play "
+            "from the first of `untranslated`. Null otherwise."
+        ),
+    )
+    untranslated: list[UntranslatedPart] = Field(
+        default_factory=list,
+        description=(
+            "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order: a part "
+            "with no translated frase, or a WAV part with half a second or more no frase "
+            "covers. Empty otherwise."
+        ),
+    )
+
+
 class NeedsPersonResponse(BaseModel):
     session_id: str
     needs_person: bool

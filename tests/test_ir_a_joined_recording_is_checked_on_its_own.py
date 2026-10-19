@@ -19,23 +19,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.takes import takes_of
-from tests.release_harness import PREFIX
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import (
     REHEARSED_AT,
     TABLET,
     Analyst,
     Room,
+    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    stretch_on,
     the_analyst_reads,
     the_bucket_is_in_memory,
     the_room_speaks,
 )
 
 PART_MS = 4000
+CHECKING_BY_POSITION = "N1"
 UNTRANSLATED_BY_POSITION = "N2"
 
 
@@ -128,6 +131,20 @@ async def _recorded(
 
 def _heard(parts: list[IRTake]) -> dict[str, Any]:
     return played_every_part([part.id for part in parts], duration_ms=PART_MS)
+
+
+async def _listened_whole(
+    client: httpx.AsyncClient,
+    session_id: str,
+    *,
+    report: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/listened-whole",
+        **({"json": report} if report is not None else {}),
+        **({"headers": headers} if headers is not None else {}),
+    )
 
 
 async def _joined_upload(
@@ -226,3 +243,232 @@ async def test_a_joined_recording_with_nothing_translated_names_every_scene_stil
         {"take_id": second.id, "scene": 2, "from_ms": 0},
     ]
     assert analyst.readings == 0
+
+
+async def test_the_first_full_listen_of_a_joined_recording_translated_through_checks_it_with_n2(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, 1500), (1500, PART_MS)]])
+
+    listened = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is True, "a junção traduzida inteira esperava um toque"
+    assert body["fixed_line"] == CHECKING_BY_POSITION
+    assert analyst.readings == 0, "a porta da escuta conferia antes de a voz dizer o N-2"
+
+    checked = await press_terminei(client, session.id)
+
+    assert checked.status_code == 200, checked.text
+    assert checked.json()["refusal"] is None, (
+        "a escuta inteira não ficou guardada para a conferência"
+    )
+    assert analyst.readings == 1
+    assert len((await stored_telling_back(db_session, session)).checks) == 1
+
+
+async def test_a_tablet_of_another_team_cannot_report_this_teams_listen(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)]])
+    _stranger, credential = await a_claimed_device(db_session, email="estranho@example.com")
+
+    refused = await _listened_whole(
+        client, session.id, report=_heard(parts), headers=team_headers(credential)
+    )
+
+    assert refused.status_code == 404, refused.text
+    assert (await stored_telling_back(db_session, session)).played_by_take == [], (
+        "um tablet de outra equipe guardava a escuta desta"
+    )
+
+
+async def test_a_recording_no_join_touched_is_never_checked_by_its_listen(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]], joined=False)
+
+    listened = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is False, (
+        "uma gravação que nenhuma junção tocou era conferida sem o «terminei» da equipe"
+    )
+    assert body["fixed_line"] == ""
+
+
+async def test_a_joined_recording_already_checked_is_not_checked_again_by_the_next_listen(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]])
+    first = await _listened_whole(client, session.id, report=_heard(parts))
+    assert first.json()["automatic_check"] is True
+    assert (await press_terminei(client, session.id)).status_code == 200
+
+    again = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert again.status_code == 200, again.text
+    body = again.json()
+    assert body["automatic_check"] is False, (
+        "a conferência automática corria de novo na segunda escuta"
+    )
+    assert body["fixed_line"] == ""
+    assert analyst.readings == 1
+
+
+async def test_after_the_translation_starts_over_the_next_listen_checks_on_its_own_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]])
+    await _listened_whole(client, session.id, report=_heard(parts))
+    assert (await press_terminei(client, session.id)).status_code == 200
+    restarted = await client.post(f"{PREFIX}/sessions/{session.id}/back-translation/restart")
+    assert restarted.status_code == 200, restarted.text
+    for part in parts:
+        await capture_segment(
+            db_session,
+            session,
+            take_id=part.id,
+            starts_ms=0,
+            ends_ms=PART_MS,
+            bridge_take_id=f"retro-de-novo-{part.ordinal}",
+            transcript="contada de volta outra vez",
+        )
+
+    listened = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is True, (
+        "depois de recomeçar a tradução a junção traduzida de novo esperava um toque"
+    )
+    assert body["fixed_line"] == CHECKING_BY_POSITION
+
+
+async def test_a_listen_that_left_a_joined_scene_unheard_checks_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (first, _second) = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]])
+
+    listened = await _listened_whole(client, session.id, report=_heard([first]))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is False, "uma cena que ninguém ouviu ia para a conferência"
+    assert body["fixed_line"] == ""
+
+
+async def test_a_listen_with_a_frase_awaiting_its_translation_checks_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]])
+    await a_piece_still_to_be_told(
+        db_session, session, await stretch_on(db_session, session, parts[1])
+    )
+
+    listened = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is False, (
+        "a conferência corria por cima de uma frase sem tradução"
+    )
+    assert body["fixed_line"] == ""
+
+
+async def test_a_listen_of_a_joined_recording_that_carried_no_translation_checks_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, parts = await _recorded(db_session, [[], []])
+
+    listened = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is False, (
+        "sem tradução nenhuma trazida a tradução começa como hoje, não com a conferência"
+    )
+    assert body["fixed_line"] == ""
+
+
+@pytest.mark.parametrize(
+    ("second_scene", "from_ms"),
+    [([(0, 1000), (3000, PART_MS)], 1000), ([], 0)],
+    ids=["two seconds nobody translated", "a scene with no frase"],
+)
+async def test_a_listen_over_a_joined_stretch_nobody_translated_sends_the_team_there_with_n3(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: Analyst,
+    second_scene: list[tuple[int, int]],
+    from_ms: int,
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], second_scene])
+
+    listened = await _listened_whole(client, session.id, report=_heard(parts))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is False, (
+        "a conferência automática corria por cima de um trecho sem tradução"
+    )
+    assert body["refusal"] == "STRETCH_UNTRANSLATED"
+    assert body["fixed_line"] == UNTRANSLATED_BY_POSITION
+    assert body["untranslated"] == [{"take_id": parts[1].id, "scene": 2, "from_ms": from_ms}]
+    assert analyst.readings == 0
+
+
+@pytest.mark.parametrize(
+    ("frases", "content_type", "untranslated_from"),
+    [
+        ([(0, 1000), (1499, PART_MS)], "audio/wav", None),
+        ([(0, 1000), (1500, PART_MS)], "audio/wav", 1000),
+        ([(0, 3501)], "audio/wav", None),
+        ([(0, 3500)], "audio/wav", 3500),
+        ([(0, 1000), (3000, PART_MS)], "audio/mp4", None),
+    ],
+    ids=[
+        "a hole just under half a second",
+        "a hole of half a second",
+        "a tail just under half a second",
+        "a tail of half a second",
+        "two seconds on a recording that is not WAV",
+    ],
+)
+async def test_only_half_a_second_or_more_of_a_wav_part_counts_as_a_stretch_untranslated(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    frases: list[tuple[int, int]],
+    content_type: str,
+    untranslated_from: int | None,
+) -> None:
+    session, (part,) = await _recorded(db_session, [frases], content_type=content_type)
+
+    listened = await _listened_whole(client, session.id, report=_heard([part]))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    if untranslated_from is None:
+        assert body["automatic_check"] is True, "um resto sem fala nenhuma barrava a conferência"
+        assert body["untranslated"] == []
+    else:
+        assert body["refusal"] == "STRETCH_UNTRANSLATED", "meio segundo sem tradução passava"
+        assert body["untranslated"] == [
+            {"take_id": part.id, "scene": 1, "from_ms": untranslated_from}
+        ]
+
+
+async def test_terminei_over_a_joined_stretch_that_held_only_silence_is_checked_on_their_word(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, 1000), (3000, PART_MS)]])
+
+    answered = await press_terminei(client, session.id, report=_heard(parts))
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["refusal"] is None, (
+        "o «terminei» da equipe não fechava à mão um trecho onde nada foi dito"
+    )
+    assert analyst.readings == 1

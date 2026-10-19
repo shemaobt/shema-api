@@ -16,6 +16,7 @@ from app.models.internalization_room import (
     CheckRefusal,
     FindingView,
     FinishBackTranslationRequest,
+    ListenedWholeResponse,
     VerdictHeardRequest,
     VerdictHeardResponse,
 )
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+CHECKING_LINE = "N1"
 UNTRANSLATED_LINE = "N2"
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -304,6 +306,66 @@ async def verdict_heard(
 ) -> VerdictHeardResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
     return VerdictHeardResponse(marked=await room.mark_the_verdict_heard(db, session, payload.at))
+
+
+@router.post(
+    "/sessions/{session_id}/back-translation/listened-whole",
+    response_model=ListenedWholeResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def listened_whole(
+    session_id: str,
+    payload: FinishBackTranslationRequest | None = None,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> ListenedWholeResponse:
+    """The team listened to the whole recording: whether the room now checks it by itself.
+
+    Her joined recording is checked once with no tap after its first full listen
+    (`ensaioFinal.ts:431-455` at her freeze), and the voice says so first — her N-2, «Ouvimos
+    tudo. Agora vou conferir as traduções que vocês já me fizeram. Um momento.» — while
+    «terminei» reads «conferindo…». So this door decides and says, and checks nothing: the
+    check is the finish's, which the tablet calls next as «terminei» would. Run here, the
+    check would hand back the line that announces it only after the half minute it announces.
+
+    The body is the same report of what the tablet played as the finish's, stored the same
+    way, so the listen it describes is the one the finish then finds.
+    """
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    state = room.back_translation_of(session)
+    if payload is not None and payload.played_by_take:
+        state = await room.report_playback(
+            db,
+            session,
+            state,
+            played_by_take=payload.played_by_take,
+            played_ranges=payload.played_ranges,
+            clip_duration_ms=payload.clip_duration_ms,
+        )
+    final = await room.final_segments(db, session.id)
+    told = room.told_back(final)
+    parts = current_parts(await takes_of(db, session.id))
+    if (
+        room.first_untold(final) is not None
+        or room.unheard_parts(state, [part.id for part in parts])
+        or not is_joined(parts)
+        or not told
+    ):
+        return ListenedWholeResponse(session_id=session.id)
+    untranslated = untranslated_parts(parts, told, state.played_by_take)
+    if untranslated:
+        return ListenedWholeResponse(
+            session_id=session.id,
+            fixed_line=UNTRANSLATED_LINE,
+            refusal=CheckRefusal.STRETCH_UNTRANSLATED,
+            untranslated=untranslated,
+        )
+    if state.checks:
+        return ListenedWholeResponse(session_id=session.id)
+    return ListenedWholeResponse(
+        session_id=session.id, automatic_check=True, fixed_line=CHECKING_LINE
+    )
 
 
 async def _finished(
