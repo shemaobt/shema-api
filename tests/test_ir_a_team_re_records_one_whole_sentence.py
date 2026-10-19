@@ -58,9 +58,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, stor
 async def test_the_new_sentence_takes_the_old_ones_place_and_the_frases_after_it_move(
     client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
 ) -> None:
-    session, (one, two), ((_, middle, _), _) = await rehearsed_in_wav(
+    session, (one, two), ((first, middle, last), (other,)) = await rehearsed_in_wav(
         db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)], [(0, 2000)]]
     )
+
+    ids = [first.id, middle.id, last.id, other.id]
 
     laid = await re_record(client, session.id, middle.id, spoken(1.0))
 
@@ -78,6 +80,9 @@ async def test_the_new_sentence_takes_the_old_ones_place_and_the_frases_after_it
         (new, 2400, 3400),
         (two.id, 0, 2000),
     ], "as frases depois da nova não andavam a diferença, ou a outra parte mexia"
+    assert [one["segment_id"] for one in read["back_translation"]["segments"]] == ids, (
+        "as frases da parte ganhavam outro id e perdiam os achados e a história"
+    )
     before = samples_of(store.objects[one.storage_key])
     after = samples_of(store.objects[(await take_named(db_session, new)).storage_key])
     assert after[:RATE] == before[:RATE], "o áudio antes da frase mudava"
