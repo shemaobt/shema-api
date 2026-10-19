@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from datetime import datetime
+from typing import Any, NamedTuple
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
@@ -156,6 +157,20 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
             turns.append((message, not said_before and "mother_tongue" not in message))
         said_before = True
     return turns
+
+
+class TeamTurn(NamedTuple):
+    words: str
+    at: datetime
+
+
+def team_turn_of(session: IRSession, number: int) -> TeamTurn:
+    conversation = the_conversation(session)
+    entry, _ = _voice_turns(session)[number]
+    return TeamTurn(
+        words=str(conversation[conversation.index(entry) - 1]["text"]),
+        at=datetime.fromisoformat(entry["at"]),
+    )
 
 
 def last_turn_number(session: IRSession) -> int:

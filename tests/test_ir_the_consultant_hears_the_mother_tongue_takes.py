@@ -407,7 +407,13 @@ async def test_a_session_that_recorded_nothing_answers_an_empty_list_not_an_erro
 ) -> None:
     body = await _read(client, consultant, session.id)
 
-    assert body == {"session_id": session.id, "takes": []}
+    assert body == {
+        "session_id": session.id,
+        "takes": [],
+        "kept_rehearsals": [],
+        "recording_grain": None,
+        "finished_at": None,
+    }
 
 
 def _as_stored(row: Any) -> dict[str, Any]:
