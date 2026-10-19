@@ -33,6 +33,7 @@ from app.services.internalization_room.segments import (
     refuse_a_slice_that_is_not_one,
     refuse_a_telling_over_part_of_a_frase,
 )
+from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.takes import (
     current_parts,
     rehearsal_take_of,
@@ -318,6 +319,16 @@ async def _finished(
             played_by_take=payload.played_by_take,
             played_ranges=payload.played_ranges,
             clip_duration_ms=payload.clip_duration_ms,
+        )
+
+    awaiting = await the_sentence_awaiting(db, session)
+    if awaiting is not None:
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            fixed_line=awaiting.line,
+            checked=False,
+            untold_segment_id=awaiting.segment_id,
+            refusal=CheckRefusal.FRASE_AWAITING,
         )
 
     untold = room.first_untold(final)

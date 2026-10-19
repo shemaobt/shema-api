@@ -371,6 +371,18 @@ class SegmentsResponse(BaseModel):
     needs_person: bool = False
 
 
+class SentenceLaidInResponse(BaseModel):
+    """The part after one whole sentence was recorded again and laid in its frase's place.
+
+    The part is a new rehearsal take: the frase and every other frase of that part now sit on
+    it, the frases after the new sentence moved by the difference in length, and the take they
+    sat on before is kept. The whole list, as the other stretch verbs answer.
+    """
+
+    session_id: str
+    segments: list[SegmentView] = Field(default_factory=list)
+
+
 class FindingView(BaseModel):
     kind: str
     frase: int | None = Field(
@@ -382,6 +394,23 @@ class FindingView(BaseModel):
         ),
     )
     segment_id: str | None = None
+
+
+class RerecordedSentenceView(BaseModel):
+    """One sentence the team recorded again and the room laid into its part.
+
+    Both recordings are kept: `previous_take_id` is the part as it stood before, still a
+    rehearsal take of the session and still playable by its id, and `sentence_id` names the
+    sentence as the team recorded it, before its silence was trimmed. `take_id`, `starts_ms`
+    and `ends_ms` are where the new sentence sits on the part now.
+    """
+
+    sentence_id: str
+    segment_id: str
+    previous_take_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
 
 
 class BackTranslationProgress(BaseModel):
@@ -403,6 +432,19 @@ class BackTranslationProgress(BaseModel):
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    awaiting_segment_id: str | None = Field(
+        default=None,
+        description=(
+            "The frase whose sentence was recorded again and is not translated yet. It keeps "
+            "its number and only its own translation, at exactly the span the new sentence "
+            "took, may be told; until then «terminei» answers `FRASE_AWAITING` naming it, "
+            "with her N-6. Null when no frase awaits."
+        ),
+    )
+    rerecorded_sentences: list[RerecordedSentenceView] = Field(
+        default_factory=list,
+        description="Every sentence recorded again and laid into its part, in the order laid.",
+    )
 
 
 class KeptTakeView(BaseModel):
@@ -571,8 +613,9 @@ class FinishBackTranslationRequest(BaseModel):
 class CheckRefusal(StrEnum):
     """Why `terminei` reached no verdict, asked in this order and answered with the first.
 
-    - `FRASE_AWAITING`: a frase stands with no translation; `untold_segment_id` names it and the
-      tablet opens it.
+    - `FRASE_AWAITING`: a frase stands with no translation, or its sentence was recorded again
+      and awaits its new one, asked first, with her N-6 in `fixed_line`; `untold_segment_id`
+      names it and the tablet opens it.
     - `PART_UNHEARD`: a part of the recording was not heard through; `unheard_take_ids` names it,
       `fixed_line` is her P-unheard line, and the screen says «ainda falta ouvir um trecho da
       gravação».

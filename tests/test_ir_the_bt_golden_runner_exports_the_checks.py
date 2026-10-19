@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.services import internalization_room as room
+from app.services.internalization_room.takes import takes_of
 from scripts import bt_golden_runner
 from scripts.bt_golden_runner import export, load_script, open_session, play
 from tests.text_seam_harness import (
@@ -291,3 +292,13 @@ def test_the_shelf_the_runner_reads_by_default_holds_her_ten_bt_scripts() -> Non
         "P02-nuance-esta-noite",
         "P02-regravar-frase-troca",
     ], "nenhum roteiro bt dela estava no repositório; o runner lia de /tmp"
+
+
+async def test_her_clips_declared_wav_reach_the_seam_as_wav_parts(seam, db_session) -> None:
+    script = load_script(bt_golden_runner.BT_DIR / "P01-regravar-frase-faltou.json")
+
+    session_id = await open_session(script, seam)
+
+    assert [part.content_type for part in await takes_of(db_session, session_id)] == [
+        "audio/wav"
+    ] * 4, "o runner lia o roteiro dela sem o «contentType», e a costura via quatro textos"
