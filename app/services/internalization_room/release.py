@@ -64,6 +64,8 @@ from app.services.internalization_room.segments import (
     told_back,
 )
 from app.services.internalization_room.sessions import (
+    _land,
+    _no_such_session,
     back_translation_of,
     is_panorama,
 )
@@ -751,12 +753,20 @@ async def approve_release(
     second approval of an unchanged packet must come back with the *same* release, and a loop
     that re-allocates after losing the race would mint the version the idempotency check
     exists to prevent. Answering the caller keeps the decision in one place.
+
+    No release is minted on an archived session: one a Zerar archived is answered as gone,
+    and so is one a Zerar overtakes while the packet is composed, because the insert lands
+    only while the session's ``version`` is still the one read here (ADR 0052, ADR 0066).
     """
     assert session.project_id is not None
+    if session.archive_id is not None:
+        raise NotFoundError(_no_such_session(session.id))
 
     packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
     if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+        if await db.scalar(select(IRSession.archive_id).where(IRSession.id == session.id)):
+            raise NotFoundError(_no_such_session(session.id))
         return latest
 
     _judge(blockers, FORCEABLE_BLOCKERS if forced_by else frozenset())
@@ -786,6 +796,7 @@ async def approve_release(
             else None
         ),
     )
+    await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
     db.add(release)
     try:
         await db.commit()

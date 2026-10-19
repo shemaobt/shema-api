@@ -249,9 +249,10 @@ async def _of_the_same_archive(
 ) -> list[IRRelease]:
     """The releases minted on a session of this session's archive, live with live.
 
-    Read off the session that minted each one and not off the release's own stamp: a release
-    minted after its session's Zerar, by a facilitator's force or an approval that raced it,
-    was not there to be stamped, and belongs to its session's archive all the same.
+    Read off the session that minted each one and not off the release's own stamp. No release
+    is minted on an archived session any more (ADR 0066), but a row minted after its session's
+    Zerar before that rule was not there to be stamped, and belongs to its session's archive
+    all the same.
     """
     minted_on = await db.execute(
         select(IRSession.id, IRSession.archive_id).where(
