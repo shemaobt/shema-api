@@ -14,7 +14,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.back_translation import VoicedVerdict
-from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.release import compose_internalization_release
+from app.services.internalization_room.segments import (
+    current_segments,
+    divide_segment,
+    final_segments,
+)
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from tests.device_harness import a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
@@ -268,3 +273,40 @@ async def test_a_sentence_laid_in_after_a_clean_check_leaves_the_passage_uncheck
         "a passagem continuava conferida sobre uma frase que ninguém traduziu"
     )
     assert "telling_back_not_checked" in await release_blockers(db_session, session)
+
+
+async def test_refine_is_handed_the_part_with_the_sentence_laid_in(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, (one, two), ((_, middle), _) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000)], [(0, 2000)]]
+    )
+
+    new = (await re_record(client, session.id, middle.id, spoken(1.0))).json()["segments"][1]
+
+    packet, _ = await compose_internalization_release(db_session, session)
+    assert [take["take_id"] for take in packet["audio"]["rehearsal_takes"]] == [
+        new["take_id"],
+        two.id,
+    ], "o Refine recebia a parte de antes, sem a frase nova"
+    assert one.id not in [take["take_id"] for take in packet["audio"]["rehearsal_takes"]]
+
+
+async def test_a_divided_stretch_holding_the_frase_still_tiles_its_pieces(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, whole),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 3000)]]
+    )
+    first, _ = await divide_segment(db_session, session, whole, at_ms=2000)
+
+    await re_record(client, session.id, first.id, spoken(1.0))
+
+    spans = {
+        one.id: (one.starts_ms, one.ends_ms)
+        for one in await current_segments(db_session, session.id)
+    }
+    assert spans[whole.id] == (1000, 3400), (
+        "o trecho dividido não cobria mais as suas partes depois da frase nova"
+    )
+    assert sorted(spans.values())[1:] == [(1000, 2400), (1000, 3400), (2400, 3400)]

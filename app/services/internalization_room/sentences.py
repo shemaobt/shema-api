@@ -161,6 +161,8 @@ async def lay_in_a_sentence(
         elif one.starts_ms >= old_end:
             one.starts_ms += shift
             one.ends_ms += shift
+        elif one.ends_ms >= old_end:
+            one.ends_ms += shift
         one.take_id = take.id
     state = back_translation_of(session)
     state.sentences.append(
