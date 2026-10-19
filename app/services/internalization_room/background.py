@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
+from typing import Any
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,12 +42,50 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_back_translation,
 )
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    extension,
+    recording_digest,
+    store_recording,
+    takes_of,
+)
 from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
 
 _reading: dict[str, tuple[list[str], asyncio.Task[BackTranslationState | None]]] = {}
+
+
+@dataclass(frozen=True)
+class HeardTake:
+    audio: bytes
+    content_type: str
+
+
+async def _kept(session_id: str, take: HeardTake) -> dict[str, str]:
+    sha256 = recording_digest(take.audio)
+    stored = await store_recording(
+        take.audio,
+        key=(
+            f"internalization-room/takes/{session_id}/kept/{sha256}/"
+            f"conto.{extension(take.content_type)}"
+        ),
+        sha256=sha256,
+        content_type=take.content_type,
+    )
+    return {"storage_key": stored.storage_key, "content_type": stored.content_type}
+
+
+async def _retold(
+    session_id: str, turn_number: int, heard: list[Retelling], take: HeardTake | None
+) -> dict[str, Any]:
+    retold: dict[str, Any] = {}
+    for told in heard:
+        entry: dict[str, Any] = asdict(told)
+        if told.approved and take is not None:
+            entry["kept"] = await _kept(session_id, take)
+        retold[str(turn_number)] = entry
+    return retold
 
 
 async def settle_coverage(
@@ -57,6 +96,7 @@ async def settle_coverage(
     team_utterance: str,
     guide_response: str,
     pericope_num: str,
+    take: HeardTake | None = None,
 ) -> None:
     """Advance the tracker after the reply has already shipped.
 
@@ -88,13 +128,9 @@ async def settle_coverage(
                         session_language=LANGUAGE_NAMES[room_language(session.language)],
                         on_retelling=heard.append,
                     )
+                    retold = await _retold(session_id, turn_number, heard, take)
                     async with AsyncSessionLocal() as db:
-                        settled = await apply_coverage(
-                            db,
-                            session_id,
-                            updated,
-                            retellings={str(turn_number): asdict(told) for told in heard},
-                        )
+                        settled = await apply_coverage(db, session_id, updated, retellings=retold)
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)
             )

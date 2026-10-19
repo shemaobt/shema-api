@@ -5,11 +5,16 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake
-from app.models.internalization_room import MotherTongueTake, MotherTongueTakesResponse
+from app.models.internalization_room import (
+    KeptTakeView,
+    MotherTongueTake,
+    MotherTongueTakesResponse,
+)
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
     listen_url,
+    signed_listen_url,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -48,3 +53,19 @@ async def mother_tongue_takes_of(
             )
         )
     return MotherTongueTakesResponse(session_id=session.id, takes=rows)
+
+
+async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
+    kept = sorted(
+        (int(number), told) for number, told in (session.retellings or {}).items() if "kept" in told
+    )
+    return [
+        KeptTakeView(
+            scope=told["scope"],
+            turn_number=number,
+            audio_url=await signed_listen_url(
+                told["kept"]["storage_key"], told["kept"]["content_type"]
+            ),
+        )
+        for number, told in kept
+    ]
