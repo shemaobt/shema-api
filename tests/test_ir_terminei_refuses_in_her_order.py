@@ -112,3 +112,34 @@ async def test_a_part_heard_with_nothing_translated_over_it_is_read_with_the_res
     assert body["refusal"] is None
     assert analyst.readings == 1, "nela a checagem roda e o Analista nomeia o que falta"
     assert body["audio_url"] != ""
+
+
+async def test_a_part_never_played_is_refused_as_unheard_before_nothing_translated(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    session, (first, second) = await _recorded_and_never_translated(db_session, 2)
+
+    answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["refusal"] == "PART_UNHEARD", "ela recusa o que não foi ouvido antes do vazio"
+    assert body["unheard_take_ids"] == [second.id]
+    assert analyst.readings == 0
+
+
+async def test_a_part_with_nothing_translated_over_it_still_has_to_be_heard(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    session, (first, second, third) = await rehearsed_in_parts(db_session, 3)
+    fresh = await record_the_part_again(db_session, session, second, sha256="d" * 64)
+
+    answered = await press_terminei(
+        client, session.id, report=played_every_part([first.id, third.id])
+    )
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["refusal"] == "PART_UNHEARD"
+    assert body["unheard_take_ids"] == [fresh.id]
+    assert analyst.readings == 0, "o Analista leria uma passagem com uma parte nunca ouvida"

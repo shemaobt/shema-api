@@ -32,6 +32,7 @@ from app.services.internalization_room.segments import (
     refuse_a_telling_over_part_of_a_frase,
 )
 from app.services.internalization_room.takes import (
+    current_parts,
     rehearsal_take_of,
     store_take,
     takes_of,
@@ -342,10 +343,9 @@ async def _finished(
     if untold is not None:
         return await _the_untold_errand(db, session, state, segment_id=untold.id)
 
-    rehearsed = room.rehearsed_parts(final)
     takes = await takes_of(db, session.id)
 
-    unheard = room.unheard_parts(state, rehearsed)
+    unheard = room.unheard_parts(state, [part.id for part in current_parts(takes)])
     if unheard:
         line, _ = process_line("P", "unheard", session.language)
         with stage("db_let_go"):
@@ -358,6 +358,7 @@ async def _finished(
             checked=False,
             unheard_take_ids=unheard,
             findings_remaining=0,
+            refusal=CheckRefusal.PART_UNHEARD,
         )
 
     if not told:
