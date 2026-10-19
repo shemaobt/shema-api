@@ -50,6 +50,7 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.passage_turn import accepted_send_backs
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.session_turns import last_turn_number
 from app.services.internalization_room.sessions import the_opening_note
 from app.services.internalization_room.turn.speech import mother_tongue_note
 
@@ -259,6 +260,7 @@ async def play_golden_turn(
             await settle_coverage(
                 session_id=session.id,
                 turn_id=str(uuid.uuid4()),
+                turn_number=last_turn_number(session),
                 team_utterance=outcome.transcript,
                 guide_response=outcome.speech,
                 pericope_num=session.pericope,

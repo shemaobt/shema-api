@@ -16,7 +16,7 @@ from app.api.internalization_room._deps import (
     linked_tablet_dep,
 )
 from app.api.internalization_room.back_translation import finding_views
-from app.api.internalization_room.segments import segment_view
+from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, UpstreamServiceError, ValidationError
@@ -41,6 +41,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt, opening_claim
 from app.services.internalization_room.back_translation import findings_on_stretches_that_count
 from app.services.internalization_room.background import (
+    HeardTake,
     read_the_earlier_passages_again,
     settle_coverage,
 )
@@ -67,10 +68,13 @@ from app.services.internalization_room.prepare_opening import (
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sentences import the_sentence_awaiting
+from app.services.internalization_room.session_takes import kept_takes_of
+from app.services.internalization_room.session_turns import last_turn_number
 from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
 )
+from app.services.internalization_room.takes import AUDIO_MIME
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -291,6 +295,7 @@ def _settle_later(
     turn_id: str,
     team_utterance: str,
     guide_response: str,
+    take: HeardTake | None,
 ) -> bool:
     """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
@@ -310,9 +315,11 @@ def _settle_later(
         settle_coverage,
         session_id=session.id,
         turn_id=turn_id,
+        turn_number=last_turn_number(session),
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,
+        take=take,
     )
     return True
 
@@ -329,6 +336,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         halt=halt.standing(session),
         opened=was_opened(session),
         moment=moment_view(session),
+        kept_takes=await kept_takes_of(session),
     )
 
 
@@ -349,7 +357,7 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     awaiting = await the_sentence_awaiting(db, session)
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[segment_view(one) for one in stretches],
+        segments=segment_views(stretches),
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
@@ -797,6 +805,7 @@ async def _answer_the_turn(
         )
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
+    take = None if file is None else HeardTake(audio_bytes, file.content_type or AUDIO_MIME)
 
     return await opening_claim.answer_around_the_opening(
         db,
@@ -815,6 +824,7 @@ async def _answer_the_turn(
             opening=opening,
             halted=halted,
             bound_s=bound_s,
+            take=take,
         ),
     )
 
@@ -830,6 +840,7 @@ async def draft_the_turn(
     speech_heard: HeardSpeech,
     deadline: float,
     bound_s: float,
+    take: HeardTake | None = None,
 ) -> TurnResponse:
     reply, outcome, language = await _keep_the_turn(
         db,
@@ -841,6 +852,7 @@ async def draft_the_turn(
         speech_heard=speech_heard,
         deadline=deadline,
         bound_s=bound_s,
+        take=take,
     )
     if outcome is None:
         return reply
@@ -897,6 +909,7 @@ async def _keep_the_turn(
     deadline: float,
     bound_s: float,
     scene_rehearsals: list[str] | None = None,
+    take: HeardTake | None = None,
 ) -> tuple[TurnResponse, room.TurnOutcome | None, str]:
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
@@ -979,6 +992,7 @@ async def _keep_the_turn(
             turn_id=response_turn_id,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
+            take=take,
         )
     if earlier_passages_due(session.earlier_passages):
         background.add_task(read_the_earlier_passages_again, session_id=session.id)

@@ -332,6 +332,7 @@ async def _settle(session_id: str, turn_id: str) -> None:
     await background.settle_coverage(
         session_id=session_id,
         turn_id=turn_id,
+        turn_number=1,
         team_utterance="a equipe contou a cena",
         guide_response="o Guia devolveu a pergunta",
         pericope_num=P,

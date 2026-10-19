@@ -270,14 +270,20 @@ async def listen_url(
     of audio through the application server buys nothing over letting storage serve it, and a
     frase is served the same way.
     """
+    return await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+
+
+async def signed_listen_url(
+    storage_key: str, content_type: str, *, settings: Settings | None = None
+) -> str:
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
     return await generate_signed_download_url(
         cfg.gcs_platform_bucket,
-        recording.storage_key,
+        storage_key,
         expiry_minutes=LISTEN_MINUTES,
-        response_content_type=recording.content_type,
+        response_content_type=content_type,
     )
 
 

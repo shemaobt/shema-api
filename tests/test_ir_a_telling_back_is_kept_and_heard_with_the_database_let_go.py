@@ -176,7 +176,7 @@ def _checkouts(test_engine: AsyncEngine) -> Iterator[list[object]]:
         event.remove(test_engine.sync_engine, "checkout", _count)
 
 
-async def test_a_stretch_told_back_again_takes_three_connections_not_four(
+async def test_a_stretch_told_back_again_takes_four_connections_not_five(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     test_engine: AsyncEngine,
@@ -199,9 +199,10 @@ async def test_a_stretch_told_back_again_takes_three_connections_not_four(
         )
 
     assert told.status_code == 200, told.text
-    assert len(checkouts) == 3, (
+    assert len(checkouts) == 4, (
         "o refresh do take recém-gravado reabria uma conexão só para reler o que o INSERT já"
-        " tinha devolvido"
+        " tinha devolvido; a quarta conexão é a leitura de final_segments em add_chunk que"
+        " numera a resposta"
     )
 
 
@@ -226,5 +227,6 @@ async def test_a_stretch_replaced_takes_four_connections_not_five(
     assert replaced.status_code == 200, replaced.text
     assert len(checkouts) == 4, (
         "o refresh do take recém-gravado reabria uma conexão só para reler o que o INSERT já"
-        " tinha devolvido"
+        " tinha devolvido; a quarta conexão é a leitura de final_segments que monta a lista"
+        " da resposta"
     )

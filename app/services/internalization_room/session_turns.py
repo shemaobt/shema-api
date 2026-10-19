@@ -158,6 +158,10 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
     return turns
 
 
+def last_turn_number(session: IRSession) -> int:
+    return len(_voice_turns(session)) - 1
+
+
 def _team_side(guide: dict[str, Any]) -> TurnTeamSide:
     cut = guide.get("interrupted")
     return TurnTeamSide(

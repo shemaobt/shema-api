@@ -747,7 +747,7 @@ _STORED_JSON = Text().with_variant(JSONB(), "postgresql")
 _TRIES = 5
 
 _Stored = dict[str, Any]
-_JSONColumn = InstrumentedAttribute[_Stored]
+_JSONColumn = InstrumentedAttribute[_Stored] | InstrumentedAttribute[_Stored | None]
 
 
 async def _written_forward(
@@ -781,14 +781,14 @@ async def _written_forward(
 async def _written_unless_moved(
     db: AsyncSession, session_id: str, column: _JSONColumn, read: _Stored | None, value: _Stored
 ) -> bool:
+    unmoved: ColumnElement[bool] = cast(column, _STORED_JSON).is_not_distinct_from(
+        cast(literal(read, JSON), _STORED_JSON)
+    )
+    if read is None:
+        unmoved = or_(column.is_(None), unmoved)
     written = await db.execute(
         update(IRSession)
-        .where(
-            IRSession.id == session_id,
-            cast(column, _STORED_JSON).is_not_distinct_from(
-                cast(literal(read, JSON), _STORED_JSON)
-            ),
-        )
+        .where(IRSession.id == session_id, unmoved)
         .values({column: value})
         .execution_options(synchronize_session=False)
     )
@@ -796,7 +796,11 @@ async def _written_unless_moved(
 
 
 async def apply_coverage(
-    db: AsyncSession, session_id: str, coverage_state: dict[str, str]
+    db: AsyncSession,
+    session_id: str,
+    coverage_state: dict[str, str],
+    *,
+    retellings: dict[str, Any] | None = None,
 ) -> IRSession:
     """Store the tracker after the off-path classifier ran.
 
@@ -826,6 +830,15 @@ async def apply_coverage(
     )
     record_transitions(db, session, before=kept or {}, after=settled)
     set_committed_value(session, "coverage_state", settled)
+    if retellings:
+
+        async def told(read: dict[str, Any] | None) -> dict[str, Any]:
+            return {**(read or {}), **retellings}
+
+        _, retold = await _written_forward(
+            db, session.id, IRSession.retellings, session.retellings, told
+        )
+        set_committed_value(session, "retellings", retold)
     if not is_panorama(session.pericope) and session_is_done(session) and session.ended_at is None:
         await db.execute(
             update(IRSession)

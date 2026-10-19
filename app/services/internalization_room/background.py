@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +23,11 @@ from app.services.internalization_room.back_translation import (
     untold_parts,
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.classify_coverage import classify_coverage
+from app.services.internalization_room.classify_coverage import (
+    KeptRecording,
+    Retelling,
+    classify_coverage,
+)
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.earlier_passages import earlier_passages
@@ -40,7 +46,13 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_back_translation,
 )
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    extension,
+    recording_digest,
+    store_recording,
+    takes_of,
+)
 from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
@@ -48,13 +60,49 @@ logger = logging.getLogger(__name__)
 _reading: dict[str, tuple[list[str], asyncio.Task[BackTranslationState | None]]] = {}
 
 
+@dataclass(frozen=True)
+class HeardTake:
+    audio: bytes
+    content_type: str
+
+
+async def _kept(session_id: str, take: HeardTake) -> KeptRecording:
+    sha256 = recording_digest(take.audio)
+    stored = await store_recording(
+        take.audio,
+        key=(
+            f"internalization-room/takes/{session_id}/kept/{sha256}/"
+            f"conto.{extension(take.content_type)}"
+        ),
+        sha256=sha256,
+        content_type=take.content_type,
+    )
+    return KeptRecording(storage_key=stored.storage_key, content_type=stored.content_type)
+
+
+async def _retold(
+    session_id: str, turn_number: int, heard: list[Retelling], take: HeardTake | None
+) -> dict[str, Any]:
+    retold: dict[str, Any] = {}
+    for told in heard:
+        if told.approved and take is not None:
+            try:
+                told = told.model_copy(update={"kept": await _kept(session_id, take)})
+            except Exception:
+                logger.exception("The kept take of session %s did not reach the bucket", session_id)
+        retold[str(turn_number)] = told.model_dump(exclude_none=True)
+    return retold
+
+
 async def settle_coverage(
     *,
     session_id: str,
     turn_id: str,
+    turn_number: int,
     team_utterance: str,
     guide_response: str,
     pericope_num: str,
+    take: HeardTake | None = None,
 ) -> None:
     """Advance the tracker after the reply has already shipped.
 
@@ -75,6 +123,7 @@ async def settle_coverage(
                     session = await get_session(db, session_id)
                 coverage_state = session.coverage_state or {}
                 classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
+                heard: list[Retelling] = []
                 with reading_the_canon_of(session.canon_pin):
                     updated = await classify_coverage(
                         coverage_state=coverage_state,
@@ -83,9 +132,11 @@ async def settle_coverage(
                         classifier_prompt=classifier_prompt,
                         pericope_num=pericope_num,
                         session_language=LANGUAGE_NAMES[room_language(session.language)],
+                        on_retelling=heard.append,
                     )
+                    retold = await _retold(session_id, turn_number, heard, take)
                     async with AsyncSessionLocal() as db:
-                        settled = await apply_coverage(db, session_id, updated)
+                        settled = await apply_coverage(db, session_id, updated, retellings=retold)
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)
             )

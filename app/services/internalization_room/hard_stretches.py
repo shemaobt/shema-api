@@ -110,7 +110,7 @@ async def capture_and_note_a_hard_stretch(
     transcript: str | None = None,
     replaces: IRSegment | None = None,
     state: BackTranslationState | None = None,
-) -> bool:
+) -> tuple[IRSegment, bool]:
     """Write a captured telling and whatever it crossed into, in one transaction.
 
     The stretch row, the telling-back state and the mark of a hard stretch are one fact about
@@ -157,7 +157,7 @@ async def capture_and_note_a_hard_stretch(
         )
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()
-    return crossed
+    return captured, crossed
 
 
 async def hard_stretches_of(

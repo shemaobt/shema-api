@@ -52,16 +52,21 @@ router = APIRouter()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def segment_view(segment: IRSegment) -> SegmentView:
-    return SegmentView(
-        segment_id=segment.id,
-        take_id=segment.take_id,
-        starts_ms=segment.starts_ms,
-        ends_ms=segment.ends_ms,
-        pass_number=segment.pass_number,
-        told=segment.transcript is not None,
-        bridge_take_id=segment.bridge_take_id,
-    )
+def segment_views(stretches: list[IRSegment]) -> list[SegmentView]:
+    numbers = room.frase_numbers(room.told_back(stretches))
+    return [
+        SegmentView(
+            segment_id=segment.id,
+            take_id=segment.take_id,
+            starts_ms=segment.starts_ms,
+            ends_ms=segment.ends_ms,
+            pass_number=segment.pass_number,
+            told=segment.transcript is not None,
+            bridge_take_id=segment.bridge_take_id,
+            frase=numbers.get(segment.id),
+        )
+        for segment in stretches
+    ]
 
 
 async def _units(db: AsyncSession, session_id: str) -> list[SegmentView]:
@@ -71,7 +76,7 @@ async def _units(db: AsyncSession, session_id: str) -> list[SegmentView]:
     nothing, but a client that patched its own list from a two-element answer would be keeping
     a second copy of a rule that lives in `final_segments`.
     """
-    return [segment_view(one) for one in await room.final_segments(db, session_id)]
+    return segment_views(await room.final_segments(db, session_id))
 
 
 @router.post(
@@ -202,7 +207,7 @@ async def replace(
     if not text.strip():
         raise WordlessTelling()
 
-    crossed = await room.capture_and_note_a_hard_stretch(
+    _, crossed = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,
