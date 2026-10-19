@@ -14,7 +14,7 @@ def _numbers_stretches_from_one(call: ast.Call) -> bool:
         for keyword in call.keywords
     )
     over = call.args[0] if call.args else None
-    stretches = (isinstance(over, ast.Name) and over.id in {"told", "segments"}) or (
+    stretches = (isinstance(over, ast.Name) and over.id in {"told", "segments", "stretches"}) or (
         isinstance(over, ast.Call)
         and isinstance(over.func, ast.Name)
         and over.func.id == "told_back"

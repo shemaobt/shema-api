@@ -22,8 +22,9 @@ Decided by the ticket (ENG-1679):
   answer is the one the next read serves.
 - One function gives it, `frase_numbers` in `services/internalization_room/back_translation.py`,
   beside `segments_block`, which writes the voice's lines. The packet and the retroverification
-  file read it too. A test walks the application and fails on any other place that numbers a
-  stretch from one.
+  file read it too. A test walks the application and fails on an `enumerate(…, start=1)` over a
+  list named `told`, `segments` or `stretches`, or over `told_back(…)`, anywhere but there; a
+  counter spelled another way is for review to catch.
 - A stretch told again keeps its position, so it keeps its number. After «recomeçar a tradução»
   every stretch is retired and the next telling is frase 1.
 - A finding's `frase` stays the number the analyst gave and the voice spoke, beside the stretch
