@@ -10,6 +10,7 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import At, Cause, MomentView
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.prompt_blocks import sent_scene_ids
 
 _DASH = "\N{EM DASH}"
 
@@ -220,27 +221,25 @@ class MomentStep:
 
 
 def moment_step(
-    messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool, parts: int
+    messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool, scenes: list[str]
 ) -> MomentStep | None:
     """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
     A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
     before = moment_at_turn_start(messages)
     if before is None:
         return None
+    parts = len(scenes)
+    back = {scenes.index(scene) + 1 for scene in sent_scene_ids(messages, None) if scene in scenes}
     after = before
     by: list[Cause] = []
     ignored: list[str] = []
     earlier = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
-        outside = line.part is not None and not 1 <= line.part <= parts
-        closing_after_another = line.cause == "part_closing" and earlier
-        declined = _declined(after, line, parts=parts, earlier=earlier)
+        declined = _declined(after, line, parts=parts, earlier=earlier, back=back)
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
         if declined:
             ignored.append(f"{_described(line)}: {declined}")
-        if outside or closing_after_another:
-            continue
-        moved = _moved(after, line)
+        moved = after if declined else _moved(after, line)
         if moved != after:
             by.append(line.cause)
         after = moved
@@ -264,11 +263,12 @@ def _described(line: _Line) -> str:
     return f"{line.cause} {line.part}{where if line.cause == 'where_we_are' else ''}"
 
 
-def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str | None:
+def _declined(
+    moment: Moment, line: _Line, *, parts: int, earlier: bool, back: set[int]
+) -> str | None:
     """Her `step()` reasons for a line it declines, in her order and her words (`moment.ts`
     :149-189), for the Observation Room. Her closing in an Articulation is declined for want of
-    a rehearsal of that part that came back; no rehearsal reaches the server yet, so here that
-    is every closing in an Articulation."""
+    a rehearsal of that part that came back."""
     if line.part is not None and not 1 <= line.part <= parts:
         return f"not a part of this passage (1..{parts})"
     if moment.at == "ensaio_final" and line.cause in _NUMBERED:
@@ -286,7 +286,8 @@ def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str 
     if line.cause == "part_closing" and moment.at == "articulation" and moment.part is not None:
         if moment.part >= parts:
             return "after the last part"
-        return f"no scene rehearsal of part {moment.part} has come back"
+        if moment.part not in back:
+            return f"no scene rehearsal of part {moment.part} has come back"
     if line.cause == "familiarization_closing" and moment.at != "familiarization":
         return "outside the Familiarization"
     return None
@@ -333,6 +334,8 @@ def _moved(moment: Moment, line: _Line) -> Moment:
     if line.cause == "fence":
         fenced = Moment(at="articulation", part=moment.part, fenced=True)
         return moment if moment.at == "familiarization" else fenced
+    if line.cause == "part_closing" and moment.at == "articulation" and moment.part is not None:
+        return Moment(at="internalization", part=moment.part + 1)
     if moment.at != "familiarization":
         return moment
     if line.cause == "part_closing":

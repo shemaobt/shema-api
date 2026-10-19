@@ -4,6 +4,7 @@ import pytest
 
 from app.services.internalization_room.moment import _described, _Line, moment_step
 
+SCENES = ["S1", "S2", "S3", "S4"]
 FAMILIARIZATION = {"at": "familiarization"}
 SCENE_TWO_OPEN = {"at": "internalization", "part": 2}
 F3 = (
@@ -38,7 +39,7 @@ TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem intei
 
 def _after(moment: dict[str, Any], voiced: str) -> dict[str, Any]:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
-    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
     assert step is not None
     return step.after.as_json()
 
@@ -294,7 +295,7 @@ def test_every_numbered_line_after_the_send_off_is_kept_in_her_words(
 ) -> None:
     heard = [{"role": "guide", "text": "", "moment": {"after": ENSAIO_FINAL}}]
 
-    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
 
     assert step is not None
     assert step.ignored == [f"{recorded}: after the send-off (Ensaio Final)"], (
@@ -311,7 +312,7 @@ def test_after_the_send_off_her_closing_her_fence_and_plain_words_leave_nothing_
 ) -> None:
     heard = [{"role": "guide", "text": "", "moment": {"after": ENSAIO_FINAL}}]
 
-    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
 
     assert step is not None
     assert "ignored" not in step.as_json(), (
@@ -350,7 +351,7 @@ def test_a_scene_number_the_passage_does_not_have_is_kept_in_her_words(
 ) -> None:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
 
-    step = moment_step(heard, voiced, fail_safe=False, parts=3)
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES[:3])
 
     assert step is not None
     assert step.ignored == [f"{recorded}: not a part of this passage (1..3)"], (
@@ -361,7 +362,7 @@ def test_a_scene_number_the_passage_does_not_have_is_kept_in_her_words(
 
 def _ignored(moment: dict[str, Any], voiced: str) -> list[str]:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
-    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
     assert step is not None
     return step.ignored
 
@@ -430,3 +431,27 @@ def test_her_familiarization_closing_outside_the_familiarization_is_kept_as_igno
 
 def test_her_familiarization_closing_in_the_familiarization_is_not_ignored() -> None:
     assert _ignored(FAMILIARIZATION, F3) == []
+
+
+def _rehearsed(scene: str | None) -> dict[str, Any]:
+    return {"rehearsal_id": "ensaio-1", "n": 1, "frases": 3, "scene": scene}
+
+
+def test_her_closing_opens_the_next_scene_once_its_marked_rehearsal_came_back() -> None:
+    heard = [
+        {
+            "role": "guide",
+            "text": "",
+            "scene_rehearsal": _rehearsed("S2"),
+            "moment": {"after": SCENE_TWO_PRACTISED},
+        },
+        {"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}},
+    ]
+
+    step = moment_step(heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.after.as_json() == {"at": "internalization", "part": 3}, (
+        "o ensaio marcado da cena 2 tinha voltado e o fechamento não abriu a cena 3"
+    )
+    assert (step.by, step.ignored) == (["part_closing"], [])

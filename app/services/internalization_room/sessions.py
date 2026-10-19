@@ -672,7 +672,7 @@ async def append_exchange(
             session.messages or [],
             guide_response,
             fail_safe=outcome is not None and outcome.used_fail_safe,
-            parts=len(scene_ids_for(session.pericope)),
+            scenes=scene_ids_for(session.pericope),
         )
     )
     if step is not None:
