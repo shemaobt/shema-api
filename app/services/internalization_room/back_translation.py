@@ -460,6 +460,10 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
+def frase_numbers(told: list[IRSegment]) -> dict[str, int]:
+    return {segment.id: number for number, segment in enumerate(told, start=1)}
+
+
 def segments_block(
     segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
 ) -> str:

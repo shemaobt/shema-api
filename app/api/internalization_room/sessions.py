@@ -344,9 +344,10 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     stretches = await room.final_segments(db, session.id)
     findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
+    numbers = room.frase_numbers(room.told_back(stretches))
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[segment_view(one) for one in stretches],
+        segments=[segment_view(one, numbers.get(one.id)) for one in stretches],
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,

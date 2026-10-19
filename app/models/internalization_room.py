@@ -332,6 +332,7 @@ class SegmentView(BaseModel):
     #: it resumes a told stretch. Null while nothing was told on it — a piece cut out of another
     #: stretch — and on a stretch told through the text seam, which records no take.
     bridge_take_id: str | None = None
+    frase: int | None = None
 
 
 class DivideSegmentRequest(BaseModel):

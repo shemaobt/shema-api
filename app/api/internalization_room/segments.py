@@ -34,8 +34,9 @@ router = APIRouter()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def segment_view(segment: IRSegment) -> SegmentView:
+def segment_view(segment: IRSegment, frase: int | None = None) -> SegmentView:
     return SegmentView(
+        frase=frase,
         segment_id=segment.id,
         take_id=segment.take_id,
         starts_ms=segment.starts_ms,
