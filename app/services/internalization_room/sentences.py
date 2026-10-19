@@ -18,6 +18,7 @@ from app.services.internalization_room.wav import pcm16, splice_sentence, trim_s
 
 WAV = "audio/wav"
 SENTENCE_LIMIT_BYTES = 4 * 1024 * 1024
+SHORTEST_SENTENCE_MS = 500
 
 
 class SentenceRefused(Exception):
@@ -47,7 +48,12 @@ async def lay_in_a_sentence(
     part = await take_by_id(db, segment.take_id)
     base = pcm16(await store.get(part.storage_key) or b"")
     sentence = pcm16(audio)
-    spliced = splice_sentence(base, segment.starts_ms, segment.ends_ms, trim_silence(sentence))
+    laid = trim_silence(sentence)
+    if sentence.ms(laid.frames) < SHORTEST_SENTENCE_MS:
+        raise SentenceRefused(
+            400, "SENTENCE_TOO_SHORT", f"A sentence lasts at least {SHORTEST_SENTENCE_MS} ms"
+        )
+    spliced = splice_sentence(base, segment.starts_ms, segment.ends_ms, laid)
     digest = hashlib.sha256(spliced.audio).hexdigest()
     stored = await store_recording(
         spliced.audio,

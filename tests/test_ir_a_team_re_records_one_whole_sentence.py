@@ -21,8 +21,10 @@ from tests.sentence_harness import (
     re_record,
     rehearsed_in_wav,
     samples_of,
+    seconds,
     spoken,
     take_named,
+    wav,
 )
 
 
@@ -90,7 +92,30 @@ async def test_a_sentence_over_four_megabytes_is_refused_before_anything_is_read
         client, session.id, "frase-que-nao-existe", b"R" * (4 * 1024 * 1024 + 1)
     )
 
-    assert (refused.status_code, refused.json()["code"]) == (413, "SENTENCE_TOO_LONG"), (
+    assert (refused.status_code, refused.json().get("code")) == (413, "SENTENCE_TOO_LONG"), (
         "uma frase de mais de 4 MB passava da porta, ou só depois de procurar a frase"
     )
     assert store.objects == kept, "a frase longa demais deixava algo guardado"
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [
+        wav(seconds(0.3, 9000)),
+        wav(seconds(0.98, 0) + seconds(0.04, 9000) + seconds(0.98, 0)),
+    ],
+    ids=["a third of a second", "a blip in two seconds of silence"],
+)
+async def test_a_sentence_shorter_than_half_a_second_once_trimmed_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, recorded: bytes
+) -> None:
+    session, (one,), ((frase,),) = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
+    kept = dict(store.objects)
+
+    refused = await re_record(client, session.id, frase.id, recorded)
+
+    assert (refused.status_code, refused.json().get("code")) == (400, "SENTENCE_TOO_SHORT"), (
+        "um toque sem frase era emendado na parte"
+    )
+    assert store.objects == kept
+    assert [stretch.take_id for stretch in await final_segments(db_session, session.id)] == [one.id]

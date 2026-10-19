@@ -230,7 +230,10 @@ router.add_api_route(
     "/sessions/{session_id}/segments/{segment_id}/sentence",
     response_model=SentenceLaidInResponse,
     dependencies=[linked_tablet_dep],
-    responses={413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"}},
+    responses={
+        400: {"description": "`SENTENCE_TOO_SHORT`: under 0.5 s once its silence is trimmed"},
+        413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
+    },
 )
 async def re_record_the_sentence(
     session_id: str,
@@ -255,7 +258,8 @@ async def re_record_the_sentence(
     kept.
 
     Refused with a named `code` the tablet turns into her lines: `SENTENCE_TOO_LONG` (413) for
-    a recording over 4 MB, before anything else is read.
+    a recording over 4 MB, before anything else is read; `SENTENCE_TOO_SHORT` (400) for one
+    under half a second once its silence is trimmed.
     """
     try:
         audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
