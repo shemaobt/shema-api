@@ -419,8 +419,9 @@ class BackTranslationProgress(BaseModel):
         default=None,
         description=(
             "The frase whose sentence was recorded again and is not translated yet. It keeps "
-            "its number; the check waits for it, and only its own translation, at exactly the "
-            "span the new sentence took, may be told. Null when no frase awaits."
+            "its number and only its own translation, at exactly the span the new sentence "
+            "took, may be told; `the_sentence_awaiting` is the refusal «terminei» answers "
+            "with until then. Null when no frase awaits."
         ),
     )
     rerecorded_sentences: list[RerecordedSentenceView] = Field(
