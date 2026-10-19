@@ -119,3 +119,29 @@ async def test_a_sentence_shorter_than_half_a_second_once_trimmed_is_refused(
     )
     assert store.objects == kept
     assert [stretch.take_id for stretch in await final_segments(db_session, session.id)] == [one.id]
+
+
+async def test_a_part_not_recorded_in_wav_takes_no_sentence(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    compressed, _, ((on_m4a,),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 2000)]], content_type="audio/mp4"
+    )
+    floating, (float_wav,), ((on_float,),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 2000)]]
+    )
+    store.objects[float_wav.storage_key] = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00" + (
+        b"\x03\x00\x01\x00\x80\x3e\x00\x00\x00\xfa\x00\x00\x04\x00\x20\x00data\x00\x00\x00\x00"
+    )
+    kept = dict(store.objects)
+
+    refused = [
+        await re_record(client, compressed.id, on_m4a.id, spoken(1.0)),
+        await re_record(client, floating.id, on_float.id, spoken(1.0)),
+    ]
+
+    assert [(one.status_code, one.json().get("code")) for one in refused] == [
+        (409, "PART_NOT_WAV"),
+        (409, "PART_NOT_WAV"),
+    ], "uma parte que não é WAV de 16 bits recebia uma frase emendada"
+    assert store.objects == kept

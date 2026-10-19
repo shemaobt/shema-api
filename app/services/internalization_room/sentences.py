@@ -10,6 +10,7 @@ from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRT
 from app.services.internalization_room.segments import current_segments
 from app.services.internalization_room.takes import (
     TakeStore,
+    is_wav,
     storage_key,
     store_recording,
     take_by_id,
@@ -29,6 +30,12 @@ class SentenceRefused(Exception):
         self.detail = detail
 
 
+def _not_wav(part: IRTake) -> SentenceRefused:
+    return SentenceRefused(
+        409, "PART_NOT_WAV", f"Part {part.id} was not recorded as WAV PCM16; record the part again"
+    )
+
+
 def refuse_a_sentence_too_long(audio: bytes) -> None:
     if len(audio) > SENTENCE_LIMIT_BYTES:
         raise SentenceRefused(
@@ -46,7 +53,11 @@ async def lay_in_a_sentence(
     store: TakeStore,
 ) -> IRTake:
     part = await take_by_id(db, segment.take_id)
+    if not is_wav(part.content_type):
+        raise _not_wav(part)
     base = pcm16(await store.get(part.storage_key) or b"")
+    if base is None:
+        raise _not_wav(part)
     sentence = pcm16(audio)
     laid = trim_silence(sentence)
     if sentence.ms(laid.frames) < SHORTEST_SENTENCE_MS:
