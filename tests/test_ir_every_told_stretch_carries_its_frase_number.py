@@ -12,8 +12,10 @@ from tests.room_harness import (
     a_piece_still_to_be_told,
     nothing_is_read_ahead,
     rehearsed_in_parts,
+    rehearsed_in_parts_of,
     room_client,
     the_bucket_is_in_memory,
+    the_transcriber_says,
 )
 
 
@@ -108,3 +110,62 @@ async def test_a_stretch_told_again_answers_with_the_number_it_already_had(
         "a frase traduzida de novo perdia o número e arrastava as seguintes"
     )
     assert answered == await _segments_of_the_read(client, session.id)
+
+
+async def _tell(
+    client: httpx.AsyncClient,
+    session_id: str,
+    take_id: str,
+    *,
+    starts_ms: int,
+    ends_ms: int,
+    retelling: bool = False,
+) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": take_id,
+            "starts_ms": str(starts_ms),
+            "ends_ms": str(ends_ms),
+            "retelling": "true" if retelling else "false",
+        },
+        files={"file": ("trecho.m4a", b"um trecho traduzido", "audio/mp4")},
+    )
+
+
+async def test_the_telling_answer_numbers_a_stretch_told_between_two_others_as_the_read_will(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    nothing_is_read_ahead(monkeypatch)
+    the_transcriber_says(monkeypatch, ["a segunda parte, contada de volta"])
+    session, parts = await rehearsed_in_parts_of(db_session, [1, 0, 1])
+
+    told = await _tell(client, session.id, parts[1].id, starts_ms=0, ends_ms=1000)
+
+    assert told.status_code == 200, told.text
+    assert told.json().get("frase") == 2, (
+        "a frase recém-contada ficava sem número até a próxima leitura, e a tela contava sozinha"
+    )
+    read = await _segments_of_the_read(client, session.id)
+    assert [one.get("frase") for one in read] == [1, 2, 3]
+    assert next(one["frase"] for one in read if one["take_id"] == parts[1].id) == 2
+
+
+async def test_a_stretch_told_again_through_the_telling_answer_keeps_its_number(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    nothing_is_read_ahead(monkeypatch)
+    the_transcriber_says(monkeypatch, ["a primeira parte, contada outra vez"])
+    session, parts = await rehearsed_in_parts_of(db_session, [1, 1, 1])
+
+    told = await _tell(client, session.id, parts[0].id, starts_ms=0, ends_ms=1000, retelling=True)
+
+    assert told.status_code == 200, told.text
+    assert told.json().get("frase") == 1, (
+        "a frase contada de novo recebia o número seguinte ao da última, e não o que já tinha"
+    )
+    read = await _segments_of_the_read(client, session.id)
+    assert [one.get("frase") for one in read] == [1, 2, 3]

@@ -479,6 +479,7 @@ class BackTranslationChunkResponse(BaseModel):
     #: next one will be too. False on every telling after it, because the ask is once per
     #: stretch and repeating it would erase the visit it already got.
     needs_person: bool = False
+    frase: int | None = None
 
 
 class PlayedTake(BaseModel):

@@ -29,6 +29,7 @@ from app.services.internalization_room.nudge_channel import nudge, nudge_stretch
 from app.services.internalization_room.segments import (
     refuse_a_slice_that_is_not_one,
     refuse_a_telling_over_part_of_a_frase,
+    sits_at,
 )
 from app.services.internalization_room.takes import (
     current_parts,
@@ -168,12 +169,17 @@ async def add_chunk(
     )
     nudge_stretches(session.project_id, warned=warned)
     background.add_task(read_ahead, session_id=session.id)
+    standing = await room.final_segments(db, session.id)
+    numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) if retold is not None else len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
+        frase=next(
+            numbers[one.id] for one in standing if sits_at(one, rehearsal.id, starts_ms, ends_ms)
+        ),
     )
 
 
