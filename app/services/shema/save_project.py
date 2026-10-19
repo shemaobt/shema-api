@@ -634,6 +634,7 @@ async def create_project(
                 "shema_scope_global": scope.global_,
                 "shema_scope_regions": sorted(scope.regions),
                 **log_reference(project),
+                "shema_project_id": payload.id,
             },
         )
         raise AuthorizationError(

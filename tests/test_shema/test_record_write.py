@@ -20,6 +20,7 @@ with the header never read.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 import pytest
@@ -777,6 +778,25 @@ async def test_a_minted_id_that_exists_outside_the_scope_is_refused_like_one_tha
     ).scalar_one()
     assert stored.region_key == ShemaRegionKey.AFRICA
     assert stored.version == 1
+
+
+async def test_the_refusal_of_a_taken_id_is_logged_under_the_id_the_caller_sent(
+    client, db_session, headers, caplog
+) -> None:
+    """OBT-599: the row is filed under a throwaway id, and the log line must not name it.
+
+    ``shema_project_id`` is what an investigator joins two lines on; the throwaway UUID
+    exists nowhere, so the warning names the id the payload carried.
+    """
+    taken_id = "c3f8a1d2-6b4e-5a97-8e10-2d7c9b5f4a61"
+    await make_shema_project(db_session, project_id=taken_id, region_key=ShemaRegionKey.AFRICA)
+    caplog.set_level(logging.WARNING, logger="app.services.shema.save_project")
+
+    response = await _create(client, headers, id=taken_id, location="Mozambique")
+
+    assert response.status_code == 403
+    lines = [r for r in caplog.records if r.name == "app.services.shema.save_project"]
+    assert [line.shema_project_id for line in lines] == [taken_id]
 
 
 async def test_a_minted_id_that_exists_inside_the_scope_is_still_a_conflict(
