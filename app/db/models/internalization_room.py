@@ -416,6 +416,9 @@ class IRTake(Base):
     )
     #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The **Scene rehearsal** this part was joined from, as the tablet declared it. Null on a
+    #: part recorded as itself; a recording with any current part carrying one is **Joined**.
+    origin: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRSceneSaid(enum.StrEnum):
