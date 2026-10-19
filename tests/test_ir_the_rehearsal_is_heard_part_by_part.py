@@ -433,13 +433,11 @@ async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     """Each errand is named once, and only the errands that exist.
 
     There is nothing to have played back before a stretch exists, so the room does not hand the
-    team a second errand that would not help. What it does name twice is two different things:
-    the reading is empty, and the recording they made carries nobody's words. A team told only
-    the first would go looking for a list to fill; told only the second, for a recording to make.
+    team a second errand that would not help.
     """
     session, _ = await rehearsed_session(db_session, language="pt")
 
     refused = await release_blockers(db_session, session)
 
-    assert refused == ["no_telling_back", "untold_part"]
+    assert refused == ["no_telling_back"]
     assert PLAYBACK_BLOCKER not in refused

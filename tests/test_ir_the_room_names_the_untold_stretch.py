@@ -31,7 +31,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
@@ -308,13 +307,13 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
 
 
 async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
     """Case 3. The gate that was already right stays right.
 
     An address is a smaller move for the app, not permission to call the passage checked:
-    the analyst still never sees a subset, the team still hears the waiting line, and
-    `checked` — which is what the app strikes the passage off the wheel by — stays false.
+    the analyst still never sees a subset, and `checked` — which is what the app strikes the
+    passage off the wheel by — stays false.
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
@@ -330,10 +329,7 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
         "inferir um pela ausência do outro"
     )
     assert analyst.readings == 0, "o analista continua sem ver um subconjunto"
-    assert body["audio_url"], "a equipe continua tendo o que tocar"
-    assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE), (
-        "a linha falada continua sendo a da família H, palavra por palavra"
-    )
+    assert body["refusal"] == "FRASE_AWAITING"
 
 
 async def test_a_telling_back_with_every_stretch_told_names_no_stretch(

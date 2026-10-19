@@ -7,10 +7,10 @@ marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
 partial artifact — because a package missing the rehearsal audio, the telling-back, the
-analyst's reading of it, a stretch nobody told back or a recording nobody told back would look
-downstream exactly like a finished one; so would one composed for a panorama, which is not a
-draft of a passage at all. Those six are missing material, and nothing overrules them: there
-is nothing in a rehearsal nobody recorded for anybody to overrule.
+analyst's reading of it or a stretch nobody told back would look downstream exactly like a
+finished one; so would one composed for a panorama, which is not a draft of a passage at all.
+Those are missing material, and nothing overrules them: there is nothing in a rehearsal nobody
+recorded for anybody to overrule.
 
 The other two are Marcia's gate — an open finding the telling-back still carries, and a part
 of the rehearsal the team never heard through — and they are a dispute rather than a hole.
@@ -53,7 +53,6 @@ from app.services.internalization_room.back_translation import (
     frase_numbers,
     rehearsed_parts,
     unheard_parts,
-    untold_parts,
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.kept import reading_the_canon_of
@@ -93,11 +92,10 @@ SCHEMA_VERSION = "tripod.internalization-release.v0.7"
 #: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
 FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
 
-#: The three the tablet has a door for and the team's own route names ground on: an untold
-#: part by its take, an unheard part by its take, an untold stretch by its own id (ADR 0027,
-#: ADR 0028). One name for the set so the strings live once rather than at every site that
-#: asks whether a blocker carries ground.
-GROUNDED_BLOCKERS = frozenset({"untold_part", "playback_did_not_cover_the_clip", "untold_stretch"})
+#: The two the tablet has a door for and the team's own route names ground on: an unheard part
+#: by its take and an untold stretch by its own id (ADR 0028). One name for the set so the
+#: strings live once rather than at every site that asks whether a blocker carries ground.
+GROUNDED_BLOCKERS = frozenset({"playback_did_not_cover_the_clip", "untold_stretch"})
 
 #: Where the facilitator and the consultant read everything the check learned about a session.
 #: The route is a later slice's; the packet says where it will be so the two land together.
@@ -383,16 +381,14 @@ async def compose_internalization_release(
     report satisfied the coverage arithmetic the way an unread telling-back satisfied
     ``checked`` — and so did a report the team had since made untrue by recording the passage
     again. Both said the team heard themselves when nobody knows whether they did. The package
-    is refused unless every part the stretches name was played through, each in its own
-    milliseconds.
+    is refused unless every current part was played through, each in its own milliseconds.
 
     Only whether anything is unheard is read here. Which parts they are is the same answer, and
     it is what the room says to the team when it sends them back; this decides one thing.
 
-    What the report has to name is asked of the stretches, which say which recording each is a
-    slice of and were checked on the way in. Not of the takes table: ``created_at`` there is
-    when the upload landed, the tablet's outbox drains whenever the link comes back, and the
-    newest-arriving rehearsal is sometimes the one the team abandoned.
+    What the report has to name is every current part, the takes `current_parts` reads in the
+    tablet's own order, as her check asks it of every current take (`bt/check/route.ts:69`). A
+    part nobody told back is not refused for that; it still has to be heard.
 
     Sessions already in flight when this shipped carry a report with no part named, and are
     refused until the team plays their rehearsal through again. That is the correct reading of
@@ -417,29 +413,9 @@ async def compose_internalization_release(
     a stretch the analyst blessed. Both are green in exactly the state this refuses. Overloading
     either would also send the facilitator the wrong errand: told that nothing was told back
     when plainly something was, they go looking for the wrong thing. The name is the room's own
-    word for the state, the one ``FailSafe.UNTOLD_STRETCH`` already speaks aloud on the tablet.
+    word for the state.
 
     Once rather than once per stretch: a blocker is an errand, and the errand is the same one.
-
-    ``untold_part`` is that same argument about a recording, and it is the one question here the
-    stretches cannot answer. A part the team recorded again arrives carrying nobody's words and
-    takes the stretches of the recording it replaced with it (ADR 0023), so nothing is left for
-    the line above, for ``first_untold`` or for the listening to see, while the packet goes on
-    carrying that recording as the part. Which recording is current is a fact of the takes, and
-    it is asked of them here; what the team heard of it is a fact of the report, and that is why
-    the listening stays derived from the stretches where ADR 0023 left it.
-
-    It stands beside ``no_telling_back`` rather than behind it. A session that told nothing back
-    has an empty reading *and* recordings nobody explained, both are true of it, and each sends
-    the team somewhere else. Once rather than once per part, for the reason above.
-
-    Both this and the listening below start from `rehearsed_parts`, the grounds the stretches
-    name, and ask different things of it: whether a current part is among them at all, and
-    whether the report covers the ones that are. The input is shared and the answer is not —
-    deriving the listening from the takes is what ADR 0023 refused and ADR 0026 keeps refused.
-
-    Not forceable, for the reason the stretch is not: ground nobody told back is missing material
-    and not a dispute, and there is nothing in a recording nobody explained to disagree with.
 
     The guarantee is about ``segments`` and stops there. ``superseded_segments`` and
     ``divided_segments`` are history and carry null text on purpose — a stretch the team replaced
@@ -496,9 +472,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = rehearsed_parts(stretches)
-    if untold_parts(parts, rehearsed):
-        blockers.append("untold_part")
-    unheard = unheard_parts(telling_back, rehearsed)
+    unheard = unheard_parts(telling_back, [part.id for part in parts])
     if rehearsed and unheard:
         blockers.append("playback_did_not_cover_the_clip")
 

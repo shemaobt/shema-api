@@ -197,7 +197,7 @@ async def test_the_first_terminei_finds_the_reading_ready_and_the_listening_is_s
     assert verdict["finding_kind"] == "addition"
 
 
-async def test_a_stretch_told_while_a_part_is_still_untold_starts_no_reading(
+async def test_a_stretch_told_while_another_part_has_nothing_told_is_read_ahead_all_the_same(
     db_session: AsyncSession,
     per_request: async_sessionmaker[AsyncSession],
     analyst: Analyst,
@@ -208,14 +208,20 @@ async def test_a_stretch_told_while_a_part_is_still_untold_starts_no_reading(
 
     async with room_client(db_session, monkeypatch, per_request=per_request) as client:
         await press_terminei(client, session.id, report=played_every_part([part.id]))
-        await another_rehearsal_take(
+        second = await another_rehearsal_take(
             db_session, session, sha256="b" * 64, scope="parte-2", ordinal=2, created_at=after(part)
         )
         await _tell(client, session.id, part, starts_ms=1000, ends_ms=2000)
+        read_by_the_stretch = analyst.whole_readings
+        verdict = await press_terminei(
+            client, session.id, report=played_every_part([part.id, second.id])
+        )
 
-    assert analyst.whole_readings == 1, (
-        "o trecho mandava ler com uma parte gravada que ninguém tinha contado de volta"
+    assert read_by_the_stretch == 2, (
+        "o trecho não mandava ler com uma parte sem nada contado, que o terminei agora lê"
     )
+    assert verdict.json()["refusal"] is None, verdict.text
+    assert analyst.whole_readings == 2, "o terminei lia de novo o que o trecho já tinha lido"
 
 
 async def test_a_stretch_told_while_a_piece_of_another_is_still_untold_starts_no_reading(
