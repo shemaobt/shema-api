@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake
@@ -12,7 +13,7 @@ from app.models.internalization_room import (
     MotherTongueTakesResponse,
 )
 from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
-from app.services.internalization_room.session_turns import team_words_of
+from app.services.internalization_room.session_turns import TeamTurn, team_turn_of
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
@@ -56,7 +57,7 @@ async def mother_tongue_takes_of(
             )
         )
     return MotherTongueTakesResponse(
-        session_id=session.id, takes=rows, kept_rehearsals=kept_rehearsals_of(session)
+        session_id=session.id, takes=rows, kept_rehearsals=await kept_rehearsals_of(db, session)
     )
 
 
@@ -69,14 +70,31 @@ def _latest_kept_of_each_scope(session: IRSession) -> dict[str, tuple[int, KeptR
     return latest
 
 
-def kept_rehearsals_of(session: IRSession) -> list[KeptRehearsal]:
-    return [
-        KeptRehearsal(
-            turn_number=number,
-            words=team_words_of(session, number),
-            from_other_session=False,
+async def kept_rehearsals_of(db: AsyncSession, session: IRSession) -> list[KeptRehearsal]:
+    siblings = (
+        (
+            await db.execute(
+                select(IRSession).where(
+                    IRSession.project_id == session.project_id,
+                    IRSession.pericope == session.pericope,
+                    IRSession.language == session.language,
+                    IRSession.archive_id == session.archive_id,
+                )
+            )
         )
-        for number, _ in sorted(_latest_kept_of_each_scope(session).values(), key=lambda k: k[0])
+        .scalars()
+        .all()
+    )
+    latest: dict[str, tuple[TeamTurn, int, bool]] = {}
+    for sibling in siblings:
+        for scope, (number, _) in _latest_kept_of_each_scope(sibling).items():
+            turn = team_turn_of(sibling, number)
+            if scope not in latest or turn.at > latest[scope][0].at:
+                latest[scope] = (turn, number, sibling.id != session.id)
+    told = latest.values()
+    return [
+        KeptRehearsal(turn_number=number, words=turn.words, from_other_session=other)
+        for turn, number, other in sorted(told, key=lambda each: each[0].at)
     ]
 
 
