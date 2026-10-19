@@ -1367,6 +1367,14 @@ class TurnMoment(BaseModel):
     part: int | None = None
     closed: bool = False
     fenced: bool = False
+    numberlessOpening: bool = False
+
+    @model_serializer(mode="wrap")
+    def _an_opening_not_heard_is_absent(self, handler: Any) -> dict[str, Any]:
+        served: dict[str, Any] = handler(self)
+        if not self.numberlessOpening:
+            served.pop("numberlessOpening", None)
+        return served
 
 
 class TurnMomentStep(BaseModel):
