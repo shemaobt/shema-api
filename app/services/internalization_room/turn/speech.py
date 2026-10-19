@@ -8,7 +8,7 @@ from typing import Any
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.fail_safe import inaudible_ladder
-from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.validated_turn import TurnOutcome
@@ -38,6 +38,29 @@ def interrupted_note(language_code: str) -> str:
     return "[The team interrupted your previous turn at this point.]"
 
 
+def scene_rehearsal_note(language_code: str, frases: int) -> str:
+    """Her note in front of a scene rehearsal's translation, verbatim; one frase has no count."""
+    if language_code == "pt":
+        if frases == 1:
+            return (
+                "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. "
+                "Segue a tradução:]"
+            )
+        return (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por "
+            f"frase ({frases} frases). Segue a tradução, na ordem:]"
+        )
+    if frases == 1:
+        return (
+            "[The team rehearsed this scene in their own language and translated the scene "
+            "rehearsal. The translation follows:]"
+        )
+    return (
+        "[The team rehearsed this scene in their own language and translated the scene rehearsal "
+        f"phrase by phrase ({frases} phrases). The translation follows, in order:]"
+    )
+
+
 @dataclass(frozen=True)
 class ForTheGuide:
     """What a heard take hands the Guide: the room's note, and the team's words behind it."""
@@ -64,13 +87,14 @@ def what_the_guide_is_handed(
     mother_tongue: bool,
     take_ms: float | None,
     interrupted: bool,
+    scene_rehearsal: SentSceneRehearsal | None = None,
 ) -> ForTheGuide | None:
     """The one choice every spoken turn makes about a take: a miss, or the note and the words.
 
     A take with no words that is not the mother tongue is a miss, whether or not it followed a
     cut, and is answered with the ladder's line: nothing reaches the Guide. Any other take
     reaches the Guide with the room's notes in front, and the words of a mother-tongue take
-    never travel.
+    never travel. A scene rehearsal's words follow her note on it.
     """
     if not opening and not mother_tongue and not words.strip():
         return None
@@ -79,6 +103,11 @@ def what_the_guide_is_handed(
         for part in (
             interrupted_note(language_code) if interrupted else "",
             mother_tongue_note(language_code, take_ms) if mother_tongue else "",
+            (
+                scene_rehearsal_note(language_code, scene_rehearsal.frases)
+                if scene_rehearsal is not None
+                else ""
+            ),
         )
         if part
     )
@@ -112,13 +141,14 @@ async def speak_back(
     messages: list[dict[str, Any]],
     transcript: str,
     opening: bool,
-    book: str,
     guide_prompt: str,
     validator_prompt: str,
     pericope: str,
     settings: Settings,
     earlier_passages: dict[str, str] | None,
     interrupted: bool = False,
+    scene_rehearsal: SentSceneRehearsal | None = None,
+    scene_rehearsals: list[str] | None = None,
 ) -> TurnOutcome:
     """The Guide's reply to the team's turn, or the inaudible ladder's line in its place.
 
@@ -138,6 +168,7 @@ async def speak_back(
         mother_tongue=mother_tongue,
         take_ms=take_ms,
         interrupted=interrupted,
+        scene_rehearsal=scene_rehearsal,
     )
     if handed is None:
         return a_miss(language)
@@ -150,10 +181,11 @@ async def speak_back(
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope_num=pericope,
-        book=book,
         opening=opening,
         settings=settings,
         session_id=session.id,
         earlier_passages=earlier_passages,
+        scene_rehearsal=scene_rehearsal,
+        scene_rehearsals=scene_rehearsals,
     )
     return handed.kept_apart(outcome)

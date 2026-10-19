@@ -22,8 +22,8 @@ class LabelledElement(BaseModel):
 
     **`label_pt` is nullable and `label_en` is not**, which is the shape that promise actually
     names: the Desk's own `CoverageLabels` is `{ pt: string | null, en: string }`, because
-    English comes almost free from the canon and Portuguese is translation work. The canon
-    serves fourteen and D-03 walks every team through them.
+    English comes almost free from the canon and Portuguese is translation work. The room
+    serves three books and D-03 walks every team through each of their passages.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -131,8 +131,8 @@ class ElementCoverage(BaseModel):
     `label_pt` is nullable and `label_en` is not, which is `LabelledElement`'s shape carried
     through unchanged. A passage nobody has translated is served from the canon with
     Portuguese absent, and a bead here must be able to say so: narrowing it to `str` would
-    mean this route could only ever answer the four translated passages, while D-03 walks
-    every team through all fourteen.
+    mean this route could only ever answer Ruth's translated passages, while D-03 walks
+    every team through every passage of the served books.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -437,9 +437,12 @@ class PassageView(BaseModel):
     #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
     #: the one entry with no beads of its own.
     kind: Literal["passage", "panorama"]
-    #: Where to fetch the line that names this passage aloud. There is no text field: the
-    #: team does not read, so a passage the room cannot say is a passage it cannot offer.
-    audio_url: str
+    #: Where to fetch the line that names this entry aloud, or None when no line is written
+    #: for it or its line could not be voiced (ADR 0066).
+    audio_url: str | None = None
+    #: The passage's Scripture reference as its Meaning Map's heading writes it, for the
+    #: facilitator's menu. The panorama has none.
+    reference: str | None = None
     beads: int = 0
     absence_index: int = -1
     #: The team holds a live Release of this passage, from any tablet, forced or not.
@@ -449,6 +452,10 @@ class PassageView(BaseModel):
 class BookPassagesResponse(BaseModel):
     book: str
     passages: list[PassageView]
+
+
+class ServedBooksResponse(BaseModel):
+    books: list[str]
 
 
 class FixedLineView(BaseModel):
@@ -646,9 +653,9 @@ class InboxQuestionView(BaseModel):
     bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
     both are served and the client picks, as it already does everywhere else.
 
-    **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
-    passages and four of them are translated, so on the other ten every bead carries English
-    and a null Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
+    **``label_en`` is the one that is always there.** Only Ruth has a catalogue; Esther and
+    Jonah have none, so on their passages every bead but a scene carries English and a null
+    Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
     and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
@@ -697,6 +704,7 @@ class InboxQuestionView(BaseModel):
     status: str
     heard_at: str | None
     audio_url: str
+    reply_audio_url: str | None
     duration_ms: int | None
     transcript: str | None
     asked_at: str
@@ -874,6 +882,24 @@ class TakesResponse(BaseModel):
     takes: list[TakeResponse]
 
 
+class MotherTongueTake(BaseModel):
+    """One recording of the session in the mother tongue, as the consultant's record lists it."""
+
+    take_id: str
+    part: int | None
+    size_kb: int
+    fingerprint: str
+    recorded_at: str
+    play_url: str | None
+    unread: bool
+    duration_ms: int | None = None
+
+
+class MotherTongueTakesResponse(BaseModel):
+    session_id: str
+    takes: list[MotherTongueTake]
+
+
 class SceneFraseView(BaseModel):
     """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
 
@@ -910,6 +936,15 @@ class SceneRehearsalView(SceneRehearsalFacts):
 class SceneRehearsalsResponse(BaseModel):
     pericope: str
     scene_rehearsals: list[SceneRehearsalView]
+
+
+class PassageSceneView(BaseModel):
+    scene_id: str
+    title: str
+
+
+class PassageScenesResponse(BaseModel):
+    scenes: list[PassageSceneView]
 
 
 class SceneSnapshotFrase(BaseModel):
@@ -1345,6 +1380,7 @@ class TurnVoiceSide(BaseModel):
     boundary: bool
     attempts: int
     trace: list[TurnTraceStep]
+    accepted_ids: list[str]
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None
@@ -1364,21 +1400,43 @@ class SessionTurnsResponse(BaseModel):
     turns: list[SessionTurn]
 
 
-class BeadState(StrEnum):
-    """Her three states: «engajado», «mencionado pelo guia» and «ainda não tocado».
+class BoundaryTurn(BaseModel):
+    number: int
+    outcome: TurnOutcomeCode
+    team: str
+    guide: str
 
-    The words are the Desk's. The server serves these keys so the client never computes a state.
+
+class SessionBoundaryTurnsResponse(BaseModel):
+    """The turns the boundary rule marks, her «Perguntas de fronteira».
+
+    `number` is the turn's place in `SessionTurnsResponse.turns`, from zero, and the `{number}`
+    of its clip; her «turno n» is `number + 1`. `team` is what the Guide was handed in the
+    team's place: on the opening, her stored kickoff note as her transcript prints it, empty
+    when the session stored none, and on any other turn the words heard, empty when nothing
+    was heard. `guide` is the line voiced.
+    `count` is the length of `turns`, served so the Desk never counts, and the section is read
+    with no turn marked as well: `count` 0 and `turns` empty.
     """
 
-    ENGAGED = "engaged"
-    SURFACED = "surfaced"
-    UNTOUCHED = "untouched"
+    session_id: str
+    count: int
+    turns: list[BoundaryTurn]
 
 
 class SessionCoverageBead(BaseModel):
+    """One bead of a session's necklace, as the full necklace's `ElementCoverage` names it.
+
+    `scene` is the scene key the full necklace groups the bead under and null for a rule of
+    the whole passage; `status` is the recorded coverage value, one of the four, unfolded.
+    """
+
     key: str
-    label: str
-    state: BeadState
+    kind: ElementKind
+    label_pt: str | None
+    label_en: str
+    scene: str | None
+    status: CoverageStatus
 
 
 class SessionCoverageGroup(BaseModel):
@@ -1392,9 +1450,8 @@ class SessionCoverageResponse(BaseModel):
     `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
     «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
     «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
-    listed. Each bead carries the map's element label as written, in the map's own English,
-    which is what her record shows (`e.label`). The Portuguese names of the beads live in
-    `labelled_elements`, which the Desk's session portrait (`team_sessions.py`) reads.
+    listed. Each bead carries both labels, its scene and its recorded status, so the Desk can
+    regroup a session's beads in the scene strands of the full necklace.
 
     `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
     coverage when the read happens by the code that renders it for the Guide: what the voice

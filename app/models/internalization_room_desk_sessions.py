@@ -26,6 +26,8 @@ class DeskSession(BaseModel):
     state: DeskSessionState
     last_activity_at: datetime
     ended_at: datetime | None
+    attended_at: datetime | None
+    attended_by: str | None
     turns: int
     engaged_elements: int | None
     total_elements: int | None

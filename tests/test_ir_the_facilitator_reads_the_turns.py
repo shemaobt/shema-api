@@ -2,8 +2,10 @@
 
 Every turn is produced through the room's own turn route, with the recognizer, the model and
 the speech engine doubled at the seams the suite already uses, and read back through the
-facilitator's turns route and its per-turn audio door. The one exception is the turn stored
-before this change, whose shape no route writes any more.
+facilitator's turns route and its per-turn audio door. There are two exceptions. The turn
+stored before this change has a shape no route writes any more. The accepted-readings cases
+seed through the golden doors, whose rehearsal send calls the tablet's own writer, because a
+checking turn needs a stored rehearsal and only a send produces one.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.internalization_room import golden_doors
 from app.api.internalization_room import sessions as sessions_api
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core import stage_clock
@@ -30,8 +33,10 @@ from app.services.internalization_room.sessions import create_session
 from app.services.oral_collector import gcs_utils
 from app.services.platform import tts
 from tests.baker import make_app, make_role
+from tests.hearing_harness import nothing_settles
 from tests.release_harness import APP_KEY, PREFIX, P, a_claimed_device, at_the_desk, team_headers
 from tests.room_harness import room_client
+from tests.text_seam_harness import GOLDEN, RUNNER_KEY, the_models_answer
 from tests.turn_harness import the_room_agent_is
 
 PASS = {"verdict": "pass", "issues": []}
@@ -47,6 +52,7 @@ WORDS = [
     "Noemi chegou na colheita da cevada",
     "Boaz viu Rute no campo",
 ]
+SANDAL = ["Ele tirou a sandália e deu pro Boaz."]
 LINES = [
     "Vamos ficar nesta cena. O que vocês contariam?",
     "E depois disso, o que aconteceu?",
@@ -216,6 +222,18 @@ async def client(
     db_session: AsyncSession, per_request, bucket, elevenlabs, signed, monkeypatch
 ) -> Any:
     async with room_client(db_session, monkeypatch, per_request=per_request) as c:
+        yield c
+
+
+async def settled(**_: Any) -> None:
+    return None
+
+
+@pytest.fixture()
+async def golden(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Any:
+    nothing_settles(monkeypatch)
+    monkeypatch.setattr(golden_doors, "settle_coverage", settled)
+    async with room_client(db_session, monkeypatch, runner_key=RUNNER_KEY) as c:
         yield c
 
 
@@ -656,6 +674,7 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
         "boundary": False,
         "attempts": 0,
         "trace": [],
+        "accepted_ids": [],
         "recognition_ms": None,
         "reply_ms": None,
         "synthesis_ms": None,
@@ -681,3 +700,114 @@ async def test_an_archived_sessions_turns_are_read_by_its_id(
     turns = await _read(client, room)
 
     assert [turn["voice"]["text"] for turn in turns] == [OPENING, LINES[0]]
+
+
+async def _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
+    golden: httpx.AsyncClient, room: Room, monkeypatch: pytest.MonkeyPatch, *script: Any
+) -> None:
+    the_models_answer(monkeypatch)
+    opened = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": room.session_id, "roomNote": "session_start"}
+    )
+    assert opened.status_code == 200, opened.text[:300]
+    the_models_answer(monkeypatch, *script)
+    kept = await golden.post(
+        f"{GOLDEN}/rehearsal",
+        json={"sessionId": room.session_id, "sceneId": "S4", "pieces": SANDAL},
+    )
+    assert kept.status_code == 200, kept.text[:300]
+    sent = await golden.post(
+        f"{GOLDEN}/rehearsal/send",
+        json={
+            "sessionId": room.session_id,
+            "rehearsalId": kept.json()["rehearsalId"],
+            "turnId": "turno-1",
+        },
+    )
+    assert sent.status_code == 200, sent.text[:300]
+
+
+async def _a_p11_room(db: AsyncSession, room_app) -> Room:
+    project, credential = await a_claimed_device(db)
+    session = await create_session(db, language="pt", pericope="P11", project_id=project.id)
+    desk, _facilitator = await at_the_desk(db, room_app, project)
+    return Room(session.id, credential, desk, project.id)
+
+
+async def test_a_p11_scene_4_rehearsal_sent_as_a_checking_turn_reads_r5_as_the_accepted_reading_it_was_handed(  # noqa: E501
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(golden, room, monkeypatch)
+
+    (_opening, checked) = await _read(golden, room)
+
+    assert checked["voice"]["accepted_ids"] == ["R5"], (
+        "a leitura do consultor não dizia quais leituras aceitas o turno de conferência levou"
+    )
+
+
+async def test_the_opening_and_the_same_words_typed_read_no_accepted_readings(
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    the_models_answer(monkeypatch)
+    opened = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": room.session_id, "roomNote": "session_start"}
+    )
+    typed = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": room.session_id, "teamText": SANDAL[0]}
+    )
+    assert (opened.status_code, typed.status_code) == (200, 200), (opened.text, typed.text)
+
+    turns = await _read(golden, room)
+
+    assert [turn["voice"]["accepted_ids"] for turn in turns] == [[], []], (
+        "um turno sem conferência aparecia na leitura com leituras aceitas, ou sem a chave"
+    )
+
+
+async def test_a_checking_turn_the_validator_sent_back_reads_regenerate_then_pass_beside_the_ids_it_was_handed(  # noqa: E501
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
+        golden, room, monkeypatch, None, json.dumps(REGENERATE), None, None
+    )
+
+    (_opening, checked) = await _read(golden, room)
+
+    assert [step["verdict"] for step in checked["voice"]["trace"]] == ["regenerate", "pass"], (
+        "a leitura do consultor não dizia que o Validador devolveu o rascunho do turno"
+    )
+    assert checked["voice"]["accepted_ids"] == ["R5"]
+
+
+async def test_the_turns_body_of_a_checking_turn_never_carries_the_readings_lines(
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(golden, room, monkeypatch)
+
+    response = await golden.get(_turns_of(room.session_id), headers=room.desk)
+
+    assert response.status_code == 200, response.text[:300]
+    for line in ("ACCEPTED READINGS", "- R5: A team telling", "is correct, not an addition"):
+        assert line not in response.text, f"a leitura do consultor trazia o texto da regra: {line}"
+
+
+async def test_a_checking_turn_that_fell_to_a_fail_safe_still_reads_the_ids_it_was_handed(
+    golden, db_session, room_app, monkeypatch
+) -> None:
+    room = await _a_p11_room(db_session, room_app)
+    regenerate = json.dumps(REGENERATE)
+    await _a_p11_scene_4_rehearsal_sent_through_the_golden_doors(
+        golden, room, monkeypatch, None, regenerate, None, regenerate, None, regenerate
+    )
+
+    (_opening, checked) = await _read(golden, room)
+
+    assert checked["voice"]["outcome"] == "fail_safe"
+    assert checked["voice"]["accepted_ids"] == ["R5"], (
+        "um turno de conferência que caiu na frase fixa perdia na leitura as leituras aceitas"
+    )

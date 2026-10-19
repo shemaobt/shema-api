@@ -5,7 +5,9 @@ The scripts are hers, vendored byte for byte at `golden/sessions/` under the pin
 her app hands the Guide — a kickoff, the team speaking their own language for N seconds, an
 interruption. They are played through the room's **Golden doors**, `golden/session` and
 `golden/turn` under the base URL, with the requests her own runner sends
-(`src/golden/httpDriver.ts`) and the key as a bearer credential.
+(`src/golden/httpDriver.ts`) and the key as a bearer credential. A scene rehearsal step goes
+through `golden/rehearsal` and `golden/rehearsal/send` instead, so the room builds her note
+and the turn is a rehearsal turn by the server's own mark, as a tablet's «terminei» makes it.
 
     ACCESS_CODE=<key> uv run python scripts/golden_runner.py \\
         --base-url http://127.0.0.1:8044/api/internalization-room \\
@@ -27,7 +29,8 @@ guide turn, outcome tag), the mechanical faults and what the room said each turn
 answered — the eight scores, every incident with its turn, severity and quote, the summary.
 `README.md` is the run's summary in the shape of her `golden/reports/2026-09-03/README.md`:
 a row per session, the judge's column and the mechanical column kept apart, cost and
-latency beside her ≈US$ 8 and median 27 s.
+latency beside her ≈US$ 8 and median 27 s, and the number of Validator send-backs that
+turns handed accepted readings drew, which her spec says to bring to her when it is above zero.
 
 The judge is her prompt, unedited, on the voice ladder — Fable 5.1, the same rung the run
 itself is on — handed the Validator's map and the session language from this repo's pin.
@@ -67,6 +70,7 @@ import statistics
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,7 +82,10 @@ from app.api.internalization_room.text_seam import _collecting_model_calls
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
-from app.services.internalization_room.prompt_blocks import earlier_passages_line
+from app.services.internalization_room.prompt_blocks import (
+    earlier_passages_line,
+    scene_rehearsals_line,
+)
 from app.services.internalization_room.sessions import book_of
 from app.services.internalization_room.turn_instructions import opening_note
 from scripts.golden_checks import (
@@ -137,6 +144,8 @@ class Played:
     usage: list[Usage] = field(default_factory=list)
     mechanical: list[str] = field(default_factory=list)
     appStatus: list[str] = field(default_factory=list)
+    acceptedIds: list[str] = field(default_factory=list)
+    acceptedSendBacks: int = 0
 
 
 @dataclass
@@ -235,30 +244,6 @@ def mother_tongue_note(language: str, seconds: int) -> str:
     )
 
 
-def rehearsal_team_text(language: str, transcripts: list[str]) -> str:
-    pieces = [piece.strip() for piece in transcripts if piece.strip()]
-    if len(pieces) == 1:
-        note = (
-            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue a "
-            "tradução:]"
-            if _portuguese(language)
-            else "[The team rehearsed this scene in their own language and translated the scene "
-            "rehearsal. The translation follows:]"
-        )
-    elif _portuguese(language):
-        note = (
-            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por "
-            f"frase ({len(pieces)} frases). Segue a tradução, na ordem:]"
-        )
-    else:
-        note = (
-            "[The team rehearsed this scene in their own language and translated the scene "
-            f"rehearsal phrase by phrase ({len(pieces)} phrases). The translation follows, in "
-            "order:]"
-        )
-    return f"{note} {' '.join(pieces)}"
-
-
 def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
     current: list[str] | None = None
     carried = []
@@ -267,18 +252,6 @@ def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
             current = list(turn.sceneRehearsals)
         carried.append(current)
     return carried
-
-
-def scene_rehearsals_fact(scene_ids: list[str], sent: list[str]) -> str:
-    def listed(ids: list[str]) -> str:
-        return ", ".join(ids) if ids else "none"
-
-    reached = [scene for scene in scene_ids if scene in sent]
-    missing = [scene for scene in scene_ids if scene not in sent]
-    return (
-        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
-        f"{listed(reached)}. Parts with none: {listed(missing)}."
-    )
 
 
 def interrupted_note(language: str) -> str:
@@ -306,9 +279,6 @@ def request_for(
     elif turn.motherTongue:
         said = mother_tongue_note(script.language, turn.motherTongue)
         body.update(roomNote="mother_tongue", seconds=turn.motherTongue, noteText=said)
-    elif turn.rehearsal is not None:
-        said = rehearsal_team_text(script.language, turn.rehearsal)
-        body["teamText"] = said
     elif turn.team:
         said = turn.team
         body["teamText"] = said
@@ -331,6 +301,27 @@ async def open_session(script: Script, client: httpx.AsyncClient) -> str:
     opened = await client.post("golden/session", json=body)
     opened.raise_for_status()
     return str(opened.json()["sessionId"])
+
+
+async def send_rehearsal(
+    turn: ScriptTurn, client: httpx.AsyncClient, session_id: str, scene_rehearsals: list[str] | None
+) -> dict[str, Any]:
+    kept = await client.post(
+        "golden/rehearsal",
+        json={"sessionId": session_id, "sceneId": turn.rehearsalScene, "pieces": turn.rehearsal},
+    )
+    kept.raise_for_status()
+    body: dict[str, Any] = {
+        "sessionId": session_id,
+        "rehearsalId": kept.json()["rehearsalId"],
+        "turnId": str(uuid.uuid4()),
+    }
+    if scene_rehearsals is not None:
+        body["sceneRehearsals"] = scene_rehearsals
+    sent = await client.post("golden/rehearsal/send", json=body)
+    sent.raise_for_status()
+    reply: dict[str, Any] = sent.json()
+    return reply
 
 
 async def play(
@@ -356,11 +347,15 @@ async def play(
     moment: Moment | None = None
     heard = 2 * len(played)
     for idx, turn in enumerate(script.turns[:turns]):
-        body, expected = request_for(turn, script, session_id, carried[idx])
         started = time.monotonic()
-        answered = await client.post("golden/turn", json=body)
-        answered.raise_for_status()
-        reply = answered.json()
+        if turn.rehearsal is not None:
+            expected = ""
+            reply = await send_rehearsal(turn, client, session_id, carried[idx])
+        else:
+            body, expected = request_for(turn, script, session_id, carried[idx])
+            answered = await client.post("golden/turn", json=body)
+            answered.raise_for_status()
+            reply = answered.json()
         sent = carried[idx]
         line = Played(
             idx=idx,
@@ -370,10 +365,12 @@ async def play(
             interrupted=turn.interrupted,
             turnMs=int(reply.get("latencyMs") or round((time.monotonic() - started) * 1000)),
             usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
+            acceptedIds=reply.get("acceptedIds", []),
+            acceptedSendBacks=reply.get("acceptedSendBacks", 0),
             appStatus=[
                 fact
                 for fact in (
-                    scene_rehearsals_fact(scene_ids, sent) if sent is not None else "",
+                    scene_rehearsals_line(scene_ids, sent) if sent is not None else "",
                     earlier,
                 )
                 if fact
@@ -671,6 +668,7 @@ def summary(
     empty = [result for result in results if result.empty]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
+    send_backs = sum(turn.acceptedSendBacks for turn in played)
     by_role, unpriced = priced(_paid(results))
     voice = [
         sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
@@ -709,6 +707,7 @@ def summary(
         )
         lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
+    lines.append(f"Reenvios do Validador em turnos com leituras aceitas: {send_backs}.")
     if by_role:
         total = sum(by_role.values())
         free = (
@@ -867,6 +866,7 @@ def _played(turn: dict[str, Any], at: int) -> Played:
         turnMs=_read(turn, "turnMs", (int,), where),
         mechanical=_strings(turn, "mechanical", where),
         appStatus=_strings(turn, "appStatus", where, default=[]),
+        acceptedSendBacks=_read(turn, "acceptedSendBacks", (int,), where, default=0),
     )
 
 
@@ -1006,6 +1006,8 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
+    send_backs = sum(turn.acceptedSendBacks for result in results for turn in result.played)
+    print(f"\nValidator send-backs on turns with accepted readings: {send_backs}")
     note = f", {empty} empty" if empty else ""
     print(f"\n{passed}/{len(results) - empty} golden sessions pass{note} · {out / readme}")
     return 0 if passed == len(results) else 1

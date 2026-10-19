@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     #: Empty is the production configuration: the text seam then does not exist, and its
     #: routes answer 404 rather than asking for a credential nobody has been given.
     internalization_room_runner_key: str = ""
+    #: The demo team, by its team id (ADR 0064). Empty is the production configuration: there
+    #: is no demo team, and the page that spends a code on it answers 404.
+    internalization_room_demo_team_id: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
     #: The room's voice is Mariana's, chosen on 2026-09-21, because Marcia's frozen app is the

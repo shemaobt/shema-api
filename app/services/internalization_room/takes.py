@@ -14,7 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import (
+    IRSceneFrase,
+    IRSceneRehearsal,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
@@ -254,20 +260,23 @@ async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IR
     return take
 
 
-async def listen_url(take: IRTake | IRSceneRehearsal, *, settings: Settings | None = None) -> str:
-    """A short-lived signed URL, so the bytes never pass through the API.
+async def listen_url(
+    recording: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
+) -> str:
+    """A short-lived signed URL to a stored recording, so the bytes never pass through the API.
 
-    A rehearsal take is the whole passage; proxying minutes of audio through the
-    application server buys nothing over letting storage serve it.
+    A rehearsal take is the whole passage and a scene rehearsal a whole scene; proxying minutes
+    of audio through the application server buys nothing over letting storage serve it, and a
+    frase is served the same way.
     """
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
     return await generate_signed_download_url(
         cfg.gcs_platform_bucket,
-        take.storage_key,
+        recording.storage_key,
         expiry_minutes=LISTEN_MINUTES,
-        response_content_type=take.content_type,
+        response_content_type=recording.content_type,
     )
 
 

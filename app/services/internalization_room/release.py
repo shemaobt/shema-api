@@ -44,6 +44,7 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.language import Language
 from app.db.models.project import Project
+from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -64,7 +65,9 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     back_translation_of,
+    claim_the_version,
     is_panorama,
+    refuse_if_archived,
 )
 from app.services.internalization_room.takes import current_parts, is_wav, takes_of
 
@@ -467,6 +470,8 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
+    if await is_the_demo_team(db, session.project_id):
+        raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     telling_back = back_translation_of(session)
     stretches = await final_segments(db, session.id)
@@ -748,12 +753,18 @@ async def approve_release(
     second approval of an unchanged packet must come back with the *same* release, and a loop
     that re-allocates after losing the race would mint the version the idempotency check
     exists to prevent. Answering the caller keeps the decision in one place.
+
+    No release is minted on an archived session: one a Zerar archived is answered as gone,
+    and so is one a Zerar overtakes while the packet is composed, because the insert lands
+    only while the session's ``version`` is still the one read here (ADR 0052, ADR 0066).
     """
     assert session.project_id is not None
+    await refuse_if_archived(db, session)
 
     packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
     if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+        await refuse_if_archived(db, session)
         return latest
 
     _judge(blockers, FORCEABLE_BLOCKERS if forced_by else frozenset())
@@ -783,6 +794,7 @@ async def approve_release(
             else None
         ),
     )
+    await claim_the_version(db, session)
     db.add(release)
     try:
         await db.commit()

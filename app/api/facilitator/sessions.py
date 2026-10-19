@@ -16,6 +16,15 @@ async def list_desk_sessions_route(
     user: ReaderUser,
     limit: int = Query(default=desk_sessions.DEFAULT_PAGE, ge=1, le=desk_sessions.MAX_PAGE),
     cursor: str | None = Query(default=None),
+    team_id: str | None = Query(default=None),
+    pericope: str | None = Query(default=None, min_length=1, max_length=120),
     db: AsyncSession = Depends(get_db),
 ) -> DeskSessionsPage:
-    return await desk_sessions.desk_sessions_page(db, user, limit=limit, cursor=cursor)
+    """List the readable sessions, newest activity first.
+
+    ``team_id`` and ``pericope`` narrow the list, alone or together, for the Desk's passage
+    picker (ENG-1229). A ``team_id`` the reader may not read answers 404 «Team not found».
+    """
+    return await desk_sessions.desk_sessions_page(
+        db, user, limit=limit, cursor=cursor, team_id=team_id, pericope=pericope
+    )

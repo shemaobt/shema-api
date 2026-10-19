@@ -31,6 +31,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.db.models.project import Project
+from app.services.internalization_room import release as release_service
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
@@ -65,6 +66,7 @@ from tests.release_harness import (
     desk_retro,
     ensaio_take,
     ready_session,
+    releases_of,
     reported_playback,
     team_headers,
     team_release,
@@ -657,7 +659,24 @@ async def test_the_retroverification_file_of_a_new_session_lists_no_archived_dra
     assert [release["version"] for release in listed.json()["releases"]] == [2]
 
 
-async def test_a_release_forced_on_an_archived_session_stays_in_its_own_archives_file(
+async def the_teams_marks(client: httpx.AsyncClient, tablet: str) -> dict[str, bool]:
+    answered = await client.get(
+        f"{PREFIX}/books/Ruth/passages?language=pt", headers=team_headers(tablet)
+    )
+    assert answered.status_code == 200, answered.text[:300]
+    return {entry["pericope"]: entry["approved"] for entry in answered.json()["passages"]}
+
+
+async def live_releases_of(per_request: async_sessionmaker[AsyncSession], pericope: str) -> int:
+    async with per_request() as fresh:
+        return await fresh.scalar(
+            select(func.count())
+            .select_from(IRRelease)
+            .where(IRRelease.pericope == pericope, IRRelease.archive_id.is_(None))
+        )
+
+
+async def test_a_force_on_an_archived_session_is_refused_and_mints_nothing(
     client, db_session, per_request, room_app
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
@@ -666,18 +685,105 @@ async def test_a_release_forced_on_an_archived_session_stays_in_its_own_archives
     first = await client.post(team_release(archived.id), headers=team_headers(tablet))
     assert first.status_code == 200, first.text[:300]
     await zerar(client, desk, team.id, P)
-    after = await ready_session(db_session, project_id=team.id)
     async with per_request() as fresh:
         stored = await get_session(fresh, archived.id)
         await reported_playback(fresh, stored, await told_back_with_an_open_finding(fresh, stored))
+        before = [release.version for release in await releases_of(fresh, archived.id)]
 
     forced = await client.post(desk_release(archived.id), headers=desk, json={"force": True})
 
+    assert forced.status_code == 404, forced.text[:300]
+    async with per_request() as fresh:
+        assert [release.version for release in await releases_of(fresh, archived.id)] == before
+    assert (await the_teams_marks(client, tablet))[P] is False
+
+
+async def test_an_approval_a_zerar_overtakes_mints_no_live_release(
+    client, db_session, per_request, room_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await ready_session(db_session, project_id=team.id)
+    composing = release_service.compose_internalization_release
+
+    async def the_zerar_lands_while_the_packet_is_composed(*args: Any, **kwargs: Any):
+        composed = await composing(*args, **kwargs)
+        await zerar(client, desk, team.id, P)
+        return composed
+
+    monkeypatch.setattr(
+        release_service,
+        "compose_internalization_release",
+        the_zerar_lands_while_the_packet_is_composed,
+    )
+
+    approved = await client.post(team_release(session.id), headers=team_headers(tablet))
+
+    assert await stamps(per_request, "ir_sessions", [session.id]) != {None}, (
+        "the Zerar never landed inside the approval"
+    )
+    assert approved.status_code == 404, approved.text[:300]
+    assert await live_releases_of(per_request, P) == 0
+    assert (await the_teams_marks(client, tablet))[P] is False
+
+
+async def test_an_unchanged_approval_a_zerar_overtakes_is_answered_as_the_session_gone(
+    client, db_session, per_request, room_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await ready_session(db_session, project_id=team.id)
+    first = await client.post(team_release(session.id), headers=team_headers(tablet))
+    assert first.status_code == 200, first.text[:300]
+    composing = release_service.compose_internalization_release
+
+    async def the_zerar_lands_while_the_packet_is_composed(*args: Any, **kwargs: Any):
+        composed = await composing(*args, **kwargs)
+        await zerar(client, desk, team.id, P)
+        return composed
+
+    monkeypatch.setattr(
+        release_service,
+        "compose_internalization_release",
+        the_zerar_lands_while_the_packet_is_composed,
+    )
+
+    again = await client.post(team_release(session.id), headers=team_headers(tablet))
+
+    assert await stamps(per_request, "ir_sessions", [session.id]) != {None}, (
+        "the Zerar never landed inside the approval"
+    )
+    assert again.status_code == 404, again.text[:300]
+    assert await live_releases_of(per_request, P) == 0
+
+
+async def test_a_release_forced_at_the_desk_is_not_the_teams_activity(
+    client, desk_sessions_client, db_session, per_request, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await ready_session(db_session, project_id=team.id)
+    last_spoke = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+    async with per_request() as fresh:
+        stored = await get_session(fresh, session.id)
+        await reported_playback(fresh, stored, await told_back_with_an_open_finding(fresh, stored))
+        await fresh.execute(
+            text("UPDATE ir_sessions SET updated_at = :at WHERE id = :id"),
+            {"at": last_spoke, "id": session.id},
+        )
+        await fresh.commit()
+
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+
     assert forced.status_code == 200, forced.text[:300]
-    new_file = await client.get(desk_retro(after.id), headers=desk)
-    archived_file = await client.get(desk_retro(archived.id), headers=desk)
-    assert new_file.json()["releases"] == []
-    assert [release["version"] for release in archived_file.json()["releases"]] == [1, 2]
+    async with per_request() as fresh:
+        assert (await get_session(fresh, session.id)).updated_at == last_spoke
+    listed = await desk_sessions_client.get("/api/facilitator/sessions", headers=desk)
+    assert [
+        tile["last_activity_at"]
+        for tile in listed.json()["sessions"]
+        if tile["session_id"] == session.id
+    ] == ["2026-10-09T12:00:00Z"]
 
 
 async def test_a_zerard_closed_passage_is_the_teams_passage_again(

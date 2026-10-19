@@ -9,7 +9,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import live_turn
-from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import append_exchange, create_session
 from app.services.internalization_room.turn import scene_view
 from app.services.internalization_room.turn.speech import speak_back
@@ -56,7 +55,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "messages": [],
         "transcript": "a fome chegou",
         "opening": False,
-        "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
         "pericope": P,
