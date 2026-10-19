@@ -10,6 +10,7 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import At, Cause, MomentView
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.prompt_blocks import sent_scene_ids
 
 _DASH = "\N{EM DASH}"
@@ -221,7 +222,12 @@ class MomentStep:
 
 
 def moment_step(
-    messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool, scenes: list[str]
+    messages: list[dict[str, Any]],
+    voiced: str,
+    *,
+    fail_safe: bool,
+    scenes: list[str],
+    arriving: SentSceneRehearsal | None = None,
 ) -> MomentStep | None:
     """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
     A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
@@ -229,7 +235,8 @@ def moment_step(
     if before is None:
         return None
     parts = len(scenes)
-    back = {scenes.index(scene) + 1 for scene in sent_scene_ids(messages, None) if scene in scenes}
+    reached = sent_scene_ids(messages, arriving.scene if arriving else None)
+    back = {scenes.index(scene) + 1 for scene in reached if scene in scenes}
     after = before
     by: list[Cause] = []
     ignored: list[str] = []
