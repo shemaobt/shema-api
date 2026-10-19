@@ -430,7 +430,7 @@ nothing in column 3 imports `fastapi`.
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
 | **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
-| **Caching** | Declared once: the outer `router` in `__init__.py` carries `NO_STORE` (`_deps.py`), so every answer the module builds says `Cache-Control: private, no-store` — every read is built for its reader, and the link routes answer whoever holds the link (OBT-555). A `GET` whose handler returns a `Response` of its own (the export, the Pulse, the exit link's 204) writes `PER_READER_CACHE_CONTROL` itself, because FastAPI does not merge the injected response's headers into it; `tests/test_shema/test_cache_control.py` calls every `GET` and reads the header off the wire. Not reached: the error envelopes of `app/core/exceptions.py`, shared by every app and not a reader's record, and the four answers a write builds itself — the record's 409 (on the `PATCH` and on the import), the import's 400, and the `POST`s of the intake (202) and of the exit link (204), the last two with no `Authorization` — which no cache stores, since none carries explicit freshness. | Nothing. |
+| **Caching** | Declared once: the outer `router` in `__init__.py` carries `NO_STORE` (`_deps.py`), so every answer the module builds says `Cache-Control: private, no-store` — every read is built for its reader, and the link routes answer whoever holds the link (OBT-555). A `GET` whose handler returns a `Response` of its own (the export, the Pulse, the exit link's 204) writes `PER_READER_CACHE_CONTROL` itself, because FastAPI does not merge the injected response's headers into it; `tests/test_shema/test_cache_control.py` calls every `GET` and reads the header off the wire. Not reached: the error envelopes of `app/core/exceptions.py`, shared by every app and not a reader's record, and the five answers a write builds itself — the record's 409 (on the `PATCH` and on the import), the record's 400 that names its field (on the `PATCH` and the `POST`, OBT-601), the import's 400, and the `POST`s of the intake (202) and of the exit link (204), the last two with no `Authorization` — which no cache stores, since none carries explicit freshness. | Nothing. |
 
 ---
 
@@ -782,6 +782,17 @@ behaviour on it.
 >   one*. Atomicity is a property of the write path instead: the whole batch is validated
 >   before a row is applied — every bad row named at once, by index — and the roll-up, the
 >   history entry and the trail commit together or not at all.
+
+> **[OBT-601](https://linear.app/shema-obt/issue/OBT-601), 19/oct/2026: the record's date rule
+> names its field.** A deadline before the start is the service's rule and not the body model's —
+> a `PATCH` that sends only a `deadline` is read against the start already on the row — so it
+> answered the repository's plain 400, which the ficha could not place: the E2E run of 14/oct/2026
+> (PME-FIC-019 and 020) saw *recusa sem campo* on whatever tab the coordinator was on.
+> `ImpossibleDates` keeps the 400 and its sentence in `detail`, and the `PATCH` and the `POST`
+> render `errors` beside it: the 422's own `{type, loc, msg}`, at `["body", "deadline"]`, the way
+> `IncompleteSubmission` and the import's 400 already widen the envelope. The located `msg` says
+> what is wrong and not the value refused, as `_routing.py` asks of the module's validators. The
+> import and the Pulse do not render it and answer the sentence alone, as they did.
 
 > **BE-07 ([OBT-396](https://linear.app/shema-obt/issue/OBT-396)) built row 5.3, and five
 > decisions travel with it.**
