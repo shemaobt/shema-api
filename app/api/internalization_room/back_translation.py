@@ -20,7 +20,11 @@ from app.models.internalization_room import (
     VerdictHeardResponse,
 )
 from app.services import internalization_room as room
-from app.services.internalization_room.back_translation import Finding
+from app.services.internalization_room.back_translation import (
+    Finding,
+    is_joined,
+    untranslated_parts,
+)
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
@@ -44,6 +48,8 @@ from app.services.internalization_room.voice_handles import clip_url
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+UNTRANSLATED_LINE = "N2"
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
@@ -342,6 +348,18 @@ async def _finished(
             findings_remaining=0,
             refusal=CheckRefusal.PART_UNHEARD,
         )
+
+    parts = current_parts(takes)
+    if is_joined(parts):
+        untranslated = untranslated_parts(parts, told)
+        if untranslated:
+            return BackTranslationVerdictResponse(
+                session_id=session.id,
+                fixed_line=UNTRANSLATED_LINE,
+                checked=False,
+                untranslated=untranslated,
+                refusal=CheckRefusal.STRETCH_UNTRANSLATED,
+            )
 
     if not told:
         return BackTranslationVerdictResponse(

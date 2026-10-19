@@ -576,7 +576,10 @@ class CheckRefusal(StrEnum):
     - `PART_UNHEARD`: a part of the recording was not heard through; `unheard_take_ids` names it,
       `fixed_line` is her P-unheard line, and the screen says «ainda falta ouvir um trecho da
       gravação».
-    - `STRETCH_UNTRANSLATED`: on a joined recording, a stretch no frase covers. Not sent yet.
+    - `STRETCH_UNTRANSLATED`: on a joined recording, a part no translated frase stands on;
+      `untranslated` names each by its scene and where to play from, `fixed_line` is her N-3
+      line, and the screen says «falta traduzir um trecho — ouçam e traduzam, depois toquem em
+      'terminei'» with the scenes by number.
     - `NOTHING_TRANSLATED`: no frase is translated; the screen says «ainda não tem frase
       traduzida».
     - `CHECK_UNAVAILABLE`: the check's model could not answer and nothing was saved; the screen
@@ -588,6 +591,25 @@ class CheckRefusal(StrEnum):
     STRETCH_UNTRANSLATED = "STRETCH_UNTRANSLATED"
     NOTHING_TRANSLATED = "NOTHING_TRANSLATED"
     CHECK_UNAVAILABLE = "CHECK_UNAVAILABLE"
+
+
+class UntranslatedPart(BaseModel):
+    """A part of a joined recording with something still to translate, and where it starts."""
+
+    take_id: str
+    scene: int | None = Field(
+        default=None,
+        description=(
+            "The scene this part is, by its number in the passage, from one: the hint names "
+            "it («cena 2»). Null on a part recorded whole, which is no scene."
+        ),
+    )
+    from_ms: int = Field(
+        description=(
+            "Where in this part's own milliseconds the recording plays from: the first stretch "
+            "no translated frase covers, or 0 on a part with no translated frase at all."
+        ),
+    )
 
 
 class BackTranslationVerdictResponse(BaseModel):
@@ -633,6 +655,13 @@ class BackTranslationVerdictResponse(BaseModel):
     refusal: CheckRefusal | None = Field(
         default=None,
         description="Set when the press reached no verdict, and why; null on a verdict.",
+    )
+    untranslated: list[UntranslatedPart] = Field(
+        default_factory=list,
+        description=(
+            "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order; the "
+            "recording plays from the first. Empty on every other answer."
+        ),
     )
 
 

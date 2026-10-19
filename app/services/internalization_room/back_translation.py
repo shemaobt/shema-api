@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
-from app.db.models.internalization_room import IRSegment
-from app.models.internalization_room import PlayedTake
+from app.db.models.internalization_room import IRSegment, IRTake
+from app.models.internalization_room import PlayedTake, UntranslatedPart
 from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES, room_language
@@ -434,6 +434,36 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
         and played_ranges_cover_clip(entry.played_ranges, entry.clip_duration_ms)
     }
     return sorted(set(rehearsal_take_ids) - heard)
+
+
+def is_joined(parts: list[IRTake]) -> bool:
+    """A recording is joined when any current part was laid in from a scene rehearsal."""
+    return any(part.origin is not None for part in parts)
+
+
+def untranslated_parts(parts: list[IRTake], told: list[IRSegment]) -> list[UntranslatedPart]:
+    """The parts of a joined recording no translated frase stands on, in passage order.
+
+    A part is a scene of the join, and it is numbered by its place among the numbered current
+    parts, as the voice numbers a part; a part recorded whole is no scene and has no number,
+    which is never guessed. Hers refuses such a part at every check, the team's own word
+    included (`bt/check/route.ts:69-75`, rule i): there is nothing on it to read.
+    """
+    told_parts = {stretch.take_id for stretch in told}
+    found = []
+    position = 0
+    for part in parts:
+        if part.ordinal is not None:
+            position += 1
+        if part.id not in told_parts:
+            found.append(
+                UntranslatedPart(
+                    take_id=part.id,
+                    scene=position if part.ordinal is not None else None,
+                    from_ms=0,
+                )
+            )
+    return found
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own
