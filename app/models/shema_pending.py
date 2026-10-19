@@ -24,6 +24,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, validate_email
 
+from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_privacy import LeavingShape
 
 _REQUEST = ConfigDict(populate_by_name=True, extra="forbid")
@@ -53,6 +54,11 @@ class PendingProject(LeavingShape):
     #: When the approval filed it — the row's own ``created_at``, read under the name it means here.
     created_at: datetime = Field(alias="filedAt")
     members: list[PendingMember] = Field(default_factory=list)
+    #: The region confirming writes if the Admin keeps the place (OBT-591) — the service derives
+    #: it now, as the confirmation will, rather than reading the row's ``region_key``, which a map
+    #: that learned a spelling since the filing would contradict. ``other`` is the Admin's cue that
+    #: no regional coordination will reach the project, and the default for the same reason.
+    region: ShemaRegionKey = ShemaRegionKey.OTHER
 
 
 class ConfirmedMemberIn(BaseModel):

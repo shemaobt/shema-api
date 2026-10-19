@@ -155,9 +155,10 @@ class DeadlineClass(enum.StrEnum):
 
 #: Country string → region, keyed on **the export's exact spelling** and never normalised.
 #: ``São Tomé e Príncipe`` is in Portuguese and ``East Timor`` in English on purpose: these
-#: are the 25 strings the ``location`` column actually holds, and running them through a
+#: are the 25 strings the export's ``location`` column holds, and running them through a
 #: geocoder or a title-caser would silently move records to ``other``. ``docs/shema.md`` §4.9
-#: refuses ``app/api/places.py`` for this reason.
+#: refuses ``app/api/places.py`` for this reason. Every other spelling of these 25 countries
+#: the map knows is a synonym listed in :data:`COUNTRY_SYNONYMS`, never a reading of the string.
 #:
 #: ``src/constants/regions.ts``'s ``COUNTRY_REGION``, copied rather than re-derived.
 COUNTRY_REGION: Final[dict[str, ShemaRegionKey]] = {
@@ -186,6 +187,54 @@ COUNTRY_REGION: Final[dict[str, ShemaRegionKey]] = {
     "Papua New Guinea": ShemaRegionKey.OCEANIA,
     "Fiji": ShemaRegionKey.OCEANIA,
     "Micronesia": ShemaRegionKey.OCEANIA,
+}
+
+#: The same 25 countries as Portuguese, Spanish and English write them, each spelling pointing at
+#: the export's — never at a region, so a synonym cannot add a country or move one (OBT-591). A
+#: project the mesa's approval files carries the place the team typed in the form, and a team
+#: that wrote ``África do Sul`` meant the country the export spells ``South Africa``.
+#:
+#: **Listed, not normalised: the rule above still holds.** A spelling is recognised because it is
+#: written here, exactly — accents, case and spacing as listed — and the string is never
+#: title-cased, transliterated or looked up. Where a language has two standard forms, both are
+#: listed: Spanish as the RAE and the UN write it, English with and without the diacritics the
+#: UN drops. Anything else falls to ``other``, and the Admin reads that region before confirming
+#: the project (``docs/shema.md`` §6.11). A spelling equal to the export's needs no entry.
+#:
+#: ``src/constants/regions.ts``'s ``COUNTRY_SYNONYMS``, spelling for spelling:
+#: ``tests/test_shema/test_parity.py`` holds both tables against the console's emission.
+COUNTRY_SYNONYMS: Final[dict[str, str]] = {
+    "Brasil": "Brazil",
+    "Perú": "Peru",
+    "Colômbia": "Colombia",
+    "México": "Mexico",
+    "Panamá": "Panama",
+    "Estados Unidos": "United States",
+    "Canadá": "Canada",
+    "Egito": "Egypt",
+    "Egipto": "Egypt",
+    "Moçambique": "Mozambique",
+    "África do Sul": "South Africa",
+    "Sudáfrica": "South Africa",
+    "Sudão do Sul": "South Sudan",
+    "Sudán del Sur": "South Sudan",
+    "Sudão": "Sudan",
+    "Sudán": "Sudan",
+    "Guiné-Bissau": "Guinea-Bissau",
+    "Guinea-Bisáu": "Guinea-Bissau",
+    "Santo Tomé y Príncipe": "São Tomé e Príncipe",
+    "São Tomé and Príncipe": "São Tomé e Príncipe",
+    "Sao Tome and Principe": "São Tomé e Príncipe",
+    "Índia": "India",
+    "Indonésia": "Indonesia",
+    "Timor-Leste": "East Timor",
+    "Timor Oriental": "East Timor",
+    "Austrália": "Australia",
+    "Papua-Nova Guiné": "Papua New Guinea",
+    "Papúa Nueva Guinea": "Papua New Guinea",
+    "Papua Nueva Guinea": "Papua New Guinea",
+    "Fiyi": "Fiji",
+    "Micronésia": "Micronesia",
 }
 
 #: What a country outside the map lands in. Two export records have an empty ``location`` and
@@ -283,7 +332,8 @@ def get_country(location: str) -> str:
 
     Free text that may name several countries (``China, Laos, Vietnam``); the first is the
     one the region is read from. Nothing is normalised, title-cased or transliterated: the
-    keys of :data:`COUNTRY_REGION` are the export's own spellings. The split itself belongs
+    country comes back as it was typed, and a listed synonym moves the region
+    (:func:`get_region`), never the name a card or a facet shows. The split itself belongs
     to :func:`countries_named`, so *what a comma means* has one definition and BE-16's
     fail-closed flag cannot drift from the region derived here.
     """
@@ -294,12 +344,18 @@ def get_country(location: str) -> str:
 def get_region(location: str) -> ShemaRegionKey:
     """The region a ``location`` falls in, or :data:`FALLBACK_REGION`.
 
+    The first country it names, spelled as the export spells it or as one of the synonyms
+    :data:`COUNTRY_SYNONYMS` lists for it. Only the first: ``Cidade do Cabo, África do Sul``
+    names a city first and falls to ``other`` (``docs/shema.md`` §6.1) — the Admin reads that
+    region at the conference of a project the approval filed and corrects the place.
+
     **The writer's function, not the reader's.** ``shema_projects.region_key`` is a stored
     column maintained by whoever writes ``location`` (``docs/shema.md`` §6.1), because the
     region predicate rides on every scoped list query and a per-query derivation would make
     it unsargable. Read the column; call this when writing it.
     """
-    return COUNTRY_REGION.get(get_country(location), FALLBACK_REGION)
+    country = get_country(location)
+    return COUNTRY_REGION.get(COUNTRY_SYNONYMS.get(country, country), FALLBACK_REGION)
 
 
 def get_progress(record: Derivable) -> float:

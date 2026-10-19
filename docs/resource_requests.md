@@ -1168,6 +1168,14 @@ this section is what it asks of this module and what it writes here.
 - **What it reads of the document**: `fields.reg_name`, `lang_name`, `lang_iso`,
   `people_location`, `tr_location` and `tpp_name`; the first row of `langs`; the `name` and `role` of
   every `team` row. A renamed key or a reshaped table there is a change to the PME's filing too.
+- **How the place becomes a region** (OBT-591, 16/oct/2026). `people_location` (or `tr_location`)
+  is free text and goes to the project as typed. Its region is read from the first
+  comma-separated item, by the PME's one owner of the map: the export's spelling of one of its 25
+  countries, or a Portuguese, Spanish or English spelling listed as its synonym — `África do Sul`,
+  `Sudáfrica` and `South Africa` all file the project in Africa (`docs/shema.md` §4.9). Anything
+  else is `other`, a city typed before the country included (§6.1 there): the Admin's conference
+  shows the region and warns before confirming. The form's question stays free text — a country
+  list there is the client's decision, not this module's.
 - **`shema_project_id` is written later than §5.4.1 says**: not at the approval, but when the Admin
   **confirms** the project — on every request of the link that has none, drafts included, since the
   link stood in for a team that now has a project. A request of the link approved *after* its
