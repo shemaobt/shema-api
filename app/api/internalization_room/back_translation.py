@@ -348,7 +348,8 @@ async def listened_whole(
     told = room.told_back(final)
     parts = current_parts(await takes_of(db, session.id))
     if (
-        room.first_untold(final) is not None
+        await the_sentence_awaiting(db, session) is not None
+        or room.first_untold(final) is not None
         or room.unheard_parts(state, [part.id for part in parts])
         or not is_joined(parts)
         or not told

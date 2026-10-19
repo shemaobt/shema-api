@@ -539,3 +539,23 @@ async def test_a_sentence_laid_into_a_joined_part_leaves_the_recording_joined(
     assert answered.status_code == 200, answered.text
     assert answered.json()["refusal"] == "STRETCH_UNTRANSLATED"
     assert answered.json()["untranslated"] == [{"take_id": untold.id, "scene": 2, "from_ms": 0}]
+
+
+async def test_a_listen_with_a_re_recorded_sentence_awaiting_its_words_checks_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, (_, middle), _ = await _joined_in_wav(db_session, store, [(0, 1000), (1000, 2000)])
+    laid = (await re_record(client, session.id, middle.id, spoken(1.0))).json()["segments"][1]
+
+    listened = await _listened_whole(
+        client,
+        session.id,
+        report=played_every_part([laid["take_id"]], duration_ms=laid["ends_ms"]),
+    )
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["automatic_check"] is False, (
+        "a voz dizia o N-2 com uma frase regravada ainda sem tradução, e a conferência recusava"
+    )
+    assert body["fixed_line"] == ""
