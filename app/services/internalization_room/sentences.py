@@ -59,6 +59,12 @@ async def lay_in_a_sentence(
     if base is None:
         raise _not_wav(part)
     sentence = pcm16(audio)
+    if sentence is None or (sentence.rate, sentence.channels) != (base.rate, base.channels):
+        raise SentenceRefused(
+            400,
+            "SENTENCE_FORMAT_DIFFERS",
+            f"A sentence is WAV PCM16 at {base.rate} Hz, {base.channels} channel(s), as its part",
+        )
     laid = trim_silence(sentence)
     if sentence.ms(laid.frames) < SHORTEST_SENTENCE_MS:
         raise SentenceRefused(

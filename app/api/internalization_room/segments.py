@@ -231,7 +231,10 @@ router.add_api_route(
     response_model=SentenceLaidInResponse,
     dependencies=[linked_tablet_dep],
     responses={
-        400: {"description": "`SENTENCE_TOO_SHORT`: under 0.5 s once its silence is trimmed"},
+        400: {
+            "description": "`SENTENCE_TOO_SHORT`: under 0.5 s once its silence is trimmed; "
+            "`SENTENCE_FORMAT_DIFFERS`: not WAV PCM16 at the part's own rate and channels"
+        },
         409: {"description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16"},
         413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
     },
@@ -261,7 +264,9 @@ async def re_record_the_sentence(
     Refused with a named `code` the tablet turns into her lines: `SENTENCE_TOO_LONG` (413) for
     a recording over 4 MB, before anything else is read; `SENTENCE_TOO_SHORT` (400) for one
     under half a second once its silence is trimmed; `PART_NOT_WAV` (409) when the part was not
-    recorded as WAV PCM16, where the team records the part again instead.
+    recorded as WAV PCM16, where the team records the part again instead;
+    `SENTENCE_FORMAT_DIFFERS` (400) for a recording that is not WAV PCM16 at the part's own rate
+    and channels, which is never resampled.
     """
     try:
         audio = await file.read(SENTENCE_LIMIT_BYTES + 1)

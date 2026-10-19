@@ -145,3 +145,26 @@ async def test_a_part_not_recorded_in_wav_takes_no_sentence(
         (409, "PART_NOT_WAV"),
     ], "uma parte que não é WAV de 16 bits recebia uma frase emendada"
     assert store.objects == kept
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [
+        b"isto nao e um wav",
+        wav(seconds(1.0, 9000) * 3, rate=48000),
+        wav(seconds(1.0, 9000) * 2, channels=2),
+    ],
+    ids=["not a wav", "another rate", "two channels"],
+)
+async def test_a_sentence_not_at_the_parts_own_format_is_refused_never_resampled(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, recorded: bytes
+) -> None:
+    session, _, ((frase,),) = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
+    kept = dict(store.objects)
+
+    refused = await re_record(client, session.id, frase.id, recorded)
+
+    assert (refused.status_code, refused.json().get("code")) == (400, "SENTENCE_FORMAT_DIFFERS"), (
+        "uma frase noutro formato era emendada como se fosse do mesmo"
+    )
+    assert store.objects == kept
