@@ -415,6 +415,14 @@ class BackTranslationProgress(BaseModel):
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    awaiting_segment_id: str | None = Field(
+        default=None,
+        description=(
+            "The frase whose sentence was recorded again and is not translated yet. It keeps "
+            "its number; the check waits for it, and only its own translation, at exactly the "
+            "span the new sentence took, may be told. Null when no frase awaits."
+        ),
+    )
     rerecorded_sentences: list[RerecordedSentenceView] = Field(
         default_factory=list,
         description="Every sentence recorded again and laid into its part, in the order laid.",

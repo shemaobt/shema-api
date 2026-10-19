@@ -1,0 +1,96 @@
+"""A frase whose sentence was recorded again awaits its translation, and keeps its number.
+
+Her `awaitingSplice` (src/backtranslation/store.ts at 18fa7c4): the frase stays in the telling
+under the same number, the check waits for its new translation, and the re-telling at the very
+span the new sentence took is what ends the wait. Her N-6 is the line for it.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.internalization_room import segments as segments_api
+from app.services.internalization_room.sentences import AwaitingSentence, the_sentence_awaiting
+from app.services.internalization_room.sessions import get_session
+from tests.hard_stretch_harness import MemoryStore
+from tests.release_harness import PREFIX
+from tests.room_harness import nothing_is_read_ahead, room_client, the_bucket_is_in_memory
+from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
+
+
+@pytest.fixture()
+def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    return the_bucket_is_in_memory(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def transcriber(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def said(*_: Any, **__: Any) -> str:
+        return "a frase nova traduzida"
+
+    monkeypatch.setattr(segments_api, "heard", said)
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, store: MemoryStore):
+    async with room_client(db_session, monkeypatch) as door:
+        yield door
+
+
+async def _read(client: httpx.AsyncClient, session_id: str) -> dict[str, Any]:
+    return (await client.get(f"{PREFIX}/sessions/{session_id}")).json()["back_translation"]
+
+
+async def test_the_frase_awaits_its_translation_under_its_own_number_with_her_line(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+
+    await re_record(client, session.id, middle.id, spoken(1.0))
+
+    assert (await _read(client, session.id)).get("awaiting_segment_id") == middle.id, (
+        "a sessão não dizia qual frase espera a tradução"
+    )
+    assert await the_sentence_awaiting(
+        db_session, await get_session(db_session, session.id)
+    ) == AwaitingSentence(
+        segment_id=middle.id,
+        frase=2,
+        line="Ainda falta traduzir a frase que vocês regravaram.",
+    ), "a frase regravada perdia o número ou a fala dela"
+
+
+async def test_telling_the_new_sentence_at_its_own_span_ends_the_wait(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    laid = (await re_record(client, session.id, middle.id, spoken(1.0))).json()["segments"][1]
+
+    told = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{middle.id}/replace",
+        data={
+            "take_id": laid["take_id"],
+            "starts_ms": str(laid["starts_ms"]),
+            "ends_ms": str(laid["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+
+    assert told.status_code == 200, told.text
+    assert (await _read(client, session.id)).get("awaiting_segment_id", "") is None
+    assert (
+        await the_sentence_awaiting(db_session, await get_session(db_session, session.id)) is None
+    ), "a frase traduzida de novo continuava esperando"

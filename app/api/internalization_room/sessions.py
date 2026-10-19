@@ -66,6 +66,7 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
+from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
@@ -345,6 +346,7 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     stretches = await room.final_segments(db, session.id)
     findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
+    awaiting = await the_sentence_awaiting(db, session)
     return BackTranslationProgress(
         scope=state.scope,
         segments=[segment_view(one) for one in stretches],
@@ -353,6 +355,7 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
         finding_kind=finding.kind.value if finding else None,
         findings=finding_views(findings),
         superseded_attempts=len(state.superseded),
+        awaiting_segment_id=awaiting.segment_id if awaiting else None,
         rerecorded_sentences=[
             RerecordedSentenceView(
                 sentence_id=one.sentence_id,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -9,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import LaidInSentence
-from app.services.internalization_room.segments import current_segments
+from app.services.internalization_room.fail_safe import her_line
+from app.services.internalization_room.languages import room_language
+from app.services.internalization_room.segments import current_segments, final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
     TakeStore,
@@ -23,6 +26,13 @@ from app.services.internalization_room.wav import pcm16, splice_sentence, trim_s
 WAV = "audio/wav"
 SENTENCE_LIMIT_BYTES = 4 * 1024 * 1024
 SHORTEST_SENTENCE_MS = 500
+
+
+@dataclass(frozen=True)
+class AwaitingSentence:
+    segment_id: str
+    frase: int
+    line: str
 
 
 class SentenceRefused(Exception):
@@ -160,3 +170,16 @@ async def lay_in_a_sentence(
 
 def _sentence_key(session_id: str, sha256: str) -> str:
     return f"internalization-room/takes/{session_id}/sentence/{sha256}/frase.wav"
+
+
+async def the_sentence_awaiting(db: AsyncSession, session: IRSession) -> AwaitingSentence | None:
+    told = told_back(await final_segments(db, session.id))
+    for entry in reversed(back_translation_of(session).sentences):
+        for number, frase in enumerate(told, start=1):
+            if (frase.id, frase.take_id) == (entry.segment_id, entry.take_id):
+                return AwaitingSentence(
+                    segment_id=frase.id,
+                    frase=number,
+                    line=her_line("N5", room_language(session.language)) or "",
+                )
+    return None
