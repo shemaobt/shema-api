@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE, PauseCannotMove
+from app.core.exceptions import (
+    ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+    PauseCannotMove,
+    StretchNoLongerCounts,
+)
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -91,6 +95,8 @@ async def lay_in_a_sentence(
                 f"Sentence {sentence_id} was already laid in with another recording",
             )
         return await take_by_id(db, laid_before.take_id)
+    if segment.id not in {one.id for one in await final_segments(db, session.id)}:
+        raise StretchNoLongerCounts("A frase that no longer counts takes no sentence")
     part = await take_by_id(db, segment.take_id)
     if not is_wav(part.content_type):
         raise _not_wav(part)

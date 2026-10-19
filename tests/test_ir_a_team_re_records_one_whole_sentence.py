@@ -29,9 +29,11 @@ from tests.room_harness import (
     room_client,
     stored_telling_back,
     the_bucket_is_in_memory,
+    upload_a_part,
 )
 from tests.sentence_harness import (
     RATE,
+    WAV,
     re_record,
     rehearsed_in_wav,
     samples_of,
@@ -310,3 +312,21 @@ async def test_a_divided_stretch_holding_the_frase_still_tiles_its_pieces(
         "o trecho dividido não cobria mais as suas partes depois da frase nova"
     )
     assert sorted(spans.values())[1:] == [(1000, 2400), (1000, 3400), (2400, 3400)]
+
+
+async def test_a_frase_of_a_part_recorded_again_whole_takes_no_sentence(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((frase,),) = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
+    await upload_a_part(client, session.id, part=1, audio=wav(seconds(2.0, 77)), content_type=WAV)
+    standing = [one.take_id for one in await final_segments(db_session, session.id)]
+    kept = dict(store.objects)
+
+    refused = await re_record(client, session.id, frase.id, spoken(1.0))
+
+    assert (refused.status_code, refused.json().get("code")) == (
+        400,
+        "STRETCH_NO_LONGER_COUNTS",
+    ), "uma frase de uma parte já regravada inteira recebia uma frase nova"
+    assert store.objects == kept
+    assert [one.take_id for one in await final_segments(db_session, session.id)] == standing
