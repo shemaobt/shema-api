@@ -254,11 +254,11 @@ One reading of the telling-back and the verdict spoken on it, kept in the passag
 _Avoid_: attempt (a **Superseded** recording), Rodada
 
 **Heard the rehearsal** (`unheard_parts`):
-The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
+The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again. A part with a sentence laid in keeps the listening it had where nothing changed, and is unheard until its new sentence is played, with at most 0.75 s of it unplayed and never more than half of it (ADR 0069).
 _Avoid_: complete playback, Ouviu o ensaio
 
 **Unheard part** (`unheard_take_ids`):
-A current **Part** of the rehearsal the team's listening report does not cover, named by its take in the refusal the check answers with before the analyst runs. A part recorded again is unheard until it is played through.
+A current **Part** of the rehearsal the team's listening report does not cover, named by its take in the refusal the check answers with before the analyst runs. A part recorded again is unheard until it is played through; a part with a sentence laid in, until that sentence is.
 _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
 
 **Abandoned**:

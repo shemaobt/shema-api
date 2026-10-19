@@ -14,7 +14,12 @@ from app.api.internalization_room._idempotent import IdempotentRoute, idempotenc
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
 from app.db.models.internalization_room import IRSegment, IRTakeKind
-from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
+from app.models.internalization_room import (
+    DivideSegmentRequest,
+    SegmentsResponse,
+    SegmentView,
+    SentenceLaidInResponse,
+)
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
@@ -27,7 +32,18 @@ from app.services.internalization_room.segments import (
     refuse_a_slice_a_version_cannot_take,
     segment_for_session,
 )
-from app.services.internalization_room.takes import rehearsal_take_of, store_take
+from app.services.internalization_room.sentences import (
+    SENTENCE_LIMIT_BYTES,
+    lay_in_a_sentence,
+    refuse_a_sentence_too_long,
+    refuse_another_span_for_the_awaiting_frase,
+)
+from app.services.internalization_room.takes import (
+    TakeStore,
+    rehearsal_take_of,
+    store_take,
+    take_store,
+)
 
 router = APIRouter()
 
@@ -80,11 +96,15 @@ async def divide(
     matters because it is an action the team takes in the middle of the work.
 
     `at_ms` is counted from the start of the recording, the same as the stretch's own bounds.
-    Where it may fall is `divide_segment`'s to say.
+    Where it may fall is `divide_segment`'s to say. A frase awaiting the translation of its
+    re-recorded sentence is not divided: 400 `FRASE_AWAITS_ITS_TRANSLATION`.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     segment = await segment_for_session(db, session.id, segment_id)
+    await refuse_another_span_for_the_awaiting_frase(
+        db, session, segment, segment.starts_ms, payload.at_ms
+    )
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
     nudge(session.project_id, "stretches")
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
@@ -147,12 +167,16 @@ async def replace(
     telling-backs. It is knowable from the stretch and the form fields, so the same refusal is
     asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
+
+    A frase awaiting the translation of its re-recorded sentence is told again only at exactly
+    the span the new sentence took; any other slice answers 400 `FRASE_AWAITS_ITS_TRANSLATION`.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
+    await refuse_another_span_for_the_awaiting_frase(db, session, segment, starts_ms, ends_ms)
     await refuse_a_slice_a_version_cannot_take(
         db, session, segment, rehearsal.id, starts_ms, ends_ms
     )
@@ -212,3 +236,71 @@ router.add_api_route(
     dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
+
+
+@router.post(
+    "/sessions/{session_id}/segments/{segment_id}/sentence",
+    response_model=SentenceLaidInResponse,
+    dependencies=[linked_tablet_dep],
+    responses={
+        400: {
+            "description": "`SENTENCE_TOO_SHORT`: under 0.5 s once its silence is trimmed; "
+            "`SENTENCE_FORMAT_DIFFERS`: not WAV PCM16 at the part's own rate and channels"
+        },
+        409: {
+            "description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16; "
+            "`SENTENCE_ID_REUSED`: the id already names another recording; "
+            "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation"
+        },
+        413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
+    },
+)
+async def re_record_the_sentence(
+    session_id: str,
+    segment_id: str,
+    sentence_id: str = Form(..., pattern=r"^[A-Za-z0-9_-]{8,64}$"),
+    file: UploadFile = File(...),
+    device_id: str = device_dep,
+    project_id: str = device_project_dep,
+    store: TakeStore = Depends(take_store),
+    db: AsyncSession = Depends(get_db),
+) -> SentenceLaidInResponse:
+    """One whole sentence recorded again, laid into its part in the frase's place.
+
+    `segment_id` is the frase whose sentence the team recorded again; it is always a whole
+    sentence, never a piece of one (Marcia, 21 September), and a frase that still counts: one
+    told again, retired with its part or divided answers `STRETCH_NO_LONGER_COUNTS` (400).
+    `sentence_id` is minted by the tablet for this one recording and sent again with every retry
+    of it. `file` is the raw recording, WAV PCM16 at the part's own rate and channels.
+
+    The new sentence keeps 0.2 s of its silence on each side and replaces the old one inside the
+    part; the audio before and after it is the same bytes, and the frases after it move by the
+    difference in length. The part becomes a new rehearsal take, and the take it replaces is
+    kept.
+
+    Refused with a named `code` the tablet turns into her lines: `SENTENCE_TOO_LONG` (413) for
+    a recording over 4 MB, before anything else is read; `SENTENCE_TOO_SHORT` (400) for one
+    under half a second once its silence is trimmed; `PART_NOT_WAV` (409) when the part was not
+    recorded as WAV PCM16, where the team records the part again instead;
+    `SENTENCE_FORMAT_DIFFERS` (400) for a recording that is not WAV PCM16 at the part's own rate
+    and channels, which is never resampled; `SENTENCE_ID_REUSED` (409) for a `sentence_id`
+    already laid in with another recording or another frase. The same recording sent again
+    under its id is answered as it stands and laid in once; `ANOTHER_SENTENCE_AWAITS` (409, with
+    `frases: [n]`) while another frase awaits its translation, one sentence at a time — the
+    awaiting frase itself may be recorded again.
+    """
+    audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
+    refuse_a_sentence_too_long(audio)
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    segment = await segment_for_session(db, session.id, segment_id)
+    await lay_in_a_sentence(
+        db,
+        session,
+        segment,
+        sentence_id=sentence_id,
+        audio=audio,
+        device_id=device_id,
+        store=store,
+    )
+    return SentenceLaidInResponse(session_id=session.id, segments=await _units(db, session.id))
