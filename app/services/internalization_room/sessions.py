@@ -674,6 +674,7 @@ async def append_exchange(
             fail_safe=outcome is not None and outcome.used_fail_safe,
             scenes=scene_ids_for(session.pericope),
             arriving=scene_rehearsal,
+            reached=scene_rehearsals,
         )
     )
     if step is not None:

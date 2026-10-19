@@ -228,6 +228,7 @@ def moment_step(
     fail_safe: bool,
     scenes: list[str],
     arriving: SentSceneRehearsal | None = None,
+    reached: list[str] | None = None,
 ) -> MomentStep | None:
     """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
     A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
@@ -235,7 +236,8 @@ def moment_step(
     if before is None:
         return None
     parts = len(scenes)
-    reached = sent_scene_ids(messages, arriving.scene if arriving else None)
+    if reached is None:
+        reached = sent_scene_ids(messages, arriving.scene if arriving else None)
     back = {scenes.index(scene) + 1 for scene in reached if scene in scenes}
     unmarked = arriving is not None and arriving.scene not in scenes
     after = before

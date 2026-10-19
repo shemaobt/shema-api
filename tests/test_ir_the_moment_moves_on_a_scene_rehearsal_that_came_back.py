@@ -13,7 +13,7 @@ from tests.golden_rehearsal_harness import (
     an_open_session,
     the_room_stands_in,
 )
-from tests.text_seam_harness import the_models_answer
+from tests.text_seam_harness import GOLDEN, the_models_answer
 
 CLOSING = (
     "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
@@ -48,4 +48,23 @@ async def test_a_marked_rehearsal_of_scene_2_arriving_as_the_turn_her_closing_en
     step = await _the_last_step(db_session, session_id)
     assert step["after"] == {"at": "internalization", "part": 3}, (
         "o ensaio marcado da cena 2 chegou neste turno e o fechamento não abriu a cena 3"
+    )
+
+
+async def test_a_golden_turn_carrying_scene_2_as_rehearsed_lets_her_closing_open_scene_3(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client, "P02")
+    await the_room_stands_in(db_session, session_id, SCENE_TWO_FENCED)
+    the_models_answer(monkeypatch, f"Vocês já contaram a cena dois. {CLOSING}")
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": "Já entendemos.", "sceneRehearsals": ["S2"]},
+    )
+
+    assert answered.status_code == 200, answered.text
+    step = await _the_last_step(db_session, session_id)
+    assert step["after"] == {"at": "internalization", "part": 3}, (
+        "o roteiro dizia que a cena 2 tinha voltado e o fechamento não abriu a cena 3"
     )
