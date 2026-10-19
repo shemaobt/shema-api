@@ -16,7 +16,7 @@ from app.api.internalization_room._deps import (
     linked_tablet_dep,
 )
 from app.api.internalization_room.back_translation import finding_views
-from app.api.internalization_room.segments import segment_view
+from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, UpstreamServiceError, ValidationError
@@ -346,7 +346,7 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[segment_view(one) for one in stretches],
+        segments=segment_views(stretches),
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,

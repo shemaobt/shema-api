@@ -460,6 +460,10 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
+def frase_numbers(told: list[IRSegment]) -> dict[str, int]:
+    return {segment.id: number for number, segment in enumerate(told, start=1)}
+
+
 def segments_block(
     segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
 ) -> str:
@@ -474,9 +478,10 @@ def segments_block(
     """
     if not segments:
         return _NOTHING_TOLD_BACK_YET[room_language(language_code)]
+    numbers = frase_numbers(segments)
     lines = []
-    for position, segment in enumerate(segments, start=1):
-        label = [f"frase {position}", addresses.part_of(segment.id)]
+    for segment in segments:
+        label = [f"frase {numbers[segment.id]}", addresses.part_of(segment.id)]
         if segment.pass_number == 2:
             label.append("told again after a verdict")
         lines.append(f"[{' — '.join(one for one in label if one)}] {segment.transcript}")

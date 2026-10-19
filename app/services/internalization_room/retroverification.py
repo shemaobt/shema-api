@@ -42,6 +42,7 @@ from app.models.internalization_room import (
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
+    frase_numbers,
     nuances_said,
     rehearsed_parts,
     said_before,
@@ -318,7 +319,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     latest = minted_here[-1] if minted_here else None
     frozen = _frozen_numbers(latest)
     told = told_back(stretches)
-    live = {stretch.id: position for position, stretch in enumerate(told, start=1)}
+    live = frase_numbers(told)
     standing = {stretch.id for stretch in counting}
     replaced_by = {row.id: row.superseded_by_id for row in retired}
     replaces = {row.superseded_by_id: row for row in retired if row.superseded_by_id}
