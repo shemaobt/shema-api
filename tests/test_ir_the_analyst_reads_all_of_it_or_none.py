@@ -328,24 +328,6 @@ async def test_the_room_does_not_say_the_same_thing_twice_running(
     assert set(spoken) <= set(utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE))
 
 
-async def test_the_other_families_are_still_played_from_the_app(
-    client: httpx.AsyncClient, analyst: Analyst, spoken: list[str], db_session: AsyncSession
-) -> None:
-    """Scenario 5. Only this one line moved; the fail-safes stay where they belong.
-
-    They exist to work when the rest does not — no network, no model — so a slice that
-    quietly dragged them onto the synthesis path would take away the one property they
-    are for.
-    """
-    session_id = await _open_session(client)
-
-    body = (await _finish(client, db_session, session_id)).json()
-
-    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))
-    assert body["audio_url"] == ""
-    assert spoken == [], "nada foi sintetizado no caminho de 'não ouvi nada'"
-
-
 async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -394,21 +376,3 @@ async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
     assert analyst.readings == 1
     assert body["checked"] is True
     assert body["fixed_line"] == "", "o caminho normal fala pela síntese, não por fala fixa"
-
-
-async def test_a_telling_back_with_no_stretch_at_all_answers_as_before(
-    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
-) -> None:
-    """Scenario 6. There is already a path for this one, and it is not this one.
-
-    Nothing was told back, so the honest thing is that the room heard nothing — not that a
-    stretch is waiting, because there is no stretch.
-    """
-    session_id = await _open_session(client)
-
-    answered = await _finish(client, db_session, session_id)
-    body = answered.json()
-
-    assert analyst.readings == 0
-    assert body["checked"] is False
-    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))

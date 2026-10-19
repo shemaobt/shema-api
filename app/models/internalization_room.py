@@ -537,6 +537,28 @@ class FinishBackTranslationRequest(BaseModel):
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
 
+class CheckRefusal(StrEnum):
+    """Why `terminei` reached no verdict, asked in this order and answered with the first.
+
+    - `FRASE_AWAITING`: a frase stands with no translation; `untold_segment_id` names it and the
+      tablet opens it.
+    - `PART_UNHEARD`: a part of the recording was not heard through; `unheard_take_ids` names it,
+      `fixed_line` is her P-unheard line, and the screen says «ainda falta ouvir um trecho da
+      gravação».
+    - `STRETCH_UNTRANSLATED`: on a joined recording, a stretch no frase covers. Not sent yet.
+    - `NOTHING_TRANSLATED`: no frase is translated; the screen says «ainda não tem frase
+      traduzida».
+    - `CHECK_UNAVAILABLE`: the check's model could not answer and nothing was saved; the screen
+      says «não deu para conferir agora — tentem de novo», and `terminei` again is the retry.
+    """
+
+    FRASE_AWAITING = "FRASE_AWAITING"
+    PART_UNHEARD = "PART_UNHEARD"
+    STRETCH_UNTRANSLATED = "STRETCH_UNTRANSLATED"
+    NOTHING_TRANSLATED = "NOTHING_TRANSLATED"
+    CHECK_UNAVAILABLE = "CHECK_UNAVAILABLE"
+
+
 class BackTranslationVerdictResponse(BaseModel):
     """What `terminei` answers: the verdict's voice and the findings of the check that gave it.
 
@@ -572,18 +594,15 @@ class BackTranslationVerdictResponse(BaseModel):
     #: they owe is a clip to play. Empty on every answer that is not this refusal, so the app
     #: decides by the field and never by what is missing from the body.
     unheard_take_ids: list[str] = Field(default_factory=list)
-    #: Which current parts of the rehearsal carry nobody's words, by their own take, in the
-    #: order the parts read; empty when every one of them has been told back. Its own field for
-    #: the reason the two above are their own: a part recorded again owes a telling, and an app
-    #: reading this off `unheard_take_ids` would send the team to play a recording they still
-    #: have to explain, while one reading it off `untold_segment_id` would look for a stretch
-    #: that does not exist. Empty on every answer that is not this refusal.
-    untold_take_ids: list[str] = Field(default_factory=list)
     findings: list[FindingView] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
     check_at: datetime | None = None
     named_nuance: FindingView | None = None
+    refusal: CheckRefusal | None = Field(
+        default=None,
+        description="Set when the press reached no verdict, and why; null on a verdict.",
+    )
 
 
 class VerdictHeardRequest(BaseModel):

@@ -11,6 +11,7 @@ from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
+    CheckRefusal,
     FindingView,
     FinishBackTranslationRequest,
     VerdictHeardRequest,
@@ -31,7 +32,6 @@ from app.services.internalization_room.segments import (
     refuse_a_telling_over_part_of_a_frase,
 )
 from app.services.internalization_room.takes import (
-    current_parts,
     rehearsal_take_of,
     store_take,
     takes_of,
@@ -192,20 +192,9 @@ async def _the_untold_errand(
     session: IRSession,
     state: room.BackTranslationState,
     *,
-    segment_id: str | None = None,
-    take_ids: list[str] | None = None,
+    segment_id: str,
 ) -> BackTranslationVerdictResponse:
-    """Say the H family over ground nobody has told back, and step the waiting ladder.
-
-    One errand over two grounds: a stretch standing with nothing said on it, and a current
-    **Part** no standing stretch is a slice of. The room says the same thing over both — the
-    family names no frase, so it is true of either — and the ladder belongs to the errand and
-    not to the ground, which is why a press spent on one advances the line the next press
-    speaks over the other.
-
-    The answer names its ground on its own field and leaves the other empty, so the app decides
-    by the field and never by what is missing from the body.
-    """
+    """Say the H family over a stretch nobody has told back, and step the waiting ladder."""
     waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
     with stage("db_let_go"):
         await db.commit()
@@ -218,7 +207,6 @@ async def _the_untold_errand(
         fixed_line="",
         checked=False,
         untold_segment_id=segment_id,
-        untold_take_ids=take_ids or [],
         findings_remaining=0,
     )
 
@@ -242,12 +230,11 @@ async def finish(
     off the wheel for good, on a telling-back that never happened. A finished passage never
     returns to the wheel, by design, so there is no undo for that.
 
-    The answer is never the badge, then. The D family stood here — *"I could not make anything
-    out, can you tell me again?"* — and a team that has recorded and told nothing back no longer
-    reaches it: their recording is a current part with nothing over it, which the untold errand
-    below answers first and answers truly, because nothing was said for the room to fail to hear
-    (ADR 0027). What is left for D is a session carrying no rehearsal take at all, which is the
-    one shape where there is no part to send them to.
+    The answer is never the badge, then: it is the refusal `NOTHING_TRANSLATED`, and the room
+    says nothing over it. Her screen shows «ainda não tem frase traduzida» and voices no line;
+    the D family stood here and told the team the room could not hear them, when nothing had
+    been said for it to fail to hear. It is the last refusal asked, as hers is
+    (`bt/check/route.ts:78`).
 
     Only the stretches the team actually explained are read. A stretch whose mother-tongue
     recording was replaced is waiting to be told again and carries nothing they said, so it
@@ -272,18 +259,11 @@ async def finish(
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
 
-    The same errand is owed over a **Part** no stretch is a slice of, and it is asked second.
-    A part recorded again arrives carrying nobody's words — its predecessor's stretches went
-    with the recording they explained (ADR 0023) — so the reading above finds nothing waiting
-    and the passage could be conferred with a scene nobody had told back in it. The question
-    is the takes' to answer and not the stretches': which recording is current is the number
-    the tablet sent, which is why this is asked of `current_parts` and not of `first_untold`.
-    It sits between the stretch and the listening, the order the release gate lists the three
-    blockers in, because a part nobody told is owed a telling before it is owed a playing, and
-    it spends what the stretch spends — the same family of lines, the same turn of the waiting
-    ladder — because in the room it is the same errand said over different ground.
+    A **Part** no stretch is a slice of refuses nothing. Her check runs with it, and her analyst
+    names what the passage is missing; the room used to send the team back to it with the H
+    family first, which no line of hers says.
 
-    Told back is not the same as heard, and the third errand is asked after the other two.
+    Told back is not the same as heard, and the listening is asked after the stretch.
     While any current part of the rehearsal is unheard, the analyst is not asked either: what it
     would answer is a list of what is missing from the passage, and over a part nobody played
     that sentence is about audio the team never listened to — the room would voice it as if
@@ -364,11 +344,6 @@ async def _finished(
 
     rehearsed = room.rehearsed_parts(final)
     takes = await takes_of(db, session.id)
-    untold_ground = room.untold_parts(current_parts(takes), rehearsed)
-    if untold_ground:
-        return await _the_untold_errand(
-            db, session, state, take_ids=[part.id for part in untold_ground]
-        )
 
     unheard = room.unheard_parts(state, rehearsed)
     if unheard:
@@ -386,22 +361,10 @@ async def _finished(
         )
 
     if not told:
-        # An analyst asked to compare nothing against the map answers with no findings,
-        # and no findings is what `checked` is made of — so pressing `terminei` over an
-        # empty back translation blessed the passage and the app struck it off the wheel
-        # for good, on a telling-back that never happened. The room says it did not hear
-        # anything, which is the line family written for exactly this.
-        _, line = choose(
-            FailSafe.INAUDIBLE,
-            session.language,
-            turn=len(session.messages or []),
-        )
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url="",
-            fixed_line=line,
             checked=False,
-            findings_remaining=0,
+            refusal=CheckRefusal.NOTHING_TRANSLATED,
         )
 
     stored = state.the_verdict_to_serve(told)

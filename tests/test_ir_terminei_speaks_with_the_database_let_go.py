@@ -18,7 +18,6 @@ from tests.room_harness import (
     a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
-    record_the_part_again,
     rehearsed_in_parts,
     room_client,
     stretch_on,
@@ -103,19 +102,4 @@ async def test_a_stretch_nobody_told_back_is_named_out_loud_with_the_database_le
     assert answered.json()["untold_segment_id"] == waiting.id
     assert held == {"voice": False}, (
         "o recado do trecho não contado sintetizava a fala com a leitura ainda aberta"
-    )
-
-
-async def test_a_part_recorded_again_and_untold_is_named_out_loud_with_the_database_let_go(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
-) -> None:
-    session, (part,) = await rehearsed_in_parts(db_session, 1)
-    fresh = await record_the_part_again(db_session, session, part, sha256="f" * 64)
-
-    answered = await press_terminei(client, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["untold_take_ids"] == [fresh.id]
-    assert held == {"voice": False}, (
-        "o recado da parte gravada de novo sintetizava a fala com a leitura ainda aberta"
     )
