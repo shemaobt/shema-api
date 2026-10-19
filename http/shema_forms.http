@@ -60,7 +60,7 @@ Content-Type: application/json
 @linkId = {{minted.response.body.id}}
 
 ### The links out on this project — note that none of them carries a token
-GET {{baseUrl}}/api/shema/intake-links?project_id={{slug}}
+GET {{baseUrl}}/api/shema/intake-links?projectId={{slug}}
 Authorization: Bearer {{token}}
 
 ### The form the leader opens — NO Authorization header, deliberately

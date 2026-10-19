@@ -61,7 +61,7 @@ import hashlib
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from slowapi.util import get_remote_address
 
 from app.api.shema._deps import (
@@ -169,7 +169,10 @@ async def mint_intake_link(
 
 @router.get("/intake-links", response_model=list[IntakeLink])
 async def list_links(
-    db: Db, scope: Scope, user: CoordinatorUser, project_id: str | None = None
+    db: Db,
+    scope: Scope,
+    user: CoordinatorUser,
+    project_id: str | None = Query(default=None, alias="projectId"),
 ) -> list[IntakeLink]:
     """The links out on the projects this coordinator reaches — without their tokens.
 
