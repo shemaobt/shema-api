@@ -10,11 +10,15 @@ from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
     a_piece_still_to_be_told,
+    heard_every_part,
     nothing_is_read_ahead,
+    press_terminei,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
     room_client,
+    the_analyst_is_scripted,
     the_bucket_is_in_memory,
+    the_room_speaks,
     the_transcriber_says,
 )
 
@@ -169,3 +173,33 @@ async def test_a_stretch_told_again_through_the_telling_answer_keeps_its_number(
     )
     read = await _segments_of_the_read(client, session.id)
     assert [one.get("frase") for one in read] == [1, 2, 3]
+
+
+async def test_a_missing_element_after_frase_two_says_frase_two_and_points_at_the_next_stretch(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    the_room_speaks(monkeypatch)
+    session, _parts = await rehearsed_in_parts(db_session, 4)
+    told = await final_segments(db_session, session.id)
+    analyst.readings = [
+        {
+            "findings": [
+                {"kind": "missing", "note": "a notícia do pão", "chunk": 2, "where": "after"}
+            ]
+        }
+    ]
+
+    answered = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+
+    assert answered.status_code == 200, answered.text
+    expected = [{"kind": "missing", "frase": 2, "segment_id": told[2].id}]
+    assert answered.json()["findings"] == expected, (
+        "o achado depois da frase 2 dizia a frase 3, porque apontava para o trecho seguinte"
+    )
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+    assert read.json()["back_translation"]["findings"] == expected
