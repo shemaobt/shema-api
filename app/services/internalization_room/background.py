@@ -19,8 +19,6 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     ReadAhead,
     analyse_telling_back,
-    rehearsed_parts,
-    untold_parts,
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.classify_coverage import (
@@ -213,9 +211,7 @@ async def read_ahead(*, session_id: str) -> None:
             if outrun is not None and outrun[0] != key:
                 outrun[1].cancel()
             takes = await takes_of(db, session_id)
-            if first_untold(final) is not None or untold_parts(
-                current_parts(takes), rehearsed_parts(final)
-            ):
+            if first_untold(final) is not None:
                 return
             with counted_for(session_id):
                 running = asyncio.create_task(_read_and_keep(db, session, state, told, takes))
