@@ -89,12 +89,8 @@ def _the_reply(raw: str) -> Any:
     return json.loads(_the_object_in(text))
 
 
-def _retelling_in(raw: str, pericope_num: str) -> Retelling | None:
-    try:
-        parsed: Any = _the_reply(raw)
-    except json.JSONDecodeError:
-        return None
-    told = parsed.get("retelling") if isinstance(parsed, dict) else None
+def _retelling_in(reply: dict[str, Any], pericope_num: str) -> Retelling | None:
+    told = reply.get("retelling")
     if not isinstance(told, dict):
         return None
     scope, approved = told.get("scope"), told.get("approved")
@@ -219,15 +215,22 @@ def _parse(raw: str) -> dict[str, list[str]] | None:
     answers the table, and it always answers the whole of it, because the caller indexes
     both slots.
     """
-    verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
+    reply = _reply_of(raw)
+    return None if reply is None else _decisions_in(reply, raw)
+
+
+def _reply_of(raw: str) -> dict[str, Any] | None:
     try:
         parsed: Any = _the_reply(raw)
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
         return None
-    if not isinstance(parsed, dict):
-        return None
-    decisions = parsed.get("decisions")
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _decisions_in(reply: dict[str, Any], raw: str) -> dict[str, list[str]] | None:
+    verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
+    decisions = reply.get("decisions")
     if not isinstance(decisions, list):
         logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])
         return None
@@ -313,10 +316,11 @@ async def classify_coverage(
             logger.exception("Coverage classification failed; leaving the tracker untouched")
             return None
 
-        verdict = _parse(raw)
-        if verdict is not None:
+        reply = _reply_of(raw)
+        verdict = None if reply is None else _decisions_in(reply, raw)
+        if reply is not None and verdict is not None:
             _report_unknown_elements(verdict, pericope_num)
-            retold.append(_retelling_in(raw, pericope_num))
+            retold.append(_retelling_in(reply, pericope_num))
             return [_only_offered(verdict, beads)]
         if len(beads) <= 1:
             logger.warning(
