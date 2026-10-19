@@ -569,3 +569,61 @@ def test_a_marked_rehearsal_of_the_scene_a_numberless_opening_opened_moves_to_it
         "a cena aberta sem número foi ensaiada e a sala não foi pra Articulação dela"
     )
     assert (step.before.as_json(), step.by) == (opened, ["scene_rehearsal"])
+
+
+SCENE_TWO_OPENED_WITH_NO_NUMBER = {
+    "at": "articulation",
+    "part": 2,
+    "fenced": False,
+    "numberlessOpening": True,
+}
+FAMILIARIZATION_OPENED_WITH_NO_NUMBER = {"at": "familiarization", "numberlessOpening": True}
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "kept"),
+    [
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, "Boa. Podem continuar.", SCENE_TWO_OPENED_WITH_NO_NUMBER),
+        (
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+            FENCE,
+            {"at": "articulation", "part": 2, "fenced": True, "numberlessOpening": True},
+        ),
+        (
+            FAMILIARIZATION_OPENED_WITH_NO_NUMBER,
+            f"{TOLD} {F3}",
+            {"at": "familiarization", "closed": True, "numberlessOpening": True},
+        ),
+        (
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+            "Vamos pra Internalização da cena 9.",
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+        ),
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, "Vamos pra Articulação da cena 2.", SCENE_TWO_PRACTISED),
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, "Estamos na Articulação da cena 2.", SCENE_TWO_PRACTISED),
+        (FAMILIARIZATION_OPENED_WITH_NO_NUMBER, "Estamos na Familiarização.", FAMILIARIZATION),
+        (
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+            "Vamos pra Internalização da cena 3.",
+            {"at": "internalization", "part": 3},
+        ),
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, SEND_OFF, ENSAIO_FINAL),
+    ],
+    ids=[
+        "kept: no line",
+        "kept: the fence",
+        "kept: F3",
+        "kept: a scene the passage lacks",
+        "forgotten: A1 of the same scene",
+        "forgotten: E1 of the same scene",
+        "forgotten: E1 of the familiarization",
+        "forgotten: another scene",
+        "forgotten: the send-off",
+    ],
+)
+def test_a_numberless_opening_is_kept_in_its_scene_until_the_voice_says_where_the_room_is(
+    moment: dict[str, Any], voiced: str, kept: dict[str, Any]
+) -> None:
+    assert _after(moment, voiced) == kept, (
+        f"a abertura sem número não seguiu a regra dela depois de: {voiced!r}"
+    )

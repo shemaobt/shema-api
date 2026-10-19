@@ -258,20 +258,23 @@ def moment_step(
             after, line, parts=parts, earlier=earlier, back=back, unmarked=unmarked
         )
         moved = after if declined else _moved(after, line)
-        if (
+        outside = line.part is not None and not 1 <= line.part <= parts
+        says_where = not outside and (line.part is not None or line.cause == "where_we_are")
+        same_scene = _scene(moved) == _scene(after)
+        opens = (
             line.cause == "part_closing"
             and not anchored
             and after.at in ("familiarization", "articulation")
-            and _scene(moved) == _scene(after)
+            and same_scene
             and _scene(after) < parts
-        ):
-            moved = replace(moved, numberless_opening=True)
+        )
+        kept = after.numberless_opening and same_scene and not says_where
+        moved = replace(moved, numberless_opening=opens or kept)
+        if opens:
             declined = (
                 f"{declined} {_DASH} heard as a scene opening with no number: a marked scene "
                 f"rehearsal of part {_scene(after) + 1} will move the moment"
             )
-        outside = line.part is not None and not 1 <= line.part <= parts
-        says_where = not outside and (line.part is not None or line.cause == "where_we_are")
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
         anchored = anchored or says_where or line.cause == "fence"
         if declined:
