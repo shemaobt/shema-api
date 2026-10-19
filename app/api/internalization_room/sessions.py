@@ -65,6 +65,7 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
+from app.services.internalization_room.session_turns import last_turn_number
 from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
@@ -308,6 +309,7 @@ def _settle_later(
         settle_coverage,
         session_id=session.id,
         turn_id=turn_id,
+        turn_number=last_turn_number(session),
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,

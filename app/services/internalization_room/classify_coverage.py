@@ -5,7 +5,8 @@ import json
 import logging
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -63,6 +64,34 @@ _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
 #: at once came back cut mid-list; a reading this size finishes under it, and one that still
 #: does not is read again in halves.
 _BEADS_PER_READING = 11
+
+
+@dataclass(frozen=True)
+class Retelling:
+    scope: str
+    approved: bool
+
+
+def _the_reply(raw: str) -> Any:
+    text = raw.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
+    if fenced:
+        text = fenced.group(1).strip()
+    return json.loads(_the_object_in(text))
+
+
+def _retelling_in(raw: str) -> Retelling | None:
+    try:
+        parsed: Any = _the_reply(raw)
+    except json.JSONDecodeError:
+        return None
+    told = parsed.get("retelling") if isinstance(parsed, dict) else None
+    if not isinstance(told, dict):
+        return None
+    scope, approved = told.get("scope"), told.get("approved")
+    if not isinstance(scope, str) or not isinstance(approved, bool):
+        return None
+    return Retelling(scope=scope, approved=approved)
 
 
 def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -> None:
@@ -179,12 +208,8 @@ def _parse(raw: str) -> dict[str, list[str]] | None:
     both slots.
     """
     verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
-    text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
-    if fenced:
-        text = fenced.group(1).strip()
     try:
-        parsed: Any = json.loads(_the_object_in(text))
+        parsed: Any = _the_reply(raw)
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
         return None
@@ -224,6 +249,7 @@ async def classify_coverage(
     pericope_num: str,
     session_language: str = LANGUAGE_NAMES[AUTHORED],
     settings: Settings | None = None,
+    on_retelling: Callable[[Retelling], None] | None = None,
 ) -> dict[str, str]:
     """Advance the tracker from one exchange. Never runs on the voice path.
 
@@ -242,6 +268,7 @@ async def classify_coverage(
     told.
     """
     cfg = settings or get_settings()
+    retold: list[Retelling] = []
 
     offered = remaining(coverage_state, pericope_num)
     readings = [
@@ -277,6 +304,9 @@ async def classify_coverage(
         verdict = _parse(raw)
         if verdict is not None:
             _report_unknown_elements(verdict, pericope_num)
+            told = _retelling_in(raw)
+            if told is not None:
+                retold.append(told)
             return [_only_offered(verdict, beads)]
         if len(beads) <= 1:
             logger.warning(
@@ -297,6 +327,8 @@ async def classify_coverage(
     )
     if landed is None:
         return coverage_state
+    if retold and on_retelling is not None:
+        on_retelling(retold[0])
     return merge(
         coverage_state,
         pericope_num=pericope_num,

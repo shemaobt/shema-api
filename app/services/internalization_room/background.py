@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import asdict
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ from app.services.internalization_room.back_translation import (
     untold_parts,
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.classify_coverage import classify_coverage
+from app.services.internalization_room.classify_coverage import Retelling, classify_coverage
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.earlier_passages import earlier_passages
@@ -52,6 +53,7 @@ async def settle_coverage(
     *,
     session_id: str,
     turn_id: str,
+    turn_number: int,
     team_utterance: str,
     guide_response: str,
     pericope_num: str,
@@ -75,6 +77,7 @@ async def settle_coverage(
                     session = await get_session(db, session_id)
                 coverage_state = session.coverage_state or {}
                 classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
+                heard: list[Retelling] = []
                 with reading_the_canon_of(session.canon_pin):
                     updated = await classify_coverage(
                         coverage_state=coverage_state,
@@ -83,9 +86,15 @@ async def settle_coverage(
                         classifier_prompt=classifier_prompt,
                         pericope_num=pericope_num,
                         session_language=LANGUAGE_NAMES[room_language(session.language)],
+                        on_retelling=heard.append,
                     )
                     async with AsyncSessionLocal() as db:
-                        settled = await apply_coverage(db, session_id, updated)
+                        settled = await apply_coverage(
+                            db,
+                            session_id,
+                            updated,
+                            retellings={str(turn_number): asdict(told) for told in heard},
+                        )
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)
             )
