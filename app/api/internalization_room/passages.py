@@ -134,6 +134,7 @@ async def passages(
     team_approved = await approved_pericopes(db, project_id=project_id)
     await db.commit()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
+    speakable = offered(book, spoken)
     said = await asyncio.gather(
         _panorama(book, language=spoken, settings=settings, in_flight=in_flight),
         *(
@@ -145,7 +146,7 @@ async def passages(
                 settings=settings,
                 in_flight=in_flight,
             )
-            for pericope_num, line in offered(book, spoken)
+            for pericope_num, line in speakable
         ),
     )
     return BookPassagesResponse(book=book, passages=list(said))

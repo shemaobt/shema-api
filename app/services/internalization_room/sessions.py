@@ -120,10 +120,9 @@ async def create_session(
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
-    The meaning map is loaded before anything is written, so unapproved or unsupported
-    canon is refused before a session exists — and so is a passage whose preservation layer
-    nobody has written, which would otherwise be walked against a completion floor missing
-    its top row. A panorama has no coverage spine and never completes: it prepares the team
+    The meaning map is loaded before anything is written, so a passage or a Panorama of a
+    book the room does not serve is refused before a session exists (ADR 0066). A panorama
+    has no coverage spine and never completes: it prepares the team
     to enter the book, and asks no retelling of them.
 
     ``pericope`` is optional and its absence is a question, not a default. It used to be
