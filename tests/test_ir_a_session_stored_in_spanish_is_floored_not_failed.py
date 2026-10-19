@@ -545,9 +545,8 @@ async def test_an_unheard_part_on_a_row_stored_in_spanish_is_named_in_the_portug
         pressed = await press_terminei(door, session.id)
 
     assert pressed.status_code == 200, pressed.text
-    assert room.said[-1] == "Ainda falta ouvir um trecho da gravação antes de eu conferir.", (
-        "a voz portuguesa lia em inglês o trecho que faltava ouvir"
-    )
+    assert pressed.json()["fixed_line"] == "P2"
+    assert room.said == []
 
 
 def test_nothing_told_back_on_a_row_stored_in_spanish_reads_in_the_portuguese_floor(

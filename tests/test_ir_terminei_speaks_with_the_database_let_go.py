@@ -74,20 +74,6 @@ async def test_the_verdict_is_read_and_voiced_with_the_database_let_go_not_held_
     )
 
 
-async def test_a_part_nobody_played_is_named_out_loud_with_the_database_let_go(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
-) -> None:
-    session, (first, second) = await rehearsed_in_parts(db_session, 2)
-
-    answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["unheard_take_ids"] == [second.id]
-    assert held == {"voice": False}, (
-        "o ramo de quem não ouviu sintetizava a fala com a leitura aberta e sem commit nenhum"
-    )
-
-
 async def test_a_stretch_nobody_told_back_is_named_out_loud_with_the_database_let_go(
     client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
 ) -> None:

@@ -347,14 +347,10 @@ async def _finished(
 
     unheard = room.unheard_parts(state, [part.id for part in current_parts(takes)])
     if unheard:
-        line, _ = process_line("P", "unheard", session.language)
-        with stage("db_let_go"):
-            await db.commit()
-        spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
+        _, line = process_line("P", "unheard", session.language)
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(spoken.key),
-            fixed_line="",
+            fixed_line=line,
             checked=False,
             unheard_take_ids=unheard,
             findings_remaining=0,

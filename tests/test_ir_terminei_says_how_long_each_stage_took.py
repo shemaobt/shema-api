@@ -134,20 +134,6 @@ async def test_letting_the_read_go_before_the_verdict_is_timed_on_its_own_not_hi
     )
 
 
-async def test_letting_the_read_go_before_naming_an_unheard_part_is_timed_on_its_own_too(
-    client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
-) -> None:
-    session, (first, _second) = await rehearsed_in_parts(db_session, 2)
-
-    with caplog.at_level(logging.INFO):
-        answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
-
-    assert answered.status_code == 200, answered.text
-    assert "db_let_go" in _stages(caplog), (
-        "o COMMIT que solta a leitura antes da fala de quem não ouviu só aparecia somado no total"
-    )
-
-
 async def test_letting_the_read_go_before_naming_an_untold_stretch_is_timed_on_its_own_too(
     client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
 ) -> None:

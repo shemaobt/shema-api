@@ -19,7 +19,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.sessions import create_session, get_session
 from tests.device_harness import TABLET_TEAM
-from tests.release_harness import P
+from tests.release_harness import PREFIX, P
 from tests.room_harness import (
     Analyst,
     Room,
@@ -33,6 +33,11 @@ from tests.room_harness import (
     the_analyst_reads,
     the_room_speaks,
 )
+
+#: Her P-unheard line, from her file at the freeze (prompts/fail_safe_utterances.md:111),
+#: and its name by position: her P steps are start, tell, unheard, approved.
+UNHEARD_LINE = "Ainda falta ouvir um trecho da gravação antes de eu conferir."
+UNHEARD_BY_POSITION = "P2"
 
 
 @pytest.fixture(autouse=True)
@@ -143,3 +148,24 @@ async def test_a_part_with_nothing_translated_over_it_still_has_to_be_heard(
     assert body["refusal"] == "PART_UNHEARD"
     assert body["unheard_take_ids"] == [fresh.id]
     assert analyst.readings == 0, "o Analista leria uma passagem com uma parte nunca ouvida"
+
+
+async def test_the_unheard_refusal_names_her_line_by_position_and_synthesizes_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, room: Room
+) -> None:
+    session, (first, _second, third) = await rehearsed_in_parts(db_session, 3)
+
+    answered = await press_terminei(
+        client, session.id, report=played_every_part([first.id, third.id])
+    )
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["fixed_line"] == UNHEARD_BY_POSITION
+    assert body["audio_url"] == ""
+    assert room.said == [], "a linha era sintetizada no terminei, fora da porta das falas dela"
+
+    line = await client.get(f"{PREFIX}/fixed-lines/{body['fixed_line']}", params={"language": "pt"})
+
+    assert line.status_code == 200, line.text
+    assert room.said == [UNHEARD_LINE]
