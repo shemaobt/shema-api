@@ -22,8 +22,11 @@ from tests.release_harness import PREFIX
 from tests.room_harness import (
     REHEARSED_AT,
     nothing_is_read_ahead,
+    press_terminei,
     room_client,
+    the_analyst_reads,
     the_bucket_is_in_memory,
+    the_room_speaks,
     the_upload_landed_at,
     upload_a_part,
 )
@@ -169,3 +172,36 @@ async def test_the_whole_part_recorded_again_leaves_no_frase_awaiting(
     assert (await _read(client, session.id)).get("awaiting_segment_id", "") is None, (
         "a frase regravada esperava tradução numa parte que a equipe gravou inteira de novo"
     )
+
+
+async def test_terminei_right_after_a_lay_in_is_refused_with_her_line_and_reads_nothing(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analyst = the_analyst_reads(monkeypatch)
+    the_room_speaks(monkeypatch)
+    session, _, ((_, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    new = (await re_record(client, session.id, middle.id, spoken(1.0))).json()["segments"][1]
+    heard_whole = {
+        "played_by_take": [
+            {"take_id": new["take_id"], "played_ranges": [[0, 3400]], "clip_duration_ms": 3400}
+        ]
+    }
+
+    pressed = await press_terminei(client, session.id, report=heard_whole)
+
+    assert pressed.status_code == 200, pressed.text
+    answer = pressed.json()
+    assert {
+        key: answer.get(key) for key in ("refusal", "untold_segment_id", "fixed_line", "checked")
+    } == {
+        "refusal": "FRASE_AWAITING",
+        "untold_segment_id": middle.id,
+        "fixed_line": "Ainda falta traduzir a frase que vocês regravaram.",
+        "checked": False,
+    }, "o «terminei» conferia a tradução antiga sobre a frase nova"
+    assert analyst.readings == 0, "o analista lia a passagem com a frase regravada sem tradução"

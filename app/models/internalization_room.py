@@ -437,8 +437,8 @@ class BackTranslationProgress(BaseModel):
         description=(
             "The frase whose sentence was recorded again and is not translated yet. It keeps "
             "its number and only its own translation, at exactly the span the new sentence "
-            "took, may be told; `the_sentence_awaiting` is the refusal «terminei» answers "
-            "with until then. Null when no frase awaits."
+            "took, may be told; until then «terminei» answers `FRASE_AWAITING` naming it, "
+            "with her N-6. Null when no frase awaits."
         ),
     )
     rerecorded_sentences: list[RerecordedSentenceView] = Field(
@@ -613,8 +613,9 @@ class FinishBackTranslationRequest(BaseModel):
 class CheckRefusal(StrEnum):
     """Why `terminei` reached no verdict, asked in this order and answered with the first.
 
-    - `FRASE_AWAITING`: a frase stands with no translation; `untold_segment_id` names it and the
-      tablet opens it.
+    - `FRASE_AWAITING`: a frase stands with no translation, or its sentence was recorded again
+      and awaits its new one, asked first, with her N-6 in `fixed_line`; `untold_segment_id`
+      names it and the tablet opens it.
     - `PART_UNHEARD`: a part of the recording was not heard through; `unheard_take_ids` names it,
       `fixed_line` is her P-unheard line, and the screen says «ainda falta ouvir um trecho da
       gravação».
