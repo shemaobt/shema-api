@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, NamedTuple
 
 import regex
@@ -162,6 +162,7 @@ class Moment:
     part: int | None = None
     closed: bool = False
     fenced: bool = False
+    numberless_opening: bool = False
 
     def as_json(self) -> dict[str, Any]:
         stored: dict[str, Any] = {"at": self.at}
@@ -171,6 +172,8 @@ class Moment:
             stored["closed"] = True
         if self.at == "articulation":
             stored["fenced"] = self.fenced
+        if self.numberless_opening:
+            stored["numberlessOpening"] = True
         return stored
 
     @classmethod
@@ -201,9 +204,8 @@ class MomentStep:
     """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
     reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
     (`types.ts:73`): every line her `step()` declines, in her words, filled where hers fills it
-    (`moment.ts:149-189`) and stored only when there is one. Two things she records are not
-    here, because no rehearsal reaches the server yet: a scene told ahead, and the numberless
-    opening's note on her closing."""
+    (`moment.ts:149-189`) and stored only when there is one. One thing she records is not
+    here yet: a scene told ahead."""
 
     before: Moment
     after: Moment
@@ -244,14 +246,30 @@ def moment_step(
     by: list[Cause] = []
     ignored: list[str] = []
     earlier = False
+    anchored = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
         declined = _declined(
             after, line, parts=parts, earlier=earlier, back=back, unmarked=unmarked
         )
+        moved = after if declined else _moved(after, line)
+        if (
+            line.cause == "part_closing"
+            and not anchored
+            and after.at in ("familiarization", "articulation")
+            and _scene(moved) == _scene(after)
+            and _scene(after) < parts
+        ):
+            moved = replace(moved, numberless_opening=True)
+            declined = (
+                f"{declined} {_DASH} heard as a scene opening with no number: a marked scene "
+                f"rehearsal of part {_scene(after) + 1} will move the moment"
+            )
+        outside = line.part is not None and not 1 <= line.part <= parts
+        says_where = not outside and (line.part is not None or line.cause == "where_we_are")
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
+        anchored = anchored or says_where or line.cause == "fence"
         if declined:
             ignored.append(f"{_described(line)}: {declined}")
-        moved = after if declined else _moved(after, line)
         if moved != after:
             by.append(line.cause)
         after = moved
@@ -259,6 +277,10 @@ def moment_step(
 
 
 _NUMBERED = ("entrance", "articulation_entrance", "where_we_are")
+
+
+def _scene(moment: Moment) -> int:
+    return -1 if moment.at == "ensaio_final" else moment.part or 0
 
 
 class _Line(NamedTuple):

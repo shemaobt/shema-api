@@ -105,13 +105,8 @@ def test_her_scene_closing_after_the_familiarization_closed_opens_the_first_scen
     )
 
 
-@pytest.mark.parametrize(
-    "moment", [FAMILIARIZATION, SCENE_TWO_OPEN], ids=["not closed", "inside a scene"]
-)
-def test_her_scene_closing_moves_nothing_where_it_opens_no_new_scene(
-    moment: dict[str, Any],
-) -> None:
-    assert _after(moment, f"{SCENE_ONE} {CLOSING}") == moment
+def test_her_scene_closing_moves_nothing_where_it_opens_no_new_scene() -> None:
+    assert _after(SCENE_TWO_OPEN, f"{SCENE_ONE} {CLOSING}") == SCENE_TWO_OPEN
 
 
 def test_her_send_off_as_the_last_words_puts_the_room_in_the_ensaio_final() -> None:
@@ -267,11 +262,10 @@ def test_an_ordinal_inside_her_whole_line_names_the_scene(
 @pytest.mark.parametrize(
     "earlier",
     [
-        "Vamos pra Internalização da cena 7.",
         "Estamos na Familiarização.",
         "Agora vou dizer tudo o que deve entrar no ensaio de vocês.",
     ],
-    ids=["a scene the passage lacks", "where we are", "fence"],
+    ids=["where we are", "fence"],
 )
 def test_her_scene_closing_after_another_moment_line_in_the_reply_moves_nothing(
     earlier: str,
@@ -399,7 +393,8 @@ def test_her_scene_closing_that_ends_a_scene_opening_is_not_ignored() -> None:
 
 def test_her_scene_closing_before_f3_is_kept_as_ignored_in_her_words() -> None:
     assert _ignored(FAMILIARIZATION, f"{SCENE_ONE} {CLOSING}") == [
-        "part_closing: the Familiarization's closing (F3) was not heard"
+        "part_closing: the Familiarization's closing (F3) was not heard — heard as a scene "
+        "opening with no number: a marked scene rehearsal of part 1 will move the moment"
     ], "o fechamento de cena antes do fechamento da Familiarização foi descartado sem registro"
 
 
@@ -417,7 +412,8 @@ def test_her_scene_closing_after_the_last_part_is_kept_as_ignored_in_her_words()
 
 def test_her_scene_closing_in_an_articulation_is_kept_as_ignored_with_no_rehearsal_back() -> None:
     assert _ignored(SCENE_TWO_FENCED, f"{SCENE_ONE} {CLOSING}") == [
-        "part_closing: no scene rehearsal of part 2 has come back"
+        "part_closing: no scene rehearsal of part 2 has come back — heard as a scene opening "
+        "with no number: a marked scene rehearsal of part 3 will move the moment"
     ], "o fechamento na Articulação foi descartado sem registro, sem dizer qual ensaio faltava"
 
 
@@ -495,3 +491,48 @@ def test_her_closing_stays_in_the_articulation_after_an_earlier_rehearsal_not_ma
     assert step.after.as_json()["part"] == 2, (
         "um ensaio que não era da cena 2 fez o fechamento abrir a cena 3"
     )
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "opened"),
+    [
+        (
+            SCENE_TWO_FENCED,
+            f"{SCENE_ONE} {CLOSING}",
+            {"at": "articulation", "part": 2, "fenced": True, "numberlessOpening": True},
+        ),
+        (
+            FAMILIARIZATION,
+            f"{SCENE_ONE} {CLOSING}",
+            {"at": "familiarization", "numberlessOpening": True},
+        ),
+        (
+            FAMILIARIZATION_CLOSED,
+            f"Vamos pra Internalização da cena 7. {SCENE_ONE} {CLOSING}",
+            {"at": "familiarization", "closed": True, "numberlessOpening": True},
+        ),
+    ],
+    ids=["articulation", "familiarization", "after a scene the passage lacks"],
+)
+def test_her_closing_that_moves_nothing_with_no_number_before_it_is_a_numberless_opening(
+    moment: dict[str, Any], voiced: str, opened: dict[str, Any]
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.after.as_json() == opened, (
+        "a voz abriu uma cena sem número e a sala não guardou a abertura"
+    )
+    assert step.by == ["part_closing"]
+
+
+def test_her_closing_after_a_scene_the_passage_lacks_is_kept_with_her_numberless_note() -> None:
+    voiced = f"Vamos pra Internalização da cena 7. {SCENE_ONE} {CLOSING}"
+
+    assert _ignored(FAMILIARIZATION_CLOSED, voiced) == [
+        "entrance 7: not a part of this passage (1..4)",
+        "part_closing: another moment line came earlier in the same reply — heard as a scene "
+        "opening with no number: a marked scene rehearsal of part 1 will move the moment",
+    ], "o número fora da passagem não ancora o fechamento, e a nota dela sumiu"
