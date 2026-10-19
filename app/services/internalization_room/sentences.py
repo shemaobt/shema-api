@@ -9,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE, PauseCannotMove
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
-from app.services.internalization_room.back_translation import LaidInSentence
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    LaidInSentence,
+)
 from app.services.internalization_room.fail_safe import her_line
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.segments import current_segments, final_segments, told_back
@@ -172,9 +175,15 @@ async def lay_in_a_sentence(
             storage_key=raw.storage_key,
         )
     )
-    await save_back_translation(db, session, state, commit=False)
+    await _unchecked(state)
+    await save_back_translation(db, session, state, commit=False, rule=_unchecked)
     await db.commit()
     return take
+
+
+async def _unchecked(standing: BackTranslationState) -> None:
+    standing.checked = False
+    standing.verdict = None
 
 
 def _sentence_key(session_id: str, sha256: str) -> str:

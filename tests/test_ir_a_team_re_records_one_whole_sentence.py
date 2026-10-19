@@ -7,15 +7,24 @@ frases after it move by the difference in length.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from tests.device_harness import a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
-from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.room_harness import (
+    release_blockers,
+    room_client,
+    stored_telling_back,
+    the_bucket_is_in_memory,
+)
 from tests.sentence_harness import (
     RATE,
     re_record,
@@ -237,3 +246,25 @@ async def test_a_sentence_id_already_laid_in_does_not_carry_another_recording(
         "outra gravação sob o mesmo id passava como reenvio da primeira"
     )
     assert store.objects == kept
+
+
+async def test_a_sentence_laid_in_after_a_clean_check_leaves_the_passage_unchecked(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((frase, other),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000)]]
+    )
+    checked_at = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    state = back_translation_of(session)
+    state.checked, state.checked_at = True, checked_at
+    state.analysed_segment_ids = [frase.id, other.id]
+    state.verdict = VoicedVerdict(clip_key="verdict.mp3")
+    await save_back_translation(db_session, session, state)
+
+    await re_record(client, session.id, frase.id, spoken(1.0))
+
+    after = await stored_telling_back(db_session, session)
+    assert (after.checked, after.verdict, after.checked_at) == (False, None, checked_at), (
+        "a passagem continuava conferida sobre uma frase que ninguém traduziu"
+    )
+    assert "telling_back_not_checked" in await release_blockers(db_session, session)
