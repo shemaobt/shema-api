@@ -124,8 +124,9 @@ async def test_a_sentence_over_four_megabytes_is_refused_before_anything_is_read
     [
         wav(seconds(0.3, 9000)),
         wav(seconds(0.98, 0) + seconds(0.04, 9000) + seconds(0.98, 0)),
+        wav(seconds(2.0, 0)),
     ],
-    ids=["a third of a second", "a blip in two seconds of silence"],
+    ids=["a third of a second", "a blip in two seconds of silence", "two seconds of silence"],
 )
 async def test_a_sentence_shorter_than_half_a_second_once_trimmed_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, recorded: bytes

@@ -88,7 +88,7 @@ def trim_silence(pcm: Pcm) -> Pcm:
         if max(map(abs, samples[start * pcm.channels : (start + window) * pcm.channels])) > loud
     ]
     if not heard:
-        return pcm
+        return Pcm(rate=pcm.rate, channels=pcm.channels, data=b"")
     keep = round(KEPT_SILENCE_SECONDS * pcm.rate)
     first = max(0, heard[0] - keep)
     last = min(pcm.frames, heard[-1] + window + keep)
