@@ -30,11 +30,12 @@ from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.shema._deps import PER_READER_CACHE_CONTROL, CurrentUser, Db, Reading, Scope
-from app.core.exceptions import ERROR_CODE_CONFLICT, ValidationError
+from app.core.exceptions import ERROR_CODE_BAD_REQUEST, ERROR_CODE_CONFLICT, ValidationError
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.models.shema_projects import ShemaProjectPage, ShemaProjectQuery
 from app.models.shema_record import ShemaProjectRecord
 from app.services.shema import (
+    ImpossibleDates,
     RecordVersionConflict,
     browse_projects,
     build_record,
@@ -188,6 +189,28 @@ def _conflict(exc: RecordVersionConflict) -> JSONResponse:
     )
 
 
+def _impossible_dates(exc: ImpossibleDates) -> JSONResponse:
+    """The 400 a ficha can place — the sentence, and beside it the field (OBT-601).
+
+    The envelope is the repository's own, ``detail`` and ``code``, so the sentence is read where
+    it always was; ``errors`` is the 422's own ``{type, loc, msg}``, under ``body`` because the
+    record is the body here, and that is what the console walks down to a field and its tab.
+    ``IncompleteSubmission`` and the import's 400 widen the envelope the same way, and this is
+    built here rather than in a handler for ``_conflict``'s reason.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": str(exc),
+            "code": ERROR_CODE_BAD_REQUEST,
+            "errors": [
+                {"type": field.kind, "loc": ["body", field.field_key], "msg": field.message}
+                for field in exc.refused
+            ],
+        },
+    )
+
+
 def _with_etag(record: ShemaProjectRecord, response: Response) -> ShemaProjectRecord:
     """Hand the record's version back in the header, since it is not in the body.
 
@@ -242,7 +265,7 @@ async def create_record(
     user: CurrentUser,
     response: Response,
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
-) -> ShemaProjectRecord:
+) -> ShemaProjectRecord | JSONResponse:
     """File a new record at the slug the client minted — ``projectsStore.saveProject``'s half.
 
     No ``If-Match``: there is no version to be stale against. What this write owns instead is
@@ -250,14 +273,17 @@ async def create_record(
     overwrite of somebody else's record.
     """
     today = datetime.now(UTC).date()
-    project = await create_project(
-        db,
-        scope,
-        payload,
-        readership=reading,
-        user=user,
-        day=_local_day(local_day, utc_today=today),
-    )
+    try:
+        project = await create_project(
+            db,
+            scope,
+            payload,
+            readership=reading,
+            user=user,
+            day=_local_day(local_day, utc_today=today),
+        )
+    except ImpossibleDates as refused:
+        return _impossible_dates(refused)
     return _with_etag(await build_record(db, project, readership=reading, today=today), response)
 
 
@@ -307,4 +333,6 @@ async def patch_record(
         )
     except RecordVersionConflict as conflict:
         return _conflict(conflict)
+    except ImpossibleDates as refused:
+        return _impossible_dates(refused)
     return _with_etag(await build_record(db, project, readership=reading, today=today), response)

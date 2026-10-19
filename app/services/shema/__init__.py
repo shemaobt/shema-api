@@ -356,7 +356,12 @@ from app.services.shema.review_intercessor import review_intercessor
 from app.services.shema.revoke_grant import revoke_grant
 from app.services.shema.revoke_intake_link import revoke_intake_link
 from app.services.shema.save_notification_prefs import save_notification_prefs
-from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
+from app.services.shema.save_project import (
+    ImpossibleDates,
+    RecordVersionConflict,
+    create_project,
+    save_project,
+)
 from app.services.shema.save_region_team import save_region_team
 from app.services.shema.send_invite import send_invite
 from app.services.shema.set_intercessor_consent import (
@@ -393,6 +398,7 @@ __all__ = [
     "ExportFile",
     "GrantApps",
     "ImportRefused",
+    "ImpossibleDates",
     "LeavingPerson",
     "LoggedMeeting",
     "MediaLink",
