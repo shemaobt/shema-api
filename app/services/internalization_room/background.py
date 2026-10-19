@@ -83,7 +83,10 @@ async def _retold(
     for told in heard:
         entry: dict[str, Any] = asdict(told)
         if told.approved and take is not None:
-            entry["kept"] = await _kept(session_id, take)
+            try:
+                entry["kept"] = await _kept(session_id, take)
+            except Exception:
+                logger.exception("The kept take of session %s did not reach the bucket", session_id)
         retold[str(turn_number)] = entry
     return retold
 

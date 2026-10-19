@@ -206,3 +206,26 @@ async def test_a_reader_that_falls_mid_turn_keeps_nothing_and_the_names_still_co
     assert stored.coverage_state["being:S1:B3"] == "engaged", (
         "sem o leitor, a Noemi que a equipe disse deixava de contar"
     )
+
+
+async def test_a_take_the_bucket_refuses_keeps_the_verdict_and_the_beads_still_settle(
+    client, db_session, per_request, verdict, bucket, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def refused(*_: Any, **__: Any) -> None:
+        raise RuntimeError("o balde recusou")
+
+    monkeypatch.setattr(bucket, "put", refused)
+    tablet, session_id = await _a_p01_session(client, db_session)
+    verdict["decisions"] = [{"element_id": "L1:tone", "new_status": "engaged"}]
+    verdict["retelling"] = {"scope": "S1", "approved": True}
+
+    await _the_team_tells(client, tablet, session_id, "turno-1")
+
+    async with per_request() as fresh:
+        stored = await get_session(fresh, session_id)
+    assert stored.retellings == {"1": {"scope": "S1", "approved": True}}, (
+        "o balde recusava a tomada e o veredito da recontagem se perdia junto"
+    )
+    assert stored.coverage_state["L1:tone"] == "engaged", (
+        "o balde recusava a tomada e as contas que o leitor moveu não chegavam ao colar"
+    )
