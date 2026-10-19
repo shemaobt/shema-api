@@ -155,7 +155,7 @@ async def add_chunk(
     )
     if not text.strip():
         raise WordlessTelling()
-    warned = await room.capture_and_note_a_hard_stretch(
+    captured, warned = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,
@@ -168,12 +168,15 @@ async def add_chunk(
     )
     nudge_stretches(session.project_id, warned=warned)
     background.add_task(read_ahead, session_id=session.id)
+    standing = await room.final_segments(db, session.id)
+    numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) if retold is not None else len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
+        frase=numbers.get(captured.id),
     )
 
 

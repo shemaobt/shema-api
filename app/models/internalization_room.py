@@ -333,6 +333,15 @@ class SegmentView(BaseModel):
     #: it resumes a told stretch. Null while nothing was told on it — a piece cut out of another
     #: stretch — and on a stretch told through the text seam, which records no take.
     bridge_take_id: str | None = None
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The number the voice speaks for this stretch: its 1-based position among the told "
+            "stretches, in the voice's order. Null on a piece nobody has told yet, which takes "
+            "no number. A stretch told again keeps its number, and numbering starts over when "
+            "the translation is started over."
+        ),
+    )
 
 
 class DivideSegmentRequest(BaseModel):
@@ -364,7 +373,14 @@ class SegmentsResponse(BaseModel):
 
 class FindingView(BaseModel):
     kind: str
-    frase: int | None = None
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The frase the check named, in the number the voice spoke it. A missing element "
+            "placed after frase N says N while `segment_id` points at the stretch after it. "
+            "Null when the analyst named no readable frase."
+        ),
+    )
     segment_id: str | None = None
 
 
@@ -479,6 +495,13 @@ class BackTranslationChunkResponse(BaseModel):
     #: next one will be too. False on every telling after it, because the ask is once per
     #: stretch and repeating it would erase the visit it already got.
     needs_person: bool = False
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The number the voice speaks for the stretch just told, which is the number the "
+            "next session read serves for it. A stretch told again keeps its number."
+        ),
+    )
 
 
 class PlayedTake(BaseModel):
