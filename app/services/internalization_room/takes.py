@@ -153,6 +153,7 @@ async def store_take(
     ordinal: int | None = None,
     content_type: str = AUDIO_MIME,
     store: TakeStore | None = None,
+    origin: str | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -195,6 +196,7 @@ async def store_take(
         crc32c=stored.crc32c,
         content_type=stored.content_type,
         verified_at=stored.verified_at,
+        origin=origin,
     )
     db.add(take)
     await db.commit()

@@ -23,6 +23,9 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.scene_rehearsals import (
+    refuse_an_origin_that_is_no_scene_rehearsal,
+)
 from app.services.internalization_room.session_takes import mother_tongue_takes_of
 from app.services.internalization_room.takes import (
     TakeStore,
@@ -72,6 +75,15 @@ async def keep_take(
     scope: str = Form(...),
     pass_number: int | None = Form(default=None),
     chunk_index: int | None = Form(default=None),
+    origin: str | None = Form(
+        default=None,
+        description=(
+            "The id of the team's scene rehearsal of this passage the part was joined from, "
+            "when the tablet laid one in as this part. A recording with any current part "
+            "carrying one is joined: «terminei» refuses a part with no translated frase on "
+            "it, and the listen may check it with no tap. Absent on a part recorded as itself."
+        ),
+    ),
     file: UploadFile = File(...),
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -99,6 +111,8 @@ async def keep_take(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     take_kind = _kind(kind)
+    if origin is not None:
+        await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
     take = await store_take(
         db,
         session_id=session.id,
@@ -111,6 +125,7 @@ async def keep_take(
         pass_number=pass_number,
         ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",
+        origin=origin,
     )
     await room.retire_the_part_recorded_again(db, session, take)
     nudge(session.project_id, "takes")
