@@ -8,7 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    PauseCannotMove,
+    ERROR_CODE_ANOTHER_SENTENCE_AWAITS,
+    ERROR_CODE_PART_NOT_WAV,
+    ERROR_CODE_SENTENCE_FORMAT_DIFFERS,
+    ERROR_CODE_SENTENCE_ID_REUSED,
+    ERROR_CODE_SENTENCE_TOO_LONG,
+    ERROR_CODE_SENTENCE_TOO_SHORT,
+    FraseAwaitsItsTranslation,
+    SentenceRefused,
     StretchNoLongerCounts,
 )
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
@@ -34,7 +41,6 @@ from app.services.internalization_room.wav import pcm16, splice_sentence, trim_s
 WAV = "audio/wav"
 SENTENCE_LIMIT_BYTES = 4 * 1024 * 1024
 SHORTEST_SENTENCE_MS = 500
-FRASE_AWAITS_ITS_TRANSLATION = "FRASE_AWAITS_ITS_TRANSLATION"
 
 
 @dataclass(frozen=True)
@@ -44,27 +50,20 @@ class AwaitingSentence:
     line: str
 
 
-class SentenceRefused(Exception):
-    def __init__(
-        self, status_code: int, code: str, detail: str, frases: list[int] | None = None
-    ) -> None:
-        super().__init__(detail)
-        self.status_code = status_code
-        self.code = code
-        self.detail = detail
-        self.frases = frases
-
-
 def _not_wav(part: IRTake) -> SentenceRefused:
     return SentenceRefused(
-        409, "PART_NOT_WAV", f"Part {part.id} was not recorded as WAV PCM16; record the part again"
+        409,
+        ERROR_CODE_PART_NOT_WAV,
+        f"Part {part.id} was not recorded as WAV PCM16; record the part again",
     )
 
 
 def refuse_a_sentence_too_long(audio: bytes) -> None:
     if len(audio) > SENTENCE_LIMIT_BYTES:
         raise SentenceRefused(
-            413, "SENTENCE_TOO_LONG", f"A sentence weighs at most {SENTENCE_LIMIT_BYTES} bytes"
+            413,
+            ERROR_CODE_SENTENCE_TOO_LONG,
+            f"A sentence weighs at most {SENTENCE_LIMIT_BYTES} bytes",
         )
 
 
@@ -92,7 +91,7 @@ async def lay_in_a_sentence(
         ):
             raise SentenceRefused(
                 409,
-                "SENTENCE_ID_REUSED",
+                ERROR_CODE_SENTENCE_ID_REUSED,
                 f"Sentence {sentence_id} was already laid in with another recording",
             )
         return
@@ -108,7 +107,7 @@ async def lay_in_a_sentence(
     if awaiting is not None and awaiting.segment_id != segment.id:
         raise SentenceRefused(
             409,
-            "ANOTHER_SENTENCE_AWAITS",
+            ERROR_CODE_ANOTHER_SENTENCE_AWAITS,
             f"Frase {awaiting.frase} awaits its translation; one sentence at a time",
             frases=[awaiting.frase],
         )
@@ -116,13 +115,15 @@ async def lay_in_a_sentence(
     if sentence is None or (sentence.rate, sentence.channels) != (base.rate, base.channels):
         raise SentenceRefused(
             400,
-            "SENTENCE_FORMAT_DIFFERS",
+            ERROR_CODE_SENTENCE_FORMAT_DIFFERS,
             f"A sentence is WAV PCM16 at {base.rate} Hz, {base.channels} channel(s), as its part",
         )
     laid = trim_silence(sentence)
     if sentence.ms(laid.frames) < SHORTEST_SENTENCE_MS:
         raise SentenceRefused(
-            400, "SENTENCE_TOO_SHORT", f"A sentence lasts at least {SHORTEST_SENTENCE_MS} ms"
+            400,
+            ERROR_CODE_SENTENCE_TOO_SHORT,
+            f"A sentence lasts at least {SHORTEST_SENTENCE_MS} ms",
         )
     spliced = splice_sentence(base, segment.starts_ms, segment.ends_ms, laid)
     recorded = hashlib.sha256(audio).hexdigest()
@@ -227,8 +228,7 @@ async def refuse_another_span_for_the_awaiting_frase(
         and awaiting.segment_id == segment.id
         and (starts_ms, ends_ms) != (segment.starts_ms, segment.ends_ms)
     ):
-        raise PauseCannotMove(
+        raise FraseAwaitsItsTranslation(
             f"Frase {awaiting.frase} awaits its translation at exactly "
-            f"{segment.starts_ms} to {segment.ends_ms} ms, the span its new sentence took",
-            FRASE_AWAITS_ITS_TRANSLATION,
+            f"{segment.starts_ms} to {segment.ends_ms} ms, the span its new sentence took"
         )

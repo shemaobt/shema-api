@@ -70,6 +70,13 @@ ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
 ERROR_CODE_OVERLAPS_A_STANDING_FRASE: Final = "OVERLAPS_A_STANDING_FRASE"
+ERROR_CODE_SENTENCE_TOO_LONG: Final = "SENTENCE_TOO_LONG"
+ERROR_CODE_SENTENCE_TOO_SHORT: Final = "SENTENCE_TOO_SHORT"
+ERROR_CODE_SENTENCE_FORMAT_DIFFERS: Final = "SENTENCE_FORMAT_DIFFERS"
+ERROR_CODE_SENTENCE_ID_REUSED: Final = "SENTENCE_ID_REUSED"
+ERROR_CODE_PART_NOT_WAV: Final = "PART_NOT_WAV"
+ERROR_CODE_ANOTHER_SENTENCE_AWAITS: Final = "ANOTHER_SENTENCE_AWAITS"
+ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION: Final = "FRASE_AWAITS_ITS_TRANSLATION"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -272,6 +279,20 @@ class PauseCannotMove(ValidationError):
 
 
 class OverlapsAStandingFrase(ValidationError):
+    pass
+
+
+class SentenceRefused(Exception):
+    def __init__(
+        self, status_code: int, code: str, detail: str, frases: list[int] | None = None
+    ) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.code = code
+        self.frases = frases
+
+
+class FraseAwaitsItsTranslation(ValidationError):
     pass
 
 
@@ -520,6 +541,23 @@ async def handle_pause_cannot_move(_request: Request, exc: PauseCannotMove) -> J
     )
 
 
+async def handle_sentence_refused(_request: Request, exc: SentenceRefused) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_body(str(exc), exc.code)
+        | ({"frases": exc.frases} if exc.frases is not None else {}),
+    )
+
+
+async def handle_frase_awaits_its_translation(
+    _request: Request, exc: FraseAwaitsItsTranslation
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION),
+    )
+
+
 async def handle_overlaps_a_standing_frase(
     _request: Request, exc: OverlapsAStandingFrase
 ) -> JSONResponse:
@@ -743,6 +781,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
+    app.add_exception_handler(SentenceRefused, handle_sentence_refused)  # type: ignore[arg-type]
+    app.add_exception_handler(FraseAwaitsItsTranslation, handle_frase_awaits_its_translation)  # type: ignore[arg-type]
     app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
