@@ -44,7 +44,6 @@ from app.services.internalization_room.back_translation import (
     Finding,
     frase_numbers,
     nuances_said,
-    rehearsed_parts,
     said_before,
     unheard_parts,
 )
@@ -58,7 +57,7 @@ from app.services.internalization_room.segments import (
     told_back,
 )
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.takes import takes_of
+from app.services.internalization_room.takes import current_parts, takes_of
 
 #: Where a facilitator's browser fetches one take, as the file points at it. A path and never
 #: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
@@ -203,9 +202,8 @@ def _listening(
 ) -> list[RetroverificationListening]:
     """The report part by part, with the parts nobody heard named as such.
 
-    Asked of the parts the stretches standing now are slices of, which is the subject both the
-    check and the release ask about: a part leaves the question by being recorded over and by
-    nothing else.
+    Asked of every current part of the rehearsal, told or not, which is what `terminei` and the
+    release ask to be heard (ADR 0068): a part recorded again and never played has its row here.
     """
     unheard = set(unheard_parts(telling_back, parts))
     reported = {entry.take_id: entry for entry in telling_back.played_by_take}
@@ -393,7 +391,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             )
             for attempt in telling_back.superseded
         ],
-        listening=_listening(telling_back, rehearsed_parts(stretches)),
+        listening=_listening(telling_back, [part.id for part in current_parts(takes)]),
         hard_stretches=[
             RetroverificationHardStretch(
                 segment_id=_walked_forward(mark.segment_id, replaced_by, standing),

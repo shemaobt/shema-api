@@ -168,7 +168,12 @@ async def transcribe_audio_detailed(
             response.status_code, f"Transcription request failed with status {response.status_code}"
         )
 
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as error:
+        raise UpstreamServiceError(f"Transcription answer is not JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise UpstreamServiceError("Transcription answer is not an object")
     text = (payload.get("text") or "").strip()
     language_code = payload.get("language_code") or None
     probability = payload.get("language_probability")

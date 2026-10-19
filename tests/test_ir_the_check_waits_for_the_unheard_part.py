@@ -36,10 +36,7 @@ from tests.room_harness import (
     the_room_speaks,
 )
 
-#: Her P-unheard line, pinned from the ticket and not read back out of the file that
-#: carries it: the case is that the team hears *this sentence*, and a copy of whatever
-#: the room happens to say would agree with any of them.
-UNHEARD_LINE = "Ainda falta ouvir um trecho da gravação antes de eu conferir."
+UNHEARD_BY_POSITION = "P2"
 PART_MS = 61000
 
 
@@ -87,11 +84,11 @@ async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     body = answered.json()
     assert body["unheard_take_ids"] == [third.id]
     assert body["checked"] is False
-    assert body["fixed_line"] == ""
+    assert body["fixed_line"] == UNHEARD_BY_POSITION
     assert body["findings_remaining"] == 0
     assert body["untold_segment_id"] is None
-    assert body["audio_url"] != ""
-    assert room.said == [UNHEARD_LINE]
+    assert body["audio_url"] == ""
+    assert room.said == []
     assert analyst.readings == 0
 
     stored = await stored_telling_back(db_session, session)
@@ -153,7 +150,7 @@ async def test_an_untold_stretch_is_the_first_errand(
     assert body["untold_segment_id"] is not None
     assert body["unheard_take_ids"] == []
     assert analyst.readings == 0
-    assert (await stored_telling_back(db_session, session)).waited == 1
+    assert body["refusal"] == "FRASE_AWAITING"
 
 
 async def test_a_second_press_serves_the_stored_verdict_without_re_checking(
@@ -219,7 +216,8 @@ async def test_a_flat_report_or_none_is_refused_with_every_part_named(
     assert silent.status_code == 200, silent.text
     assert flat.json()["unheard_take_ids"] == every_part
     assert silent.json()["unheard_take_ids"] == every_part
-    assert room.said == [UNHEARD_LINE, UNHEARD_LINE]
+    assert flat.json()["fixed_line"] == silent.json()["fixed_line"] == UNHEARD_BY_POSITION
+    assert room.said == []
     assert analyst.readings == 0
 
 
