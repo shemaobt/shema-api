@@ -405,6 +405,12 @@ class BackTranslationProgress(BaseModel):
     superseded_attempts: int = 0
 
 
+class KeptTakeView(BaseModel):
+    scope: str
+    turn_number: int
+    audio_url: str
+
+
 class SessionStateResponse(BaseModel):
     session_id: str
     pericope: str
@@ -429,6 +435,7 @@ class SessionStateResponse(BaseModel):
     #: session's Opening only while this is false.
     opened: bool = False
     moment: MomentView | None = None
+    kept_takes: list[KeptTakeView] = Field(default_factory=list)
 
 
 class TurnResponse(BaseModel):

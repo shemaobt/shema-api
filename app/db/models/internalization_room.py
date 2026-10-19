@@ -113,6 +113,7 @@ class IRSession(Base):
     #: read by the room, or handed in by her runner. Null on a
     #: book's first passage, on a Panorama and for a caller with no team.
     earlier_passages: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+    retellings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
     #: every halt and cleared by none: it outlives the halt on purpose, so that a halt lifted
     #: before any facilitator saw it is still readable on the team's history afterwards.
