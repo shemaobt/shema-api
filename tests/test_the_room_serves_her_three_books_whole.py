@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
+from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.voice_handles import clip_url
@@ -45,7 +46,7 @@ class Voice:
     async def __call__(self, text: str, **_: object) -> tuple[SimpleNamespace, bool]:
         self.asked.append(text)
         if text in self.refuses:
-            raise RuntimeError("ElevenLabs answered 503")
+            raise UpstreamServiceError("ElevenLabs answered 503")
         return SimpleNamespace(key=self.key_of(text)), False
 
 

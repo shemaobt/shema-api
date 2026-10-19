@@ -22,8 +22,8 @@ class LabelledElement(BaseModel):
 
     **`label_pt` is nullable and `label_en` is not**, which is the shape that promise actually
     names: the Desk's own `CoverageLabels` is `{ pt: string | null, en: string }`, because
-    English comes almost free from the canon and Portuguese is translation work. The canon
-    serves fourteen and D-03 walks every team through them.
+    English comes almost free from the canon and Portuguese is translation work. The room
+    serves three books and D-03 walks every team through each of their passages.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -131,8 +131,8 @@ class ElementCoverage(BaseModel):
     `label_pt` is nullable and `label_en` is not, which is `LabelledElement`'s shape carried
     through unchanged. A passage nobody has translated is served from the canon with
     Portuguese absent, and a bead here must be able to say so: narrowing it to `str` would
-    mean this route could only ever answer the four translated passages, while D-03 walks
-    every team through all fourteen.
+    mean this route could only ever answer Ruth's translated passages, while D-03 walks
+    every team through every passage of the served books.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -653,9 +653,9 @@ class InboxQuestionView(BaseModel):
     bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
     both are served and the client picks, as it already does everywhere else.
 
-    **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
-    passages and four of them are translated, so on the other ten every bead carries English
-    and a null Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
+    **``label_en`` is the one that is always there.** Only Ruth has a catalogue; Esther and
+    Jonah have none, so on their passages every bead but a scene carries English and a null
+    Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
     and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 

@@ -239,3 +239,19 @@ async def test_ruth_still_prepares_ruths_next_passage_after_its_panorama(
     db_session: AsyncSession, heard: Heard, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert await _prepared_after(db_session, "OV-Ruth", monkeypatch) == "P01"
+
+
+async def test_an_open_with_no_passage_after_esthers_panorama_lands_on_esthers_first_passage(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    _, credential = await a_claimed_device(db_session)
+    panorama = await _opened(client, credential, "OV-Esther")
+
+    entered = await client.post(
+        f"{PREFIX}/sessions",
+        headers=team_headers(credential),
+        json={"after_session": panorama, "pericope": None, "language": "pt"},
+    )
+
+    assert entered.status_code == 200, entered.text[:300]
+    assert entered.json()["pericope"] == "E01"

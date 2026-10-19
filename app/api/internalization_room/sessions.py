@@ -397,6 +397,7 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
+        after=previous,
     )
     await clear_needs_person(db, caller.id)
     nudge(session.project_id, "halts")

@@ -28,11 +28,10 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
-from app.core.served_books import SERVED_BOOKS
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
 from app.services.internalization_room.canon.kept import canon_path, per_canon
-from app.services.internalization_room.canon.parse_map import load_book, load_map
+from app.services.internalization_room.canon.parse_map import load_map, served_maps
 from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
 
@@ -68,8 +67,8 @@ class ElementLabelsBroken(Exception):
 
     Asking for a pericope nobody has translated stays a `ValidationError`: that one really
     is about what was asked for. ENG-449 decided what its route answers, and the decision was
-    **404** — the canon serves all fourteen of Ruth, so reaching P03 through the Desk's
-    selector is a well-formed request for a representation this deploy cannot produce, and
+    **404** — the canon serves every passage of the served books, so reaching one through the
+    Desk's selector is a well-formed request for a representation this deploy cannot produce, and
     400 would blame the caller for our gap. What this split guarantees is that a route can
     tell that apart from a catalogue of ours being holed, which stays a 500.
     """
@@ -309,9 +308,7 @@ def _known_pericopes() -> frozenset[str]:
     `load_book` is `lru_cache`d and already parsed, so this costs a set comprehension over
     maps that are in memory either way.
     """
-    return frozenset(
-        meaning_map.pericope_num for book in SERVED_BOOKS for meaning_map in load_book(book)
-    )
+    return frozenset(meaning_map.pericope_num for meaning_map in served_maps())
 
 
 def label_index(

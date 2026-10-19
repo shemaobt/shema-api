@@ -15,6 +15,7 @@ from app.services.internalization_room.canon.parse_map import (
     MeaningMap,
     code_only_links,
     load_book,
+    not_served,
 )
 
 LOGS_DIR = VENDOR / "compilation-log"
@@ -153,7 +154,7 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
     """
     book = meaning_map.book
     if book not in SERVED_BOOKS:
-        return f"{meaning_map.pericope_num}: the {book} canon is not served in this release"
+        return f"{meaning_map.pericope_num}: {not_served(book)}"
     return None
 
 
@@ -181,7 +182,7 @@ def pericope_digest(meaning_map: MeaningMap) -> str:
 def build_book_material(book: str) -> str:
     """The Book Panorama's entire standard of truth, derived from vendored canon."""
     if book not in SERVED_BOOKS:
-        raise ValidationError(f"the {book} canon is not served in this release")
+        raise ValidationError(not_served(book))
     maps = load_book(book)
     rules = preservation_rules(book)
 

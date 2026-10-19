@@ -64,10 +64,10 @@ from app.services.internalization_room.segments import (
     told_back,
 )
 from app.services.internalization_room.sessions import (
-    _land,
-    _no_such_session,
     back_translation_of,
+    claim_the_version,
     is_panorama,
+    refuse_if_archived,
 )
 from app.services.internalization_room.takes import current_parts, is_wav, takes_of
 
@@ -759,14 +759,12 @@ async def approve_release(
     only while the session's ``version`` is still the one read here (ADR 0052, ADR 0066).
     """
     assert session.project_id is not None
-    if session.archive_id is not None:
-        raise NotFoundError(_no_such_session(session.id))
+    await refuse_if_archived(db, session)
 
     packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
     if latest is not None and latest.package_sha256 == packet["package_sha256"]:
-        if await db.scalar(select(IRSession.archive_id).where(IRSession.id == session.id)):
-            raise NotFoundError(_no_such_session(session.id))
+        await refuse_if_archived(db, session)
         return latest
 
     _judge(blockers, FORCEABLE_BLOCKERS if forced_by else frozenset())
@@ -796,7 +794,7 @@ async def approve_release(
             else None
         ),
     )
-    await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
+    await claim_the_version(db, session)
     db.add(release)
     try:
         await db.commit()

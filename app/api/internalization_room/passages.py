@@ -2,13 +2,14 @@ import asyncio
 import logging
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_project_dep, linked_tablet_dep
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.models.internalization_room import (
     BookPassagesResponse,
     PassageView,
@@ -31,10 +32,11 @@ MAX_LINES_IN_FLIGHT = 4
 
 
 async def _voiced(
-    line: str, *, language: str, settings: Settings, in_flight: asyncio.Semaphore
+    entry: str, line: str, *, language: str, settings: Settings, in_flight: asyncio.Semaphore
 ) -> str | None:
     """One entry's line, synthesized while at most a few others are in flight, or None when
-    no line is written or the synthesiser fails: the list is served either way (ADR 0066)."""
+    no line is written or the voice provider fails: the list is served either way (ADR 0066).
+    A defect of ours is not the provider failing, and still fails the list."""
     if not line:
         return None
     async with in_flight:
@@ -42,9 +44,12 @@ async def _voiced(
             voiced, _ = await room.synthesize_facilitator_speech(
                 line, language=language, settings=settings
             )
-        except Exception as error:
-            logger.warning("a passage line could not be voiced: %s", type(error).__name__)
+        except (UpstreamServiceError, ValidationError, httpx.HTTPError):
+            logger.warning("%s could not be voiced in %s", entry, language, exc_info=True)
             return None
+        except Exception:
+            logger.exception("%s hit a defect on our side while voiced in %s", entry, language)
+            raise
     return clip_url(voiced.key)
 
 
@@ -60,7 +65,9 @@ async def _passage(
     return PassageView(
         pericope=pericope_num,
         kind="passage",
-        audio_url=await _voiced(line, language=language, settings=settings, in_flight=in_flight),
+        audio_url=await _voiced(
+            pericope_num, line, language=language, settings=settings, in_flight=in_flight
+        ),
         reference=load_map(pericope_num).reference,
         beads=len(element_keys(pericope_num)),
         absence_index=absence_index(pericope_num),
@@ -76,10 +83,12 @@ async def _panorama(
     No beads and no absence index: the panorama holds no elements of its own, so both stay
     at the defaults a passage without either already carries.
     """
+    panorama = PANORAMA_PREFIX + book
     return PassageView(
-        pericope=PANORAMA_PREFIX + book,
+        pericope=panorama,
         kind="panorama",
         audio_url=await _voiced(
+            panorama,
             panorama_line_for(book, language),
             language=language,
             settings=settings,
@@ -118,10 +127,10 @@ async def passages(
 
     The lines are voiced together rather than one after the other. This is the wheel the
     team turns before choosing where to work, so its wait is the first thing they meet, and
-    a wheel that takes fourteen round trips end to end reads to them as no internet — a
+    a wheel that takes a round trip per entry end to end reads to them as no internet — a
     bucket read each when the cache is warm, a whole ElevenLabs call each when it is cold,
     which a new book or a change to the voice tuning both make it. A few at a time rather
-    than all fourteen, because the room's ElevenLabs key carries its own quota and a cold
+    than all of them, because the room's ElevenLabs key carries its own quota and a cold
     book should not spend it in one breath. Story order is the order they come back in.
 
     Each passage says whether the team holds a live Release of it (`approved`), read once for
@@ -134,7 +143,7 @@ async def passages(
     team_approved = await approved_pericopes(db, project_id=project_id)
     await db.commit()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
-    speakable = offered(book, spoken)
+    every_passage = offered(book, spoken)
     said = await asyncio.gather(
         _panorama(book, language=spoken, settings=settings, in_flight=in_flight),
         *(
@@ -146,7 +155,7 @@ async def passages(
                 settings=settings,
                 in_flight=in_flight,
             )
-            for pericope_num, line in speakable
+            for pericope_num, line in every_passage
         ),
     )
     return BookPassagesResponse(book=book, passages=list(said))

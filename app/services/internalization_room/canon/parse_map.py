@@ -276,3 +276,12 @@ def load_book(book: str) -> tuple[MeaningMap, ...]:
 def served_books() -> list[str]:
     """The served books in the order of their passage ids, as her `listPericopes` sorts them."""
     return sorted(SERVED_BOOKS, key=lambda book: load_book(book)[0].pericope_num)
+
+
+def served_maps() -> list[MeaningMap]:
+    """Every map of every served book, book by book in that order."""
+    return [meaning_map for book in served_books() for meaning_map in load_book(book)]
+
+
+def not_served(book: str) -> str:
+    return f"the {book} canon is not served in this release"

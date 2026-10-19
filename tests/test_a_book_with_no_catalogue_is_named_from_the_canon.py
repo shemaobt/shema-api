@@ -2,14 +2,14 @@
 
 Only Ruth has a label catalogue. Esther's and Jonah's beads are named as her app names them:
 a scene by her Portuguese title (`ui-labels.pt.json`, generated from her pin), every other
-bead by the canon's English with no Portuguese. The titles below are copied from her list.
+bead by the canon's English with no Portuguese. The titles and names below are copied from
+her list and her `esther.aliases.json`.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.canon.titles import portuguese_titles
@@ -25,12 +25,12 @@ def test_an_esther_passage_names_its_beads_from_the_canon_with_her_portuguese_sc
     None
 ):
     beads = {bead.key: bead for bead in labelled_elements("E01")}
-    other = next(bead for bead in beads.values() if bead.kind is not ElementKind.SCENE)
+    king = beads["being:S1:B4"]
     ruth = labelled_elements("P01")
 
     assert beads["scene:S1"].label_pt == "O império e o trono"
-    assert other.label_en
-    assert other.label_pt is None
+    assert king.label_en == "Ahasuerus"
+    assert king.label_pt is None
     assert all(bead.label_pt for bead in ruth)
 
 
