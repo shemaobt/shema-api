@@ -168,3 +168,31 @@ async def test_a_sentence_not_at_the_parts_own_format_is_refused_never_resampled
         "uma frase noutro formato era emendada como se fosse do mesmo"
     )
     assert store.objects == kept
+
+
+async def test_the_take_before_and_the_raw_sentence_are_kept_and_named_on_the_session_read(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, (one,), ((_, second),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000)]]
+    )
+    before = store.objects[one.storage_key]
+    recorded = spoken(1.0)
+
+    await re_record(client, session.id, second.id, recorded, sentence_id="sentence-0002")
+
+    read = (await client.get(f"{PREFIX}/sessions/{session.id}")).json()["back_translation"]
+    new = read["segments"][0]["take_id"]
+    assert read.get("rerecorded_sentences") == [
+        {
+            "sentence_id": "sentence-0002",
+            "segment_id": second.id,
+            "previous_take_id": one.id,
+            "take_id": new,
+            "starts_ms": 1000,
+            "ends_ms": 2400,
+        }
+    ], "a sessão não dizia onde ficaram a tomada de antes e a frase gravada"
+    assert (await take_named(db_session, one.id)).storage_key == one.storage_key
+    assert store.objects[one.storage_key] == before, "a tomada de antes foi reescrita"
+    assert recorded in store.objects.values(), "a frase como a equipe gravou não foi guardada"

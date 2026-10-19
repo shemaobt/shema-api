@@ -274,7 +274,15 @@ async def re_record_the_sentence(
         session = await room.session_for_room_caller(db, session_id, project_id)
         refuse_a_panorama(session.pericope)
         segment = await segment_for_session(db, session.id, segment_id)
-        await lay_in_a_sentence(db, session, segment, audio=audio, device_id=device_id, store=store)
+        await lay_in_a_sentence(
+            db,
+            session,
+            segment,
+            sentence_id=sentence_id,
+            audio=audio,
+            device_id=device_id,
+            store=store,
+        )
     except SentenceRefused as refused:
         return JSONResponse(
             status_code=refused.status_code,

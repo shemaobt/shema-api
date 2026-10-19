@@ -379,6 +379,23 @@ class FindingView(BaseModel):
     segment_id: str | None = None
 
 
+class RerecordedSentenceView(BaseModel):
+    """One sentence the team recorded again and the room laid into its part.
+
+    Both recordings are kept: `previous_take_id` is the part as it stood before, still a
+    rehearsal take of the session and still playable by its id, and `sentence_id` names the
+    sentence as the team recorded it, before its silence was trimmed. `take_id`, `starts_ms`
+    and `ends_ms` are where the new sentence sits on the part now.
+    """
+
+    sentence_id: str
+    segment_id: str
+    previous_take_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 
@@ -398,6 +415,10 @@ class BackTranslationProgress(BaseModel):
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    rerecorded_sentences: list[RerecordedSentenceView] = Field(
+        default_factory=list,
+        description="Every sentence recorded again and laid into its part, in the order laid.",
+    )
 
 
 class SessionStateResponse(BaseModel):

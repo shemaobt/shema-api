@@ -216,6 +216,18 @@ class CheckRound(BaseModel):
     heard_at: datetime | None = None
 
 
+class LaidInSentence(BaseModel):
+    sentence_id: str
+    segment_id: str
+    previous_take_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+    sha256: str
+    storage_key: str
+    at: datetime
+
+
 class BackTranslationState(BaseModel):
     """What a telling-back knows that is about the session rather than about one stretch.
 
@@ -294,6 +306,7 @@ class BackTranslationState(BaseModel):
     read_ahead: ReadAhead | None = None
     checks: list[CheckRound] = Field(default_factory=list)
     nuances: list[Nuance] = Field(default_factory=list)
+    sentences: list[LaidInSentence] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod

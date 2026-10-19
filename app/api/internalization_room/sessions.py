@@ -32,6 +32,7 @@ from app.models.internalization_room import (
     HardStretchView,
     NeedsPersonResponse,
     PersonArrivedResponse,
+    RerecordedSentenceView,
     SessionStateResponse,
     TurnResponse,
 )
@@ -352,6 +353,17 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
         finding_kind=finding.kind.value if finding else None,
         findings=finding_views(findings),
         superseded_attempts=len(state.superseded),
+        rerecorded_sentences=[
+            RerecordedSentenceView(
+                sentence_id=one.sentence_id,
+                segment_id=one.segment_id,
+                previous_take_id=one.previous_take_id,
+                take_id=one.take_id,
+                starts_ms=one.starts_ms,
+                ends_ms=one.ends_ms,
+            )
+            for one in state.sentences
+        ],
     )
 
 

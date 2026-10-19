@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
+from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.segments import current_segments
+from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
     TakeStore,
     is_wav,
@@ -48,6 +50,7 @@ async def lay_in_a_sentence(
     session: IRSession,
     segment: IRSegment,
     *,
+    sentence_id: str,
     audio: bytes,
     device_id: str,
     store: TakeStore,
@@ -71,6 +74,14 @@ async def lay_in_a_sentence(
             400, "SENTENCE_TOO_SHORT", f"A sentence lasts at least {SHORTEST_SENTENCE_MS} ms"
         )
     spliced = splice_sentence(base, segment.starts_ms, segment.ends_ms, laid)
+    recorded = hashlib.sha256(audio).hexdigest()
+    raw = await store_recording(
+        audio,
+        key=_sentence_key(session.id, recorded),
+        sha256=recorded,
+        content_type=WAV,
+        store=store,
+    )
     digest = hashlib.sha256(spliced.audio).hexdigest()
     stored = await store_recording(
         spliced.audio,
@@ -109,5 +120,24 @@ async def lay_in_a_sentence(
             one.starts_ms += shift
             one.ends_ms += shift
         one.take_id = take.id
+    state = back_translation_of(session)
+    state.sentences.append(
+        LaidInSentence(
+            sentence_id=sentence_id,
+            segment_id=segment.id,
+            previous_take_id=part.id,
+            take_id=take.id,
+            starts_ms=segment.starts_ms,
+            ends_ms=spliced.ends_ms,
+            sha256=raw.sha256,
+            storage_key=raw.storage_key,
+            at=take.created_at,
+        )
+    )
+    await save_back_translation(db, session, state, commit=False)
     await db.commit()
     return take
+
+
+def _sentence_key(session_id: str, sha256: str) -> str:
+    return f"internalization-room/takes/{session_id}/sentence/{sha256}/frase.wav"
