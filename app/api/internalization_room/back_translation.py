@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,7 +7,7 @@ from app.api.internalization_room._deps import device_dep, device_project_dep, l
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError, WordlessTelling
+from app.core.exceptions import UpstreamServiceError, ValidationError, WordlessTelling
 from app.core.stage_clock import stage, stopwatch
 from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
@@ -38,6 +40,8 @@ from app.services.internalization_room.takes import (
     takes_of,
 )
 from app.services.internalization_room.voice_handles import clip_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -264,6 +268,11 @@ async def finish(
     team told back anything new. A press that reached the analyst and then failed saves no
     verdict, so the press after it does the whole turn rather than serving one the team never
     heard.
+
+    That failure — the analyst, the Speaker or the verdict's voice unavailable — answers the
+    refusal `CHECK_UNAVAILABLE`, never a 502 the tablet reads as a lost connection. Her check
+    saves nothing on it either (`bt/check/route.ts:90-97`), her screen says «não deu para
+    conferir agora — tentem de novo», and `terminei` again is the retry.
     """
     with stopwatch("[bt-timing]", session_id):
         session = await room.session_for_room_caller(db, session_id, project_id)
@@ -360,21 +369,31 @@ async def _finished(
 
     with stage("db_let_go"):
         await db.commit()
-    with reading_the_canon_of(session.canon_pin):
-        verdict = await room.check_the_telling_back(
-            session,
-            state=state,
-            told=told,
-            takes=takes,
-            settings=get_settings(),
-        )
-    with stage("voice"):
-        voiced = (
-            None
-            if verdict.outcome.fixed_line
-            else (
-                await room.synthesize_facilitator_speech(verdict.said, language=session.language)
-            )[0]
+    try:
+        with reading_the_canon_of(session.canon_pin):
+            verdict = await room.check_the_telling_back(
+                session,
+                state=state,
+                told=told,
+                takes=takes,
+                settings=get_settings(),
+            )
+        with stage("voice"):
+            voiced = (
+                None
+                if verdict.outcome.fixed_line
+                else (
+                    await room.synthesize_facilitator_speech(
+                        verdict.said, language=session.language
+                    )
+                )[0]
+            )
+    except UpstreamServiceError as failure:
+        logger.warning("Upstream service failure: %s", failure)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            checked=False,
+            refusal=CheckRefusal.CHECK_UNAVAILABLE,
         )
     with stage("db_write"):
         session = await room.save_the_spoken_verdict(

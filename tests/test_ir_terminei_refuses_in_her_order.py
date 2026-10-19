@@ -14,6 +14,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSession, IRTake
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
@@ -38,6 +39,7 @@ from tests.room_harness import (
     the_analyst_reads,
     the_room_speaks,
 )
+from tests.turn_harness import the_room_agent_is
 
 #: Her P-unheard line, from her file at the freeze (prompts/fail_safe_utterances.md:111),
 #: and its name by position: her P steps are start, tell, unheard, approved.
@@ -230,3 +232,59 @@ async def test_a_part_recorded_again_and_never_played_blocks_the_release_as_unhe
 
     assert "untold_part" not in blockers
     assert PLAYBACK_BLOCKER in blockers, "uma parte que ninguém ouviu viajava sem bloqueio"
+
+
+async def _down(*_: Any, **__: Any) -> Any:
+    raise UpstreamServiceError("o provedor não respondeu")
+
+
+def _the_analyst_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_room_agent_is(monkeypatch, analyst=_down)
+
+
+def _the_speaker_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_room_agent_is(monkeypatch, turn=_down)
+
+
+def _the_voice_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.internalization_room import back_translation as bt_api
+
+    monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _down)
+
+
+@pytest.mark.parametrize(
+    "take_it_down",
+    [_the_analyst_is_down, _the_speaker_is_down, _the_voice_is_down],
+    ids=["analyst", "speaker", "voice"],
+)
+async def test_a_check_whose_model_is_down_saves_nothing_and_terminei_again_retries(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    take_it_down: Any,
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 2)
+    report = played_every_part([part.id for part in parts])
+    was = await stored_telling_back(db_session, session)
+    take_it_down(monkeypatch)
+
+    refused = await press_terminei(client, session.id, report=report)
+
+    assert refused.status_code == 200, "um 502 o tablet lê como sem conexão"
+    body = refused.json()
+    assert body["refusal"] == "CHECK_UNAVAILABLE"
+    assert body["checked"] is False
+    assert body["audio_url"] == ""
+    assert body["fixed_line"] == ""
+    assert await _transcript(db_session, session.id) == []
+    kept = await stored_telling_back(db_session, session)
+    assert kept.checks == was.checks
+    assert kept.analysed_segment_ids == was.analysed_segment_ids
+    assert kept.verdict is None
+
+    the_analyst_reads(monkeypatch)
+    the_room_speaks(monkeypatch)
+    again = await press_terminei(client, session.id, report=report)
+
+    assert again.json()["refusal"] is None, again.text
+    assert again.json()["checked"] is True
