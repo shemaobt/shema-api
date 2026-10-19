@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
     PauseCannotMove,
     StretchNoLongerCounts,
 )
@@ -35,6 +34,7 @@ from app.services.internalization_room.wav import pcm16, splice_sentence, trim_s
 WAV = "audio/wav"
 SENTENCE_LIMIT_BYTES = 4 * 1024 * 1024
 SHORTEST_SENTENCE_MS = 500
+FRASE_AWAITS_ITS_TRANSLATION = "FRASE_AWAITS_ITS_TRANSLATION"
 
 
 @dataclass(frozen=True)
@@ -230,5 +230,5 @@ async def refuse_another_span_for_the_awaiting_frase(
         raise PauseCannotMove(
             f"Frase {awaiting.frase} awaits its translation at exactly "
             f"{segment.starts_ms} to {segment.ends_ms} ms, the span its new sentence took",
-            ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+            FRASE_AWAITS_ITS_TRANSLATION,
         )

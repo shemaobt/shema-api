@@ -98,7 +98,8 @@ async def divide(
     matters because it is an action the team takes in the middle of the work.
 
     `at_ms` is counted from the start of the recording, the same as the stretch's own bounds.
-    Where it may fall is `divide_segment`'s to say.
+    Where it may fall is `divide_segment`'s to say. A frase awaiting the translation of its
+    re-recorded sentence is not divided: 400 `FRASE_AWAITS_ITS_TRANSLATION`.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -168,6 +169,9 @@ async def replace(
     telling-backs. It is knowable from the stretch and the form fields, so the same refusal is
     asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
+
+    A frase awaiting the translation of its re-recorded sentence is told again only at exactly
+    the span the new sentence took; any other slice answers 400 `FRASE_AWAITS_ITS_TRANSLATION`.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)

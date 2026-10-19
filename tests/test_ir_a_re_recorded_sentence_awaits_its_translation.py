@@ -146,8 +146,8 @@ async def test_the_awaiting_frase_is_told_only_at_the_span_the_new_sentence_took
     )
 
     assert [(one.status_code, one.json().get("code")) for one in (moved, divided)] == [
-        (400, "PAUSE_ONLY_ON_THE_LAST_FRASE"),
-        (400, "PAUSE_ONLY_ON_THE_LAST_FRASE"),
+        (400, "FRASE_AWAITS_ITS_TRANSLATION"),
+        (400, "FRASE_AWAITS_ITS_TRANSLATION"),
     ], "a frase que espera era traduzida noutro trecho que não o da frase nova"
     assert (await _read(client, session.id)).get("awaiting_segment_id") == last.id
 
