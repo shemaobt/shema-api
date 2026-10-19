@@ -203,7 +203,10 @@ def _impossible_dates(exc: ImpossibleDates) -> JSONResponse:
         content={
             "detail": str(exc),
             "code": ERROR_CODE_BAD_REQUEST,
-            "errors": [{**error, "loc": ["body", *error["loc"]]} for error in exc.errors],
+            "errors": [
+                {"type": field.kind, "loc": ["body", field.field_key], "msg": field.message}
+                for field in exc.refused
+            ],
         },
     )
 

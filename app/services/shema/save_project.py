@@ -72,7 +72,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic.alias_generators import to_camel
 from sqlalchemy import select, update
@@ -150,6 +150,14 @@ class RecordVersionConflict(ConflictError):
         self.expected = expected
 
 
+class RefusedField(NamedTuple):
+    """One field a refusal is about, by its wire key, with the kind and what is wrong with it."""
+
+    field_key: str
+    kind: str
+    message: str
+
+
 class ImpossibleDates(ValidationError):
     """A finish before a beginning — the 400 it always was, carrying the field it is about.
 
@@ -157,14 +165,14 @@ class ImpossibleDates(ValidationError):
     body on the wire, and the repository's ``BAD_REQUEST`` is a sentence the console cannot
     place. Measured in the E2E run of 14/oct/2026 (OBT-601): the ficha said *recusa sem campo*
     and stayed on the tab the coordinator was on, where every field error FastAPI raises lands
-    them on the field. :attr:`errors` is that same ``{type, loc, msg}``, located in the record;
-    the router puts it under ``body``. A caller that does not render it — the import, the Pulse
-    — answers the plain 400 with the sentence, which is what ``str()`` is.
+    them on the field. The router renders :attr:`refused` as that same ``{type, loc, msg}``,
+    under ``body``. A caller that does not render it — the import, the Pulse — answers the
+    plain 400 with the sentence, which is what ``str()`` is.
     """
 
-    def __init__(self, detail: str, errors: list[dict[str, Any]]) -> None:
+    def __init__(self, detail: str, refused: tuple[RefusedField, ...]) -> None:
         super().__init__(detail)
-        self.errors = errors
+        self.refused = refused
 
 
 async def _conflict(
@@ -314,14 +322,10 @@ def _refuse_impossible_dates(merged: dict[str, Any]) -> None:
                 f"{label} {value.isoformat()} is before the start date {start.isoformat()}"
                 for label, value in late
             ),
-            [
-                {
-                    "type": "date_order",
-                    "loc": [label],
-                    "msg": f"before the start date ({start.isoformat()})",
-                }
+            tuple(
+                RefusedField(label, "date_order", f"before the start date ({start.isoformat()})")
                 for label, _ in late
-            ],
+            ),
         )
 
 
