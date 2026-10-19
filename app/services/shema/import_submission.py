@@ -61,7 +61,7 @@ from app.services.shema._submission_archive import (
     archived_answers,
     bind_intake_image,
 )
-from app.services.shema.read_submission import as_received, inbox_name
+from app.services.shema.read_submission import as_received
 from app.services.shema.save_project import save_project
 from app.utils.shema_forms import (
     IMAGE_DESCRIPTION_FIELD,
@@ -260,7 +260,7 @@ async def import_submission(
             expected_version=expected_version,
             day=day,
         )
-    return as_received(submission, answered.version, inbox_name(project, readership))
+    return as_received(submission, answered.version, project, readership)
 
 
 async def apply_submission(
@@ -308,4 +308,4 @@ async def apply_submission(
             expected_version=expected_version,
             day=day,
         )
-    return as_received(submission, definition.version, inbox_name(project, readership))
+    return as_received(submission, definition.version, project, readership)

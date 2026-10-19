@@ -197,7 +197,7 @@ class IntakeLinkCreated(IntakeLink):
 
 
 class ReceivedSubmission(BaseModel):
-    """FE-44's ``ReceivedSubmission``, plus the two keys the DoD is proved with.
+    """FE-44's ``ReceivedSubmission``, plus the two keys the DoD is proved with and the name's bit.
 
     ``kind`` is ``ArchivedKind`` — ``"pulso"`` and nothing else. The Avaliação de Saúde is
     filled in-app and produces no file, so nothing of it ever left to come back; a server that
@@ -206,6 +206,7 @@ class ReceivedSubmission(BaseModel):
     ``definitionVersion`` and ``appliedAt`` are additions to a frozen shape and the PR declares
     them. They are additive keys a client may ignore, and each answers a question the inbox
     cannot work without: *which form was this answering*, and *has a person acted on it yet*.
+    ``languageNameWithheld`` is a third (OBT-600), and answers *is this the language's name*.
 
     ``receivedAt`` is a **calendar day**, by FE-44 §9.0's rule that every date on this wire is
     one. The column keeps the moment and the listing is ordered by it, so nothing about the
@@ -218,6 +219,12 @@ class ReceivedSubmission(BaseModel):
     kind: str
     project_id: str
     language_name: str
+    #: ``true`` when ``languageName`` is not the language's own — the public name coordination
+    #: registered, or the region key while none is — because the project's place is withheld and
+    #: this reader does not read the truth (OBT-600). The bit every leaving shape carries beside
+    #: the name (OBT-560), put on this row by hand because the row is not a shape: without it a
+    #: screen prints ``africa`` where it should say *Projeto sensível — África*.
+    language_name_withheld: bool
     submitted_by: str
     received_at: date
     definition_version: int
