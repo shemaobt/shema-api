@@ -1084,9 +1084,6 @@ class TeamReleaseResponse(BaseModel):
     approved_at: str | None = None
     #: The gate's codes in the order the gate raised them; empty on a mint. Never a sentence.
     blockers: list[str] = Field(default_factory=list)
-    #: Which current parts carry nobody's words, by their own take, when `untold_part` is
-    #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).
-    untold_take_ids: list[str] = Field(default_factory=list)
     #: Which parts of the rehearsal the report does not cover, by their own take, when
     #: `playback_did_not_cover_the_clip` is among the blockers; empty otherwise.
     unheard_take_ids: list[str] = Field(default_factory=list)
