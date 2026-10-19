@@ -22,6 +22,7 @@ from app.core.config import get_settings
 from app.services.internalization_room import background
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.sessions import get_session
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
@@ -43,14 +44,26 @@ def verdict() -> dict[str, Any]:
 
 
 @pytest.fixture()
+def lands() -> list[int]:
+    return []
+
+
+@pytest.fixture()
 def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     return the_bucket_is_in_memory(monkeypatch)
 
 
 @pytest.fixture()
 async def client(
-    db_session: AsyncSession, per_request, verdict, bucket, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession,
+    per_request,
+    verdict,
+    lands,
+    bucket,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[httpx.AsyncClient]:
+    read: list[int] = []
+
     async def heard(*_: Any, **__: Any) -> HeardSpeech:
         return HeardSpeech(text=TOLD)
 
@@ -60,6 +73,9 @@ async def client(
         return "Isso. Vocês contaram a cena inteira."
 
     async def reader(**_: Any) -> str:
+        read.append(1)
+        if lands and len(read) > lands[0]:
+            raise RuntimeError("o classificador caiu")
         return json.dumps({"decisions": [], **verdict})
 
     async def no_opening_ahead(*_: Any, **__: Any) -> None:
@@ -168,4 +184,25 @@ async def test_a_session_with_no_verdict_yet_reads_as_holding_no_kept_take(
 
     assert await _kept(client, tablet, session_id) == [], (
         "uma sessão sem veredito nenhum não abria na leitura do tablet"
+    )
+
+
+async def test_a_reader_that_falls_mid_turn_keeps_nothing_and_the_names_still_count(
+    client, db_session, per_request, verdict, lands, bucket
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+    verdict["retelling"] = {"scope": "S1", "approved": True}
+    lands.append(1)
+
+    await _the_team_tells(client, tablet, session_id, "turno-1")
+
+    async with per_request() as fresh:
+        stored = await get_session(fresh, session_id)
+    assert stored.retellings is None, (
+        "o leitor caía no meio do turno e a aprovação da leitura que chegou guardava a tomada"
+    )
+    assert TAKE not in bucket.objects.values()
+    assert await _kept(client, tablet, session_id) == []
+    assert stored.coverage_state["being:S1:B3"] == "engaged", (
+        "sem o leitor, a Noemi que a equipe disse deixava de contar"
     )
