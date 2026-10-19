@@ -225,7 +225,6 @@ class LaidInSentence(BaseModel):
     ends_ms: int
     sha256: str
     storage_key: str
-    at: datetime
 
 
 class BackTranslationState(BaseModel):

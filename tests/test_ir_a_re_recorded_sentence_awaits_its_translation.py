@@ -7,6 +7,7 @@ span the new sentence took is what ends the wait. Her N-6 is the line for it.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -18,8 +19,15 @@ from app.services.internalization_room.sentences import AwaitingSentence, the_se
 from app.services.internalization_room.sessions import get_session
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
-from tests.room_harness import nothing_is_read_ahead, room_client, the_bucket_is_in_memory
-from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
+from tests.room_harness import (
+    REHEARSED_AT,
+    nothing_is_read_ahead,
+    room_client,
+    the_bucket_is_in_memory,
+    the_upload_landed_at,
+    upload_a_part,
+)
+from tests.sentence_harness import WAV, re_record, rehearsed_in_wav, seconds, spoken, wav
 
 
 @pytest.fixture()
@@ -142,3 +150,22 @@ async def test_the_awaiting_frase_is_told_only_at_the_span_the_new_sentence_took
         (400, "PAUSE_ONLY_ON_THE_LAST_FRASE"),
     ], "a frase que espera era traduzida noutro trecho que não o da frase nova"
     assert (await _read(client, session.id)).get("awaiting_segment_id") == last.id
+
+
+async def test_the_whole_part_recorded_again_leaves_no_frase_awaiting(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    laid = (await re_record(client, session.id, middle.id, spoken(1.0))).json()["segments"][1]
+    await the_upload_landed_at(db_session, laid["take_id"], REHEARSED_AT + timedelta(hours=1))
+
+    uploaded = await upload_a_part(
+        client, session.id, part=1, audio=wav(seconds(3.0, 1234)), content_type=WAV
+    )
+
+    assert uploaded.status_code in (200, 201), uploaded.text
+    assert (await _read(client, session.id)).get("awaiting_segment_id", "") is None, (
+        "a frase regravada esperava tradução numa parte que a equipe gravou inteira de novo"
+    )

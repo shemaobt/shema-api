@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -147,7 +146,6 @@ async def lay_in_a_sentence(
         crc32c=stored.crc32c,
         content_type=WAV,
         verified_at=stored.verified_at,
-        created_at=datetime.now(UTC),
     )
     db.add(take)
     old_end = segment.ends_ms
@@ -172,7 +170,6 @@ async def lay_in_a_sentence(
             ends_ms=spliced.ends_ms,
             sha256=raw.sha256,
             storage_key=raw.storage_key,
-            at=take.created_at,
         )
     )
     await save_back_translation(db, session, state, commit=False)
