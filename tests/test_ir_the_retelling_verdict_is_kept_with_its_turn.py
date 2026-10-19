@@ -138,3 +138,21 @@ async def test_a_verdict_names_a_scene_of_the_passage_or_the_whole_and_nothing_e
         "1": {"scope": "S2", "approved": True},
         "3": {"scope": "whole", "approved": True},
     }, "uma cena que a passagem não tem virava veredito, e o id com 'scene:' não era a cena"
+
+
+async def test_readings_of_one_turn_that_do_not_agree_on_the_verdict_keep_none(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await service.create_session(db_session, pericope=P)
+
+    approved = {"retelling": {"scope": "S1", "approved": True}}
+    the_reader_says(monkeypatch, approved, {"retelling": {"scope": "S1", "approved": False}})
+    await _settled(session.id, 1)
+    the_reader_says(monkeypatch, approved, {})
+    await _settled(session.id, 2)
+
+    await db_session.refresh(session)
+    assert session.retellings is None, (
+        "uma leitura aprovava e outra recusava ou calava, e a primeira a chegar decidia"
+    )

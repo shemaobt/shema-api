@@ -272,7 +272,7 @@ async def classify_coverage(
     told.
     """
     cfg = settings or get_settings()
-    retold: list[Retelling] = []
+    retold: list[Retelling | None] = []
 
     offered = remaining(coverage_state, pericope_num)
     readings = [
@@ -308,9 +308,7 @@ async def classify_coverage(
         verdict = _parse(raw)
         if verdict is not None:
             _report_unknown_elements(verdict, pericope_num)
-            told = _retelling_in(raw, pericope_num)
-            if told is not None:
-                retold.append(told)
+            retold.append(_retelling_in(raw, pericope_num))
             return [_only_offered(verdict, beads)]
         if len(beads) <= 1:
             logger.warning(
@@ -331,8 +329,9 @@ async def classify_coverage(
     )
     if landed is None:
         return coverage_state
-    if retold and on_retelling is not None:
-        on_retelling(retold[0])
+    told = retold[0] if all(each == retold[0] for each in retold) else None
+    if told is not None and on_retelling is not None:
+        on_retelling(told)
     return merge(
         coverage_state,
         pericope_num=pericope_num,
