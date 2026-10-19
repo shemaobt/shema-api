@@ -134,6 +134,7 @@ async def test_a_checking_turn_that_carries_all_six_facts_shows_them_in_her_orde
     opened = await room.client.post(f"{IR}/sessions/{session_id}/turns")
     assert opened.status_code == 200, opened.text
     kept = await record(room, session_id, recording(40, 1), "S4")
+    assert kept.status_code == 200, kept.text
     rehearsal_id = str(kept.json()["rehearsal_id"])
     await translated(room, session_id, rehearsal_id, [(0, 20000)])
 
