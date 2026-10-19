@@ -945,9 +945,16 @@ class MotherTongueTake(BaseModel):
     duration_ms: int | None = None
 
 
+class KeptRehearsal(BaseModel):
+    turn_number: int
+    words: str
+    from_other_session: bool
+
+
 class MotherTongueTakesResponse(BaseModel):
     session_id: str
     takes: list[MotherTongueTake]
+    kept_rehearsals: list[KeptRehearsal] = Field(default_factory=list)
 
 
 class SceneFraseView(BaseModel):

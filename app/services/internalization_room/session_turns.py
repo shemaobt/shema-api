@@ -158,6 +158,12 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
     return turns
 
 
+def team_words_of(session: IRSession, number: int) -> str:
+    conversation = the_conversation(session)
+    entry, _ = _voice_turns(session)[number]
+    return str(conversation[conversation.index(entry) - 1]["text"])
+
+
 def last_turn_number(session: IRSession) -> int:
     return len(_voice_turns(session)) - 1
 

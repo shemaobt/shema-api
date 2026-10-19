@@ -6,11 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import (
+    KeptRehearsal,
     KeptTakeView,
     MotherTongueTake,
     MotherTongueTakesResponse,
 )
 from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
+from app.services.internalization_room.session_turns import team_words_of
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
@@ -53,15 +55,33 @@ async def mother_tongue_takes_of(
                 unread=link is None,
             )
         )
-    return MotherTongueTakesResponse(session_id=session.id, takes=rows)
+    return MotherTongueTakesResponse(
+        session_id=session.id, takes=rows, kept_rehearsals=kept_rehearsals_of(session)
+    )
 
 
-async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
+def _latest_kept_of_each_scope(session: IRSession) -> dict[str, tuple[int, KeptRecording]]:
     latest: dict[str, tuple[int, KeptRecording]] = {}
     for number, entry in sorted((int(n), e) for n, e in (session.retellings or {}).items()):
         told = Retelling.model_validate(entry)
         if told.kept is not None:
             latest[told.scope] = (number, told.kept)
+    return latest
+
+
+def kept_rehearsals_of(session: IRSession) -> list[KeptRehearsal]:
+    return [
+        KeptRehearsal(
+            turn_number=number,
+            words=team_words_of(session, number),
+            from_other_session=False,
+        )
+        for number, _ in sorted(_latest_kept_of_each_scope(session).values(), key=lambda k: k[0])
+    ]
+
+
+async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
+    latest = _latest_kept_of_each_scope(session)
     ordered = sorted(latest.items(), key=lambda kept: kept[1][0])
     links = await asyncio.gather(
         *(
