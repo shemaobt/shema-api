@@ -36,11 +36,14 @@ class AwaitingSentence:
 
 
 class SentenceRefused(Exception):
-    def __init__(self, status_code: int, code: str, detail: str) -> None:
+    def __init__(
+        self, status_code: int, code: str, detail: str, frases: list[int] | None = None
+    ) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.code = code
         self.detail = detail
+        self.frases = frases
 
 
 def _not_wav(part: IRTake) -> SentenceRefused:
@@ -90,6 +93,14 @@ async def lay_in_a_sentence(
     base = pcm16(await store.get(part.storage_key) or b"")
     if base is None:
         raise _not_wav(part)
+    awaiting = await the_sentence_awaiting(db, session)
+    if awaiting is not None and awaiting.segment_id != segment.id:
+        raise SentenceRefused(
+            409,
+            "ANOTHER_SENTENCE_AWAITS",
+            f"Frase {awaiting.frase} awaits its translation; one sentence at a time",
+            frases=[awaiting.frase],
+        )
     sentence = pcm16(audio)
     if sentence is None or (sentence.rate, sentence.channels) != (base.rate, base.channels):
         raise SentenceRefused(

@@ -94,3 +94,27 @@ async def test_telling_the_new_sentence_at_its_own_span_ends_the_wait(
     assert (
         await the_sentence_awaiting(db_session, await get_session(db_session, session.id)) is None
     ), "a frase traduzida de novo continuava esperando"
+
+
+async def test_while_a_frase_awaits_no_other_frase_is_re_recorded_but_it_may_be_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((first, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    await re_record(client, session.id, middle.id, spoken(1.0), sentence_id="sentence-0005")
+
+    other = await re_record(client, session.id, first.id, spoken(1.0), sentence_id="sentence-0006")
+    again = await re_record(client, session.id, middle.id, spoken(0.5), sentence_id="sentence-0007")
+
+    assert other.status_code == 409, other.text
+    assert {key: other.json().get(key) for key in ("code", "frases")} == {
+        "code": "ANOTHER_SENTENCE_AWAITS",
+        "frases": [2],
+    }, "uma segunda frase era regravada com a primeira ainda sem tradução"
+    assert again.status_code == 200, again.text
+    assert [(one["starts_ms"], one["ends_ms"]) for one in again.json()["segments"]] == [
+        (0, 1000),
+        (1000, 1900),
+        (1900, 2900),
+    ], "a frase que espera não podia ser regravada de novo"

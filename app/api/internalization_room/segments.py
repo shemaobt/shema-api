@@ -237,7 +237,8 @@ router.add_api_route(
         },
         409: {
             "description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16; "
-            "`SENTENCE_ID_REUSED`: the id already names another recording"
+            "`SENTENCE_ID_REUSED`: the id already names another recording; "
+            "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation"
         },
         413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
     },
@@ -271,7 +272,9 @@ async def re_record_the_sentence(
     `SENTENCE_FORMAT_DIFFERS` (400) for a recording that is not WAV PCM16 at the part's own rate
     and channels, which is never resampled; `SENTENCE_ID_REUSED` (409) for a `sentence_id`
     already laid in with another recording or another frase. The same recording sent again
-    under its id is answered as it stands and laid in once.
+    under its id is answered as it stands and laid in once; `ANOTHER_SENTENCE_AWAITS` (409, with
+    `frases: [n]`) while another frase awaits its translation, one sentence at a time — the
+    awaiting frase itself may be recorded again.
     """
     try:
         audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
@@ -291,6 +294,7 @@ async def re_record_the_sentence(
     except SentenceRefused as refused:
         return JSONResponse(
             status_code=refused.status_code,
-            content={"detail": refused.detail, "code": refused.code},
+            content={"detail": refused.detail, "code": refused.code}
+            | ({"frases": refused.frases} if refused.frases is not None else {}),
         )
     return SentenceLaidInResponse(session_id=session.id, segments=await _units(db, session.id))
