@@ -22,6 +22,7 @@ import pytest
 from app.services import internalization_room as room
 from app.services.internalization_room import _default_prompts, canon, fail_safe, name_check
 from app.services.internalization_room.canon import (
+    accepted_readings,
     book_material,
     elements,
     kept,
@@ -36,8 +37,8 @@ def forget_the_canon() -> None:
     parse_map.load_map.cache_clear()
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
-    book_material._register_complete.cache_clear()
     book_material.significant_absences.cache_clear()
+    accepted_readings.accepted_readings_of.cache_clear()
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
     labels._known_pericopes.cache_clear()
@@ -200,18 +201,10 @@ _A_RULE = {
 }
 
 
-def _a_fable_log(audit: list[dict], checklist: dict | None = None) -> str:
+def _a_fable_log(audit: list[dict]) -> str:
     body: dict = {"high_risk_register_audit": audit}
-    if checklist is not None:
-        body["validation_checklist"] = checklist
     return "# COMPILATION LOG\n\n" + json.dumps(body, indent=2) + "\n"
 
 
 A_FABLE_LOG_WITH_A_LAYER = _a_fable_log([_A_RULE])
 A_FABLE_LOG_WITHOUT_ONE = _a_fable_log([])
-A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE], {"high_risk_register_complete": True}
-)
-A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE], {"high_risk_register_complete": False}
-)

@@ -107,8 +107,8 @@ def her_sessions(tmp_path: Path) -> Path:
     )
     _script(
         sessions,
-        "J01-frame-before-elicit",
-        "J01",
+        "Q01-a-passage-nobody-vendored",
+        "Q01",
         [{"kickoff": True, "expect": {"no_fail_safe": True}}],
     )
     return sessions
@@ -146,11 +146,11 @@ async def test_one_command_plays_every_session_and_a_refused_one_does_not_stop_t
         (0, GUIDE_LINE, "pass", []),
         (1, GUIDE_LINE, "pass", ["verbatim repeat of the previous guide turn"]),
     ], "a sessão de Rute foi tocada inteira, com o check mecânico dela por turno"
-    assert not list(out.glob("J01-frame-before-elicit.*")), (
-        "a sessão de Jonas não abriu: este cânon só tem Rute, e nada dela é um relatório"
+    assert not list(out.glob("Q01-a-passage-nobody-vendored.*")), (
+        "a sessão da Q01 não abriu: nenhum mapa dela foi vendorado, e nada dela é um relatório"
     )
     readme = (out / "README.md").read_text(encoding="utf-8")
-    assert "| J01-frame-before-elicit | — | recusada | 400 " in readme, (
+    assert "| Q01-a-passage-nobody-vendored | — | recusada | 400 " in readme, (
         "a recusa é uma linha do README, não o fim da rodada"
     )
     row = (
@@ -331,11 +331,89 @@ def test_the_readme_adds_the_money_up_by_role_and_times_the_voice_apart_from_the
         "|---|---|---|---|\n"
         "| P01-understand-first | PASS | 0 |  |\n"
         "\n"
+        "Reenvios do Validador em turnos com leituras aceitas: 0.\n"
         "Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ 0.61 — classifier "
         "US$ 0.01 · guide US$ 0.50 · validator US$ 0.10.\n"
         "Latência Guia+Validador por turno: 15 a 33 s (mediana ≈ 24 s); turno inteiro, com o "
         "classificador em linha: 17 a 33 s (mediana ≈ 25 s).\n"
     ), "o README é o dela: a linha do veredito, a tabela, o dinheiro e o relógio"
+
+
+def test_the_readme_adds_the_send_backs_of_every_session_into_one_line() -> None:
+    def turn(idx: int, send_backs: int) -> golden_runner.Played:
+        return golden_runner.Played(
+            idx=idx,
+            team="Oi.",
+            guide=GUIDE_LINE,
+            outcome="pass",
+            acceptedSendBacks=send_backs,
+        )
+
+    results = [
+        golden_runner.SessionResult(
+            "P11-a-telling-checked", "s-1", [turn(0, 0), turn(1, 1)], verdict=_approving()
+        ),
+        golden_runner.SessionResult(
+            "P13-a-telling-checked", "s-2", [turn(0, 0), turn(1, 2)], verdict=_approving()
+        ),
+    ]
+
+    readme = golden_runner.summary(
+        results,
+        base_url="http://127.0.0.1:8047/api/internalization-room/text-seam/",
+        stamp="2026-10-15T18-00-00",
+        tip="9c4e2b34",
+        pins="roteiros e doutrina no pin `533b6e3` · cânon `7372ec0`",
+    )
+
+    assert "\nReenvios do Validador em turnos com leituras aceitas: 3.\n" in readme, (
+        "o README não somava os reenvios das duas sessões numa linha só"
+    )
+
+
+def _sessions_drawing(*send_backs: int) -> list[golden_runner.SessionResult]:
+    return [
+        golden_runner.SessionResult(
+            f"P11-session-{at}",
+            f"s-{at}",
+            [
+                golden_runner.Played(
+                    idx=0,
+                    team="Oi.",
+                    guide=GUIDE_LINE,
+                    outcome="pass",
+                    acceptedSendBacks=drawn,
+                )
+            ],
+            verdict=_approving(),
+        )
+        for at, drawn in enumerate(send_backs)
+    ]
+
+
+def test_the_run_prints_the_send_backs_of_every_session_before_it_says_how_many_passed(
+    tmp_path: Path, capsys
+) -> None:
+    golden_runner.close(
+        _sessions_drawing(1, 2), out=tmp_path, base_url="http://room/", stamp="2026-10-15T18-00-00"
+    )
+
+    shown = capsys.readouterr().out
+    line = "\nValidator send-backs on turns with accepted readings: 3\n"
+    assert line in shown, "a rodada não imprimia a soma dos reenvios das duas sessões"
+    assert shown.index(line) < shown.index("2/2 golden sessions pass"), (
+        "a soma dos reenvios vem antes da linha que diz quantas sessões passaram"
+    )
+
+
+def test_the_run_prints_a_zero_when_no_session_drew_a_send_back(tmp_path: Path, capsys) -> None:
+    golden_runner.close(
+        _sessions_drawing(0, 0), out=tmp_path, base_url="http://room/", stamp="2026-10-15T18-00-00"
+    )
+
+    assert (
+        "\nValidator send-backs on turns with accepted readings: 0\n" in capsys.readouterr().out
+    ), "sem reenvios a rodada calava, e quem lê não distingue zero de não contado"
 
 
 def test_a_rung_the_table_never_priced_still_leaves_the_clock_in_the_readme() -> None:
@@ -583,6 +661,42 @@ async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_
         "juiz: turn 1 · blocker · redirect_on_request_to_understand |"
     ) in readme, "a coluna mecânica vem do JSON exportado, o juiz da chamada de agora"
     assert exit_code == 1
+
+
+async def test_a_run_judged_again_carries_the_send_backs_its_export_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    earlier = tmp_path / "2026-10-15"
+    earlier.mkdir()
+    _export(earlier, "P11-a-telling-checked")
+    path = earlier / "P11-a-telling-checked.2026-09-16T21-13-26.json"
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    recorded["turns"][0]["acceptedSendBacks"] = 2
+    path.write_text(json.dumps(recorded), encoding="utf-8")
+    out = tmp_path / "2026-10-15-rejulgado"
+
+    await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    assert "\nReenvios do Validador em turnos com leituras aceitas: 2.\n" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), "rejulgar um relatório zerava os reenvios que ele registrou"
+
+
+async def test_a_run_judged_again_from_an_export_older_than_the_count_reads_it_as_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    earlier = tmp_path / "2026-09-16"
+    earlier.mkdir()
+    _export(earlier, "P01-understand-first")
+    out = tmp_path / "2026-09-16-rejulgado"
+
+    await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    assert "\nReenvios do Validador em turnos com leituras aceitas: 0.\n" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), "um relatório anterior à contagem derrubava o rejulgamento"
 
 
 async def test_a_rejudge_refuses_to_write_over_the_run_it_reads(

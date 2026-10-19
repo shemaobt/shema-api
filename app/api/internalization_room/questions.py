@@ -169,6 +169,9 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
         status=str(question.status),
         heard_at=_moment(question.heard_at),
         audio_url=facilitator_audio_url(question.audio_key),
+        reply_audio_url=(
+            facilitator_audio_url(question.reply_audio_key) if question.reply_audio_key else None
+        ),
         duration_ms=question.duration_ms,
         transcript=question.transcript,
         asked_at=_stamp(question.created_at),
@@ -256,6 +259,27 @@ async def listen_to_question(
         raise NotFoundError("No such recording")
     await db.commit()
     signed = await service.listen_address(question.audio_key)
+    return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
+
+
+@router.get(
+    "/facilitator/questions/{question_id}/reply/audio",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_reply(
+    question_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> QuestionAudioResponse:
+    """Hand back a short-lived signed address for the current reply, as the question's route does.
+
+    The Desk draws `<audio src=...>` for «Ouvir a resposta», and a media element sends no
+    headers, so the authenticated request is the caller's and the element is pointed at
+    storage. A reply recorded again replaces the key, so what plays is always the latest.
+    """
+    question = await service.get_question_for_reader(db, user, question_id)
+    if not question.reply_audio_key:
+        raise NotFoundError("No such reply")
+    await db.commit()
+    signed = await service.listen_address(question.reply_audio_key)
     return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
 
 

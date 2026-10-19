@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NoWordsHeard, UpstreamServiceError, ValidationError
@@ -63,6 +63,18 @@ def _mother_tongue_floor() -> float:
     return get_settings().internalization_room_mother_tongue_floor
 
 
+class SentSceneRehearsal(BaseModel):
+    """The scene rehearsal a **Rehearsal turn** carries: which one, how many live frases, and the
+    scene label as it stood at sending, which the voice is never handed."""
+
+    model_config = ConfigDict(frozen=True)
+
+    rehearsal_id: str
+    n: int
+    frases: int
+    scene: str | None
+
+
 class HeardSpeech(BaseModel):
     """A transcript plus the trusted transport facts the comprehension flow reads.
 
@@ -104,6 +116,8 @@ class HeardSpeech(BaseModel):
     #: when the tablet sent no position. Meaningful only when ``interrupted``.
     interrupted_at_ms: int = 0
     interrupted_of_ms: int | None = None
+    #: The scene rehearsal this turn sends in place of a take; ``text`` is then its frases' words.
+    scene_rehearsal: SentSceneRehearsal | None = None
 
     @property
     def mother_tongue(self) -> bool:

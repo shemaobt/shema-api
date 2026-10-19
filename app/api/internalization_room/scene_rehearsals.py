@@ -5,22 +5,28 @@ door is the facilitator's, and still reads a rehearsal its Zerar archived (ADR 0
 """
 
 import uuid
+from functools import partial
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
+from app.api.internalization_room.sessions import draft_the_turn
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.db.models.internalization_room import (
     IRSceneFrase,
     IRSceneRehearsal,
     IRSceneRestart,
     IRSession,
+    IRSessionStatus,
 )
 from app.models.internalization_room import (
     HeldAttemptView,
+    PassageScenesResponse,
+    PassageSceneView,
     ReaderSceneFraseView,
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
@@ -29,11 +35,15 @@ from app.models.internalization_room import (
     SceneRehearsalView,
     SceneRestartSnapshot,
     SceneRestartView,
+    TurnResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room import scene_rehearsals as scenes
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.part_names import passage_scenes
 from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
+from app.services.internalization_room.turn_dedup import answer_once, answered_turn
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
@@ -64,12 +74,17 @@ def _recorded_at(rehearsal: IRSceneRehearsal) -> str:
     return as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else ""
 
 
-def _sent_at(rehearsal: IRSceneRehearsal) -> str | None:
-    return as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None
+def _sent_at(rehearsal: IRSceneRehearsal, sent: set[str]) -> str | None:
+    if rehearsal.sent_at is None or rehearsal.id not in sent:
+        return None
+    return as_utc(rehearsal.sent_at).isoformat()
 
 
 def _view(
-    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+    rehearsal: IRSceneRehearsal,
+    frases: list[IRSceneFrase],
+    restarts: list[IRSceneRestart],
+    sent: set[str],
 ) -> SceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return SceneRehearsalView(
@@ -83,7 +98,7 @@ def _view(
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
-        sent_at=_sent_at(rehearsal),
+        sent_at=_sent_at(rehearsal, sent),
         after_restart=scenes.current_attempt(restarts),
         frases=[_frase_view(frase, replacing) for frase in frases],
     )
@@ -105,6 +120,7 @@ def _reader_view(
     restarts: list[IRSceneRestart],
     set_aside: dict[str, list[IRSceneFrase]],
     held: dict[str, list[IRSceneFrase]],
+    sent: set[str],
 ) -> ReaderSceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return ReaderSceneRehearsalView(
@@ -118,7 +134,7 @@ def _reader_view(
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
-        sent_at=_sent_at(rehearsal),
+        sent_at=_sent_at(rehearsal, sent),
         after_restart=scenes.current_attempt(restarts),
         frases=[_reader_frase_view(frase, replacing) for frase in frases],
         scene_guess=rehearsal.scene_guess,
@@ -139,7 +155,8 @@ def _reader_view(
 async def _the_record(db: AsyncSession, rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
     restarts = await scenes.restarts_of(db, [rehearsal.id])
     frases = await scenes.frases_of(db, restarts)
-    return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+    sent = await scenes.sent_ones(db, [rehearsal])
+    return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], sent)
 
 
 async def _session(db: AsyncSession, session_id: str, project_id: str) -> IRSession:
@@ -191,12 +208,33 @@ async def list_scene_rehearsals(
     ids = [rehearsal.id for rehearsal in rehearsals]
     restarts = await scenes.restarts_of(db, ids)
     frases = await scenes.frases_of(db, restarts)
+    sent = await scenes.sent_ones(db, rehearsals)
     return SceneRehearsalsResponse(
         pericope=session.pericope,
         scene_rehearsals=[
-            _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+            _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], sent)
             for rehearsal in rehearsals
         ],
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/scenes",
+    response_model=PassageScenesResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def list_passage_scenes(
+    session_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> PassageScenesResponse:
+    """The session's scenes in passage order, titled in its language; a panorama has none."""
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    return PassageScenesResponse(
+        scenes=[
+            PassageSceneView(scene_id=scene_id, title=title)
+            for scene_id, title in passage_scenes(session)
+        ]
     )
 
 
@@ -219,6 +257,28 @@ async def listen_to_scene_rehearsal(
     return RedirectResponse(
         await listen_url(rehearsal), status_code=status.HTTP_307_TEMPORARY_REDIRECT
     )
+
+
+@router.get(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+    dependencies=[linked_tablet_dep],
+)
+async def listen_to_scene_frase(
+    session_id: str,
+    rehearsal_id: str,
+    frase_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """A frase's own audio, any frase of the rehearsal, on any tablet of the team."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    frase = await scenes.frase_in_rehearsal(db, rehearsal, frase_id)
+    await db.commit()
+    return RedirectResponse(await listen_url(frase), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.post(
@@ -281,6 +341,100 @@ async def restart_scene_translation(
     return await _the_record(db, rehearsal)
 
 
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/scene",
+    response_model=SceneRehearsalView,
+    dependencies=[linked_tablet_dep],
+)
+async def label_scene_rehearsal(
+    session_id: str,
+    rehearsal_id: str,
+    scene: str = Form(...),
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SceneRehearsalView:
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    with reading_the_canon_of(session.canon_pin):
+        labelled = await scenes.label_the_scene(db, rehearsal, scene)
+    return await _the_record(db, labelled)
+
+
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send",
+    response_model=TurnResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def send_scene_rehearsal(
+    session_id: str,
+    rehearsal_id: str,
+    background: BackgroundTasks,
+    turn_id: str = Form(..., max_length=64),
+    closes: uuid.UUID | None = Form(default=None),
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TurnResponse:
+    """«terminei»: the scene's translation reaches the voice as a **Rehearsal turn**.
+
+    The tablet sends the rehearsal by reference under a turn id it minted, naming the attempt it
+    closes as a restart does (none before any restart). A resend under that turn id hears the
+    first reply, read before the rehearsal is (ADR 0043); any other turn id is refused while
+    another send stands (ADR 0063).
+    """
+    await db.commit()
+    return await answer_once(
+        session_id,
+        turn_id,
+        project_id,
+        partial(
+            _send,
+            session_id=session_id,
+            rehearsal_id=rehearsal_id,
+            turn_id=turn_id,
+            closes=None if closes is None else str(closes),
+            project_id=project_id,
+            background=background,
+        ),
+    )
+
+
+async def _send(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    rehearsal_id: str,
+    turn_id: str,
+    closes: str | None,
+    project_id: str,
+    background: BackgroundTasks,
+) -> TurnResponse:
+    replay = await answered_turn(db, session_id, turn_id, project_id)
+    if replay is not None:
+        return TurnResponse(**replay)
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+    return await scenes.send_the_scene_rehearsal(
+        db,
+        session,
+        rehearsal,
+        turn_id=turn_id,
+        closes=closes,
+        project_id=project_id,
+        bound_s=bound_s,
+        draft=partial(
+            draft_the_turn,
+            db,
+            session,
+            background=background,
+            opening=False,
+            halted=session.status is IRSessionStatus.NEEDS_PERSON,
+            bound_s=bound_s,
+        ),
+    )
+
+
 @router.get(
     "/facilitator/sessions/{session_id}/scene-rehearsals",
     response_model=ReaderSceneRehearsalsResponse,
@@ -296,6 +450,7 @@ async def facilitator_scene_rehearsals(
     frases = await scenes.frases_of(db, restarts)
     set_aside = await scenes.set_aside_frases(db, ids)
     held = await scenes.held_frases(db, restarts)
+    sent = await scenes.sent_ones(db, rehearsals)
     return ReaderSceneRehearsalsResponse(
         session_id=session.id,
         scene_rehearsals=[
@@ -305,6 +460,7 @@ async def facilitator_scene_rehearsals(
                 restarts[rehearsal.id],
                 set_aside,
                 held[rehearsal.id],
+                sent,
             )
             for rehearsal in rehearsals
         ],

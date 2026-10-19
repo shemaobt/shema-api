@@ -59,7 +59,9 @@ async def test_with_scene_one_closed_no_line_the_guide_reads_points_at_an_open_s
 
     read = recording.guide[0].partition(CACHE_BREAK)[2].splitlines()
     pointing = [
-        line for line in read if re.search(r"\bS[234]\b", line) and not line.startswith("  ")
+        line
+        for line in read
+        if re.search(r"\bS[234]\b", line) and not line.startswith(("  ", "SCENE REHEARSALS:"))
     ]
     assert pointing == [], (
         "o ledger apontava a primeira cena com contas abertas, e a voz ia para lá"

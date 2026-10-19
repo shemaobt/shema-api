@@ -46,7 +46,12 @@ from app.services.internalization_room.background import (
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.earlier_passages import earlier_passages_due
-from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
+from app.services.internalization_room.hearing import (
+    HeardSpeech,
+    SentSceneRehearsal,
+    heard_speech,
+    stop_hearing,
+)
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
@@ -102,6 +107,8 @@ async def _write_the_turn(
     *,
     outcome: room.TurnOutcome,
     opening: bool,
+    scene_rehearsal: SentSceneRehearsal | None = None,
+    scene_rehearsals: list[str] | None = None,
 ) -> IRSession:
     with stage("db_write"):
         if opening:
@@ -123,6 +130,8 @@ async def _write_the_turn(
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
             commit=False,
+            scene_rehearsal=scene_rehearsal,
+            scene_rehearsals=scene_rehearsals,
         )
         hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
         return session
@@ -388,6 +397,7 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
+        after=previous,
     )
     await clear_needs_person(db, caller.id)
     nudge(session.project_id, "halts")
@@ -783,7 +793,7 @@ async def _answer_the_turn(
         deadline=deadline,
         bound_s=bound_s,
         draft=partial(
-            _draft_the_turn,
+            draft_the_turn,
             db,
             session,
             background=background,
@@ -794,7 +804,7 @@ async def _answer_the_turn(
     )
 
 
-async def _draft_the_turn(
+async def draft_the_turn(
     db: AsyncSession,
     session: IRSession,
     *,
@@ -806,6 +816,73 @@ async def _draft_the_turn(
     deadline: float,
     bound_s: float,
 ) -> TurnResponse:
+    reply, outcome, language = await _keep_the_turn(
+        db,
+        session,
+        background=background,
+        turn_id=turn_id,
+        opening=opening,
+        halted=halted,
+        speech_heard=speech_heard,
+        deadline=deadline,
+        bound_s=bound_s,
+    )
+    if outcome is None:
+        return reply
+    uploads: list[Upload] = []
+    try:
+        with stage("voice"):
+            await _voice_the_turn(outcome, language=language, uploads=uploads)
+    except Exception as error:
+        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
+    try:
+        await _upload(uploads)
+    except Exception as error:
+        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
+    return reply
+
+
+async def draft_the_turn_as_text(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+    scene_rehearsals: list[str] | None = None,
+) -> TurnResponse:
+    reply, _outcome, _language = await _keep_the_turn(
+        db,
+        session,
+        background=background,
+        turn_id=turn_id,
+        opening=opening,
+        halted=halted,
+        speech_heard=speech_heard,
+        deadline=deadline,
+        bound_s=bound_s,
+        scene_rehearsals=scene_rehearsals,
+    )
+    return reply
+
+
+async def _keep_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+    scene_rehearsals: list[str] | None = None,
+) -> tuple[TurnResponse, room.TurnOutcome | None, str]:
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
@@ -831,7 +908,7 @@ async def _draft_the_turn(
             )
         await db.commit()
         nudge(team_id, "sessions")
-        return reply
+        return reply, None, session.language
 
     if opening:
         with stage("db_let_go"):
@@ -864,11 +941,19 @@ async def _draft_the_turn(
                     guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
                     validator_prompt=validator_prompt,
                     settings=get_settings(),
+                    scene_rehearsals=scene_rehearsals,
                 )
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
+    session = await _write_the_turn(
+        db,
+        session,
+        outcome=outcome,
+        opening=opening,
+        scene_rehearsal=speech_heard.scene_rehearsal,
+        scene_rehearsals=scene_rehearsals,
+    )
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -913,15 +998,4 @@ async def _draft_the_turn(
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            await _voice_the_turn(outcome, language=session.language, uploads=uploads)
-    except Exception as error:
-        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
-    try:
-        await _upload(uploads)
-    except Exception as error:
-        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
-    return reply
+    return reply, outcome, session.language

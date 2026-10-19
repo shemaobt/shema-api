@@ -8,18 +8,21 @@ and a run against hers are read by the same judge from the same shape.
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import golden_doors, router
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
+from app.db.models.internalization_room import IRSceneRehearsal
 from scripts.golden_runner import (
     Played,
     export,
@@ -29,6 +32,7 @@ from scripts.golden_runner import (
     open_session,
     play,
 )
+from tests.hearing_harness import nothing_settles
 from tests.text_seam_harness import (
     BEARER,
     GUIDE_LINE,
@@ -215,10 +219,50 @@ async def test_the_runner_sends_her_earlier_passages_her_rehearsal_and_the_scene
             "earlierPassages": {"P01": "approved", "P02": "not_worked"},
         },
     ), "a sessão abria sem o estado das passagens anteriores que o roteiro dela fixa"
-    assert [body.get("sceneRehearsals") for _door, body in sent[1:]] == [None, ["S1"], ["S1"]], (
-        "a lista de cenas ensaiadas segue de um turno para o outro, como no driver dela"
-    )
+    assert [body.get("sceneRehearsals") for door, body in sent[1:] if door == "turn"] == [
+        None,
+        ["S1"],
+    ], "a lista de cenas ensaiadas segue de um turno para o outro, como no driver dela"
     assert played[1].team == REHEARSAL_TEXT, "o turno de ensaio chegava ao Guia como texto vazio"
+
+
+async def test_the_runner_keeps_her_rehearsal_and_sends_it_under_a_turn_id_it_minted(
+    seam, tmp_path, monkeypatch, db_session: AsyncSession
+) -> None:
+    agent = the_models_answer(monkeypatch)
+    nothing_settles(monkeypatch)
+    doors: list[tuple[str, dict[str, Any]]] = []
+
+    async def _seen(request: httpx.Request) -> None:
+        doors.append((request.url.path.rsplit("/golden/", 1)[-1], json.loads(request.content)))
+
+    seam.event_hooks["request"].append(_seen)
+    script = load_script(_her_rehearsing_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+
+    await play(script, seam, session_id=session_id, played=played)
+
+    assert [door for door, _body in doors] == [
+        "session",
+        "turn",
+        "rehearsal",
+        "rehearsal/send",
+        "turn",
+    ]
+    _door, kept = doors[2]
+    assert kept == {
+        "sessionId": session_id,
+        "sceneId": "S1",
+        "pieces": ["Noemi disse: voltem.", " Rute ficou com ela. "],
+    }
+    _door, sent = doors[3]
+    minted = sent["turnId"]
+    assert str(uuid.UUID(minted)) == minted
+    stamped = await db_session.scalar(select(IRSceneRehearsal.sent_turn_id))
+    assert stamped == minted
+    assert agent.guide_inputs[1] == REHEARSAL_TEXT
+    assert played[1].team == REHEARSAL_TEXT
 
 
 async def test_the_judge_reads_what_the_app_told_the_guide_as_her_app_status_lines(
@@ -448,3 +492,163 @@ async def test_the_runner_steps_her_moment_from_every_reply_as_her_http_driver_d
         "fechamento passa à cena 2 só porque a cena 1 voltou, o ensaio sem marca de agora passa à "
         "3, reabrir a 3 pra entender não é abrir a próxima, e a cena 4 aberta na 3 é cedo demais"
     )
+
+
+def _her_checking_script(tmp_path: Path) -> Path:
+    path = tmp_path / "P11-a-telling-checked.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P11-a-telling-checked",
+                "pericopeId": "P11",
+                "language": "Brazilian Portuguese",
+                "why": "a scene 4 telling that gives the sandal to Boaz",
+                "turns": [
+                    {"kickoff": True},
+                    {
+                        "rehearsal": {
+                            "pieces": ["Ele tirou a sandália e deu pro Boaz."],
+                            "sceneId": "S4",
+                        },
+                        "sceneRehearsals": ["S4"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+async def test_the_export_shows_the_accepted_ids_beside_the_turn_that_handed_the_guide_readings(
+    seam, tmp_path, monkeypatch
+) -> None:
+    the_models_answer(monkeypatch)
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+
+    report, _transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    turns = json.loads(report.read_text(encoding="utf-8"))["turns"]
+    assert [turn["acceptedIds"] for turn in turns] == [[], ["R5"]], (
+        "o relatório não dizia, ao lado do turno, quais leituras aceitas o Guia recebeu"
+    )
+
+
+async def test_the_judge_reads_the_same_transcript_of_a_checking_turn_whether_or_not_ids_are_shown(
+    seam, tmp_path, monkeypatch
+) -> None:
+    agent = the_models_answer(monkeypatch)
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+    _report, transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    status = "APP STATUS (what the app told the guide this turn): "
+    scenes = (
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        "S4. Parts with none: S1, S2, S3."
+    )
+    block = (
+        f"[turn 0]\nTEAM: {agent.guide_inputs[0]}\nGUIDE (pass): {GUIDE_LINE}\n\n"
+        f"[turn 1]\n{status}{scenes}\nTEAM: {agent.guide_inputs[1]}\nGUIDE (pass): {GUIDE_LINE}"
+    )
+    assert judge_transcript(played) == block
+    assert transcript.read_text(encoding="utf-8") == block + "\n"
+    assert played[1].acceptedIds == ["R5"]
+
+
+def _the_validator_sends_the_draft_back() -> str:
+    return json.dumps(
+        {
+            "verdict": "regenerate",
+            "issues": [
+                {
+                    "claim": "deu a sandália ao Boaz",
+                    "problem": "invented_detail",
+                    "explanation": "o mapa não diz",
+                }
+            ],
+        }
+    )
+
+
+async def test_the_export_shows_how_many_send_backs_the_turn_drew_beside_the_readings_it_was_handed(
+    seam, tmp_path, monkeypatch
+) -> None:
+    the_models_answer(
+        monkeypatch, None, None, None, _the_validator_sends_the_draft_back(), None, None
+    )
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+
+    report, _transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    turns = json.loads(report.read_text(encoding="utf-8"))["turns"]
+    assert [turn["acceptedSendBacks"] for turn in turns] == [0, 1], (
+        "o relatório não dizia, ao lado do turno, quantos reenvios do Validador ele sofreu"
+    )
+    assert turns[1]["acceptedIds"] == ["R5"]
+
+
+async def test_the_judge_reads_the_same_transcript_of_a_turn_the_validator_sent_back(
+    seam, tmp_path, monkeypatch
+) -> None:
+    agent = the_models_answer(
+        monkeypatch, None, None, None, _the_validator_sends_the_draft_back(), None, None
+    )
+    nothing_settles(monkeypatch)
+    script = load_script(_her_checking_script(tmp_path))
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+    _report, transcript = export(
+        script,
+        session_id=session_id,
+        base_url=str(seam.base_url),
+        played=played,
+        out=tmp_path / "reports",
+        stamp="2026-10-15T03-00-00",
+    )
+
+    status = "APP STATUS (what the app told the guide this turn): "
+    scenes = (
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        "S4. Parts with none: S1, S2, S3."
+    )
+    block = (
+        f"[turn 0]\nTEAM: {agent.guide_inputs[0]}\nGUIDE (pass): {GUIDE_LINE}\n\n"
+        f"[turn 1]\n{status}{scenes}\nTEAM: {agent.guide_inputs[1]}\nGUIDE (pass): {GUIDE_LINE}"
+    )
+    assert played[1].acceptedSendBacks == 1
+    assert judge_transcript(played) == block
+    assert transcript.read_text(encoding="utf-8") == block + "\n"

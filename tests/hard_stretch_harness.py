@@ -94,10 +94,16 @@ class Facilitator:
 
 
 async def a_session(
-    db: AsyncSession, *, team_id: str | None = TABLET_TEAM, language: str | None = None
+    db: AsyncSession,
+    *,
+    team_id: str | None = TABLET_TEAM,
+    language: str | None = None,
+    pericope: str = P,
 ) -> str:
     """A session, named by its id: the reads below expire the identity map."""
-    session = await room.create_session(db, pericope=P, project_id=team_id, language=language)
+    session = await room.create_session(
+        db, pericope=pericope, project_id=team_id, language=language
+    )
     return str(session.id)
 
 

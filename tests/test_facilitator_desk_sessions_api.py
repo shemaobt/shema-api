@@ -14,6 +14,7 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     grant_facilitator_app_role,
+    grant_room_app_role,
     keep_a_take,
     make_language,
     make_project,
@@ -484,3 +485,241 @@ async def test_the_desk_sessions_route_does_not_put_a_panorama_first_after_its_b
         (spoken.id, "2026-10-09T12:05:00Z"),
         (panorama.id, "2026-10-09T12:00:00Z"),
     ]
+
+
+async def a_consultant(db: AsyncSession) -> dict[str, str]:
+    user = await make_user(db, email="consultora@example.com")
+    await grant_room_app_role(db, user.id, "consultant")
+    return await auth_header(db, user)
+
+
+def ids(answer: dict) -> list[str]:
+    return [item["session_id"] for item in answer["sessions"]]
+
+
+async def test_asked_for_one_team_and_one_passage_only_that_teams_sessions_of_that_passage_come_newest_activity_first(  # noqa: E501
+    client, db_session
+):
+    team_a = await a_team(db_session, "Equipe A")
+    team_b = await a_team(db_session, "Equipe B")
+    headers = await a_facilitator_of(db_session, team_a, team_b, email="fac@example.com")
+    older = await a_session(db_session, team_a, pericope="P01", last_activity=NOON)
+    newer = await a_session(
+        db_session, team_a, pericope="P01", last_activity=NOON + timedelta(minutes=2)
+    )
+    await a_session(db_session, team_b, pericope="P01", last_activity=NOON + timedelta(minutes=1))
+
+    answer = await read(client, headers, team_id=team_a.id, pericope="P01")
+
+    assert ids(answer) == [newer.id, older.id]
+
+
+async def test_both_languages_of_the_passage_come_each_with_its_language(client, db_session):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    await a_session(db_session, team, pericope="P01", language="pt", last_activity=NOON)
+    await a_session(
+        db_session,
+        team,
+        pericope="P01",
+        language="en",
+        last_activity=NOON + timedelta(minutes=1),
+    )
+    await a_session(
+        db_session, team, pericope="P02", language="en", last_activity=NOON + timedelta(minutes=2)
+    )
+
+    answer = await read(client, headers, team_id=team.id, pericope="P01")
+
+    assert [item["language"] for item in answer["sessions"]] == ["en", "pt"]
+
+
+async def test_another_passages_sessions_are_absent(client, db_session):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    wanted = await a_session(db_session, team, pericope="P01")
+    await a_session(db_session, team, pericope="P02", last_activity=NOON + timedelta(minutes=1))
+
+    answer = await read(client, headers, team_id=team.id, pericope="P01")
+
+    assert ids(answer) == [wanted.id]
+
+
+async def test_asked_for_the_panorama_only_the_panoramas_sessions_come(client, db_session):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    panorama = await a_session(db_session, team, pericope="OV-Ruth")
+    await a_session(db_session, team, pericope="P01", last_activity=NOON + timedelta(minutes=1))
+
+    answer = await read(client, headers, team_id=team.id, pericope="OV-Ruth")
+
+    assert ids(answer) == [panorama.id]
+
+
+async def test_without_filters_the_answer_is_todays(client, db_session):
+    team_a = await a_team(db_session, "Equipe A")
+    team_b = await a_team(db_session, "Equipe B")
+    headers = await a_facilitator_of(db_session, team_a, team_b, email="fac@example.com")
+    first = await a_session(db_session, team_a, pericope="P01", last_activity=NOON)
+    second = await a_session(
+        db_session, team_b, pericope="P01", last_activity=NOON + timedelta(minutes=1)
+    )
+    third = await a_session(
+        db_session, team_a, pericope="P02", last_activity=NOON + timedelta(minutes=2)
+    )
+
+    answer = await read(client, headers)
+
+    assert ids(answer) == [third.id, second.id, first.id]
+
+
+async def test_a_closed_passages_sessions_are_listed(client, db_session):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    closed = await a_session(db_session, team, pericope="P01")
+    await a_release(db_session, closed)
+    await a_session(db_session, team, pericope="P02", last_activity=NOON + timedelta(minutes=1))
+
+    [item] = (await read(client, headers, team_id=team.id, pericope="P01"))["sessions"]
+
+    assert (item["session_id"], item["has_release"]) == (closed.id, True)
+
+
+async def test_the_team_filter_alone_lists_that_teams_sessions_of_every_passage(client, db_session):
+    team_a = await a_team(db_session, "Equipe A")
+    team_b = await a_team(db_session, "Equipe B")
+    headers = await a_facilitator_of(db_session, team_a, team_b, email="fac@example.com")
+    on_p01 = await a_session(db_session, team_a, pericope="P01", last_activity=NOON)
+    on_p02 = await a_session(
+        db_session, team_a, pericope="P02", last_activity=NOON + timedelta(minutes=1)
+    )
+    await a_session(db_session, team_b, pericope="P01", last_activity=NOON + timedelta(minutes=2))
+
+    answer = await read(client, headers, team_id=team_a.id)
+
+    assert ids(answer) == [on_p02.id, on_p01.id]
+
+
+async def test_the_passage_filter_alone_lists_every_readable_teams_sessions_of_that_passage(
+    client, db_session
+):
+    team_a = await a_team(db_session, "Equipe A")
+    team_b = await a_team(db_session, "Equipe B")
+    team_c = await a_team(db_session, "Equipe C")
+    headers = await a_facilitator_of(db_session, team_a, team_b, email="fac@example.com")
+    of_a = await a_session(db_session, team_a, pericope="P01", last_activity=NOON)
+    of_b = await a_session(
+        db_session, team_b, pericope="P01", last_activity=NOON + timedelta(minutes=1)
+    )
+    await a_session(db_session, team_c, pericope="P01", last_activity=NOON + timedelta(minutes=2))
+    await a_session(db_session, team_a, pericope="P02", last_activity=NOON + timedelta(minutes=3))
+
+    answer = await read(client, headers, pericope="P01")
+
+    assert ids(answer) == [of_b.id, of_a.id]
+
+
+async def test_a_team_the_reader_does_not_read_answers_team_not_found(client, db_session):
+    team_a = await a_team(db_session, "Equipe A")
+    team_b = await a_team(db_session, "Equipe B")
+    headers = await a_facilitator_of(db_session, team_a, email="fac@example.com")
+    await a_session(db_session, team_b)
+
+    unreadable = await client.get(URL, headers=headers, params={"team_id": team_b.id})
+    unknown = await client.get(URL, headers=headers, params={"team_id": "no-team-has-this-id"})
+
+    assert (unreadable.status_code, unknown.status_code) == (404, 404)
+    assert unreadable.json() == unknown.json()
+    assert unreadable.json()["detail"] == "Team not found"
+
+
+async def test_a_consultant_filters_any_team(client, db_session):
+    team_b = await a_team(db_session, "Equipe B")
+    team_c = await a_team(db_session, "Equipe C")
+    consultant = await a_consultant(db_session)
+    of_b = await a_session(db_session, team_b, pericope="P01")
+    await a_session(db_session, team_c, pericope="P01", last_activity=NOON + timedelta(minutes=1))
+
+    answer = await read(client, consultant, team_id=team_b.id)
+
+    assert ids(answer) == [of_b.id]
+
+
+async def test_paging_continues_inside_the_filtered_list(client, db_session):
+    team_a = await a_team(db_session, "Equipe A")
+    team_b = await a_team(db_session, "Equipe B")
+    headers = await a_facilitator_of(db_session, team_a, team_b, email="fac@example.com")
+    of_a = [
+        await a_session(
+            db_session, team_a, pericope="P01", last_activity=NOON + timedelta(minutes=minute)
+        )
+        for minute in range(60)
+    ]
+    for minute in range(3):
+        await a_session(
+            db_session, team_b, pericope="P01", last_activity=NOON + timedelta(minutes=minute * 30)
+        )
+    newest_first = [session.id for session in reversed(of_a)]
+
+    first = await read(client, headers, team_id=team_a.id, pericope="P01")
+    second = await read(
+        client, headers, team_id=team_a.id, pericope="P01", cursor=first["next_cursor"]
+    )
+
+    assert ids(first) == newest_first[:50]
+    assert ids(second) == newest_first[50:]
+    assert second["next_cursor"] is None
+
+
+async def test_an_archived_session_is_never_listed_under_the_filters(client, db_session):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    zeroed = await a_session(db_session, team, pericope="P01")
+    admin = await make_user(db_session, email="zerar@example.com", is_platform_admin=True)
+    await archive_pericope(db_session, admin, project_id=team.id, pericope=zeroed.pericope)
+    fresh = await a_session(db_session, team, pericope="P01", last_activity=NOON + timedelta(1))
+    await a_session(db_session, team, pericope="P02", last_activity=NOON + timedelta(2))
+
+    answer = await read(client, headers, team_id=team.id, pericope="P01")
+
+    assert ids(answer) == [fresh.id]
+
+
+async def test_a_passage_with_no_session_answers_an_empty_page(client, db_session):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    await a_session(db_session, team, pericope="P01")
+
+    answer = await read(client, headers, team_id=team.id, pericope="P09")
+
+    assert answer == {"sessions": [], "next_cursor": None}
+
+
+async def test_a_session_attended_by_a_facilitator_shows_that_time_and_that_facilitator_on_its_sessoes_row(  # noqa: E501
+    client, db_session
+):
+    team = await a_team(db_session, "Equipe A")
+    user = await make_user(db_session, email="fac@example.com")
+    await make_project_user_access(db_session, team.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_facilitator_app_role(db_session, user.id)
+    headers = await auth_header(db_session, user)
+    session = await a_session(db_session, team)
+    attended = await room.attend(db_session, session, by=user.id)
+
+    (row,) = (await read(client, headers))["sessions"]
+
+    assert row["attended_by"] == user.id
+    assert datetime.fromisoformat(row["attended_at"]) == attended.attended_at.replace(tzinfo=UTC)
+
+
+async def test_a_session_never_attended_shows_no_attended_time_and_no_facilitator_on_its_sessoes_row(  # noqa: E501
+    client, db_session
+):
+    team = await a_team(db_session, "Equipe A")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    await a_session(db_session, team)
+
+    (row,) = (await read(client, headers))["sessions"]
+
+    assert row["attended_at"] is None
+    assert row["attended_by"] is None

@@ -12,18 +12,17 @@ from pathlib import Path
 import pytest
 
 from app.services.internalization_room.canon import kept
-from app.services.internalization_room.canon.book_material import unwalkable
+from app.services.internalization_room.canon.book_material import preservation_rules
 from app.services.internalization_room.canon.elements import scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import label_index
-from app.services.internalization_room.canon.parse_map import load_map
 from tests.canon_harness import the_canon_moves_on
 
 NEW_PIN = "a" * 40
 FIRST_SCENE_HEADING = "### Scene 1 —"
 SECOND_SCENE_HEADING = "### Scene 2 —"
-REGISTER_COMPLETE = '"high_risk_register_complete": true'
-REGISTER_INCOMPLETE = '"high_risk_register_complete": false'
+RULED = '"do_not_decide": true'
+UNRULED = '"do_not_decide": false'
 
 
 def _the_kept_p02_has_no_first_scene(tree: Path) -> None:
@@ -38,12 +37,9 @@ def _the_kept_canon_has_no_p03(tree: Path) -> None:
     page.unlink()
 
 
-def _the_kept_p02_register_is_incomplete(tree: Path) -> None:
+def _the_kept_p02_records_no_rule(tree: Path) -> None:
     (log,) = (tree / "vendor" / "compilation-log").glob("P02-*.md")
-    log.write_text(
-        log.read_text(encoding="utf-8").replace(REGISTER_COMPLETE, REGISTER_INCOMPLETE),
-        encoding="utf-8",
-    )
+    log.write_text(log.read_text(encoding="utf-8").replace(RULED, UNRULED), encoding="utf-8")
 
 
 def test_a_passage_read_under_two_canons_answers_each_canons_scenes_not_the_first_one_read(
@@ -81,18 +77,16 @@ def test_the_passages_a_canon_has_are_its_own_and_not_those_of_the_canon_read_fi
     )
 
 
-def test_a_kept_canon_whose_register_is_incomplete_refuses_a_passage_the_served_canon_opens(
+def test_a_kept_canon_with_no_rule_for_a_passage_answers_none_where_the_served_canon_has_its_rules(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     old_pin = kept.deployed_pin()
-    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_register_is_incomplete)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_records_no_rule)
 
     with reading_the_canon_of(NEW_PIN):
-        served = unwalkable(load_map("P02"))
+        served = [rule for rule in preservation_rules("Ruth") if rule.pericope == "P02"]
     with reading_the_canon_of(old_pin):
-        kept_refusal = unwalkable(load_map("P02"))
+        kept_rules = [rule for rule in preservation_rules("Ruth") if rule.pericope == "P02"]
 
-    assert served is None
-    assert kept_refusal is not None and "the register and the survey disagree" in kept_refusal, (
-        "o canon guardado leu a lista de verificação do canon servido"
-    )
+    assert len(served) == 4
+    assert kept_rules == [], "o canon guardado leu as regras do canon servido, lidas primeiro"

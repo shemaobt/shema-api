@@ -41,8 +41,10 @@ Marcia's golden scripts are played against a running server through two doors th
 where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and both answer 404. The
 Guide's conversation is played through the **Golden doors**,
 `/api/internalization-room/golden/session` and `/golden/turn`, in her runner's wire, with the key
-as `Authorization: Bearer <key>`; the back-translation check through the **Text seam**, which
-reads it in `X-Access-Code`.
+as `Authorization: Bearer <key>`; a scene rehearsal step goes through `/golden/rehearsal`, which
+keeps the rehearsal from the script's pieces as text, and `/golden/rehearsal/send`, which sends
+it through the function the tablet's send door calls; the back-translation check through the
+**Text seam**, which reads it in `X-Access-Code`.
 Two runners, one convention: reports land under `golden/reports/<date>/`, committed, and the key
 travels as `ACCESS_CODE`. Her twenty-three session scripts are vendored at `golden/sessions/`
 and her ten Back-Translation scripts at `golden/bt/`, under the pin in `docs/doctrine/FREEZE_PIN`,
@@ -73,7 +75,9 @@ table has never seen carries no figure; the budget counts it at the dearest tabl
 kind of token and the run says how many, so a model change cannot slip under the ceiling. Reading
 that table makes the back-translation runner need a `DATABASE_URL` for the settings to load, as
 the golden runner already did. Each script's closing line says what it cost, and the run ends
-with the total by role. The back-translation run is the gate on any change to the two
+with the total by role. The Guide's run also prints, and writes into its README, how many times the
+Validator sent a draft back on turns handed accepted readings, which her spec says to bring to her
+when it is above zero. The back-translation run is the gate on any change to the two
 back-translation prompts. The golden run is the gate on the release, not only on CI:
 `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions must pass before anything
 touching prompts, turn loop, model or canvas reaches the team, and a green unit suite is not

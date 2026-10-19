@@ -26,13 +26,13 @@ from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 
 P = "P03"
 NEW_PIN = "a" * 40
-BEINGS = '"beings_in_scene": {\n        "entries": [\n'
-ELIMELECH = '          {"being_id": "B2", "role_in_scene": "DECEASED_KIN"},\n'
 
 
-def _the_kept_p03_names_elimelech(tree: Path) -> None:
-    (page,) = (tree / "vendor" / "meaning-coordinates").glob("P03-*.md")
-    page.write_text(page.read_text(encoding="utf-8").replace(BEINGS, BEINGS + ELIMELECH))
+def _the_kept_p03_calls_naomi_noemi(tree: Path) -> None:
+    names = tree / "vendor" / "registry" / "ruth.aliases.json"
+    registry = json.loads(names.read_text(encoding="utf-8"))
+    registry["entities"]["B3"]["english"] = "Noemi"
+    names.write_text(json.dumps(registry, ensure_ascii=False), encoding="utf-8")
 
 
 class Prompts:
@@ -83,7 +83,7 @@ async def test_the_ledger_served_is_the_one_the_guide_is_handed_after_the_canon_
     project, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, project)
     opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
-    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_names_elimelech)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_calls_naomi_noemi)
 
     served = await client.get(
         f"{PREFIX}/facilitator/sessions/{opened['session_id']}/coverage", headers=desk
@@ -93,5 +93,6 @@ async def test_the_ledger_served_is_the_one_the_guide_is_handed_after_the_canon_
     ledger = served.json()["ledger"]
     (guide,) = [system for system in prompts.read if "corrected_response" not in system]
     assert served.status_code == 200, served.text[:300]
-    assert "being: Elimelech, " in ledger
+    assert "being: Noemi, " in ledger
+    assert "Naomi" not in ledger
     assert guide.partition(CACHE_BREAK)[2].lstrip("\n").startswith(ledger)

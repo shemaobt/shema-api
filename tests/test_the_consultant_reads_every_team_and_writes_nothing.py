@@ -39,6 +39,13 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
+from tests.facilitator_route_audit_harness import (
+    facilitator_routes,
+    parameters_of,
+    template_of,
+    those_that_read,
+)
+from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -66,6 +73,7 @@ class Bucket:
 @pytest.fixture()
 def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     from app.api.internalization_room import takes as take_routes
+    from app.services.internalization_room import session_takes
 
     store = Bucket()
 
@@ -84,6 +92,8 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     monkeypatch.setattr(question_service, "_store", lambda *a, **kw: store)
     monkeypatch.setattr(question_service, "listen_address", signed_question)
     monkeypatch.setattr(take_routes, "listen_url", signed_take)
+    monkeypatch.setattr(session_takes, "listen_url", signed_take)
+    the_bucket_is_in_memory(monkeypatch)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", sign)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "plataforma", raising=False)
@@ -241,6 +251,36 @@ def _answer(response: httpx.Response) -> tuple[int, Any]:
     return response.status_code, body
 
 
+def _session_reads() -> set[str]:
+    return {
+        path for method, path in facilitator_routes() if method == "GET" and "{session_id}" in path
+    }
+
+
+def _reads_that_name_a_team_resource() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and ("{" in path or "team_id" in parameters_of(method, path))
+    }
+
+
+def _audio_doors() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and "audio" in path.split("/")
+    }
+
+
+def _reads_of_a_team() -> set[str]:
+    return {
+        path
+        for method, path in facilitator_routes()
+        if method == "GET" and "team_id" in parameters_of(method, path)
+    }
+
+
 async def _row(per_request: async_sessionmaker[AsyncSession], table, row_id: str) -> dict:
     async with per_request() as db:
         found = (await db.execute(select(table.__table__).where(table.id == row_id))).one()
@@ -300,9 +340,25 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/release",
         f"{IR}/facilitator/sessions/{session}/releases/1",
         f"{IR}/facilitator/sessions/{session}/retroverificacao",
+        f"{IR}/facilitator/sessions/{session}/scene-rehearsals",
         f"{IR}/facilitator/sessions/{session}/coverage",
+        f"{IR}/facilitator/sessions/{session}/boundary-turns",
+        f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
     ]
 
+    values = {"session_id": session, "number": 0, "version": 1}
+    answers = {
+        path: (
+            await client.get(path.format(**values), headers=desk.readers["consultant"])
+        ).status_code
+        for path in _session_reads()
+    }
+    mounted = those_that_read(answers)
+    listed = {template_of("GET", url) for url in reads}
+    assert listed == mounted, (
+        f"sem leitura: {sorted(mounted - listed)}; "
+        f"leitura sem rota: {sorted(listed - mounted, key=str)}"
+    )
     for url in reads:
         theirs = await client.get(url, headers=desk.readers["facilitator_of_b"])
         consultants = await client.get(url, headers=desk.readers["consultant"])
@@ -310,29 +366,47 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5]):
+    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9]):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
 async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_session_and_the_question_are_unchanged(  # noqa: E501
-    client, desk, per_request
+    client, desk, per_request, db_session, bucket
 ) -> None:
     team = desk["b"]
     reader = desk.readers["consultant"]
+    answered = await db_session.get(IRQuestion, team.question)
+    answered.reply_audio_key = f"internalization-room/questions/{team.question}/resposta-1.m4a"
+    answered.status = IRQuestionStatus.ANSWERED
+    await db_session.commit()
+    await bucket.put(answered.reply_audio_key, b"a facilitadora respondeu", "audio/mp4")
     session_before = await _row(per_request, IRSession, team.session)
     question_before = await _row(per_request, IRQuestion, team.question)
 
-    question = await client.get(f"{IR}/facilitator/questions/{team.question}/audio", headers=reader)
-    by_handle = await client.get(
-        f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", headers=reader
+    doors = [
+        f"{IR}/facilitator/questions/{team.question}/audio",
+        f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}",
+        f"{IR}/facilitator/questions/{team.question}/reply/audio",
+        f"{IR}/facilitator/takes/{team.take}/audio",
+        f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
+    ]
+    mounted = _audio_doors()
+    covered = {template_of("GET", url) for url in doors}
+    assert covered == mounted, (
+        f"sem porta: {sorted(mounted - covered)}; "
+        f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
-    take = await client.get(f"{IR}/facilitator/takes/{team.take}/audio", headers=reader)
-    turn = await client.get(
-        f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", headers=reader
-    )
+
+    question, by_handle, reply, take, turn = [
+        await client.get(url, headers=reader) for url in doors
+    ]
 
     assert question.status_code == 200, question.text[:300]
     assert by_handle.content == b"a equipe perguntou"
+    assert reply.status_code == 200, reply.text[:300]
+    assert bucket.objects[reply.json()["url"].removeprefix("https://signed.test/")] == (
+        b"a facilitadora respondeu"
+    )
     assert take.status_code == 307, take.text[:300]
     assert turn.status_code == 307, turn.text[:300]
     assert await _row(per_request, IRSession, team.session) == session_before
@@ -427,6 +501,8 @@ async def test_a_facilitator_of_a_who_holds_consultant_is_told_404_when_writing_
 
 
 async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client, desk) -> None:
+    from app.main import app
+
     team = desk["b"]
     reader = desk.readers["facilitator"]
     reads = [
@@ -435,15 +511,34 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{DESK}/teams/{team.id}/devices", {}),
         (f"{DESK}/teams/{team.id}/pericopes", {}),
         (f"{DESK}/teams/{team.id}/coverage", {"params": {"pericope": P}}),
+        (f"{DESK}/sessions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions/{team.question}/audio", {}),
+        (f"{IR}/facilitator/questions/{team.question}/reply/audio", {}),
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
+        (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/release", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/releases/1", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/retroverificacao", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/turns", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", {}),
     ]
+    nudges = f"{DESK}/teams/{team.id}/nudges"
 
+    mounted = _reads_that_name_a_team_resource()
+    covered = {template_of("GET", url) for url, _ in reads} | {template_of("GET", nudges)}
+    assert covered == mounted, (
+        f"sem recusa: {sorted(mounted - covered)}; "
+        f"recusa sem rota: {sorted(covered - mounted, key=str)}"
+    )
     answers = {url: (await client.get(url, headers=reader, **kw)).status_code for url, kw in reads}
+    answers[nudges] = await opening_status(app, nudges, reader)
     listed = await client.get(f"{DESK}/teams", headers=reader)
 
     assert set(answers.values()) == {404}, answers
@@ -498,11 +593,19 @@ async def test_a_team_that_does_not_exist_is_refused_at_every_read_even_to_a_con
         (f"{DESK}/teams/{nowhere}/devices", {}),
         (f"{DESK}/teams/{nowhere}/pericopes", {}),
         (f"{DESK}/teams/{nowhere}/coverage", {"params": {"pericope": P}}),
+        (f"{DESK}/sessions", {"params": {"team_id": nowhere}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": nowhere}}),
     ]
+    nudges_url = f"{DESK}/teams/{nowhere}/nudges"
 
+    mounted = _reads_of_a_team()
+    covered = {template_of("GET", url) for url, _ in reads} | {template_of("GET", nudges_url)}
+    assert covered == mounted, (
+        f"sem recusa: {sorted(mounted - covered)}; "
+        f"recusa sem rota: {sorted(covered - mounted, key=str)}"
+    )
     answers = {url: (await client.get(url, headers=reader, **kw)).status_code for url, kw in reads}
-    nudges = await opening_status(app, f"{DESK}/teams/{nowhere}/nudges", reader)
+    nudges = await opening_status(app, nudges_url, reader)
 
     assert set(answers.values()) == {404}, answers
     assert nudges == 404
