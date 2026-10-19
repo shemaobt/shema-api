@@ -64,6 +64,15 @@ async def lay_in_a_sentence(
         None,
     )
     if laid_before is not None:
+        if (laid_before.sha256, laid_before.segment_id) != (
+            hashlib.sha256(audio).hexdigest(),
+            segment.id,
+        ):
+            raise SentenceRefused(
+                409,
+                "SENTENCE_ID_REUSED",
+                f"Sentence {sentence_id} was already laid in with another recording",
+            )
         return await take_by_id(db, laid_before.take_id)
     part = await take_by_id(db, segment.take_id)
     if not is_wav(part.content_type):

@@ -235,7 +235,10 @@ router.add_api_route(
             "description": "`SENTENCE_TOO_SHORT`: under 0.5 s once its silence is trimmed; "
             "`SENTENCE_FORMAT_DIFFERS`: not WAV PCM16 at the part's own rate and channels"
         },
-        409: {"description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16"},
+        409: {
+            "description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16; "
+            "`SENTENCE_ID_REUSED`: the id already names another recording"
+        },
         413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
     },
 )
@@ -266,7 +269,9 @@ async def re_record_the_sentence(
     under half a second once its silence is trimmed; `PART_NOT_WAV` (409) when the part was not
     recorded as WAV PCM16, where the team records the part again instead;
     `SENTENCE_FORMAT_DIFFERS` (400) for a recording that is not WAV PCM16 at the part's own rate
-    and channels, which is never resampled.
+    and channels, which is never resampled; `SENTENCE_ID_REUSED` (409) for a `sentence_id`
+    already laid in with another recording or another frase. The same recording sent again
+    under its id is answered as it stands and laid in once.
     """
     try:
         audio = await file.read(SENTENCE_LIMIT_BYTES + 1)

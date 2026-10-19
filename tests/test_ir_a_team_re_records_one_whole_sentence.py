@@ -218,3 +218,22 @@ async def test_a_sentence_sent_again_after_a_failure_is_laid_in_once(
         (2400, 3400),
     ], "o reenvio emendava a frase uma segunda vez"
     assert len(read["rerecorded_sentences"]) == 1
+
+
+async def test_a_sentence_id_already_laid_in_does_not_carry_another_recording(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    await re_record(client, session.id, middle.id, spoken(1.0), sentence_id="sentence-0004")
+    kept = dict(store.objects)
+
+    refused = await re_record(
+        client, session.id, middle.id, spoken(1.5), sentence_id="sentence-0004"
+    )
+
+    assert (refused.status_code, refused.json().get("code")) == (409, "SENTENCE_ID_REUSED"), (
+        "outra gravação sob o mesmo id passava como reenvio da primeira"
+    )
+    assert store.objects == kept
