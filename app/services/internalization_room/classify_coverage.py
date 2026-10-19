@@ -41,7 +41,13 @@ _DECISIONS: dict[str, Any] = {
                 "required": ["element_id", "new_status"],
                 "additionalProperties": False,
             },
-        }
+        },
+        "retelling": {
+            "type": "object",
+            "properties": {"scope": {"type": "string"}, "approved": {"type": "boolean"}},
+            "required": ["scope", "approved"],
+            "additionalProperties": False,
+        },
     },
     "required": ["decisions"],
     "additionalProperties": False,
