@@ -196,3 +196,25 @@ async def test_the_take_before_and_the_raw_sentence_are_kept_and_named_on_the_se
     assert (await take_named(db_session, one.id)).storage_key == one.storage_key
     assert store.objects[one.storage_key] == before, "a tomada de antes foi reescrita"
     assert recorded in store.objects.values(), "a frase como a equipe gravou não foi guardada"
+
+
+async def test_a_sentence_sent_again_after_a_failure_is_laid_in_once(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, middle, _),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
+    )
+    recorded = spoken(1.0)
+
+    first = await re_record(client, session.id, middle.id, recorded, sentence_id="sentence-0003")
+    again = await re_record(client, session.id, middle.id, recorded, sentence_id="sentence-0003")
+
+    assert (first.status_code, again.status_code) == (200, 200), again.text
+    assert again.json() == first.json(), "o reenvio respondia outra coisa"
+    read = (await client.get(f"{PREFIX}/sessions/{session.id}")).json()["back_translation"]
+    assert [(one["starts_ms"], one["ends_ms"]) for one in read["segments"]] == [
+        (0, 1000),
+        (1000, 2400),
+        (2400, 3400),
+    ], "o reenvio emendava a frase uma segunda vez"
+    assert len(read["rerecorded_sentences"]) == 1

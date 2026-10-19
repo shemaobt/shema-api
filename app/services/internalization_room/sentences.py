@@ -4,6 +4,7 @@ import hashlib
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
@@ -55,6 +56,15 @@ async def lay_in_a_sentence(
     device_id: str,
     store: TakeStore,
 ) -> IRTake:
+    await db.execute(select(IRSession.id).where(IRSession.id == session.id).with_for_update())
+    await db.refresh(session)
+    await db.refresh(segment)
+    laid_before = next(
+        (one for one in back_translation_of(session).sentences if one.sentence_id == sentence_id),
+        None,
+    )
+    if laid_before is not None:
+        return await take_by_id(db, laid_before.take_id)
     part = await take_by_id(db, segment.take_id)
     if not is_wav(part.content_type):
         raise _not_wav(part)
