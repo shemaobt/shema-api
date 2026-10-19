@@ -131,7 +131,7 @@ async def _kept(client: httpx.AsyncClient, tablet: str, session_id: str) -> list
 
 
 async def test_a_telling_the_voice_approved_keeps_its_audio_and_the_session_serves_it(
-    client, db_session, verdict, bucket
+    client, db_session, per_request, verdict, bucket
 ) -> None:
     tablet, session_id = await _a_p01_session(client, db_session)
     verdict["retelling"] = {"scope": "S1", "approved": True}
@@ -145,6 +145,15 @@ async def test_a_telling_the_voice_approved_keeps_its_audio_and_the_session_serv
     assert await _kept(client, tablet, session_id) == [
         {"scope": "S1", "turn_number": 1, "audio_url": f"https://storage.example/{stored[0]}"}
     ], "a leitura da sessão não dizia qual cena ficou guardada nem onde ouvir"
+    async with per_request() as fresh:
+        retellings = (await get_session(fresh, session_id)).retellings
+    assert retellings == {
+        "1": {
+            "scope": "S1",
+            "approved": True,
+            "kept": {"storage_key": stored[0], "content_type": "audio/m4a"},
+        }
+    }, "o turno guardava um link assinado que vencia, em vez do objeto que se assina ao ler"
 
 
 async def test_a_telling_the_voice_sent_back_or_did_not_judge_keeps_nothing(

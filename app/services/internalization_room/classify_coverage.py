@@ -6,8 +6,9 @@ import logging
 import re
 import unicodedata
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.elements import Element, element_keys
@@ -67,10 +68,17 @@ _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
 _BEADS_PER_READING = 11
 
 
-@dataclass(frozen=True)
-class Retelling:
+class KeptRecording(BaseModel):
+    storage_key: str
+    content_type: str
+
+
+class Retelling(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     scope: str
     approved: bool
+    kept: KeptRecording | None = None
 
 
 def _the_reply(raw: str) -> Any:

@@ -10,6 +10,7 @@ from app.models.internalization_room import (
     MotherTongueTake,
     MotherTongueTakesResponse,
 )
+from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
@@ -56,18 +57,19 @@ async def mother_tongue_takes_of(
 
 
 async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
-    kept = sorted(
-        (int(number), told) for number, told in (session.retellings or {}).items() if "kept" in told
-    )
-    latest = {told["scope"]: number for number, told in kept}
-    return [
-        KeptTakeView(
-            scope=told["scope"],
-            turn_number=number,
-            audio_url=await signed_listen_url(
-                told["kept"]["storage_key"], told["kept"]["content_type"]
-            ),
+    latest: dict[str, tuple[int, KeptRecording]] = {}
+    for number, entry in sorted((int(n), e) for n, e in (session.retellings or {}).items()):
+        told = Retelling.model_validate(entry)
+        if told.kept is not None:
+            latest[told.scope] = (number, told.kept)
+    ordered = sorted(latest.items(), key=lambda kept: kept[1][0])
+    links = await asyncio.gather(
+        *(
+            signed_listen_url(recording.storage_key, recording.content_type)
+            for _, (_, recording) in ordered
         )
-        for number, told in kept
-        if latest[told["scope"]] == number
+    )
+    return [
+        KeptTakeView(scope=scope, turn_number=number, audio_url=link)
+        for (scope, (number, _)), link in zip(ordered, links, strict=True)
     ]

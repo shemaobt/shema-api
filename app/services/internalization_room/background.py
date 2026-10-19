@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import update
@@ -23,7 +23,11 @@ from app.services.internalization_room.back_translation import (
     untold_parts,
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.classify_coverage import Retelling, classify_coverage
+from app.services.internalization_room.classify_coverage import (
+    KeptRecording,
+    Retelling,
+    classify_coverage,
+)
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.earlier_passages import earlier_passages
@@ -62,7 +66,7 @@ class HeardTake:
     content_type: str
 
 
-async def _kept(session_id: str, take: HeardTake) -> dict[str, str]:
+async def _kept(session_id: str, take: HeardTake) -> KeptRecording:
     sha256 = recording_digest(take.audio)
     stored = await store_recording(
         take.audio,
@@ -73,7 +77,7 @@ async def _kept(session_id: str, take: HeardTake) -> dict[str, str]:
         sha256=sha256,
         content_type=take.content_type,
     )
-    return {"storage_key": stored.storage_key, "content_type": stored.content_type}
+    return KeptRecording(storage_key=stored.storage_key, content_type=stored.content_type)
 
 
 async def _retold(
@@ -81,13 +85,12 @@ async def _retold(
 ) -> dict[str, Any]:
     retold: dict[str, Any] = {}
     for told in heard:
-        entry: dict[str, Any] = asdict(told)
         if told.approved and take is not None:
             try:
-                entry["kept"] = await _kept(session_id, take)
+                told = told.model_copy(update={"kept": await _kept(session_id, take)})
             except Exception:
                 logger.exception("The kept take of session %s did not reach the bucket", session_id)
-        retold[str(turn_number)] = entry
+        retold[str(turn_number)] = told.model_dump(exclude_none=True)
     return retold
 
 
