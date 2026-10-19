@@ -243,38 +243,38 @@ async def test_a_scope_kept_in_two_sessions_is_listed_once_in_the_later_telling(
     team: Project,
     db_session: AsyncSession,
 ) -> None:
-    earlier = await open_ir_session(db_session, pericope=P, project_id=team.id)
-    later = await open_ir_session(db_session, pericope=P, project_id=team.id)
-    await _told(
-        db_session,
-        earlier,
-        [("Noemi voltou", "2026-10-18T09:01:00+00:00")],
-        {"1": _kept("S1", "k/earlier")},
-    )
+    earliest = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    middle = await open_ir_session(db_session, pericope=P, project_id=team.id)
     await _told(
         db_session,
         session,
-        [("Noemi voltou com Rute", "2026-10-19T10:01:00+00:00")],
-        {"1": _kept("S1", "k/1")},
-    )
-    await _told(
-        db_session,
-        later,
         [
             ("Noemi partiu", "2026-10-20T08:01:00+00:00"),
             ("Noemi voltou com Rute a Belém", "2026-10-20T08:02:00+00:00"),
         ],
-        {"2": _kept("S1", "k/later")},
+        {"2": _kept("S1", "k/latest")},
+    )
+    await _told(
+        db_session,
+        earliest,
+        [("Noemi voltou", "2026-10-18T09:01:00+00:00")],
+        {"1": _kept("S1", "k/earliest")},
+    )
+    await _told(
+        db_session,
+        middle,
+        [("Noemi voltou com Rute", "2026-10-19T10:01:00+00:00")],
+        {"1": _kept("S1", "k/middle")},
     )
 
-    from_the_middle = await _read(client, consultant, session.id)
-    from_the_last = await _read(client, consultant, later.id)
+    from_the_latest = await _read(client, consultant, session.id)
+    from_the_earliest = await _read(client, consultant, earliest.id)
 
-    assert from_the_middle["kept_rehearsals"] == [
-        {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": True}
-    ]
-    assert from_the_last["kept_rehearsals"] == [
+    assert from_the_latest["kept_rehearsals"] == [
         {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": False}
+    ]
+    assert from_the_earliest["kept_rehearsals"] == [
+        {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": True}
     ]
 
 
