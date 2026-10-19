@@ -28,6 +28,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
+from app.core.served_books import TRANSLATED_BOOKS
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
 from app.services.internalization_room.canon.kept import canon_path, per_canon
@@ -158,8 +159,8 @@ def _from_the_canon(element: Element) -> LabelledElement:
     translation.
 
     **Every bead of Esther and Jonah comes here, and no passage of Ruth does.** Ruth's
-    catalogue carries all fourteen; the other two books have no catalogue file at all, which
-    is a book nobody has translated (ADR 0066).
+    catalogue carries all fourteen; the other two books are not among `TRANSLATED_BOOKS`,
+    which is a book nobody has translated (ADR 0066).
 
     **What it cost while it was reachable**, kept because it is the argument for ever writing
     a label: measured over the ten passages the catalogue did not have, 264 beads, six of the
@@ -338,9 +339,11 @@ def label_index(
 
 @lru_cache(maxsize=8)
 def _catalogue(catalogue_dir: Path, book: str) -> dict:
-    """A book with no catalogue file is a book nobody has translated: it answers no entry."""
-    path = catalogue_dir / f"{book.lower()}.json"
-    return _read(path) if path.exists() else {}
+    """A book nobody has translated answers no entry; a translated book's catalogue missing
+    is a file of ours gone, and is refused by `_read`."""
+    if book not in TRANSLATED_BOOKS:
+        return {}
+    return _read(catalogue_dir / f"{book.lower()}.json")
 
 
 @lru_cache(maxsize=8)

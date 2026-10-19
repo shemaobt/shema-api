@@ -18,7 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
-from app.core.exceptions import UpstreamServiceError
+from app.core.config import get_settings
+from app.core.exceptions import ProviderNotConfigured, UpstreamServiceError
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.voice_handles import clip_url
@@ -226,3 +227,17 @@ async def test_a_passage_whose_line_cannot_be_voiced_is_offered_with_no_sound_an
     assert listed["P01"]["audio_url"] is None
     assert all(listed[pericope]["audio_url"] for pericope in RUTH[1:])
     assert listed["OV-Ruth"]["audio_url"]
+
+
+async def test_a_deploy_with_no_voice_key_fails_the_list_rather_than_serving_it_silent(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tablet: dict[str, str]
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "")
+    monkeypatch.setattr(settings, "internalization_room_elevenlabs_api_key", "")
+
+    async with room_client(db_session, monkeypatch) as served:
+        with pytest.raises(ProviderNotConfigured):
+            await served.get(
+                f"{PREFIX}/books/Ruth/passages", params={"language": "pt"}, headers=tablet
+            )

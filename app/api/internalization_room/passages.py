@@ -35,8 +35,9 @@ async def _voiced(
     entry: str, line: str, *, language: str, settings: Settings, in_flight: asyncio.Semaphore
 ) -> str | None:
     """One entry's line, synthesized while at most a few others are in flight, or None when
-    no line is written or the voice provider fails: the list is served either way (ADR 0066).
-    A defect of ours is not the provider failing, and still fails the list."""
+    no line is written or the voice provider fails (unreachable, 5xx, quota): the list is
+    served either way (ADR 0066). A defect of ours, a missing key or a request the provider
+    refuses as malformed among them, is not the provider failing, and still fails the list."""
     if not line:
         return None
     async with in_flight:
@@ -44,7 +45,7 @@ async def _voiced(
             voiced, _ = await room.synthesize_facilitator_speech(
                 line, language=language, settings=settings
             )
-        except (UpstreamServiceError, ValidationError, httpx.HTTPError):
+        except (UpstreamServiceError, httpx.HTTPError):
             logger.warning("%s could not be voiced in %s", entry, language, exc_info=True)
             return None
         except Exception:
