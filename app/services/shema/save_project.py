@@ -583,6 +583,16 @@ async def create_project(
     wrote the location, so the only fact in the answer is one they supplied. Saying *not found*
     about a record they are in the middle of creating would be a worse message for no privacy.
 
+    **The id's 409 comes after the scope, not before it** (OBT-599, 19/out/2026). The same
+    oracle came back through the id: a create that answered *a project already exists at this
+    id* before it looked at the region told any account that a UUID lives somewhere it does not
+    reach. The scope check needs the region the payload derives, which needs a row to derive it
+    from, and a taken id cannot be inserted — so a taken id is filed under a throwaway one,
+    carried through the same checks as a free id, and refused with the 409 only once the scope
+    has passed. Outside the scope the answer is the 403 a free id gets, whatever the database
+    holds; inside it, the caller reaches the region and learning that the id is taken tells
+    them nothing they could not already read.
+
     **The row is added and flushed before the payload is read**, which is not an ordering
     accident: a Python-side ``default=`` is applied by the flush, so a merged view built off an
     unflushed object would write NULL into the 55 columns whose word for *nothing* is ``""``.
@@ -597,13 +607,12 @@ async def create_project(
     if not is_minted_id(payload.id):
         raise ValidationError(MINTED_ID_REQUIRED)
 
-    existing = (
+    taken = (
         await db.execute(select(ShemaProject.id).where(ShemaProject.id == payload.id))
-    ).scalar_one_or_none()
-    if existing is not None:
-        raise ConflictError(f"{payload.id}: a project already exists at this id")
-
-    project = ShemaProject(id=payload.id, version=1)
+    ).scalar_one_or_none() is not None
+    # A taken id cannot be inserted a second time, so the region is derived on a row filed
+    # under a throwaway id and the 409 waits below the scope check — see the note after it.
+    project = ShemaProject(id=str(uuid.uuid4()) if taken else payload.id, version=1)
     db.add(project)
     await db.flush()
 
@@ -631,6 +640,9 @@ async def create_project(
         raise AuthorizationError(
             f"{project.region_key.value}: outside the regions this account may write"
         )
+
+    if taken:
+        raise ConflictError(f"{payload.id}: a project already exists at this id")
 
     await db.flush()
 
