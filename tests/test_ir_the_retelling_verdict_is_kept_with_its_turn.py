@@ -109,9 +109,7 @@ async def test_a_verdict_read_after_a_newer_turn_landed_stays_on_the_turn_it_jud
     monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
     session = await service.create_session(db_session, pericope=P)
     await service.append_opening(db_session, session, guide_response="Vamos começar.")
-    await service.append_exchange(
-        db_session, session, team_utterance=TOLD, guide_response=AFFIRMED
-    )
+    await service.append_exchange(db_session, session, team_utterance=TOLD, guide_response=AFFIRMED)
     await service.append_exchange(
         db_session, session, team_utterance="E depois?", guide_response="Contem o resto."
     )
@@ -123,3 +121,20 @@ async def test_a_verdict_read_after_a_newer_turn_landed_stays_on_the_turn_it_jud
     assert session.retellings == {"1": {"scope": "S1", "approved": True}}, (
         "a leitura voltava depois do turno seguinte e o veredito caía no turno errado"
     )
+
+
+async def test_a_verdict_names_a_scene_of_the_passage_or_the_whole_and_nothing_else(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await service.create_session(db_session, pericope=P)
+
+    for number, scope in enumerate(["scene:S2", "S9", "whole"], start=1):
+        the_reader_says(monkeypatch, {"retelling": {"scope": scope, "approved": True}})
+        await _settled(session.id, number)
+
+    await db_session.refresh(session)
+    assert session.retellings == {
+        "1": {"scope": "S2", "approved": True},
+        "3": {"scope": "whole", "approved": True},
+    }, "uma cena que a passagem não tem virava veredito, e o id com 'scene:' não era a cena"
