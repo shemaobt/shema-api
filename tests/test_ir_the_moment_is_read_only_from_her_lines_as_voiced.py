@@ -627,3 +627,83 @@ def test_a_numberless_opening_is_kept_in_its_scene_until_the_voice_says_where_th
     assert _after(moment, voiced) == kept, (
         f"a abertura sem número não seguiu a regra dela depois de: {voiced!r}"
     )
+
+
+SCENE_ONE_FENCED = {"at": "articulation", "part": 1, "fenced": True}
+
+
+@pytest.mark.parametrize(
+    ("moment", "scene", "recorded"),
+    [
+        (
+            SCENE_ONE_FENCED,
+            "S3",
+            "scene_rehearsal 3: told ahead of part 1 — kept, the moment unchanged",
+        ),
+        (
+            SCENE_ONE_FENCED,
+            "S2",
+            "scene_rehearsal 2: told ahead of part 1 (no opening of part 2 heard) "
+            "— kept, the moment unchanged",
+        ),
+        (
+            SCENE_TWO_OPEN,
+            "S3",
+            "scene_rehearsal 3: told ahead of part 2 (no opening of part 3 heard) "
+            "— kept, the moment unchanged",
+        ),
+        (
+            FAMILIARIZATION,
+            "S2",
+            "scene_rehearsal 2: told ahead, in the Familiarization — kept, the moment unchanged",
+        ),
+        (
+            FAMILIARIZATION,
+            "S1",
+            "scene_rehearsal 1: told ahead, in the Familiarization (no opening of part 1 heard) "
+            "— kept, the moment unchanged",
+        ),
+        (
+            {**SCENE_ONE_FENCED, "numberlessOpening": True},
+            "S3",
+            "scene_rehearsal 3: told ahead of part 1 — kept, the moment unchanged",
+        ),
+    ],
+    ids=[
+        "a scene further on",
+        "the next scene",
+        "from an internalization",
+        "from the familiarization",
+        "the first scene",
+        "past the scene opened with no number",
+    ],
+)
+def test_a_marked_rehearsal_told_ahead_leaves_the_moment_and_is_kept_in_her_words(
+    moment: dict[str, Any], scene: str, recorded: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.ignored == [recorded], "a cena contada antes da hora não ficou registrada"
+    assert (step.after.as_json(), step.by) == (moment, [])
+
+
+def test_a_scene_told_ahead_is_kept_before_what_the_reply_declined() -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene="S4")
+
+    step = moment_step(
+        heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.ignored == [
+        "scene_rehearsal 4: told ahead of part 2 — kept, the moment unchanged",
+        "part_closing: no scene rehearsal of part 2 has come back — heard as a scene opening "
+        "with no number: a marked scene rehearsal of part 3 will move the moment",
+    ], "o ensaio que chegou com o turno veio depois do que a resposta recusou"

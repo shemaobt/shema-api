@@ -205,8 +205,8 @@ class MomentStep:
     """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
     reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
     (`types.ts:73`): every line her `step()` declines, in her words, filled where hers fills it
-    (`moment.ts:149-189`) and stored only when there is one. One thing she records is not
-    here yet: a scene told ahead."""
+    (`moment.ts:149-189`, and a scene told ahead at :212-214) and stored only when there is
+    one."""
 
     before: Moment
     after: Moment
@@ -246,11 +246,14 @@ def moment_step(
     unmarked = arriving is not None and marked not in scenes
     after = before
     by: list[Cause] = []
+    ignored: list[str] = []
     if marked is not None and marked in scenes:
-        after = _arrived(before, scenes.index(marked) + 1)
+        part = scenes.index(marked) + 1
+        after, told = _arrived(before, part)
         if after != before:
             by.append("scene_rehearsal")
-    ignored: list[str] = []
+        if told:
+            ignored.append(f"scene_rehearsal {part}: {told}")
     earlier = False
     anchored = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
@@ -292,10 +295,17 @@ def _scene(moment: Moment) -> int:
     return -1 if moment.at == "ensaio_final" else moment.part or 0
 
 
-def _arrived(moment: Moment, part: int) -> Moment:
-    if moment.numberless_opening and part == _scene(moment) + 1:
-        return Moment(at="articulation", part=part)
-    return moment
+def _arrived(moment: Moment, part: int) -> tuple[Moment, str | None]:
+    following = _scene(moment) + 1
+    if moment.numberless_opening and part == following:
+        return Moment(at="articulation", part=part), None
+    unopened = f" (no opening of part {part} heard)" if part == following else ""
+    kept = f"{unopened} {_DASH} kept, the moment unchanged"
+    if moment.at == "familiarization":
+        return moment, f"told ahead, in the Familiarization{kept}"
+    if part > _scene(moment):
+        return moment, f"told ahead of part {moment.part}{kept}"
+    return moment, None
 
 
 class _Line(NamedTuple):
