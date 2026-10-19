@@ -2248,6 +2248,31 @@ class TestACase:
         derived.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_SHADOWS_THE_MODULES_FIXTURE_OF_ITS_NAME = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return get_settings
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+
+
+def test_another_case(cached) -> None:
+    cached.cache_clear()
+"""
+
 THE_CASE_WHOSE_CLASS_FIXTURE_SHADOWS_THE_CONFTESTS_FIXTURE_OF_ITS_NAME = """\
 import pytest
 
@@ -3287,6 +3312,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
             [13],
         ),
         (THE_CASE_WHOSE_CLASS_FIXTURE_EXTENDS_THE_MODULES_FIXTURE_OF_ITS_OWN_NAME, [17], []),
+        (THE_CASE_WHOSE_CLASS_FIXTURE_SHADOWS_THE_MODULES_FIXTURE_OF_ITS_NAME, [22], [18]),
         (THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_ANOTHER_FIXTURE_OF_THE_CLASS, [16], []),
         (THE_CASE_WHOSE_METHOD_HANDS_THE_CLASS_FIXTURE_TO_A_HELPER, [7], []),
         (THE_CASE_WHOSE_SUBCLASS_DEFINES_THE_FIXTURE_OF_ITS_BASE_CLASS_AGAIN, [24], [19]),
@@ -3300,6 +3326,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a method of a nested class that asks for the fixture of the class around it",
         "a helper method that is handed another cache under the name of the class's fixture",
         "a class fixture that requests the module's fixture of its own name",
+        "a class fixture that shadows the module's fixture of its name",
         "a class fixture that requests another fixture of the class",
         "a method that hands the class's fixture to a helper",
         "a subclass that defines the fixture of its base class again",
