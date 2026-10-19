@@ -101,6 +101,7 @@ MIGRATION_FILES = {
     "test_ir_her_ids_migration.py",
     "test_ir_scene_rehearsals_migration.py",
     "test_ir_retellings_migration.py",
+    "test_ir_take_origin_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

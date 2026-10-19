@@ -156,6 +156,7 @@ async def lay_in_a_sentence(
         crc32c=stored.crc32c,
         content_type=WAV,
         verified_at=stored.verified_at,
+        origin=part.origin,
     )
     db.add(take)
     old_end = segment.ends_ms

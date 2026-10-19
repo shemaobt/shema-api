@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
-from app.db.models.internalization_room import IRSegment
-from app.models.internalization_room import PlayedTake
+from app.db.models.internalization_room import IRSegment, IRTake
+from app.models.internalization_room import PlayedTake, UntranslatedPart
 from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES, room_language
@@ -23,6 +23,7 @@ from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
+from app.services.internalization_room.takes import is_wav
 
 logger = logging.getLogger(__name__)
 
@@ -469,6 +470,71 @@ def _stretch_heard(played: list[tuple[int, int]], starts_ms: int, ends_ms: int) 
             reach = until
     length = ends_ms - starts_ms
     return length - covered <= min(PLAYBACK_TOLERANCE_MS, length / 2)
+
+
+UNTRANSLATED_MIN_MS = 500
+
+
+def is_joined(parts: list[IRTake]) -> bool:
+    """A recording is joined when any current part was laid in from a scene rehearsal."""
+    return any(part.origin is not None for part in parts)
+
+
+def untranslated_parts(
+    parts: list[IRTake], told: list[IRSegment], played: list[PlayedTake] | None = None
+) -> list[UntranslatedPart]:
+    """The parts of a joined recording still to translate, in passage order, and from where.
+
+    A part no translated frase stands on is always one, played from its beginning: hers refuses
+    it at every check, the team's own word included (`bt/check/route.ts:69-75`, rule i), since
+    there is nothing on it to read.
+
+    Handed what the tablet played, a stretch of half a second or more that no frase covers is
+    one too, played from where it starts: her rule ii (`untranslated.ts:15-65`), which stops
+    only the check the room runs by itself. The team's «terminei» is their word that nothing
+    was said there, so the finish never hands it. The length is the one the tablet measured
+    playing the part, and only a WAV part's is trusted, as hers trusts only a WAV clip's.
+
+    A part is a scene of the join, numbered by its place among the numbered current parts, as
+    the voice numbers a part; a part recorded whole is no scene and has no number, which is
+    never guessed.
+    """
+    lengths = {
+        entry.take_id: entry.clip_duration_ms for entry in played or [] if entry.clip_duration_ms
+    }
+    found = []
+    position = 0
+    for part in parts:
+        if part.ordinal is not None:
+            position += 1
+        spans = [
+            (stretch.starts_ms, stretch.ends_ms) for stretch in told if stretch.take_id == part.id
+        ]
+        if not spans:
+            from_ms: int | None = 0
+        elif is_wav(part.content_type) and part.id in lengths:
+            from_ms = _first_stretch_untranslated(lengths[part.id], spans)
+        else:
+            from_ms = None
+        if from_ms is not None:
+            found.append(
+                UntranslatedPart(
+                    take_id=part.id,
+                    scene=position if part.ordinal is not None else None,
+                    from_ms=from_ms,
+                )
+            )
+    return found
+
+
+def _first_stretch_untranslated(length_ms: int, spans: list[tuple[int, int]]) -> int | None:
+    """Where the first stretch of half a second or more that no span covers starts, if any."""
+    at = 0
+    for starts_ms, ends_ms in sorted(spans):
+        if starts_ms - at >= UNTRANSLATED_MIN_MS:
+            return at
+        at = max(at, ends_ms)
+    return at if length_ms - at >= UNTRANSLATED_MIN_MS else None
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own

@@ -174,6 +174,20 @@ async def scene_rehearsals_of_the_passage(
     return list(found)
 
 
+async def refuse_an_origin_that_is_no_scene_rehearsal(
+    db: AsyncSession, session: IRSession, origin: str
+) -> None:
+    """A part is joined only from one of the team's live scene rehearsals of this passage.
+
+    The origin is what makes a recording joined, and a joined recording is refused and checked
+    on rules a recording no join touched never meets: an id naming nothing would put a team
+    that recorded the passage as itself under them.
+    """
+    rehearsals = await scene_rehearsals_of_the_passage(db, session)
+    if origin not in {rehearsal.id for rehearsal in rehearsals}:
+        raise UnknownReferenceError(f"{origin} is no scene rehearsal of this passage")
+
+
 async def scene_rehearsals_of_the_session(
     db: AsyncSession, session_id: str
 ) -> list[IRSceneRehearsal]:
