@@ -59,6 +59,7 @@ async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
     kept = sorted(
         (int(number), told) for number, told in (session.retellings or {}).items() if "kept" in told
     )
+    latest = {told["scope"]: number for number, told in kept}
     return [
         KeptTakeView(
             scope=told["scope"],
@@ -68,4 +69,5 @@ async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
             ),
         )
         for number, told in kept
+        if latest[told["scope"]] == number
     ]

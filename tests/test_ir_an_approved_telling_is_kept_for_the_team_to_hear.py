@@ -145,3 +145,27 @@ async def test_a_telling_the_voice_sent_back_or_did_not_judge_keeps_nothing(
         "uma recontagem que a voz mandou contar de novo ficava guardada como aprovada"
     )
     assert await _kept(client, tablet, session_id) == []
+
+
+async def test_a_scene_told_and_approved_twice_is_heard_in_its_latest_telling(
+    client, db_session, verdict, bucket
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+
+    for turn, scope in enumerate(["S1", "S1", "S2"], start=1):
+        verdict["retelling"] = {"scope": scope, "approved": True}
+        await _the_team_tells(client, tablet, session_id, f"turno-{turn}")
+
+    assert [
+        (take["scope"], take["turn_number"]) for take in await _kept(client, tablet, session_id)
+    ] == [("S1", 2), ("S2", 3)], "a cena aprovada duas vezes tocava as duas tomadas, e a velha"
+
+
+async def test_a_session_with_no_verdict_yet_reads_as_holding_no_kept_take(
+    client, db_session
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+
+    assert await _kept(client, tablet, session_id) == [], (
+        "uma sessão sem veredito nenhum não abria na leitura do tablet"
+    )
