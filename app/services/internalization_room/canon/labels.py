@@ -28,10 +28,11 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
+from app.core.served_books import SERVED_BOOKS
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
 from app.services.internalization_room.canon.kept import canon_path, per_canon
-from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.canon.parse_map import load_book, load_map
 from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
 
@@ -75,7 +76,7 @@ class ElementLabelsBroken(Exception):
 
 
 def labelled_elements(
-    pericope_num: str, *, book: str = "Ruth", catalogue_dir: Path = LABELS_DIR
+    pericope_num: str, *, catalogue_dir: Path = LABELS_DIR
 ) -> list[LabelledElement]:
     """The passage's beads in bead order, each named in every language.
 
@@ -99,8 +100,10 @@ def labelled_elements(
     the model is for. It is also evaluated first, which is why `_text` never meets an entry
     whose English is missing.
     """
-    elements = elements_for(pericope_num, book)
-    for_passage = _catalogue(canon_path(catalogue_dir), book).get(pericope_num)
+    elements = elements_for(pericope_num)
+    for_passage = _catalogue(canon_path(catalogue_dir), load_map(pericope_num).book).get(
+        pericope_num
+    )
     if for_passage is None:
         return [
             _scene(pericope_num, element)
@@ -155,10 +158,9 @@ def _from_the_canon(element: Element) -> LabelledElement:
     to prevent; leaving it null is the Desk's own `CoverageLabels` shape and draws as a missing
     translation.
 
-    **No passage of Ruth reaches here any more.** The catalogue carries all fourteen, so for
-    this book the path below is unreachable in production and exists for a book nobody has
-    written a catalogue for at all. `test_a_passage_the_catalogue_does_not_have_still_falls_
-    back_to_the_canon` is what keeps it honest, against a catalogue with the passage removed.
+    **Every bead of Esther and Jonah comes here, and no passage of Ruth does.** Ruth's
+    catalogue carries all fourteen; the other two books have no catalogue file at all, which
+    is a book nobody has translated (ADR 0066).
 
     **What it cost while it was reachable**, kept because it is the argument for ever writing
     a label: measured over the ten passages the catalogue did not have, 264 beads, six of the
@@ -174,7 +176,7 @@ def _from_the_canon(element: Element) -> LabelledElement:
     a different claim about a different thing.
 
     Refusing instead of falling back would take a whole session history down for one
-    conversation, which is why the path stays even with nothing in this book using it.
+    conversation.
     """
     return LabelledElement(
         key=element.key,
@@ -301,17 +303,19 @@ def _named_group(
 
 
 @per_canon(maxsize=8)
-def _known_pericopes(book: str) -> frozenset[str]:
-    """Which passages the canon has, asked once rather than by catching the refusal.
+def _known_pericopes() -> frozenset[str]:
+    """Which passages the served canon has, asked once rather than by catching the refusal.
 
     `load_book` is `lru_cache`d and already parsed, so this costs a set comprehension over
     maps that are in memory either way.
     """
-    return frozenset(meaning_map.pericope_num for meaning_map in load_book(book))
+    return frozenset(
+        meaning_map.pericope_num for book in SERVED_BOOKS for meaning_map in load_book(book)
+    )
 
 
 def label_index(
-    pericope_nums: Iterable[str], *, book: str = "Ruth", catalogue_dir: Path = LABELS_DIR
+    pericope_nums: Iterable[str], *, catalogue_dir: Path = LABELS_DIR
 ) -> dict[tuple[str, str], LabelledElement]:
     """Every bead of the named passages, keyed by `(pericope_num, key)`.
 
@@ -327,17 +331,19 @@ def label_index(
     ours that is holed still raises, through `labelled_elements` — that failure is ours and
     silence would bury it.
     """
-    known = _known_pericopes(book)
+    known = _known_pericopes()
     return {
         (pericope_num, element.key): element
         for pericope_num in {num for num in pericope_nums if num in known}
-        for element in labelled_elements(pericope_num, book=book, catalogue_dir=catalogue_dir)
+        for element in labelled_elements(pericope_num, catalogue_dir=catalogue_dir)
     }
 
 
 @lru_cache(maxsize=8)
 def _catalogue(catalogue_dir: Path, book: str) -> dict:
-    return _read(catalogue_dir / f"{book.lower()}.json")
+    """A book with no catalogue file is a book nobody has translated: it answers no entry."""
+    path = catalogue_dir / f"{book.lower()}.json"
+    return _read(path) if path.exists() else {}
 
 
 @lru_cache(maxsize=8)

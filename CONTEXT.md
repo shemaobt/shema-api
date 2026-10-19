@@ -140,8 +140,12 @@ The necklace is the passage's coverage as the tablet draws it: her twelve beads 
 _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
-The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
+The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors. Each **Served book** has its own (`OV-Esther`, `OV-Jonah`, `OV-Ruth`), first in that book's list. `OV` and `panorama` alone still name Ruth's, for tablets that do not name a book.
 _Avoid_: introduction
+
+**Served book** (`SERVED_BOOKS`):
+A book of her pinned canon that the room vendors and offers whole: Esther, Jonah and Ruth at the pin 5b5c8d2, listed in the order of their passage ids. Every published passage of a served book is offered and opens. No readiness test holds one back, and each served book has its own **Panorama** (`OV-<Book>`).
+_Avoid_: walkable book, enabled book, published book (her word for what the compiler publishes, which may hold books the room does not serve)
 
 **Prepared opening**:
 The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
@@ -156,7 +160,7 @@ What the Panorama voice reads as its standard of truth for one book: the digest 
 _Avoid_: book context, overview prompt, summary
 
 **Preservation notes**:
-The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)». Ruth has 99 at the pin 5b5c8d2; Esther and Jonah have none, so their Panoramas read «- (none recorded)».
 _Avoid_: do_not_decide (the canon's field name), spoilers, constraints
 
 **Address**:
@@ -323,7 +327,7 @@ The facilitator's act of giving a team a clean pericope: it creates an **Archive
 _Avoid_: reset, zero, clear, wipe
 
 **Archive** (`ir_archives`, `archive_id`):
-What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. No release is minted on an archived session, by the team or by a facilitator's force. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):

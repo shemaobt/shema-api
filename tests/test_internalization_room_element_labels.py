@@ -229,16 +229,16 @@ def test_a_catalogue_that_is_not_a_catalogue_at_all_is_refused(tmp_path):
     assert "ruth.json" in str(refused.value)
 
 
-def test_a_missing_catalogue_file_names_itself_not_the_full_deploy_path(tmp_path):
+def test_a_missing_legend_file_names_itself_not_the_full_deploy_path(tmp_path):
     """ENG-925's handler puts `str(exc)` in the caller's response body — an absolute path
     built from `LABELS_DIR` (which is `__file__`-relative) would be this deploy's own
     filesystem layout on the wire. `path.name` is enough to say which file is missing.
     """
     with pytest.raises(ElementLabelsBroken) as refused:
-        labelled_elements("P01", catalogue_dir=tmp_path)
+        legend(catalogue_dir=tmp_path)
 
     said = str(refused.value)
-    assert "ruth.json" in said
+    assert "legend.json" in said
     assert str(tmp_path) not in said
 
 

@@ -25,6 +25,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
+from app.core.served_books import SERVED_BOOKS
 from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
@@ -99,17 +100,9 @@ def book_of(pericope: str) -> str:
 
 
 def resolve_pericope(pericope: str) -> str:
-    """`OV` alone is the panorama of whichever book the room serves, so a client can ask
-    for it without naming the book — the canon stays entirely on this side.
-
-    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
-    on the wire, so a client that opens a session with the id the wheel just handed it
-    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
-
-    It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
-    belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
-    under another name: a book is not a passage, the room serves one, and `elements_for`,
-    `labelled_elements` and `run_turn` already take it as a parameter.
+    """`OV` alone, and `PANORAMA` (`"panorama"`, the id the wheel once put on the wire), are
+    Ruth's Panorama, for a tablet that names no book. Every served book's own Panorama is
+    `OV-<Book>` (ADR 0066).
     """
     if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
@@ -358,7 +351,10 @@ async def _resolved(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if not is_panorama(pericope):
+    if is_panorama(pericope):
+        if (book := book_of(pericope)) not in SERVED_BOOKS:
+            raise ValidationError(f"the {book} canon is not served in this release")
+    else:
         require_walkable(load_map(pericope))
     spoken = normalize(language)
     if language is not None and spoken is None:

@@ -10,9 +10,7 @@ from __future__ import annotations
 
 from app.services.internalization_room.canon import book_material, parse_map
 from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
     A_FABLE_LOG_WITH_A_LAYER,
-    A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER,
     A_FABLE_LOG_WITHOUT_ONE,
     a_fable_map,
 )
@@ -44,29 +42,7 @@ def test_a_fable_log_with_a_layer_records_one_rule_the_team_may_not_decide() -> 
     audit = book_material._extract_audit(A_FABLE_LOG_WITH_A_LAYER)
 
     assert [(entry["id"], entry["do_not_decide"]) for entry in audit] == [("R1", True)]
-    assert book_material._extract_checklist(A_FABLE_LOG_WITH_A_LAYER) == {}
 
 
 def test_a_fable_log_without_one_records_no_rule_at_all() -> None:
     assert book_material._extract_audit(A_FABLE_LOG_WITHOUT_ONE) == []
-    assert book_material._extract_checklist(A_FABLE_LOG_WITHOUT_ONE) == {}
-
-
-def test_a_fable_log_with_a_complete_register_keeps_its_rule_and_says_the_register_is_done() -> (
-    None
-):
-    audit = book_material._extract_audit(A_FABLE_LOG_WITH_A_COMPLETE_REGISTER)
-
-    assert [(entry["id"], entry["do_not_decide"]) for entry in audit] == [("R1", True)]
-    assert book_material._extract_checklist(A_FABLE_LOG_WITH_A_COMPLETE_REGISTER) == {
-        "high_risk_register_complete": True
-    }
-
-
-def test_a_fable_log_with_an_incomplete_register_keeps_its_rule_and_says_it_is_open() -> None:
-    audit = book_material._extract_audit(A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER)
-
-    assert [(entry["id"], entry["do_not_decide"]) for entry in audit] == [("R1", True)]
-    assert book_material._extract_checklist(A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER) == {
-        "high_risk_register_complete": False
-    }

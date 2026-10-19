@@ -92,7 +92,6 @@ async def run_turn(
     guide_prompt: str,
     validator_prompt: str,
     pericope_num: str,
-    book: str = "Ruth",
     session_language: str = LANGUAGE_NAMES[AUTHORED],
     language_code: str = AUTHORED,
     opening: bool = False,
@@ -134,6 +133,7 @@ async def run_turn(
             fixed_line=line,
         )
 
+    book = load_map(pericope_num).book
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     checked = _checked_scene(scene_rehearsal, messages, pericope_num)

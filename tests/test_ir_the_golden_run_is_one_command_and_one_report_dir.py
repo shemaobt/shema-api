@@ -107,8 +107,8 @@ def her_sessions(tmp_path: Path) -> Path:
     )
     _script(
         sessions,
-        "J01-frame-before-elicit",
-        "J01",
+        "Q01-a-passage-nobody-vendored",
+        "Q01",
         [{"kickoff": True, "expect": {"no_fail_safe": True}}],
     )
     return sessions
@@ -146,11 +146,11 @@ async def test_one_command_plays_every_session_and_a_refused_one_does_not_stop_t
         (0, GUIDE_LINE, "pass", []),
         (1, GUIDE_LINE, "pass", ["verbatim repeat of the previous guide turn"]),
     ], "a sessão de Rute foi tocada inteira, com o check mecânico dela por turno"
-    assert not list(out.glob("J01-frame-before-elicit.*")), (
-        "a sessão de Jonas não abriu: este cânon só tem Rute, e nada dela é um relatório"
+    assert not list(out.glob("Q01-a-passage-nobody-vendored.*")), (
+        "a sessão da Q01 não abriu: nenhum mapa dela foi vendorado, e nada dela é um relatório"
     )
     readme = (out / "README.md").read_text(encoding="utf-8")
-    assert "| J01-frame-before-elicit | — | recusada | 400 " in readme, (
+    assert "| Q01-a-passage-nobody-vendored | — | recusada | 400 " in readme, (
         "a recusa é uma linha do README, não o fim da rodada"
     )
     row = (

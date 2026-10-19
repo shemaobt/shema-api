@@ -37,6 +37,7 @@ UNKNOWN = {DEVICE_CREDENTIAL_HEADER: "b" * 64}
 #: Every door under the room prefix a tablet calls once it belongs to a team, with the
 #: device needs-person door and the voice route.
 TEAM_DOORS = [
+    ("GET", "/books"),
     ("GET", "/books/{book}/passages"),
     ("POST", "/devices/{device_id}/needs-person"),
     ("GET", "/fixed-lines/{line}"),

@@ -25,7 +25,7 @@ from app.models.internalization_room import PericopePosition
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
 from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.latest_by_passage import latest_releases
@@ -116,7 +116,6 @@ async def _scene_they_are_in(
     team_id: str,
     pericope: str | None,
     pin: str | None,
-    book: str = ROOM_BOOK,
 ) -> str | None:
     """The scene of the bead this team moved most recently, named as that scene's own bead.
 
@@ -137,7 +136,7 @@ async def _scene_they_are_in(
 
     try:
         with reading_the_canon_of(pin):
-            answers = scene_of(pericope, book)
+            answers = scene_of(pericope)
     except CanonNotKept:
         return None
     moved = [key for key in history if key in answers]
