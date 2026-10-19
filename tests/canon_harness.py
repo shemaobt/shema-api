@@ -32,6 +32,8 @@ from app.services.internalization_room.canon import (
     titles,
 )
 
+HER_CANON = Path(__file__).parent / "fixtures" / "her-canon-5b5c8d2"
+
 
 def forget_the_canon() -> None:
     parse_map.load_map.cache_clear()
@@ -144,7 +146,7 @@ def the_canon_moves_on(
     return tree
 
 
-def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
+def a_fable_map(number: int = 1, *, sta_status: str = "complete", status: str = "complete") -> str:
     return textwrap.dedent(
         f"""\
         ---
@@ -154,7 +156,7 @@ def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
         bcv: "Fable 1:{number}-{number + 1}"
         genre-group: "NARRATIVE"
         genre: "HISTORICAL_NARRATIVE"
-        status: "complete"
+        status: "{status}"
         sta-status: "{sta_status}"
         ---
 

@@ -50,6 +50,7 @@ from app.services.internalization_room.back_translation import (
     Finding,
     SupersededAttempt,
     findings_remaining,
+    frase_numbers,
     rehearsed_parts,
     unheard_parts,
 )
@@ -293,7 +294,7 @@ def _check_block(
     The note never enters. What is open is a kind and an address; why it is open is the
     consultant's material and travels in the retroverification file.
     """
-    frase_of = {stretch.id: frase for frase, stretch in enumerate(told, start=1)}
+    frase_of = frase_numbers(told)
     take_of = {stretch.id: stretch.take_id for stretch in told}
     findings: list[dict[str, Any]] = []
     for finding in telling_back.findings:
@@ -452,6 +453,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     telling_back = back_translation_of(session)
     stretches = await final_segments(db, session.id)
     told = told_back(stretches)
+    frases = frase_numbers(told)
     replaced = await retired_segments(db, session.id)
     divided = await divided_segments(db, session.id)
     takes = await takes_of(db, session.id)
@@ -503,8 +505,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
             "scope": telling_back.scope,
             "checked": telling_back.checked,
             "segments": [
-                {**_segment_view(segment), "frase": frase}
-                for frase, segment in enumerate(told, start=1)
+                {**_segment_view(segment), "frase": frases[segment.id]} for segment in told
             ],
             "findings": [_finding_view(finding) for finding in telling_back.findings],
             "played_by_take": [
