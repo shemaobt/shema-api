@@ -12,6 +12,7 @@ read, which is the telling with no words.
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import httpx
@@ -216,3 +217,64 @@ async def test_a_telling_with_words_is_still_a_stretch(
     assert answered.status_code == 200, answered.text
     assert answered.json()["captured"] is True
     assert len(await current(db_session, session_id)) == 1
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param(httpx.Response(200, text="<html>bad gateway</html>"), id="not json"),
+        pytest.param(httpx.Response(200, json=["texto"]), id="not an object"),
+    ],
+)
+async def test_a_recognizer_answer_nobody_can_read_is_a_wordless_refusal(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    answer: httpx.Response,
+) -> None:
+    from app.core.config import get_settings
+    from app.services.internalization_room import hearing
+
+    recognizer = importlib.import_module("app.services.translation_helper.transcribe_audio")
+
+    keyed = get_settings().model_copy(update={"elevenlabs_api_key": "chave-de-teste"})
+    monkeypatch.setattr(recognizer, "get_settings", lambda: keyed)
+    monkeypatch.setattr(
+        recognizer,
+        "_make_client",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(lambda _: answer)),
+    )
+    monkeypatch.setattr(hearing, "transcribe_audio", recognizer.transcribe_audio)
+    session_id = await _a_session(db_session)
+    take_id = await _rehearse(client, session_id)
+    before = await _segment_rows(db_session, session_id)
+
+    refused = await _tell(client, session_id, take_id, 1, "não usado")
+
+    assert refused.status_code == 422, "um 500 o tablet lê como sem conexão"
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert await _segment_rows(db_session, session_id) == before
+
+
+async def test_a_recognizer_that_does_not_answer_in_time_is_a_wordless_refusal(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from app.services.internalization_room import hearing
+
+    async def _never_in_time(*_: Any, **__: Any) -> str:
+        await asyncio.sleep(5)
+        return "tarde demais"
+
+    monkeypatch.setattr(hearing, "TRANSCRIBER_BOUND_SECONDS", 0.05)
+    monkeypatch.setattr(hearing, "transcribe_audio", _never_in_time)
+    session_id = await _a_session(db_session)
+    take_id = await _rehearse(client, session_id)
+    before = await _segment_rows(db_session, session_id)
+
+    refused = await _tell(client, session_id, take_id, 1, "não usado")
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert await _segment_rows(db_session, session_id) == before
