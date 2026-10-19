@@ -16,9 +16,11 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.takes import takes_of
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import (
     REHEARSED_AT,
@@ -26,6 +28,8 @@ from tests.room_harness import (
     Analyst,
     Room,
     a_piece_still_to_be_told,
+    another_rehearsal_take,
+    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -36,6 +40,7 @@ from tests.room_harness import (
     the_bucket_is_in_memory,
     the_room_speaks,
 )
+from tests.sentence_harness import re_record, rehearsed_in_wav, spoken, take_named
 
 PART_MS = 4000
 CHECKING_BY_POSITION = "N1"
@@ -52,9 +57,26 @@ def room(monkeypatch: pytest.MonkeyPatch) -> Room:
     return the_room_speaks(monkeypatch)
 
 
+@pytest.fixture(autouse=True)
+def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def transcriber(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def said(*_: Any, **__: Any) -> str:
+        return "a frase nova traduzida"
+
+    monkeypatch.setattr(segments_api, "heard", said)
+
+
 @pytest.fixture()
-async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
-    the_bucket_is_in_memory(monkeypatch)
+def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    return the_bucket_is_in_memory(monkeypatch)
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, store: MemoryStore):
     async with room_client(db_session, monkeypatch) as door:
         yield door
 
@@ -472,3 +494,48 @@ async def test_terminei_over_a_joined_stretch_that_held_only_silence_is_checked_
         "o «terminei» da equipe não fechava à mão um trecho onde nada foi dito"
     )
     assert analyst.readings == 1
+
+
+async def _joined_in_wav(
+    db: AsyncSession, store: MemoryStore, frases: list[tuple[int, int]]
+) -> tuple[IRSession, IRTake, list[Any], str]:
+    session, (part,), (told,) = await rehearsed_in_wav(db, store, [frases])
+    rehearsal = await _a_scene_rehearsal(db, session, 1)
+    part.origin = rehearsal.id
+    await db.commit()
+    return session, part, told, rehearsal.id
+
+
+async def test_a_sentence_laid_into_a_joined_part_leaves_the_recording_joined(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, (_, middle), origin = await _joined_in_wav(
+        db_session, store, [(0, 1000), (1000, 2000)]
+    )
+    untold = await another_rehearsal_take(
+        db_session, session, sha256="z" * 64, scope="parte-2", ordinal=2
+    )
+    laid = (await re_record(client, session.id, middle.id, spoken(1.0))).json()["segments"][1]
+    told = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{middle.id}/replace",
+        data={
+            "take_id": laid["take_id"],
+            "starts_ms": str(laid["starts_ms"]),
+            "ends_ms": str(laid["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text
+
+    answered = await press_terminei(
+        client,
+        session.id,
+        report=played_every_part([laid["take_id"], untold.id], duration_ms=laid["ends_ms"]),
+    )
+
+    assert (await take_named(db_session, laid["take_id"])).origin == origin, (
+        "a frase regravada desfazia a junção da parte"
+    )
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["refusal"] == "STRETCH_UNTRANSLATED"
+    assert answered.json()["untranslated"] == [{"take_id": untold.id, "scene": 2, "from_ms": 0}]
