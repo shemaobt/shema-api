@@ -5,12 +5,15 @@ import json
 import logging
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.elements import Element, element_keys
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.coverage import CoverageStatus, merge, remaining
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before, classifier_ladder
@@ -41,7 +44,13 @@ _DECISIONS: dict[str, Any] = {
                 "required": ["element_id", "new_status"],
                 "additionalProperties": False,
             },
-        }
+        },
+        "retelling": {
+            "type": "object",
+            "properties": {"scope": {"type": "string"}, "approved": {"type": "boolean"}},
+            "required": ["scope", "approved"],
+            "additionalProperties": False,
+        },
     },
     "required": ["decisions"],
     "additionalProperties": False,
@@ -57,6 +66,40 @@ _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
 #: at once came back cut mid-list; a reading this size finishes under it, and one that still
 #: does not is read again in halves.
 _BEADS_PER_READING = 11
+
+
+class KeptRecording(BaseModel):
+    storage_key: str
+    content_type: str
+
+
+class Retelling(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    scope: str
+    approved: bool
+    kept: KeptRecording | None = None
+
+
+def _the_reply(raw: str) -> Any:
+    text = raw.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
+    if fenced:
+        text = fenced.group(1).strip()
+    return json.loads(_the_object_in(text))
+
+
+def _retelling_in(reply: dict[str, Any], pericope_num: str) -> Retelling | None:
+    told = reply.get("retelling")
+    if not isinstance(told, dict):
+        return None
+    scope, approved = told.get("scope"), told.get("approved")
+    if not isinstance(scope, str) or not isinstance(approved, bool):
+        return None
+    scope = scope.removeprefix("scene:")
+    if scope != "whole" and scope not in scene_ids_for(pericope_num):
+        return None
+    return Retelling(scope=scope, approved=approved)
 
 
 def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -> None:
@@ -172,19 +215,22 @@ def _parse(raw: str) -> dict[str, list[str]] | None:
     answers the table, and it always answers the whole of it, because the caller indexes
     both slots.
     """
-    verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
-    text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
-    if fenced:
-        text = fenced.group(1).strip()
+    reply = _reply_of(raw)
+    return None if reply is None else _decisions_in(reply, raw)
+
+
+def _reply_of(raw: str) -> dict[str, Any] | None:
     try:
-        parsed: Any = json.loads(_the_object_in(text))
+        parsed: Any = _the_reply(raw)
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
         return None
-    if not isinstance(parsed, dict):
-        return None
-    decisions = parsed.get("decisions")
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _decisions_in(reply: dict[str, Any], raw: str) -> dict[str, list[str]] | None:
+    verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
+    decisions = reply.get("decisions")
     if not isinstance(decisions, list):
         logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])
         return None
@@ -218,6 +264,7 @@ async def classify_coverage(
     pericope_num: str,
     session_language: str = LANGUAGE_NAMES[AUTHORED],
     settings: Settings | None = None,
+    on_retelling: Callable[[Retelling], None] | None = None,
 ) -> dict[str, str]:
     """Advance the tracker from one exchange. Never runs on the voice path.
 
@@ -236,6 +283,7 @@ async def classify_coverage(
     told.
     """
     cfg = settings or get_settings()
+    retold: list[Retelling | None] = []
 
     offered = remaining(coverage_state, pericope_num)
     readings = [
@@ -268,9 +316,11 @@ async def classify_coverage(
             logger.exception("Coverage classification failed; leaving the tracker untouched")
             return None
 
-        verdict = _parse(raw)
-        if verdict is not None:
+        reply = _reply_of(raw)
+        verdict = None if reply is None else _decisions_in(reply, raw)
+        if reply is not None and verdict is not None:
             _report_unknown_elements(verdict, pericope_num)
+            retold.append(_retelling_in(reply, pericope_num))
             return [_only_offered(verdict, beads)]
         if len(beads) <= 1:
             logger.warning(
@@ -291,6 +341,9 @@ async def classify_coverage(
     )
     if landed is None:
         return coverage_state
+    told = retold[0] if all(each == retold[0] for each in retold) else None
+    if told is not None and on_retelling is not None:
+        on_retelling(told)
     return merge(
         coverage_state,
         pericope_num=pericope_num,

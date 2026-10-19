@@ -163,6 +163,7 @@ async def _the_team_works_the_bead_the_new_canon_dropped(
     await background.settle_coverage(
         session_id=session_id,
         turn_id="depois",
+        turn_number=1,
         team_utterance="Elimeleque tinha morrido",
         guide_response="E o que mais?",
         pericope_num=P,

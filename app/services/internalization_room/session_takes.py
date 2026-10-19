@@ -5,11 +5,17 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake
-from app.models.internalization_room import MotherTongueTake, MotherTongueTakesResponse
+from app.models.internalization_room import (
+    KeptTakeView,
+    MotherTongueTake,
+    MotherTongueTakesResponse,
+)
+from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
     listen_url,
+    signed_listen_url,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -48,3 +54,22 @@ async def mother_tongue_takes_of(
             )
         )
     return MotherTongueTakesResponse(session_id=session.id, takes=rows)
+
+
+async def kept_takes_of(session: IRSession) -> list[KeptTakeView]:
+    latest: dict[str, tuple[int, KeptRecording]] = {}
+    for number, entry in sorted((int(n), e) for n, e in (session.retellings or {}).items()):
+        told = Retelling.model_validate(entry)
+        if told.kept is not None:
+            latest[told.scope] = (number, told.kept)
+    ordered = sorted(latest.items(), key=lambda kept: kept[1][0])
+    links = await asyncio.gather(
+        *(
+            signed_listen_url(recording.storage_key, recording.content_type)
+            for _, (_, recording) in ordered
+        )
+    )
+    return [
+        KeptTakeView(scope=scope, turn_number=number, audio_url=link)
+        for (scope, (number, _)), link in zip(ordered, links, strict=True)
+    ]

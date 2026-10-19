@@ -307,6 +307,7 @@ async def test_the_coverage_of_a_row_stored_in_spanish_is_classified_in_the_room
     await background.settle_coverage(
         session_id=session.id,
         turn_id="turno-1",
+        turn_number=1,
         team_utterance=PORTUGUESE,
         guide_response="Conte de novo, por favor.",
         pericope_num=PASSAGE,
