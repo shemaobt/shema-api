@@ -61,10 +61,6 @@ _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
 _Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
 
-**Visit** (*visita*):
-One session of the team on a pericope as the Desk shows it: the pericope is the unit of the Desk and the visit is one attempt at it. The pericope's line shows the current visit; the earlier ones, with how each ended, are listed in the Retroverification phase.
-_Avoid_: session (in the Desk's prose; it is the server's word for the same row), attempt, round, Sessão
-
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
 _Avoid_: bot, assistant, Sala
@@ -144,8 +140,12 @@ The necklace is the passage's coverage as the tablet draws it: her twelve beads 
 _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
-The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
+The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors. Each **Served book** has its own (`OV-Esther`, `OV-Jonah`, `OV-Ruth`), first in that book's list. `OV` and `panorama` alone still name Ruth's, for tablets that do not name a book.
 _Avoid_: introduction
+
+**Served book** (`SERVED_BOOKS`):
+A book of her pinned canon that the room vendors and offers whole: Esther, Jonah and Ruth at the pin 5b5c8d2, listed in the order of their passage ids. Every published passage of a served book is offered and opens. No readiness test holds one back, and each served book has its own **Panorama** (`OV-<Book>`).
+_Avoid_: walkable book, enabled book, published book (her word for what the compiler publishes, which may hold books the room does not serve)
 
 **Prepared opening**:
 The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
@@ -160,7 +160,7 @@ What the Panorama voice reads as its standard of truth for one book: the digest 
 _Avoid_: book context, overview prompt, summary
 
 **Preservation notes**:
-The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)». Ruth has 99 at the pin 5b5c8d2; Esther and Jonah have none, so their Panoramas read «- (none recorded)».
 _Avoid_: do_not_decide (the canon's field name), spoilers, constraints
 
 **Address**:
@@ -263,9 +263,10 @@ _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part nev
 
 **Abandoned**:
 A superseded stretch that never got a replacement: what recording a **Part** again leaves
-behind on that part's stretches, and what a session told back and started over before
-2026-09-18 still carries as history.
-_Avoid_: erased, discarded, cancelled, Abandonada, restart (retired: the telling-back started over)
+behind on that part's stretches, and what «recomeçar a tradução» on a session told back
+(`/back-translation/restart`) leaves behind on every current stretch, while the findings and kept
+check rounds are archived with the attempt it ends.
+_Avoid_: erased, discarded, cancelled, Abandonada, restart (a **Scene rehearsal**'s, not this)
 
 ### Verdict closings
 
@@ -275,11 +276,19 @@ _Avoid_: ending, other, Fechamento
 
 ### Session states
 
-**Session**:
+**Session** (*sessão*):
 The work of one team on one pericope in one language, with status in progress, done or needs a
 person. A session nobody entered — no turn, no take and no halt — is not yet a room of the team:
-the Desk's column and the team's last activity ignore it.
-_Avoid_: passage, round, Sessão
+the Desk's column and the team's last activity ignore it. The Desk uses the same word.
+_Avoid_: passage, round, visit, visita, attempt
+
+**Approved passage** (*passagem aprovada*):
+A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
+_Avoid_: closed passage (a session done, which may hold no release), fechada, complete
+
+**Inactive team** (*equipe inativa*):
+A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of the book is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
+_Avoid_: stalled, parada, idle, dormant
 
 **Opening a session**:
 A tablet asking the room for its team's session of a pericope and language: the latest live one is returned whatever its state, and one is created only when none exists. An archived session is never returned.
@@ -302,7 +311,7 @@ A turn that carries the team's recording: what they said goes in, the Guide's ne
 _Avoid_: audio turn, retell turn
 
 **Attempt**:
-One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Visit.
+One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Session.
 _Avoid_: try, round, redraft (the count of drafts after the first), Tentativa
 
 **Attempt note**:
@@ -318,7 +327,7 @@ The facilitator's act of giving a team a clean pericope: it creates an **Archive
 _Avoid_: reset, zero, clear, wipe
 
 **Archive** (`ir_archives`, `archive_id`):
-What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. No release is minted on an archived session, by the team or by a facilitator's force. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):
@@ -414,7 +423,7 @@ against a stack and judges it with her own checks. Read verbatim, never forked.
 _Avoid_: fixture, scenario, test case, roteiro
 
 **Room note**:
-A fact about the room the app hands the Guide in place of the team's words, bracketed and in the session's language: the session has just started, the team spoke in the mother tongue for about so many seconds, or the team cut the Guide's previous reply short. Never words the team said.
+A fact about the room the app hands the Guide in place of the team's words, bracketed and in the session's language: the session has just started, the team spoke in the mother tongue for about so many seconds, the team cut the Guide's previous reply short, or the team rehearsed a scene and translated it frase by frase. Never words the team said: in a **Rehearsal turn** their words follow it.
 _Avoid_: system message, prompt, instruction, Nota da sala
 
 **Earlier passages**:
@@ -422,8 +431,24 @@ This team's status on each earlier passage of the book (approved, started, or no
 _Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
 
 **Scene rehearsals**:
-The scenes whose recorded and translated scene rehearsal has reached the Guide as of a turn, the whole list each time; an empty list is the fact that none has.
+The scenes whose recorded and translated scene rehearsal has reached the Guide as of a turn, the whole list each time; an empty list is the fact that none has. Counted from each **Rehearsal turn**'s scene label as it stood at sending: a rehearsal sent with no label, with one the passage lacks, or labelled only after sending counts for no scene.
 _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
+
+**Scene rehearsal** (`ir_scene_rehearsals`; ensaio da cena):
+One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, a label the passage lacks kept apart as the team sent it, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, frozen once sent but for its scene label, never heard by the recognizer or the voice.
+_Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
+
+**Rehearsal turn** («terminei»):
+The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the words of its live **Scene frases** in recording order, handed to the Guide with no recording and no recognizer. The scene label is kept on the record as it stood at sending and reaches the Guide only as a scene id in **Scene rehearsals**.
+_Avoid_: checking turn, Team turn
+
+**Scene frase** (`ir_scene_frases`):
+One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase.
+_Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
+
+**Restart** (`ir_scene_restarts`; «recomeçar a tradução»):
+A numbered mark beside a **Scene rehearsal** that sets its frases so far aside, keeping a copy of the record as it was. The rehearsal then has no current frases; a frase recorded before it and sent after it is set aside with the rest. Nothing is deleted.
+_Avoid_: reset, Zerar (the facilitator's, over the whole pericope), Recomeço
 
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
@@ -433,8 +458,12 @@ _Avoid_: api key, token, password, Chave do runner
 ### Build
 
 **Claim code**:
-The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it, or the demo page while a **Demo team** is configured.
 _Avoid_: código, pairing code, device code, credential
+
+**Demo team** (`is_demo_team`):
+The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server attends its halts at once) and never releases to Refine, with or without the configuration.
+_Avoid_: test team, sandbox, reviewer team, equipe demo
 
 **Device credential** (`X-Device-Credential`):
 The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.

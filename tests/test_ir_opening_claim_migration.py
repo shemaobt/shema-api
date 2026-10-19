@@ -38,9 +38,9 @@ async def _stored(url: str) -> None:
         await conn.execute(
             text(
                 "INSERT INTO ir_sessions (id, pericope, language, status, messages,"
-                " after_panorama, coverage_state, kept_takes, back_translation, created_at,"
+                " after_panorama, coverage_state, back_translation, created_at,"
                 " updated_at) VALUES (:id, :pericope, :language, :status, :messages, 0,"
-                " '{}', '{}', '{}', '2026-10-01 08:00:00', '2026-10-01 08:00:00')"
+                " '{}', '{}', '2026-10-01 08:00:00', '2026-10-01 08:00:00')"
             ),
             dict(
                 zip(("pericope", "language", "status", "messages"), AS_STORED, strict=True),

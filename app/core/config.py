@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     #: Empty is the production configuration: the text seam then does not exist, and its
     #: routes answer 404 rather than asking for a credential nobody has been given.
     internalization_room_runner_key: str = ""
+    #: The demo team, by its team id (ADR 0064). Empty is the production configuration: there
+    #: is no demo team, and the page that spends a code on it answers 404.
+    internalization_room_demo_team_id: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
     #: The room's voice is Mariana's, chosen on 2026-09-21, because Marcia's frozen app is the
@@ -101,10 +104,9 @@ class Settings(BaseSettings):
     #: ``_en`` when a deployment configures one and by her otherwise.
     internalization_room_voice_id: str = "tZ2oxQJXfOrGrN7iKnta"
     internalization_room_voice_id_en: str = ""
-    #: What a caller that names no language gets. Not "the language the room speaks" any
-    #: more — the app names that on the session, because it is the tablet that knows which
-    #: language the team in front of it reads its own settings in.
-    internalization_room_default_language: str = "en"
+    #: What a caller that names no language gets: Brazilian Portuguese, as a session is in
+    #: her app unless the team chose English. The app names the team's choice on the session.
+    internalization_room_default_language: str = "pt"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
 
     gcs_bucket_name: str = ""

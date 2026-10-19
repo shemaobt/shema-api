@@ -28,7 +28,7 @@ from tests.baker import make_project_user_access, make_user
 from tests.device_harness import RETIRED_ROOM_KEY_HEADER, LinkedTablet, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
-from tests.room_harness import room_client
+from tests.room_harness import room_client, the_room_speaks
 
 RETIRED_KEY = "sala-de-teste"
 KEY_ALONE = {RETIRED_ROOM_KEY_HEADER: RETIRED_KEY}
@@ -37,6 +37,7 @@ UNKNOWN = {DEVICE_CREDENTIAL_HEADER: "b" * 64}
 #: Every door under the room prefix a tablet calls once it belongs to a team, with the
 #: device needs-person door and the voice route.
 TEAM_DOORS = [
+    ("GET", "/books"),
     ("GET", "/books/{book}/passages"),
     ("POST", "/devices/{device_id}/needs-person"),
     ("GET", "/fixed-lines/{line}"),
@@ -54,6 +55,15 @@ TEAM_DOORS = [
     ("POST", "/sessions/{session_id}/needs-person"),
     ("POST", "/sessions/{session_id}/person-arrived"),
     ("POST", "/sessions/{session_id}/release"),
+    ("GET", "/sessions/{session_id}/scene-rehearsals"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals"),
+    ("GET", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases"),
+    ("GET", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/scene"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send"),
+    ("GET", "/sessions/{session_id}/scenes"),
     ("POST", "/sessions/{session_id}/segments/{segment_id}/divide"),
     ("POST", "/sessions/{session_id}/segments/{segment_id}/replace"),
     ("GET", "/sessions/{session_id}/takes"),
@@ -76,10 +86,14 @@ CLAIM_DOORS = [
 #: signs in to the first, the golden runner presents its own key to the other two.
 NOT_THE_TABLETS = ("/facilitator/", "/golden/", "/text-seam/")
 
+#: The page a store reviewer's browser types a claim code into (ADR 0064), by its exact path.
+THE_REVIEWERS_PAGE = {("GET", "/demo"), ("POST", "/demo")}
+
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The room's doors with no caller of their own: every case says who is knocking."""
+    the_room_speaks(monkeypatch)
     async with room_client(db_session, monkeypatch) as c:
         del c.headers[DEVICE_CREDENTIAL_HEADER]
         del c.headers["X-Room-Device"]
@@ -107,9 +121,11 @@ def knock(
     filled = path.format(
         book="Ruth",
         device_id="aparelho",
+        frase_id="frase",
         line="A-1",
         handle="nada",
         question_id="pergunta",
+        rehearsal_id="ensaio",
         session_id="sessao",
         segment_id="trecho",
         take_id="tomada",
@@ -343,7 +359,7 @@ def test_the_door_tables_are_every_door_a_tablet_can_call() -> None:
         for method in route.methods - {"HEAD", "OPTIONS"}
     }
 
-    assert doors == set(TEAM_DOORS) | set(CLAIM_DOORS)
+    assert doors == set(TEAM_DOORS) | set(CLAIM_DOORS) | THE_REVIEWERS_PAGE
 
 
 @pytest.mark.parametrize(("method", "path"), TEAM_DOORS)

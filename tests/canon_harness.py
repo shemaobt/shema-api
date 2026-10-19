@@ -20,8 +20,9 @@ from typing import Any
 import pytest
 
 from app.services import internalization_room as room
-from app.services.internalization_room import canon
+from app.services.internalization_room import _default_prompts, canon, fail_safe, name_check
 from app.services.internalization_room.canon import (
+    accepted_readings,
     book_material,
     elements,
     kept,
@@ -38,9 +39,8 @@ def forget_the_canon() -> None:
     parse_map.load_map.cache_clear()
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
-    book_material._register_complete.cache_clear()
-    book_material._skeleton_registers.cache_clear()
     book_material.significant_absences.cache_clear()
+    accepted_readings.accepted_readings_of.cache_clear()
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
     labels._known_pericopes.cache_clear()
@@ -53,15 +53,20 @@ def forget_the_canon() -> None:
     names.verse_ranges.cache_clear()
     names._glosses.cache_clear()
     titles._portuguese.cache_clear()
+    name_check._forms.cache_clear()
 
 
-def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
+def _the_modules_of_the_room() -> list[Any]:
     submodules = [
         importlib.import_module(found.name)
         for found in pkgutil.walk_packages(room.__path__, f"{room.__name__}.")
     ]
+    return [room, *submodules]
+
+
+def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
     held: dict[int, tuple[str, Any]] = {}
-    for module in [room, *submodules]:
+    for module in _the_modules_of_the_room():
         under_the_canon = module.__name__ == canon.__name__ or module.__name__.startswith(
             f"{canon.__name__}."
         )
@@ -73,7 +78,50 @@ def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
                 and hasattr(value, "cache_info")
             ):
                 held.setdefault(id(value), (name, value))
+    for listed in THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT:
+        module_name, _, name = listed.rpartition(".")
+        value = getattr(importlib.import_module(module_name), name)
+        held.setdefault(id(value), (name, value))
     return list(held.values())
+
+
+_THE_PROMPT_CACHES: tuple[tuple[str, Any], ...] = (
+    ("_sections", fail_safe._sections),
+    ("fail_safe_utterances", fail_safe.fail_safe_utterances),
+    ("load_prompt", _default_prompts.load_prompt),
+)
+
+
+def the_caches_of_the_prompts() -> list[tuple[str, Any]]:
+    return list(_THE_PROMPT_CACHES)
+
+
+def the_names_the_forgotten_caches_are_reached_by() -> set[str]:
+    forgotten = {
+        id(cache) for _, cache in [*the_caches_the_loader_holds(), *the_caches_of_the_prompts()]
+    }
+    reached = {
+        f"{module.__name__}.{name}"
+        for module in _the_modules_of_the_room()
+        for name, value in vars(module).items()
+        if id(value) in forgotten
+    }
+    return reached | set(THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT)
+
+
+def forget_the_prompts() -> None:
+    for _, cache in _THE_PROMPT_CACHES:
+        cache.cache_clear()
+
+
+THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT: tuple[str, ...] = (
+    "app.services.internalization_room.name_check._forms",
+)
+
+THE_CACHES_THAT_READ_NO_CANON: tuple[str, ...] = (
+    "app.core.config.get_settings",
+    "app.services.internalization_room.passage_lines._sections",
+)
 
 
 def the_canon_moves_on(
@@ -155,25 +203,10 @@ _A_RULE = {
 }
 
 
-def _a_fable_log(audit: list[dict], checklist: dict | None = None) -> str:
+def _a_fable_log(audit: list[dict]) -> str:
     body: dict = {"high_risk_register_audit": audit}
-    if checklist is not None:
-        body["validation_checklist"] = checklist
     return "# COMPILATION LOG\n\n" + json.dumps(body, indent=2) + "\n"
 
 
 A_FABLE_LOG_WITH_A_LAYER = _a_fable_log([_A_RULE])
 A_FABLE_LOG_WITHOUT_ONE = _a_fable_log([])
-A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE], {"high_risk_register_complete": True}
-)
-A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE], {"high_risk_register_complete": False}
-)
-A_FABLE_LOG_WITH_A_SKELETON_IN_A_COMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE, {"id": "R2", "kind": "SKELETON_PENDING_HIGH_RISK_REVIEW", "note": "pending"}],
-    {"high_risk_register_complete": True},
-)
-A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE = _a_fable_log(
-    [{**_A_RULE, "do_not_decide": False}], {"high_risk_register_complete": True}
-)

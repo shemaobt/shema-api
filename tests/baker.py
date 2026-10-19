@@ -14,7 +14,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -41,12 +41,9 @@ from app.db.models.translation_helper import (
 )
 from app.services.auth.hash_password import hash_password
 from app.services.internalization_room.canon.elements import (
-    ElementKind,
     element_keys,
-    elements_for,
 )
-from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import (
     apply_coverage,
     create_session,
@@ -887,56 +884,11 @@ async def make_bcd_generation_log(
     return log
 
 
-def _carries_its_preservation_layer(pericope: str) -> bool:
-    """Whether the canon records withholdings for this passage, read from the canon itself.
-
-    Deliberately not `require_walkable`, and not a caught refusal: a fixture that asked the
-    guard whether the guard would refuse could never notice the guard refusing a passage it
-    should have opened. This reads the same signal the room refuses on — the `preserved:`
-    beads on the passage's coverage spine — from the vendored material, one step away from
-    the code under test.
-    """
-    return any(
-        element.kind is ElementKind.PRESERVED
-        for element in elements_for(pericope, load_map(pericope).book)
-    )
-
-
 async def open_ir_session(
     db: AsyncSession, *, pericope: str, project_id: str | None = None
 ) -> IRSession:
-    """A room session on one passage, opened through the room wherever the room opens it.
-
-    Since ENG-589 the room refuses a passage whose preservation layer nobody wrote. All
-    fourteen of Ruth's carry theirs in the canon as vendored today, so the production path
-    reaches every one of them and walking the whole book is a position it can reach. A passage
-    the canon leaves without a layer has its row written here, rather than pretend the room
-    opened it.
-
-    Which branch a passage takes is decided from the canon *before* calling, never from a
-    caught refusal. A passage that carries its layer goes through `create_session` unguarded:
-    if the room refuses one it should have opened, that raises here and the fixture's own
-    tests go red, which is the whole point. Swallowing it would hide exactly the regression
-    this slice exists to prevent.
-    """
-    if _carries_its_preservation_layer(pericope):
-        return await create_session(db, pericope=pericope, project_id=project_id)
-
-    session = IRSession(
-        project_id=project_id,
-        pericope=pericope,
-        status=IRSessionStatus.IN_PROGRESS,
-        messages=[],
-        after_panorama=False,
-        coverage_state=initial_state(pericope),
-        kept_takes={},
-        back_translation={},
-        comprehension={},
-    )
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-    return session
+    """A room session on one passage, opened through the room: every passage opens (ADR 0066)."""
+    return await create_session(db, pericope=pericope, project_id=project_id)
 
 
 class _BucketInMemory:

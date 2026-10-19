@@ -24,8 +24,8 @@ STAMPED = ("ir_sessions", "ir_takes", "ir_segments", "ir_coverage_events", "ir_r
 AS_STORED = {
     "ir_sessions": (
         "INSERT INTO ir_sessions (id, project_id, pericope, language, status, messages,"
-        " after_panorama, coverage_state, kept_takes, back_translation, created_at, updated_at)"
-        " VALUES (:session, 'team-1', 'P03', 'pt', 'in_progress', '[]', 0, '{}', '{}', '{}',"
+        " after_panorama, coverage_state, back_translation, created_at, updated_at)"
+        " VALUES (:session, 'team-1', 'P03', 'pt', 'in_progress', '[]', 0, '{}', '{}',"
         " '2026-10-01 08:00:00', '2026-10-01 08:00:00')"
     ),
     "ir_takes": (

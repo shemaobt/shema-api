@@ -8,12 +8,11 @@ from pydantic import BaseModel, Field
 
 from app.core.exceptions import ValidationError
 from app.core.served_books import ROOM_BOOK as ROOM_BOOK
+from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.kept import canon_path, per_canon
 
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
-
-SURVEYED_STATUS = "complete"
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 _H1 = re.compile(r"^# (\S+) — (.+)$", re.M)
@@ -87,13 +86,6 @@ class MeaningMap(BaseModel):
     genre: str
     status: str
     sta_status: str
-    """How far the project's own survey of this passage got — `complete` or `pending`.
-
-    Read but not enforced here. A map is refused as canon at the door of the room rather
-    than at the door of the parser, because `load_book` parses the whole book in one call:
-    raising on a pending map would take the Book Panorama, the story-so-far and the passage
-    wheel down with it, including the passages whose survey is finished.
-    """
     arc_prose: str
     context_prose: str
     tone_prose: str
@@ -203,7 +195,7 @@ def _parse_propositions(body: str) -> list[Proposition]:
 
 
 def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
-    """Parse one Meaning Map.
+    """Parse one Meaning Map, whatever its genre or status (ADR 0066).
 
     The section grammar is load-bearing: a heading that stops matching means the canon moved,
     and raising is the point — a half-parsed map would ground the Guide on a partial passage
@@ -279,3 +271,17 @@ def load_book(book: str) -> tuple[MeaningMap, ...]:
     if not paths:
         raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
     return tuple(parse_map(path.read_text(encoding="utf-8"), source=path.name) for path in paths)
+
+
+def served_books() -> list[str]:
+    """The served books in the order of their passage ids, as her `listPericopes` sorts them."""
+    return sorted(SERVED_BOOKS, key=lambda book: load_book(book)[0].pericope_num)
+
+
+def served_maps() -> list[MeaningMap]:
+    """Every map of every served book, book by book in that order."""
+    return [meaning_map for book in served_books() for meaning_map in load_book(book)]
+
+
+def not_served(book: str) -> str:
+    return f"the {book} canon is not served in this release"

@@ -27,8 +27,6 @@ is ENG-482.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import PassageClosed
 from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
-from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
@@ -54,12 +51,6 @@ from tests.baker import (
     make_language,
     make_project,
 )
-from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
-    A_FABLE_LOG_WITHOUT_ONE,
-    a_fable_map,
-    forget_the_canon,
-)
 
 _codes = itertools.count()
 
@@ -70,31 +61,6 @@ ENGAGED = CoverageStatus.ENGAGED.value
 #: naming fourteen would keep passing on the day a fifteenth is vendored.
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
-
-
-@pytest.fixture
-def a_book_whose_walkable_passages_end_before_it_does(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[str]:
-    maps = tmp_path / "meaning-map"
-    logs = tmp_path / "compilation-log"
-    maps.mkdir()
-    logs.mkdir()
-    layers = {1: True, 2: False, 3: True, 4: False}
-    for number, carries_its_layer in layers.items():
-        stem = f"Q0{number}-Fable-1-{number}-{number + 1}"
-        (maps / f"{stem}.md").write_text(a_fable_map(number), encoding="utf-8")
-        (logs / f"{stem}-COMPILATION-LOG.md").write_text(
-            A_FABLE_LOG_WITH_A_COMPLETE_REGISTER if carries_its_layer else A_FABLE_LOG_WITHOUT_ONE,
-            encoding="utf-8",
-        )
-
-    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
-    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    forget_the_canon()
-    yield "Fable"
-    forget_the_canon()
 
 
 def at_the_floor(pericope: str) -> dict[str, str]:
@@ -140,22 +106,6 @@ def test_a_team_that_closed_every_passage_stands_on_none() -> None:
     assert resolve(set(CANON)) is None
 
 
-def test_a_team_that_closed_every_passage_that_opens_is_at_the_end_of_a_book_that_goes_on(
-    a_book_whose_walkable_passages_end_before_it_does: str,
-) -> None:
-    book = a_book_whose_walkable_passages_end_before_it_does
-
-    assert resolve({"Q01", "Q03"}, book=book) is None
-
-
-def test_a_team_is_sent_past_a_refused_passage_to_the_last_one_that_opens(
-    a_book_whose_walkable_passages_end_before_it_does: str,
-) -> None:
-    book = a_book_whose_walkable_passages_end_before_it_does
-
-    assert resolve({"Q01"}, book=book) == "Q03"
-
-
 def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_book() -> None:
     """The end of the book moved because the canon moved, and no line of the resolution did.
 
@@ -179,7 +129,7 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
 
 
 def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> None:
-    positions = standing(set())
+    positions = standing(set(), releases={}, findings={})
 
     assert [entry.pericope for entry in positions] == CANON
     assert positions[0].reference and positions[0].title
@@ -187,7 +137,9 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
 
 def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
     """`closed · current · future` resolved here, so no screen decides where a team stands."""
-    positions = {entry.pericope: entry.position for entry in standing({FIRST})}
+    positions = {
+        entry.pericope: entry.position for entry in standing({FIRST}, releases={}, findings={})
+    }
 
     assert positions[FIRST] is PericopePosition.CLOSED
     assert positions[SECOND] is PericopePosition.CURRENT
@@ -200,7 +152,10 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
     `closed` is a session the team finished; `current` is where the team is. A team on P02
     with P03 already finished has both, and exactly one `current`.
     """
-    positions = {entry.pericope: entry.position for entry in standing({FIRST, THIRD})}
+    positions = {
+        entry.pericope: entry.position
+        for entry in standing({FIRST, THIRD}, releases={}, findings={})
+    }
 
     assert positions[SECOND] is PericopePosition.CURRENT
     assert positions[THIRD] is PericopePosition.CLOSED
@@ -208,7 +163,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
 
 def test_a_finished_team_has_no_current_passage() -> None:
     """ENG-469's criterion: a complete team shows its last passage as closed, not current."""
-    positions = standing(set(CANON))
+    positions = standing(set(CANON), releases={}, findings={})
 
     assert all(entry.position is PericopePosition.CLOSED for entry in positions)
 

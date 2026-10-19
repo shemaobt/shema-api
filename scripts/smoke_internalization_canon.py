@@ -44,7 +44,7 @@ def problems() -> list[str]:
     for book in sorted(SERVED_BOOKS):
         for meaning_map in load_book(book):
             tag = meaning_map.pericope_num
-            for element in labelled_elements(tag, book=book):
+            for element in labelled_elements(tag):
                 if wrong := _wrong_with(element.label_en):
                     found.append(
                         f"{tag}: the coverage label of {element.key} {wrong}: {element.label_en!r}"
@@ -61,6 +61,12 @@ def problems() -> list[str]:
                     f"{tag}: her Portuguese titles name {', '.join(keyed)}, "
                     f"but the map's scenes are {', '.join(scenes)}"
                 )
+            titled = portuguese_titles().get(tag, {})
+            found.extend(
+                f"{tag}: her Portuguese title of scene {key[1:]} is empty"
+                for key in scenes
+                if key in titled and not titled[key].strip()
+            )
             reference, arc, *_ = pericope_digest(meaning_map).split("\n")
             if not REFERENCE_LINE.fullmatch(reference):
                 found.append(f"{tag}: the digest has no reference line")

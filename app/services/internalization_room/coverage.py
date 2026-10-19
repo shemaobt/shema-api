@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable
 from enum import StrEnum
 
@@ -19,6 +18,7 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.rounding import math_round
 
 PANORAMA_PREFIX = "OV-"
 
@@ -36,9 +36,9 @@ def is_panorama(pericope: str) -> bool:
 
 
 def refuse_a_panorama(pericope: str) -> None:
-    """A panorama is spoken, never recorded, told back or checked, so the seven doors that
-    record, tell back or check are refused here with one code, before anything is read, stored
-    or transcribed.
+    """A panorama is spoken, never recorded, told back or checked, so the doors that record,
+    tell back or check are refused here with one code, before anything is read, stored or
+    transcribed.
 
     The conversation's turns door does not call it: the panorama is a conversation, and the
     team's voice is transcribed there. The release doors do not either: their answers for a
@@ -186,7 +186,7 @@ def coverage_view(session: IRSession) -> CoverageView:
         total=numbers["total"],
         absence_index=absence,
         beads_total=BEADS_TOTAL,
-        beads_filled=math.floor(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL + 0.5),
+        beads_filled=math_round(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL),
     )
 
 

@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
@@ -43,6 +42,7 @@ async def run_comprehension_turn(
     guide_prompt: str,
     validator_prompt: str,
     settings: Settings,
+    scene_rehearsals: list[str] | None = None,
 ) -> TurnOutcome:
     """One passage turn: what was heard, and what the room says back.
 
@@ -51,7 +51,6 @@ async def run_comprehension_turn(
     The opening has no take, and an outcome that names none is one the room did not hear.
     """
     pericope = session.pericope
-    book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp = session.earlier_passages
     if stamp is None:
@@ -62,16 +61,17 @@ async def run_comprehension_turn(
         mother_tongue=speech.mother_tongue,
         take_ms=speech.take_ms,
         interrupted=speech.interrupted,
+        scene_rehearsal=speech.scene_rehearsal,
         session=session,
         messages=messages,
         transcript=speech.text,
         opening=opening,
-        book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope=pericope,
         settings=settings,
         earlier_passages=stamp,
+        scene_rehearsals=scene_rehearsals,
     )
     if stamp is not session.earlier_passages:
         session.earlier_passages = stamp

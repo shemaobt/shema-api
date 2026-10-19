@@ -123,6 +123,7 @@ class TurnOutcome:
     interrupted: CutPoint | None = None
     #: The rung of the ladder that answered the Guide's last draft; ``None`` when no model did.
     model: str | None = None
+    accepted_ids: list[str] = field(default_factory=list)
 
 
 def outcome_tag(outcome: TurnOutcome) -> Outcome:
@@ -369,6 +370,7 @@ async def _voiced_after_validation(
         if not draft:
             attempts[-1] = replace(attempts[-1], note=EMPTY_DRAFT_REASON)
             verdict: dict[str, Any] = {}
+            issues = []
             break
 
         reported = her_block(TEAM_REPORTED_HEADING, telling_back)

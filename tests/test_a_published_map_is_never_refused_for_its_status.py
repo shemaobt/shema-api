@@ -8,7 +8,7 @@ import pytest
 from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.progression import resolve
 from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
+    A_FABLE_LOG_WITH_A_LAYER,
     a_fable_map,
     forget_the_canon,
 )
@@ -25,9 +25,7 @@ def a_book_whose_first_map_is_marked_pending(
     (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(1, status="pending"), encoding="utf-8")
     (maps / "Q02-Fable-1-2-3.md").write_text(a_fable_map(2), encoding="utf-8")
     for stem in ("Q01-Fable-1-1-2", "Q02-Fable-1-2-3"):
-        (logs / f"{stem}-COMPILATION-LOG.md").write_text(
-            A_FABLE_LOG_WITH_A_COMPLETE_REGISTER, encoding="utf-8"
-        )
+        (logs / f"{stem}-COMPILATION-LOG.md").write_text(A_FABLE_LOG_WITH_A_LAYER, encoding="utf-8")
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
     monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))

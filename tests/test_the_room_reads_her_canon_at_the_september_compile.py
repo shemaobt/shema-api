@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import Counter
 from types import SimpleNamespace
 
@@ -8,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
 from app.services.internalization_room.canon.book_material import (
-    LOGS_DIR,
     build_book_material,
     preservation_rules,
     unwalkable,
@@ -16,22 +16,26 @@ from app.services.internalization_room.canon.book_material import (
 )
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import labelled_elements
-from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_map
+from app.services.internalization_room.canon.parse_map import VENDOR, load_map
 from app.services.internalization_room.progression import resolve
 
 HER_COMPILE = "5b5c8d2b3ae7632279c07017224f861ae369b0d7"
+ESTHER = [f"E{n:02d}" for n in range(1, 19)]
+JONAH = [f"J{n:02d}" for n in range(1, 6)]
 RUTH = [f"P{n:02d}" for n in range(1, 15)]
 
 
-def test_the_room_names_her_compile_of_29_september_and_holds_the_fourteen_passages_of_ruth() -> (
-    None
-):
-    maps = sorted(path.name for path in MAPS_DIR.glob("*.md"))
-    logs = sorted(path.name for path in LOGS_DIR.glob("*.md"))
+def test_the_room_holds_her_thirty_seven_passages_of_three_books_at_the_september_compile() -> None:
+    pin = (VENDOR / "VENDOR_PIN").read_text(encoding="utf-8")
+    manifest = json.loads((VENDOR / "VENDOR_MANIFEST.json").read_text(encoding="utf-8"))
 
     assert vendor_pin() == HER_COMPILE
-    assert [name[:3] for name in maps] == RUTH
-    assert [name[:3] for name in logs] == RUTH
+    assert (
+        "published_books:  Esther (E01-E18) + Jonah (J01-J05) + Ruth (P01-P14) = 37 pericopes"
+        in pin.splitlines()
+    )
+    assert manifest["passages"] == ESTHER + JONAH + RUTH
+    assert manifest["books"] == ["esther", "jonah", "ruth"]
 
 
 def test_ruth_carries_ninety_nine_rules_of_what_not_to_decide_split_as_she_counts_them() -> None:
@@ -62,7 +66,7 @@ async def test_the_wheel_offers_all_fourteen_passages_of_ruth_in_order(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", voiced)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id="a-team", db=db_session)
 
     assert [view.pericope for view in answer.passages if view.kind == "passage"] == RUTH
 

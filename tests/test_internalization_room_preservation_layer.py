@@ -1,24 +1,39 @@
+"""ENG-589 — a passage whose preservation layer nobody wrote is refused, not walked.
+
+The completion floor the design names is *every concrete element of the map — each scene,
+being, place, object, time, significant absence, **and preserved element** — engaged*. The
+passage whose Compilation Log has no `do_not_decide` audit entry at all gets a coverage spine
+built without a single `preserved:` bead and a comprehension pack without a single
+`preserved_element` checkpoint. Nothing refused it: the room walked it, met a floor that was
+missing its top row, and handed Refine a package claiming the floor was met.
+
+Two tests carry the slice, in opposite directions.
+
+**`test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer`** is the
+gate. It fails against the original code by the session being created normally.
+
+**`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
+and is the more important of the two. A guard that overshoots takes the whole book down —
+every passage that carries its layer, and the room with them.
+
+The canon is read here rather than named: a test that wrote a range of passages would keep
+passing on the day the project writes a layer it had counted as missing, which is exactly the
+day it must stop.
+"""
+
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
-from app.services.internalization_room.canon import book_material, parse_map
+from app.services.internalization_room.canon import book_material
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
-from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
-    a_fable_map,
-    forget_the_canon,
-)
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 
@@ -39,34 +54,6 @@ WITH_LAYER = next(
 )
 
 
-@pytest.fixture
-def a_passage_whose_survey_is_pending(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[str]:
-    """A passage the project has not signed off, and whose preservation layer *is* written.
-
-    A whole little canon of its own — one map and one Compilation Log — so the two signals can
-    be set against each other. The real Ruth material has them agreeing everywhere, and
-    agreement is not the same as either one being read. Nothing of Ruth is touched. The point
-    of writing the layer is that the survey being pending has to carry the refusal on its own.
-    """
-    maps = tmp_path / "meaning-map"
-    logs = tmp_path / "compilation-log"
-    maps.mkdir()
-    logs.mkdir()
-    (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(sta_status="pending"), encoding="utf-8")
-    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
-        A_FABLE_LOG_WITH_A_COMPLETE_REGISTER, encoding="utf-8"
-    )
-
-    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
-    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    forget_the_canon()
-    yield "Q01"
-    forget_the_canon()
-
-
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
@@ -80,16 +67,6 @@ async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     assert session.pericope == WITH_LAYER
     assert preserved
     assert set(preserved) <= set(session.coverage_state)
-
-
-async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(
-    db_session: AsyncSession, a_passage_whose_survey_is_pending: str
-) -> None:
-    """`sta-status` is the field that marks a map unfinished, and it has never been read."""
-    with pytest.raises(ValidationError) as refusal:
-        await create_session(db_session, pericope=a_passage_whose_survey_is_pending)
-
-    assert a_passage_whose_survey_is_pending in str(refusal.value)
 
 
 def test_the_book_opens_from_ruth_1_1_to_ruth_4_22_with_no_hole_in_the_middle() -> None:

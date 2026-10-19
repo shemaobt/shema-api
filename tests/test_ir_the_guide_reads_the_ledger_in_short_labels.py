@@ -206,8 +206,11 @@ async def test_nothing_but_the_ledger_reaches_the_guide_from_the_app(
 
     composed = guide.systems[0].partition(CACHE_BREAK)[2].strip().splitlines()
     assert composed[0] == "LEDGER (the app's notes — information only; you decide what comes next)"
-    assert composed[-3:] == [
+    assert composed[-5:] == [
         "  preserved_element: R3, R5, R10",
+        "",
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        "none. Parts with none: S1, S2, S3, S4.",
         "",
         "MOMENT: Familiarization \N{EM DASH} the whole passage; no part has been opened yet.",
     ], (

@@ -33,6 +33,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.facilitator_route_audit_harness import facilitator_routes as routes_behind_the_gates
 from tests.release_harness import a_claimed_device, team_headers
 from tests.stream_harness import opening_status
 
@@ -62,12 +63,15 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/facilitator/sessions"): {},
     ("GET", "/api/internalization-room/facilitator/questions"): {},
     ("GET", "/api/internalization-room/facilitator/questions/{question_id}/audio"): {},
+    ("GET", "/api/internalization-room/facilitator/questions/{question_id}/reply/audio"): {},
     ("GET", "/api/internalization-room/facilitator/questions/audio/{handle}"): {},
     ("POST", "/api/internalization-room/facilitator/questions/{question_id}/reply"): {
         "files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}
     },
     ("POST", "/api/internalization-room/facilitator/questions/{question_id}/resolve"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/mother-tongue-takes"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals"): {},
     ("GET", "/api/internalization-room/facilitator/takes/{take_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/release"): {},
     (
@@ -84,6 +88,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/conversation"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/coverage"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/turns"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/boundary-turns"): {},
     (
         "GET",
         "/api/internalization-room/facilitator/sessions/{session_id}/turns/{number}/audio",
@@ -345,6 +350,10 @@ def test_the_audit_covers_both_route_families():
     assert set(facilitator_routes()) <= set(_REQUESTS), (
         f"rotas fora da tabela: {set(facilitator_routes()) - set(_REQUESTS)}"
     )
+
+
+def test_the_finder_by_path_and_the_finder_by_gate_find_the_same_routes():
+    assert set(facilitator_routes()) == set(routes_behind_the_gates())
 
 
 async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(

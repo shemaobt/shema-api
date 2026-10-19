@@ -41,6 +41,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
 from app.services.internalization_room import questions as question_service
+from app.services.internalization_room.scene_rehearsals import (
+    frases_of,
+    keep_a_frase,
+    keep_scene_rehearsal,
+    restarts_of,
+    scene_rehearsals_of_the_passage,
+)
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import store_take, takes_of
@@ -69,9 +76,10 @@ def room_caller_session_routes() -> list[tuple[str, str]]:
     return sorted(found)
 
 
-#: The nine routes this ticket fixes, behaviourally exercised below by `cases()` — held to
-#: exactly this set by `test_the_exercised_cases_are_exactly_the_covered_routes`, so a route
-#: added here is a route the refusal cases run against, not only a line in a table.
+#: The routes this ticket fixes, and the scene rehearsal's since, behaviourally exercised below
+#: by `cases()` — held to exactly this set by
+#: `test_the_exercised_cases_are_exactly_the_covered_routes`, so a route added here is a route
+#: the refusal cases run against, not only a line in a table.
 COVERED = {
     ("GET", f"{PREFIX}/sessions/{{session_id}}"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/needs-person"),
@@ -82,6 +90,18 @@ COVERED = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/takes"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/takes"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/takes/{{take_id}}/audio"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/audio"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/restart"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/send"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scenes"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/scene"),
+    (
+        "GET",
+        f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases/{{frase_id}}/audio",
+    ),
 }
 
 #: Routes that already resolve their session through the ownership rule, proved by a suite
@@ -143,8 +163,10 @@ def test_every_room_caller_route_naming_a_session_is_accounted_for() -> None:
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from app.api.internalization_room import scene_rehearsals as scene_api
     from app.api.internalization_room import segments as segments_api
     from app.api.internalization_room import takes as takes_api
+    from app.services.internalization_room import hearing
     from app.services.internalization_room import questions as question_service
 
     bucket = the_bucket_is_in_memory(monkeypatch)
@@ -154,11 +176,13 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         return f"https://storage.example/{take.storage_key}"
 
     monkeypatch.setattr(takes_api, "listen_url", _signed)
+    monkeypatch.setattr(scene_api, "listen_url", _signed)
 
     async def _transcribe(*_: Any, **__: Any) -> str:
         return "explicando de novo"
 
     monkeypatch.setattr(segments_api, "heard", _transcribe)
+    monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
     async with room_client(db_session, monkeypatch) as c:
         yield c
@@ -166,13 +190,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
 class Owned:
     """The resources one project owns, for one case: a session, a rehearsal take and the one
-    stretch told back over it — the shape every case below needs at most of.
+    stretch told back over it, a scene rehearsal, and for the case that hears one, a frase of
+    it — the shape every case below needs at most of.
     """
 
-    def __init__(self, session: Any, take: Any, segment: Any) -> None:
+    def __init__(self, session: Any, take: Any, segment: Any, scene: Any, frase: Any) -> None:
         self.session = session
         self.take = take
         self.segment = segment
+        self.scene = scene
+        self.frase = frase
 
 
 async def _owned(db: AsyncSession, project_id: str, tag: str) -> Owned:
@@ -196,7 +223,30 @@ async def _owned(db: AsyncSession, project_id: str, tag: str) -> Owned:
         bridge_take_id=f"retro-{tag}",
         transcript=f"a equipe contou {tag}",
     )
-    return Owned(session, take, segment)
+    scene = await keep_scene_rehearsal(
+        db,
+        session,
+        device_id=f"tablet-{tag}",
+        audio=f"a equipe ensaiou a cena {tag}".encode(),
+        content_type="audio/mp4",
+        scene=None,
+    )
+    if tag != "scene-frase-audio":
+        return Owned(session, take, segment, scene, None)
+    frase = await keep_a_frase(
+        db,
+        session,
+        scene,
+        starts_ms=0,
+        ends_ms=1000,
+        replaces=None,
+        after_restart=None,
+        audio=f"a equipe traduziu a cena {tag}".encode(),
+        content_type="audio/mp4",
+        filename=None,
+        transcript=f"a equipe traduziu {tag}",
+    )
+    return Owned(session, take, segment, scene, frase)
 
 
 def _case(tag: str, *, method: str, path: str, expects: str = "get", **request: Any) -> dict:
@@ -209,9 +259,11 @@ def cases(owned: Owned) -> list[dict]:
     `expects` says how the owner's call is read: `"get"` for a plain 200, `"stream"` for an
     SSE response only ever checked by its status (consuming its body would hang the case,
     since the stream never ends on its own), `"redirect"` for the 307 the take-audio route
-    answers with instead of a body.
+    answers with instead of a body, `"untranslated"` for the 422 the send door answers a scene
+    rehearsal with no frase, which the owner reaches only past the ownership rule.
     """
-    s, t = owned.session.id, owned.take.id
+    s, t, r = owned.session.id, owned.take.id, owned.scene.id
+    f = owned.frase.id if owned.frase is not None else None
     return [
         _case("read", method="GET", path=f"/sessions/{s}"),
         _case("needs-person", method="POST", path=f"/sessions/{s}/needs-person"),
@@ -242,6 +294,52 @@ def cases(owned: Owned) -> list[dict]:
             "take-audio",
             method="GET",
             path=f"/sessions/{s}/takes/{t}/audio",
+            expects="redirect",
+        ),
+        _case(
+            "keep-scene",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals",
+            files={"file": ("cena.m4a", b"outra cena", "audio/mp4")},
+        ),
+        _case("list-scenes", method="GET", path=f"/sessions/{s}/scene-rehearsals"),
+        _case(
+            "scene-audio",
+            method="GET",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/audio",
+            expects="redirect",
+        ),
+        _case(
+            "scene-frase",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/frases",
+            data={"starts_ms": "0", "ends_ms": "1000"},
+            files={"file": ("frase.m4a", b"uma frase", "audio/mp4")},
+        ),
+        _case(
+            "scene-restart",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/restart",
+            data={"attempt": "0f0f0f0f-0000-4000-8000-000000000001"},
+        ),
+        _case(
+            "scene-send",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/send",
+            expects="untranslated",
+            data={"turn_id": "turno-da-cena"},
+        ),
+        _case("passage-scenes", method="GET", path=f"/sessions/{s}/scenes"),
+        _case(
+            "scene-label",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/scene",
+            data={"scene": "S2"},
+        ),
+        _case(
+            "scene-frase-audio",
+            method="GET",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/frases/{f}/audio",
             expects="redirect",
         ),
     ]
@@ -316,7 +414,7 @@ async def _send(
     return resp.status_code
 
 
-_EXPECTED_OWNER_STATUS = {"get": 200, "stream": 200, "redirect": 307}
+_EXPECTED_OWNER_STATUS = {"get": 200, "stream": 200, "redirect": 307, "untranslated": 422}
 
 #: The tags `cases()` builds, named once so the parametrization does not have to construct a
 #: throwaway `Owned` just to read them off.
@@ -330,6 +428,15 @@ TAGS = [
     "keep-take",
     "list-takes",
     "take-audio",
+    "keep-scene",
+    "list-scenes",
+    "scene-audio",
+    "scene-frase",
+    "scene-restart",
+    "scene-send",
+    "passage-scenes",
+    "scene-label",
+    "scene-frase-audio",
 ]
 
 
@@ -343,6 +450,8 @@ def test_the_exercised_cases_are_exactly_the_covered_routes() -> None:
         SimpleNamespace(id="{session_id}"),
         SimpleNamespace(id="{take_id}"),
         SimpleNamespace(id="{segment_id}"),
+        SimpleNamespace(id="{rehearsal_id}"),
+        SimpleNamespace(id="{frase_id}"),
     )
     built = cases(templates)
 
@@ -370,6 +479,21 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
     elif tag == "keep-take":
         takes = await takes_of(db, owned.session.id)
         assert len(takes) == 1, "um estranho gravou uma tomada numa sessão de outro projeto"
+    elif tag == "keep-scene":
+        rehearsals = await scene_rehearsals_of_the_passage(db, owned.session)
+        assert len(rehearsals) == 1, "um estranho gravou uma cena numa sessão de outro projeto"
+    elif tag == "scene-frase":
+        frases = await frases_of(db, await restarts_of(db, [owned.scene.id]))
+        assert frases[owned.scene.id] == [], "um estranho traduziu a cena de outro projeto"
+    elif tag == "scene-restart":
+        restarts = await restarts_of(db, [owned.scene.id])
+        assert restarts[owned.scene.id] == [], "um estranho recomeçou a cena de outro projeto"
+    elif tag == "scene-send":
+        await db.refresh(owned.scene)
+        assert owned.scene.sent_at is None, "um estranho enviou a cena de outro projeto"
+    elif tag == "scene-label":
+        await db.refresh(owned.scene)
+        assert owned.scene.scene is None, "um estranho rotulou a cena de outro projeto"
     elif tag == "needs-person":
         session = await get_session(db, owned.session.id)
         assert session.status is IRSessionStatus.IN_PROGRESS, (

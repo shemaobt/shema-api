@@ -1,0 +1,857 @@
+{
+  "book": "ESTHER",
+  "counts": {
+    "by_kind": {
+      "INSTITUTION": 5,
+      "PERSON": 24,
+      "PLACE": 8,
+      "THING": 10,
+      "TIME": 7
+    },
+    "entities": 54
+  },
+  "entities": {
+    "B1": {
+      "appears_in": [
+        "E04",
+        "E05",
+        "E06",
+        "E08",
+        "E09",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E14",
+        "E15",
+        "E17",
+        "E18"
+      ],
+      "english": "Mordecai",
+      "gender": "m",
+      "hebrew": "מָרְדְּכַי",
+      "hebrew_cons": "מרדכי",
+      "hebrew_cons_aliases": [
+        "היהודי"
+      ],
+      "kind": "PERSON",
+      "referential_forms": [
+        "the Jew"
+      ]
+    },
+    "B10": {
+      "appears_in": [
+        "E02"
+      ],
+      "english": "Memucan",
+      "gender": "m",
+      "hebrew": "מְמוּכָן",
+      "hebrew_cons": "ממוכן",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B11": {
+      "appears_in": [
+        "E05",
+        "E11"
+      ],
+      "english": "Bigthana",
+      "gender": "m",
+      "hebrew": "בִּגְתָן",
+      "hebrew_cons": "בגתן",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B12": {
+      "appears_in": [
+        "E05",
+        "E11"
+      ],
+      "english": "Teresh",
+      "gender": "m",
+      "hebrew": "תֶּרֶשׁ",
+      "hebrew_cons": "תרש",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B13": {
+      "appears_in": [
+        "E02",
+        "E12"
+      ],
+      "english": "Harbona",
+      "gender": "m",
+      "hebrew": "חַרְבֹונָא",
+      "hebrew_cons": "חרבונא",
+      "hebrew_cons_aliases": [
+        "חרבונה"
+      ],
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B14": {
+      "appears_in": [
+        "E02"
+      ],
+      "english": "The seven eunuchs (chamberlains)",
+      "gender": "m",
+      "hebrew": "שִׁבְעַת הַסָּרִיסִים",
+      "hebrew_cons": "שבעתהסריסים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B15": {
+      "appears_in": [
+        "E02"
+      ],
+      "english": "The seven princes of Persia and Media",
+      "gender": "m",
+      "hebrew": "שָׂרֵי פָּרַס וּמָדַי",
+      "hebrew_cons": "שריפרסומדי",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B16": {
+      "appears_in": [
+        "E15",
+        "E16",
+        "E17"
+      ],
+      "english": "The ten sons of Haman",
+      "gender": "m",
+      "hebrew": "בְּנֵי הָמָן",
+      "hebrew_cons": "בניהמן",
+      "kind": "PERSON",
+      "referential_forms": [
+        "Parshandatha",
+        "Dalphon",
+        "Aspatha",
+        "Poratha",
+        "Adalia",
+        "Aridatha",
+        "Parmashta",
+        "Arisai",
+        "Aridai",
+        "Vaizatha"
+      ]
+    },
+    "B17": {
+      "appears_in": [
+        "E06",
+        "E07",
+        "E08",
+        "E09",
+        "E11",
+        "E13",
+        "E14",
+        "E15",
+        "E16",
+        "E17",
+        "E18"
+      ],
+      "english": "The Jews (the Jewish people)",
+      "gender": null,
+      "hebrew": "יְהוּדִים",
+      "hebrew_cons": "יהודים",
+      "hebrew_cons_aliases": [
+        "עםאחד"
+      ],
+      "kind": "PERSON",
+      "referential_forms": [
+        "a certain people",
+        "the seed of the Jews",
+        "the Jews of Susa",
+        "the Jews of the open towns"
+      ]
+    },
+    "B18": {
+      "appears_in": [
+        "E01",
+        "E03",
+        "E04",
+        "E06",
+        "E07",
+        "E09",
+        "E10",
+        "E11",
+        "E12"
+      ],
+      "english": "The king's servants (the court attendants)",
+      "gender": "m",
+      "hebrew": "עֲבָדִים",
+      "hebrew_cons": "עבדים",
+      "hebrew_cons_aliases": [
+        "נערים"
+      ],
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B19": {
+      "appears_in": [
+        "E01",
+        "E07",
+        "E14",
+        "E15"
+      ],
+      "english": "The empire's officials (satraps, governors, provincial princes)",
+      "gender": "m",
+      "hebrew": "אֲחַשְׁדַּרְפְּנִים",
+      "hebrew_cons": "אחשדרפנים",
+      "hebrew_cons_aliases": [
+        "פחות",
+        "שריהמדינות"
+      ],
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B2": {
+      "appears_in": [
+        "E04",
+        "E05",
+        "E08",
+        "E09",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E16",
+        "E17"
+      ],
+      "english": "Esther",
+      "gender": "f",
+      "hebrew": "אֶסְתֵּר",
+      "hebrew_cons": "אסתר",
+      "hebrew_cons_aliases": [
+        "הדסה"
+      ],
+      "kind": "PERSON",
+      "referential_forms": [
+        "Hadassah",
+        "the queen"
+      ]
+    },
+    "B20": {
+      "appears_in": [
+        "E14",
+        "E15",
+        "E16",
+        "E17"
+      ],
+      "english": "The enemies of the Jews",
+      "gender": null,
+      "hebrew": "אֹיְבִים",
+      "hebrew_cons": "איבים",
+      "hebrew_cons_aliases": [
+        "שנאים"
+      ],
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B21": {
+      "appears_in": [
+        "E07",
+        "E14"
+      ],
+      "english": "The royal scribes",
+      "gender": "m",
+      "hebrew": "סֹפְרִים",
+      "hebrew_cons": "ספרים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B22": {
+      "appears_in": [
+        "E07",
+        "E14"
+      ],
+      "english": "The royal couriers",
+      "gender": "m",
+      "hebrew": "רָצִים",
+      "hebrew_cons": "רצים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B23": {
+      "appears_in": [
+        "E10",
+        "E11"
+      ],
+      "english": "Haman's friends",
+      "gender": "m",
+      "hebrew": "אֹהֲבִים",
+      "hebrew_cons": "אהבים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B24": {
+      "appears_in": [
+        "E02",
+        "E03",
+        "E04",
+        "E05",
+        "E08",
+        "E11",
+        "E12"
+      ],
+      "english": "The king's eunuchs",
+      "gender": "m",
+      "hebrew": "סָרִיסִים",
+      "hebrew_cons": "סריסים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B3": {
+      "appears_in": [
+        "E06",
+        "E07",
+        "E08",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E15",
+        "E16",
+        "E17"
+      ],
+      "english": "Haman",
+      "gender": "m",
+      "hebrew": "הָמָן",
+      "hebrew_cons": "המן",
+      "hebrew_cons_aliases": [
+        "האגגי",
+        "צררהיהודים"
+      ],
+      "kind": "PERSON",
+      "referential_forms": [
+        "the Agagite",
+        "son of Hammedatha",
+        "the enemy of the Jews"
+      ]
+    },
+    "B4": {
+      "appears_in": [
+        "E01",
+        "E02",
+        "E03",
+        "E04",
+        "E05",
+        "E06",
+        "E07",
+        "E11",
+        "E12",
+        "E13",
+        "E14",
+        "E15",
+        "E17",
+        "E18"
+      ],
+      "english": "Ahasuerus",
+      "gender": "m",
+      "hebrew": "אֲחַשְׁוֵרֹושׁ",
+      "hebrew_cons": "אחשורוש",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B5": {
+      "appears_in": [
+        "E01",
+        "E02",
+        "E03",
+        "E04"
+      ],
+      "english": "Vashti",
+      "gender": "f",
+      "hebrew": "וַשְׁתִּי",
+      "hebrew_cons": "ושתי",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B6": {
+      "appears_in": [
+        "E10",
+        "E11"
+      ],
+      "english": "Zeresh",
+      "gender": "f",
+      "hebrew": "זֶרֶשׁ",
+      "hebrew_cons": "זרש",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B7": {
+      "appears_in": [
+        "E03",
+        "E04"
+      ],
+      "english": "Hegai",
+      "gender": "m",
+      "hebrew": "הֵגַי",
+      "hebrew_cons": "הגי",
+      "kind": "PERSON",
+      "referential_forms": [
+        "Hege"
+      ]
+    },
+    "B8": {
+      "appears_in": [
+        "E08",
+        "E09"
+      ],
+      "english": "Hathach",
+      "gender": "m",
+      "hebrew": "הֲתָךְ",
+      "hebrew_cons": "התך",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B9": {
+      "appears_in": [
+        "E04"
+      ],
+      "english": "Shaashgaz",
+      "gender": "m",
+      "hebrew": "שַׁעֲשְׁגַז",
+      "hebrew_cons": "שעשגז",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "I1": {
+      "appears_in": [
+        "E01",
+        "E04",
+        "E10",
+        "E11",
+        "E12",
+        "E14",
+        "E16",
+        "E17"
+      ],
+      "english": "The royal banquet (mishteh)",
+      "gender": null,
+      "hebrew": "מִשְׁתֶּה",
+      "hebrew_cons": "משתה",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I2": {
+      "appears_in": [
+        "E01",
+        "E02",
+        "E04",
+        "E07",
+        "E08",
+        "E09",
+        "E14",
+        "E15",
+        "E16"
+      ],
+      "english": "The law of the Medes and Persians (dat)",
+      "gender": null,
+      "hebrew": "דָּת",
+      "hebrew_cons": "דת",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I3": {
+      "appears_in": [
+        "E17"
+      ],
+      "english": "Purim",
+      "gender": null,
+      "hebrew": "פּוּרִים",
+      "hebrew_cons": "פורים",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I4": {
+      "appears_in": [
+        "E03",
+        "E04"
+      ],
+      "english": "The house of the women (the harem)",
+      "gender": null,
+      "hebrew": "בֵּית הַנָּשִׁים",
+      "hebrew_cons": "ביתהנשים",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I5": {
+      "appears_in": [
+        "E01",
+        "E14",
+        "E17"
+      ],
+      "english": "The royal provinces (the 127)",
+      "gender": null,
+      "hebrew": "מְדִינָה",
+      "hebrew_cons": "מדינה",
+      "kind": "INSTITUTION",
+      "referential_forms": [
+        "the 127 provinces"
+      ]
+    },
+    "PL1": {
+      "appears_in": [
+        "E01",
+        "E03",
+        "E04",
+        "E07",
+        "E08",
+        "E09",
+        "E14",
+        "E15",
+        "E16"
+      ],
+      "english": "Susa (the citadel)",
+      "gender": null,
+      "hebrew": "שׁוּשַׁן",
+      "hebrew_cons": "שושן",
+      "hebrew_cons_aliases": [
+        "שושןהבירה"
+      ],
+      "kind": "PLACE",
+      "referential_forms": [
+        "Susa the citadel",
+        "Shushan the palace"
+      ]
+    },
+    "PL2": {
+      "appears_in": [
+        "E01",
+        "E14"
+      ],
+      "english": "India",
+      "gender": null,
+      "hebrew": "הֹדּוּ",
+      "hebrew_cons": "הדו",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL3": {
+      "appears_in": [
+        "E01",
+        "E14"
+      ],
+      "english": "Cush",
+      "gender": null,
+      "hebrew": "כּוּשׁ",
+      "hebrew_cons": "כוש",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL4": {
+      "appears_in": [
+        "E04"
+      ],
+      "english": "Jerusalem",
+      "gender": null,
+      "hebrew": "יְרוּשָׁלִַם",
+      "hebrew_cons": "ירושלם",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL5": {
+      "appears_in": [
+        "E04"
+      ],
+      "english": "Babylon",
+      "gender": null,
+      "hebrew": "בָּבֶל",
+      "hebrew_cons": "בבל",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL6": {
+      "appears_in": [
+        "E01",
+        "E02",
+        "E18"
+      ],
+      "english": "Persia",
+      "gender": null,
+      "hebrew": "פָּרַס",
+      "hebrew_cons": "פרס",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL7": {
+      "appears_in": [
+        "E01",
+        "E02",
+        "E18"
+      ],
+      "english": "Media",
+      "gender": null,
+      "hebrew": "מָדַי",
+      "hebrew_cons": "מדי",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL8": {
+      "appears_in": [
+        "E05",
+        "E06",
+        "E08",
+        "E10",
+        "E11"
+      ],
+      "english": "The king's gate",
+      "gender": null,
+      "hebrew": "שַׁעַר הַמֶּלֶךְ",
+      "hebrew_cons": "שערהמלך",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "TH_ANNALS": {
+      "appears_in": [
+        "E05",
+        "E11",
+        "E18"
+      ],
+      "english": "The royal annals (book of chronicles)",
+      "gender": null,
+      "hebrew": "סֵפֶר דִּבְרֵי הַיָּמִים",
+      "hebrew_cons": "ספרדבריהימים",
+      "hebrew_cons_aliases": [
+        "ספרהזכרנות"
+      ],
+      "kind": "THING",
+      "referential_forms": [
+        "the book of records",
+        "the chronicles"
+      ]
+    },
+    "TH_EDICT": {
+      "appears_in": [
+        "E02",
+        "E07",
+        "E13",
+        "E14",
+        "E17"
+      ],
+      "english": "The royal edict (the letters)",
+      "gender": null,
+      "hebrew": "אִגֶּרֶת",
+      "hebrew_cons": "אגרת",
+      "hebrew_cons_aliases": [
+        "ספר"
+      ],
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_GALLOWS": {
+      "appears_in": [
+        "E05",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E16",
+        "E17"
+      ],
+      "english": "The gallows (the tree)",
+      "gender": null,
+      "hebrew": "עֵץ",
+      "hebrew_cons": "עץ",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_PUR_LOT": {
+      "appears_in": [
+        "E07",
+        "E17"
+      ],
+      "english": "The lot (Pur)",
+      "gender": null,
+      "hebrew": "פּוּר",
+      "hebrew_cons": "פור",
+      "hebrew_cons_aliases": [
+        "גורל"
+      ],
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_ROYAL_CROWN": {
+      "appears_in": [
+        "E02",
+        "E04",
+        "E11"
+      ],
+      "english": "The royal crown",
+      "gender": null,
+      "hebrew": "כֶּתֶר מַלְכוּת",
+      "hebrew_cons": "כתרמלכות",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_ROYAL_HORSE": {
+      "appears_in": [
+        "E11",
+        "E14"
+      ],
+      "english": "The king's horse",
+      "gender": null,
+      "hebrew": "סוּס",
+      "hebrew_cons": "סוס",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_ROYAL_ROBE": {
+      "appears_in": [
+        "E11",
+        "E14"
+      ],
+      "english": "The royal robe (of honour)",
+      "gender": null,
+      "hebrew": "לְבוּשׁ",
+      "hebrew_cons": "לבוש",
+      "hebrew_cons_aliases": [
+        "תכריך"
+      ],
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_SCEPTER": {
+      "appears_in": [
+        "E09",
+        "E10",
+        "E13"
+      ],
+      "english": "The golden scepter",
+      "gender": null,
+      "hebrew": "שַׁרְבִיט",
+      "hebrew_cons": "שרביט",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_SIGNET_RING": {
+      "appears_in": [
+        "E07",
+        "E13",
+        "E14"
+      ],
+      "english": "The king's signet ring",
+      "gender": null,
+      "hebrew": "טַבַּעַת",
+      "hebrew_cons": "טבעת",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TH_THRONE": {
+      "appears_in": [
+        "E01",
+        "E10"
+      ],
+      "english": "The royal throne",
+      "gender": null,
+      "hebrew": "כִּסֵּא מַלְכוּת",
+      "hebrew_cons": "כסאמלכות",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "TM_ADAR": {
+      "appears_in": [
+        "E07",
+        "E14",
+        "E15",
+        "E16",
+        "E17"
+      ],
+      "english": "Adar (the twelfth month)",
+      "gender": null,
+      "hebrew": "אֲדָר",
+      "hebrew_cons": "אדר",
+      "kind": "TIME",
+      "referential_forms": [
+        "the thirteenth of Adar",
+        "the fourteenth of Adar",
+        "the fifteenth of Adar"
+      ]
+    },
+    "TM_DAYS_OF_AHASUERUS": {
+      "appears_in": [
+        "E01"
+      ],
+      "english": "In the days of Ahasuerus (the opening time-frame)",
+      "gender": null,
+      "hebrew": "בִּימֵי אֲחַשְׁוֵרֹושׁ",
+      "hebrew_cons": "בימיאחשורוש",
+      "kind": "TIME",
+      "referential_forms": [
+        "in the days of Ahasuerus"
+      ]
+    },
+    "TM_NISAN": {
+      "appears_in": [
+        "E07"
+      ],
+      "english": "Nisan (the first month)",
+      "gender": null,
+      "hebrew": "נִיסָן",
+      "hebrew_cons": "ניסן",
+      "kind": "TIME",
+      "referential_forms": [
+        "the first month"
+      ]
+    },
+    "TM_SIVAN": {
+      "appears_in": [
+        "E14"
+      ],
+      "english": "Sivan (the third month)",
+      "gender": null,
+      "hebrew": "סִיוָן",
+      "hebrew_cons": "סיון",
+      "kind": "TIME",
+      "referential_forms": [
+        "the third month"
+      ]
+    },
+    "TM_TEBETH": {
+      "appears_in": [
+        "E04"
+      ],
+      "english": "Tebeth (the tenth month)",
+      "gender": null,
+      "hebrew": "טֵבֵת",
+      "hebrew_cons": "טבת",
+      "kind": "TIME",
+      "referential_forms": [
+        "the tenth month"
+      ]
+    },
+    "TM_THIRD_YEAR_OF_THE_REIGN": {
+      "appears_in": [
+        "E01"
+      ],
+      "english": "In the third year of his reign",
+      "gender": null,
+      "hebrew": "בִּשְׁנַת שָׁלֹושׁ לְמָלְכֹו",
+      "hebrew_cons": "בשנתשלושלמלכו",
+      "kind": "TIME",
+      "referential_forms": [
+        "the third year of his reign"
+      ]
+    },
+    "TM_TWELVE_MONTHS": {
+      "appears_in": [
+        "E04"
+      ],
+      "english": "Twelve months (the preparation period)",
+      "gender": null,
+      "hebrew": "שְׁנֵים עָשָׂר חֹדֶשׁ",
+      "hebrew_cons": "שניםעשרחדש",
+      "kind": "TIME",
+      "referential_forms": [
+        "twelve months",
+        "a full year of preparation"
+      ]
+    }
+  },
+  "places_ner": {
+    "loaded": false
+  },
+  "schema": "tripod-entity-aliases",
+  "schema_version": "0.1.0",
+  "source": "esther-pilot-b-wiki/bcd frontmatter (+ ETCBC places NER sheet)"
+}

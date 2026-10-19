@@ -129,9 +129,9 @@ async def _stored(url: str) -> None:
             await conn.execute(
                 text(
                     "INSERT INTO ir_sessions (id, project_id, pericope, language, status,"
-                    " messages, after_panorama, coverage_state, kept_takes, back_translation,"
+                    " messages, after_panorama, coverage_state, back_translation,"
                     " created_at, updated_at) VALUES (:id, :team, :pericope, :language,"
-                    " 'in_progress', :messages, 0, '{}', '{}', '{}', :created, :updated)"
+                    " 'in_progress', :messages, 0, '{}', '{}', :created, :updated)"
                 ),
                 {
                     "id": session_id,

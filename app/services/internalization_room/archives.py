@@ -19,6 +19,9 @@ from app.db.models.internalization_room import (
     IRArchive,
     IRCoverageEvent,
     IRRelease,
+    IRSceneFrase,
+    IRSceneRehearsal,
+    IRSceneRestart,
     IRSegment,
     IRSession,
     IRTake,
@@ -32,7 +35,15 @@ from app.services.project.facilitated_scope import TEAM_NOT_FOUND
 from app.services.project.facilitates_project import facilitates_project
 from app.utils.stored_time import as_utc
 
-_HANGING_OFF_A_SESSION = (IRTake, IRSegment, IRCoverageEvent, IRRelease)
+_HANGING_OFF_A_SESSION = (
+    IRTake,
+    IRSegment,
+    IRCoverageEvent,
+    IRRelease,
+    IRSceneRehearsal,
+    IRSceneFrase,
+    IRSceneRestart,
+)
 
 
 async def archive_pericope(
@@ -44,7 +55,7 @@ async def archive_pericope(
     The sessions are stamped first and only those whose stamp is still null, by one UPDATE
     that names them back: the predicate is checked again under the row lock, so two Zerars at
     once never stamp a row twice and the second finds nothing. A row hanging off a session
-    belongs to that session's archive, so the four tables below are stamped by the sessions
+    belongs to that session's archive, so the tables below are stamped by the sessions
     just stamped and never by pericope. ``updated_at`` is written back as it was: an archive
     is not the team's activity, and the snapshot keeps the session as it stood. ``version``
     moves, so a turn still in flight on a stamped session cannot land on it.
@@ -109,8 +120,7 @@ async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[Archi
 
     ``kept_takes`` are the parts the team had kept, the newest rehearsal under each part number
     as the room reads them, and not every rehearsal ever uploaded; a list, because the passage
-    told whole is a part with no number. ``ir_sessions.kept_takes`` is never written and says
-    nothing.
+    told whole is a part with no number.
     """
     kept = {
         session_id: [

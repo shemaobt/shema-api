@@ -4,11 +4,12 @@ import asyncio
 import logging
 import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NoWordsHeard, UpstreamServiceError, ValidationError
-from app.services.internalization_room.languages import FLOOR, room_language
+from app.services.internalization_room.languages import AUTHORED, room_language
+from app.services.internalization_room.rounding import math_round
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
     TranscriptionResult,
@@ -62,6 +63,18 @@ def _mother_tongue_floor() -> float:
     return get_settings().internalization_room_mother_tongue_floor
 
 
+class SentSceneRehearsal(BaseModel):
+    """The scene rehearsal a **Rehearsal turn** carries: which one, how many live frases, and the
+    scene label as it stood at sending, which the voice is never handed."""
+
+    model_config = ConfigDict(frozen=True)
+
+    rehearsal_id: str
+    n: int
+    frases: int
+    scene: str | None
+
+
 class HeardSpeech(BaseModel):
     """A transcript plus the trusted transport facts the comprehension flow reads.
 
@@ -91,7 +104,7 @@ class HeardSpeech(BaseModel):
     """
 
     text: str = ""
-    bridge_language: str = FLOOR
+    bridge_language: str = AUTHORED
     language_code: str | None = None
     language_probability: float | None = None
     take_ms: float | None = None
@@ -103,6 +116,8 @@ class HeardSpeech(BaseModel):
     #: when the tablet sent no position. Meaningful only when ``interrupted``.
     interrupted_at_ms: int = 0
     interrupted_of_ms: int | None = None
+    #: The scene rehearsal this turn sends in place of a take; ``text`` is then its frases' words.
+    scene_rehearsal: SentSceneRehearsal | None = None
 
     @property
     def mother_tongue(self) -> bool:
@@ -162,7 +177,7 @@ async def heard_speech(
     *,
     filename: str | None = None,
     mime_type: str | None = None,
-    language: str = FLOOR,
+    language: str = AUTHORED,
     settings: Settings | None = None,
 ) -> HeardSpeech:
     """`heard`, keeping the provider metadata the comprehension flow needs.
@@ -199,7 +214,7 @@ async def heard_speech(
         bridge_language=language,
         language_code=result.language_code,
         language_probability=result.language_probability,
-        take_ms=None if measured is None else round(measured, -3),
+        take_ms=None if measured is None else math_round(measured / 1000) * 1000,
         measured_ms=measured,
         mother_tongue_floor=mother_tongue_floor,
     )
