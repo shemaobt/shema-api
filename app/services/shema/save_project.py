@@ -590,8 +590,9 @@ async def create_project(
     from, and a taken id cannot be inserted — so a taken id is filed under a throwaway one,
     carried through the same checks as a free id, and refused with the 409 only once the scope
     has passed. Outside the scope the answer is the 403 a free id gets, whatever the database
-    holds; inside it, the caller reaches the region and learning that the id is taken tells
-    them nothing they could not already read.
+    holds. What stays is the 409 for a payload that *is* inside the scope: a free id is created
+    there and a taken one cannot be, so no ordering hides it — and, as with the slug, a minted
+    UUID is not guessable, so only someone who already held the id can ask.
 
     **The row is added and flushed before the payload is read**, which is not an ordering
     accident: a Python-side ``default=`` is applied by the flush, so a merged view built off an
@@ -610,8 +611,6 @@ async def create_project(
     taken = (
         await db.execute(select(ShemaProject.id).where(ShemaProject.id == payload.id))
     ).scalar_one_or_none() is not None
-    # A taken id cannot be inserted a second time, so the region is derived on a row filed
-    # under a throwaway id and the 409 waits below the scope check — see the note after it.
     project = ShemaProject(id=str(uuid.uuid4()) if taken else payload.id, version=1)
     db.add(project)
     await db.flush()
