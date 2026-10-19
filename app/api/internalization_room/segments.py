@@ -7,6 +7,7 @@ rules about where a cut may land are the service's, and neither is decided here.
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
@@ -32,7 +33,12 @@ from app.services.internalization_room.segments import (
     refuse_a_slice_a_version_cannot_take,
     segment_for_session,
 )
-from app.services.internalization_room.sentences import lay_in_a_sentence
+from app.services.internalization_room.sentences import (
+    SENTENCE_LIMIT_BYTES,
+    SentenceRefused,
+    lay_in_a_sentence,
+    refuse_a_sentence_too_long,
+)
 from app.services.internalization_room.takes import (
     TakeStore,
     rehearsal_take_of,
@@ -224,6 +230,7 @@ router.add_api_route(
     "/sessions/{session_id}/segments/{segment_id}/sentence",
     response_model=SentenceLaidInResponse,
     dependencies=[linked_tablet_dep],
+    responses={413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"}},
 )
 async def re_record_the_sentence(
     session_id: str,
@@ -234,7 +241,7 @@ async def re_record_the_sentence(
     project_id: str = device_project_dep,
     store: TakeStore = Depends(take_store),
     db: AsyncSession = Depends(get_db),
-) -> SentenceLaidInResponse:
+) -> SentenceLaidInResponse | JSONResponse:
     """One whole sentence recorded again, laid into its part in the frase's place.
 
     `segment_id` is the frase whose sentence the team recorded again; it is always a whole
@@ -246,11 +253,20 @@ async def re_record_the_sentence(
     part; the audio before and after it is the same bytes, and the frases after it move by the
     difference in length. The part becomes a new rehearsal take, and the take it replaces is
     kept.
+
+    Refused with a named `code` the tablet turns into her lines: `SENTENCE_TOO_LONG` (413) for
+    a recording over 4 MB, before anything else is read.
     """
-    session = await room.session_for_room_caller(db, session_id, project_id)
-    refuse_a_panorama(session.pericope)
-    segment = await segment_for_session(db, session.id, segment_id)
-    await lay_in_a_sentence(
-        db, session, segment, audio=await file.read(), device_id=device_id, store=store
-    )
+    try:
+        audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
+        refuse_a_sentence_too_long(audio)
+        session = await room.session_for_room_caller(db, session_id, project_id)
+        refuse_a_panorama(session.pericope)
+        segment = await segment_for_session(db, session.id, segment_id)
+        await lay_in_a_sentence(db, session, segment, audio=audio, device_id=device_id, store=store)
+    except SentenceRefused as refused:
+        return JSONResponse(
+            status_code=refused.status_code,
+            content={"detail": refused.detail, "code": refused.code},
+        )
     return SentenceLaidInResponse(session_id=session.id, segments=await _units(db, session.id))

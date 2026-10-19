@@ -17,6 +17,22 @@ from app.services.internalization_room.takes import (
 from app.services.internalization_room.wav import pcm16, splice_sentence, trim_silence
 
 WAV = "audio/wav"
+SENTENCE_LIMIT_BYTES = 4 * 1024 * 1024
+
+
+class SentenceRefused(Exception):
+    def __init__(self, status_code: int, code: str, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.code = code
+        self.detail = detail
+
+
+def refuse_a_sentence_too_long(audio: bytes) -> None:
+    if len(audio) > SENTENCE_LIMIT_BYTES:
+        raise SentenceRefused(
+            413, "SENTENCE_TOO_LONG", f"A sentence weighs at most {SENTENCE_LIMIT_BYTES} bytes"
+        )
 
 
 async def lay_in_a_sentence(

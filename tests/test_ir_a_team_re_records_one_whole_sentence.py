@@ -78,3 +78,19 @@ async def test_a_tablet_of_another_team_lays_nothing_into_this_teams_part(
     assert [stretch.take_id for stretch in await final_segments(db_session, session.id)] == [
         one.id
     ], "um tablet de outra equipe regravava uma frase desta"
+
+
+async def test_a_sentence_over_four_megabytes_is_refused_before_anything_is_read(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, _ = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
+    kept = dict(store.objects)
+
+    refused = await re_record(
+        client, session.id, "frase-que-nao-existe", b"R" * (4 * 1024 * 1024 + 1)
+    )
+
+    assert (refused.status_code, refused.json()["code"]) == (413, "SENTENCE_TOO_LONG"), (
+        "uma frase de mais de 4 MB passava da porta, ou só depois de procurar a frase"
+    )
+    assert store.objects == kept, "a frase longa demais deixava algo guardado"
