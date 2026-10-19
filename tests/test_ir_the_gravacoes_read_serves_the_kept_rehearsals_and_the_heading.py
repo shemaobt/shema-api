@@ -6,6 +6,7 @@ Every case drives the real application through the door the Desk reads by.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -13,7 +14,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.db.models.project import Project
 from app.services.internalization_room.sessions import create_session
 from tests.baker import (
@@ -386,3 +387,46 @@ async def test_a_session_that_recorded_nothing_claims_no_grain(
     body = await _read(client, consultant, session.id)
 
     assert body["recording_grain"] is None
+
+
+def _release(session: IRSession, version: int, approved_at: datetime) -> IRRelease:
+    return IRRelease(
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        version=version,
+        package_sha256=str(version) * 64,
+        packet={},
+        approved_at=approved_at,
+    )
+
+
+async def test_the_finish_is_the_approval_of_the_latest_release_of_the_session(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    db_session.add(_release(session, 1, datetime(2026, 10, 17, 12, 0, tzinfo=UTC)))
+    db_session.add(_release(session, 2, datetime(2026, 10, 19, 15, 30, tzinfo=UTC)))
+    await db_session.commit()
+
+    body = await _read(client, consultant, session.id)
+
+    assert body["finished_at"] == "2026-10-19T15:30:00+00:00"
+
+
+async def test_a_session_with_no_release_of_its_own_has_no_finish_whatever_its_team_approved(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    sibling = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    db_session.add(_release(sibling, 1, datetime(2026, 10, 17, 12, 0, tzinfo=UTC)))
+    await db_session.commit()
+
+    body = await _read(client, consultant, session.id)
+
+    assert body["finished_at"] is None

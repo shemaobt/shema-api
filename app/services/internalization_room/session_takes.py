@@ -5,7 +5,7 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake
 from app.models.internalization_room import (
     KeptRehearsal,
     KeptTakeView,
@@ -57,11 +57,20 @@ async def mother_tongue_takes_of(
                 unread=link is None,
             )
         )
+    approved_at = (
+        await db.execute(
+            select(IRRelease.approved_at)
+            .where(IRRelease.session_id == session.id)
+            .order_by(IRRelease.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
     return MotherTongueTakesResponse(
         session_id=session.id,
         takes=rows,
         kept_rehearsals=await kept_rehearsals_of(db, session),
         recording_grain=_recording_grain(parts) if parts else None,
+        finished_at=None if approved_at is None else as_utc(approved_at).isoformat(),
     )
 
 

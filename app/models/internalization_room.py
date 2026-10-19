@@ -956,6 +956,7 @@ class MotherTongueTakesResponse(BaseModel):
     takes: list[MotherTongueTake]
     kept_rehearsals: list[KeptRehearsal] = Field(default_factory=list)
     recording_grain: Literal["parts", "whole"] | None = None
+    finished_at: str | None = None
 
 
 class SceneFraseView(BaseModel):
