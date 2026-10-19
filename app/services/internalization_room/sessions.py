@@ -527,8 +527,13 @@ async def _land(
 async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
     """Take this session's version for a write that lands beside the session rather than on
     it, a release minted on it, so a Zerar or a turn that moved it first refuses this one the
-    way `_land` refuses a turn (ADR 0066)."""
-    await _land(db, session, {}, commit=False)
+    way `_land` refuses a turn (ADR 0066).
+
+    `updated_at` is written its own value, as `prepare_opening` and the Zerar write it: the
+    Desk reads it as the last time the team spoke, and a release a facilitator forced is not
+    the team speaking.
+    """
+    await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
 
 
 async def refuse_if_archived(db: AsyncSession, session: IRSession) -> None:

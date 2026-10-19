@@ -757,6 +757,35 @@ async def test_an_unchanged_approval_a_zerar_overtakes_is_answered_as_the_sessio
     assert await live_releases_of(per_request, P) == 0
 
 
+async def test_a_release_forced_at_the_desk_is_not_the_teams_activity(
+    client, desk_sessions_client, db_session, per_request, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await ready_session(db_session, project_id=team.id)
+    last_spoke = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+    async with per_request() as fresh:
+        stored = await get_session(fresh, session.id)
+        await reported_playback(fresh, stored, await told_back_with_an_open_finding(fresh, stored))
+        await fresh.execute(
+            text("UPDATE ir_sessions SET updated_at = :at WHERE id = :id"),
+            {"at": last_spoke, "id": session.id},
+        )
+        await fresh.commit()
+
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+
+    assert forced.status_code == 200, forced.text[:300]
+    async with per_request() as fresh:
+        assert (await get_session(fresh, session.id)).updated_at == last_spoke
+    listed = await desk_sessions_client.get("/api/facilitator/sessions", headers=desk)
+    assert [
+        tile["last_activity_at"]
+        for tile in listed.json()["sessions"]
+        if tile["session_id"] == session.id
+    ] == ["2026-10-09T12:00:00Z"]
+
+
 async def test_a_zerard_closed_passage_is_the_teams_passage_again(
     client, desk_client, db_session, per_request, room_app
 ) -> None:
