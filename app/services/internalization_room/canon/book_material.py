@@ -11,18 +11,17 @@ from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.kept import canon_path, per_canon
 from app.services.internalization_room.canon.parse_map import (
     _PERICOPE,
-    SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
     code_only_links,
     load_book,
+    not_served,
 )
 
 LOGS_DIR = VENDOR / "compilation-log"
 COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
-_CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
 _JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.S)
 
 
@@ -92,53 +91,6 @@ def _extract_audit(text: str) -> list[dict]:
     return []
 
 
-def _extract_checklist(text: str) -> dict:
-    """Pull the validation_checklist object out of a Compilation Log.
-
-    Same reasoning as `_extract_audit`: located by key and scanned brace by brace, so a quoted
-    field name landing in the document's prose ahead of the real block is never mistaken for it.
-    """
-    found = _CHECKLIST_BLOCK.search(text)
-    if not found:
-        return {}
-    start = found.start(1)
-    depth = 0
-    in_string = False
-    escaped = False
-    for index in range(start, len(text)):
-        char = text[index]
-        if in_string:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                in_string = False
-            continue
-        if char == '"':
-            in_string = True
-        elif char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                checklist: dict = json.loads(text[start : index + 1])
-                return checklist
-    return {}
-
-
-@per_canon(maxsize=8)
-def _register_complete(book: str) -> dict[str, bool]:
-    """The checklist's own `high_risk_register_complete` flag, per pericope, for one book."""
-    complete: dict[str, bool] = {}
-    for path in sorted(canon_path(LOGS_DIR).glob(f"*-{book}-*-COMPILATION-LOG.md")):
-        pericope = path.name.split("-", 1)[0]
-        checklist = _extract_checklist(path.read_text(encoding="utf-8"))
-        if "high_risk_register_complete" in checklist:
-            complete[pericope] = bool(checklist["high_risk_register_complete"])
-    return complete
-
-
 @per_canon(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
@@ -197,50 +149,17 @@ def significant_absences(pericope_num: str) -> tuple[SceneAbsence, ...]:
 def unwalkable(meaning_map: MeaningMap) -> str | None:
     """Why this passage must not be walked, or ``None`` when it may be.
 
-    The same refusal, asked rather than raised. The wheel offers the passages a team can
-    choose from and the progression names the one it lands on next, and both have to know
-    which passages open at all — a copy of these three conditions in either of them would stop
-    matching this one the day a fourth signal joins.
+    The same refusal, asked rather than raised, so the wheel, the progression and the open
+    describe the same book.
     """
-    pericope = meaning_map.pericope_num
     book = meaning_map.book
     if book not in SERVED_BOOKS:
-        return f"{pericope}: the {book} canon is not served in this release"
-    if not any(rule.pericope == pericope for rule in preservation_rules(book)):
-        return (
-            f"{pericope}: no preservation layer in the {book} canon — the passage's "
-            "withholdings were never written, so its completion floor cannot be met"
-        )
-    survey_complete = meaning_map.sta_status == SURVEYED_STATUS
-    register_complete = _register_complete(book).get(pericope)
-    if register_complete is not None and register_complete != survey_complete:
-        return (
-            f"{pericope}: the checklist says the high-risk register is "
-            f"{'complete' if register_complete else 'incomplete'} but the survey is "
-            f"{meaning_map.sta_status!r} — the register and the survey disagree"
-        )
-    if not survey_complete:
-        return (
-            f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
-            f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
-        )
+        return f"{meaning_map.pericope_num}: {not_served(book)}"
     return None
 
 
 def require_walkable(meaning_map: MeaningMap) -> None:
-    """Refuse a passage no team should be walked through, and name which layer is missing.
-
-    The completion floor is every concrete element of the map engaged — each scene, being,
-    place, object, time, significant absence, *and preserved element*. A passage with no
-    withholdings recorded gets a coverage spine with no `preserved:` beads and a
-    comprehension pack with no `preserved_element` checkpoints, meets that shortened floor,
-    and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
-    passage; running costs Refine a false assurance, which is the more expensive of the two.
-
-    The three signals are read separately on purpose. A passage the project has not finished
-    tends to lack both — no preservation layer *and* a pending survey — but agreement is not
-    either one being read, and a layer written before the survey closes would otherwise walk.
-    """
+    """Refuse a passage of a book the room does not serve; every other passage walks (ADR 0066)."""
     reason = unwalkable(meaning_map)
     if reason is not None:
         raise ValidationError(reason)
@@ -263,7 +182,7 @@ def pericope_digest(meaning_map: MeaningMap) -> str:
 def build_book_material(book: str) -> str:
     """The Book Panorama's entire standard of truth, derived from vendored canon."""
     if book not in SERVED_BOOKS:
-        raise ValidationError(f"the {book} canon is not served in this release")
+        raise ValidationError(not_served(book))
     maps = load_book(book)
     rules = preservation_rules(book)
 

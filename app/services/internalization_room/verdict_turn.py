@@ -21,7 +21,6 @@ async def run_verdict_turn(
     speaker_prompt: str,
     validator_prompt: str,
     telling_back: str = "",
-    book: str = "Ruth",
     session_language: str = LANGUAGE_NAMES[AUTHORED],
     language_code: str = AUTHORED,
     settings: Settings | None = None,
@@ -33,7 +32,7 @@ async def run_verdict_turn(
     always about the telling-back. Runs through the Validator like every other voiced turn.
     """
     cfg = settings or get_settings()
-    map_block = validator_map_block(pericope_num, book)
+    map_block = validator_map_block(pericope_num, load_map(pericope_num).book)
     return await _voiced_after_validation(
         speaker_system=render(
             cache_break_before(speaker_prompt, "{{FINDINGS}}"),

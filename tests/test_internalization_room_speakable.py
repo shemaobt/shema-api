@@ -798,7 +798,7 @@ def test_none_of_her_scene_titles_loses_a_word_in_portuguese() -> None:
 def _map_scene_headings() -> list[str]:
     return [
         heading
-        for map_file in sorted(_MAPS.glob("*.md"))
+        for map_file in sorted(_MAPS.glob("*-Ruth-*.md"))
         for heading in re.findall(
             r"^### Scene \d+ — (.+?) \([^)]*\)\s*$",
             map_file.read_text(encoding="utf-8"),

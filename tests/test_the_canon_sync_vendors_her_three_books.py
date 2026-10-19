@@ -22,7 +22,7 @@ def a_compiler_publishing_her_three_books() -> Compiler:
     return compiler
 
 
-def test_only_the_fourteen_passages_of_ruth_and_her_names_are_vendored_and_the_other_books_are_not(
+def test_her_thirty_seven_passages_of_three_books_and_their_names_are_vendored(
     a_compiler_publishing_her_three_books: Compiler,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -32,11 +32,14 @@ def test_only_the_fourteen_passages_of_ruth_and_her_names_are_vendored_and_the_o
     canon.sync(pin=SHA)
 
     vendored = sorted(what_is_vendored(vendor))
-    assert len(vendored) == 14 * 3 + 1
-    assert [name for name in vendored if "Esther" in name or "Jonah" in name] == []
+    assert len(vendored) == 37 * 3 + 3
     assert [name for name in vendored if name.startswith("registry/")] == [
-        "registry/ruth.aliases.json"
+        "registry/esther.aliases.json",
+        "registry/jonah.aliases.json",
+        "registry/ruth.aliases.json",
     ]
-    assert [name for name in vendored if name.startswith("meaning-map/")] == [
-        f"meaning-map/P{number:02d}-Ruth-{number}.md" for number in range(1, 15)
-    ]
+    assert [name for name in vendored if name.startswith("meaning-map/")] == (
+        [f"meaning-map/E{number:02d}-Esther-{number}.md" for number in range(1, 19)]
+        + [f"meaning-map/J{number:02d}-Jonah-{number}.md" for number in range(1, 6)]
+        + [f"meaning-map/P{number:02d}-Ruth-{number}.md" for number in range(1, 15)]
+    )

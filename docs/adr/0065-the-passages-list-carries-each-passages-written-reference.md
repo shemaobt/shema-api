@@ -1,9 +1,13 @@
 ---
-status: accepted
+status: amended by ADR 0066: the list offers every passage, with no sound where no line is written
 date: 2026-10-16
 ---
 
 # The passages list carries each passage's written reference
+
+**Amended by [ADR 0066](0066-the-room-serves-every-published-passage-of-its-pinned-books-each-book-behind-its-own-panorama.md)**
+(ENG-1248): the list offers every passage, and a passage with no spoken line is offered with no
+sound.
 
 The passages list (`GET /books/{book}/passages`) said on purpose that it had no text: the team
 did not read, so a passage was told apart by its spoken line. ENG-1297 gives the facilitator's

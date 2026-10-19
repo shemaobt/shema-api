@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
@@ -52,7 +51,6 @@ async def run_comprehension_turn(
     The opening has no take, and an outcome that names none is one the room did not hear.
     """
     pericope = session.pericope
-    book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp = session.earlier_passages
     if stamp is None:
@@ -68,7 +66,6 @@ async def run_comprehension_turn(
         messages=messages,
         transcript=speech.text,
         opening=opening,
-        book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope=pericope,

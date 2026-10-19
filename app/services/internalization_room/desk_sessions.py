@@ -26,7 +26,7 @@ from app.models.internalization_room_desk_sessions import (
     DeskSessionsPage,
     DeskSessionState,
 )
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import served_maps
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
@@ -118,9 +118,7 @@ async def desk_sessions_page(
     ids = [session.id for session in sessions]
     rehearsals = await _kept_rehearsals(db, ids)
     released = await _released(db, ids)
-    references = {
-        meaning_map.pericope_num: meaning_map.reference for meaning_map in load_book(ROOM_BOOK)
-    }
+    references = {meaning_map.pericope_num: meaning_map.reference for meaning_map in served_maps()}
 
     return DeskSessionsPage(
         sessions=[

@@ -25,6 +25,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
+from app.core.served_books import SERVED_BOOKS
 from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
@@ -46,7 +47,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map, not_served
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
@@ -99,17 +100,9 @@ def book_of(pericope: str) -> str:
 
 
 def resolve_pericope(pericope: str) -> str:
-    """`OV` alone is the panorama of whichever book the room serves, so a client can ask
-    for it without naming the book — the canon stays entirely on this side.
-
-    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
-    on the wire, so a client that opens a session with the id the wheel just handed it
-    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
-
-    It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
-    belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
-    under another name: a book is not a passage, the room serves one, and `elements_for`,
-    `labelled_elements` and `run_turn` already take it as a parameter.
+    """`OV` alone, and `PANORAMA` (`"panorama"`, the id the wheel once put on the wire), are
+    Ruth's Panorama, for a tablet that names no book. Every served book's own Panorama is
+    `OV-<Book>` (ADR 0066).
     """
     if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
@@ -127,11 +120,10 @@ async def create_session(
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
-    The meaning map is loaded before anything is written, so unapproved or unsupported
-    canon is refused before a session exists — and so is a passage whose preservation layer
-    nobody has written, which would otherwise be walked against a completion floor missing
-    its top row. A panorama has no coverage spine and never completes: it prepares the team
-    to enter the book, and asks no retelling of them.
+    The meaning map is loaded before anything is written, so a passage or a Panorama of a
+    book the room does not serve is refused before a session exists (ADR 0066). A panorama
+    has no coverage spine and never completes: it prepares the team to enter the book, and
+    asks no retelling of them.
 
     ``pericope`` is optional and its absence is a question, not a default. It used to be
     ``DEFAULT_PERICOPE``, so a room that did not name a passage was answered the first one
@@ -176,6 +168,7 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
+        book=ROOM_BOOK,
     )
     session = await _minted(
         db,
@@ -197,6 +190,7 @@ async def open_session(
     project_id: str,
     after_panorama: bool = False,
     language: str | None = None,
+    after: IRSession | None = None,
 ) -> tuple[IRSession, bool]:
     """The session the room's open door returns, and whether this open created it.
 
@@ -225,6 +219,9 @@ async def open_session(
     open writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and a
     visit that lifted it becomes final. A warning stands, because a facilitator's visit is
     its only exit (ADR 0039).
+
+    An open that names no passage lands on the team's next passage of the book of the session
+    it came from, ``after``, and of Ruth when it came from none (ADR 0066).
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -232,6 +229,7 @@ async def open_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
+        book=book_of(after.pericope) if after is not None else ROOM_BOOK,
     )
     session = await _pointed(db, project_id, pericope, spoken)
     created = False
@@ -349,16 +347,20 @@ async def _resolved(
     after_panorama: bool,
     project_id: str | None,
     language: str | None,
+    book: str,
 ) -> tuple[str, bool, str]:
     """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
-        pericope = await active_passage(db, project_id=project_id)
+        pericope = await active_passage(db, project_id=project_id, book=book)
         if pericope is None:
             raise ConflictError(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if not is_panorama(pericope):
+    if is_panorama(pericope):
+        if (book := book_of(pericope)) not in SERVED_BOOKS:
+            raise ValidationError(not_served(book))
+    else:
         require_walkable(load_map(pericope))
     spoken = normalize(language)
     if language is not None and spoken is None:
@@ -509,11 +511,8 @@ async def _land(
         .execution_options(synchronize_session=False)
     )
     landed = (await db.execute(stmt)).one_or_none()
-    if landed is None and await db.scalar(
-        select(IRSession.archive_id).where(IRSession.id == session.id)
-    ):
-        raise NotFoundError(_no_such_session(session.id))
     if landed is None:
+        await refuse_if_archived(db, session)
         # Nothing matched, so nothing is pending: leave the transaction to the caller's
         # teardown rather than rolling back a session shared with the rest of the request,
         # the way autosave_state.py's own version conflict does.
@@ -523,6 +522,25 @@ async def _land(
     if commit:
         await db.commit()
     return session
+
+
+async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
+    """Take this session's version for a write that lands beside the session rather than on
+    it, a release minted on it, so a Zerar or a turn that moved it first refuses this one the
+    way `_land` refuses a turn (ADR 0066).
+
+    `updated_at` is written its own value, as `prepare_opening` and the Zerar write it: the
+    Desk reads it as the last time the team spoke, and a release a facilitator forced is not
+    the team speaking.
+    """
+    await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
+
+
+async def refuse_if_archived(db: AsyncSession, session: IRSession) -> None:
+    """Refuse a session a Zerar archived, as stored now and not as it was read, with the
+    unknown session's words (ADR 0052)."""
+    if await db.scalar(select(IRSession.archive_id).where(IRSession.id == session.id)):
+        raise NotFoundError(_no_such_session(session.id))
 
 
 async def append_exchange(

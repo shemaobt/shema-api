@@ -28,7 +28,7 @@ from tests.baker import make_project_user_access, make_user
 from tests.device_harness import RETIRED_ROOM_KEY_HEADER, LinkedTablet, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
-from tests.room_harness import room_client
+from tests.room_harness import room_client, the_room_speaks
 
 RETIRED_KEY = "sala-de-teste"
 KEY_ALONE = {RETIRED_ROOM_KEY_HEADER: RETIRED_KEY}
@@ -37,6 +37,7 @@ UNKNOWN = {DEVICE_CREDENTIAL_HEADER: "b" * 64}
 #: Every door under the room prefix a tablet calls once it belongs to a team, with the
 #: device needs-person door and the voice route.
 TEAM_DOORS = [
+    ("GET", "/books"),
     ("GET", "/books/{book}/passages"),
     ("POST", "/devices/{device_id}/needs-person"),
     ("GET", "/fixed-lines/{line}"),
@@ -92,6 +93,7 @@ THE_REVIEWERS_PAGE = {("GET", "/demo"), ("POST", "/demo")}
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The room's doors with no caller of their own: every case says who is knocking."""
+    the_room_speaks(monkeypatch)
     async with room_client(db_session, monkeypatch) as c:
         del c.headers[DEVICE_CREDENTIAL_HEADER]
         del c.headers["X-Room-Device"]

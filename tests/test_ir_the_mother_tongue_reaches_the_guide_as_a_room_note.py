@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.services import internalization_room as room
-from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
 from tests.device_harness import TABLET_TEAM
@@ -59,7 +58,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "messages": [{"role": "guide", "text": "Ensaiem a cena na língua de vocês."}],
         "transcript": "a fome chegou",
         "opening": False,
-        "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
         "pericope": P,

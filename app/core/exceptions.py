@@ -318,6 +318,11 @@ class UpstreamServiceError(Exception):
     """
 
 
+class ProviderNotConfigured(Exception):
+    """A provider this deploy calls has no key: a mistake of ours, never the provider failing,
+    so it is kept apart from `UpstreamServiceError` and answered as our 500."""
+
+
 def upstream_or_validation_error(status_code: int, message: str) -> Exception:
     """Their outage is not our client's bad request.
 

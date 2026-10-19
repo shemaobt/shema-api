@@ -15,7 +15,7 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import run_turn
-from app.services.internalization_room.sessions import get_session, is_panorama
+from app.services.internalization_room.sessions import book_of, get_session, is_panorama
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -53,7 +53,9 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             spoken = panorama.language
             with reading_the_canon_of(panorama.canon_pin):
                 if pericope is None:
-                    pericope = await active_passage(db, project_id=panorama.project_id)
+                    pericope = await active_passage(
+                        db, project_id=panorama.project_id, book=book_of(panorama.pericope)
+                    )
                 if pericope is None:
                     logger.info("Nothing left to prepare: the team has closed every passage")
                     return

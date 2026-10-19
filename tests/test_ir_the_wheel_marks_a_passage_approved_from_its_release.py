@@ -14,7 +14,6 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.internalization_room import passages as route
 from app.api.internalization_room import sessions as sessions_api
 from app.db.models.project import Project
 from app.services.internalization_room.hearing import HeardSpeech
@@ -33,11 +32,6 @@ from tests.release_harness import (
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
-
-
-@pytest.fixture(autouse=True)
-def the_panorama_has_no_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
 
 @pytest.fixture()
@@ -172,7 +166,6 @@ async def test_another_teams_release_never_marks_this_teams_wheel(client, db_ses
 async def test_the_panorama_entry_is_never_approved(
     client, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute — o livro inteiro")
     team, tablet = await a_claimed_device(db_session)
     await approved(client, db_session, team, tablet, "P01")
 
