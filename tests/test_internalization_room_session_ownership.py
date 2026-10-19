@@ -131,6 +131,9 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/restart"): (
         "test_ir_the_translation_starts_over.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/segments/{{segment_id}}/sentence"): (
+        "test_ir_a_team_re_records_one_whole_sentence.py"
+    ),
 }
 
 

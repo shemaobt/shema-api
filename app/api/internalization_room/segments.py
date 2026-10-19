@@ -14,7 +14,12 @@ from app.api.internalization_room._idempotent import IdempotentRoute, idempotenc
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
 from app.db.models.internalization_room import IRSegment, IRTakeKind
-from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
+from app.models.internalization_room import (
+    DivideSegmentRequest,
+    SegmentsResponse,
+    SegmentView,
+    SentenceLaidInResponse,
+)
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
@@ -27,7 +32,13 @@ from app.services.internalization_room.segments import (
     refuse_a_slice_a_version_cannot_take,
     segment_for_session,
 )
-from app.services.internalization_room.takes import rehearsal_take_of, store_take
+from app.services.internalization_room.sentences import lay_in_a_sentence
+from app.services.internalization_room.takes import (
+    TakeStore,
+    rehearsal_take_of,
+    store_take,
+    take_store,
+)
 
 router = APIRouter()
 
@@ -207,3 +218,39 @@ router.add_api_route(
     dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
+
+
+@router.post(
+    "/sessions/{session_id}/segments/{segment_id}/sentence",
+    response_model=SentenceLaidInResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def re_record_the_sentence(
+    session_id: str,
+    segment_id: str,
+    sentence_id: str = Form(..., pattern=r"^[A-Za-z0-9_-]{8,64}$"),
+    file: UploadFile = File(...),
+    device_id: str = device_dep,
+    project_id: str = device_project_dep,
+    store: TakeStore = Depends(take_store),
+    db: AsyncSession = Depends(get_db),
+) -> SentenceLaidInResponse:
+    """One whole sentence recorded again, laid into its part in the frase's place.
+
+    `segment_id` is the frase whose sentence the team recorded again; it is always a whole
+    sentence, never a piece of one (Marcia, 21 September). `sentence_id` is minted by the tablet
+    for this one recording and sent again with every retry of it. `file` is the raw recording,
+    WAV PCM16 at the part's own rate and channels.
+
+    The new sentence keeps 0.2 s of its silence on each side and replaces the old one inside the
+    part; the audio before and after it is the same bytes, and the frases after it move by the
+    difference in length. The part becomes a new rehearsal take, and the take it replaces is
+    kept.
+    """
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    segment = await segment_for_session(db, session.id, segment_id)
+    await lay_in_a_sentence(
+        db, session, segment, audio=await file.read(), device_id=device_id, store=store
+    )
+    return SentenceLaidInResponse(session_id=session.id, segments=await _units(db, session.id))

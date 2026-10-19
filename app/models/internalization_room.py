@@ -361,6 +361,18 @@ class SegmentsResponse(BaseModel):
     needs_person: bool = False
 
 
+class SentenceLaidInResponse(BaseModel):
+    """The part after one whole sentence was recorded again and laid in its frase's place.
+
+    The part is a new rehearsal take: the frase and every other frase of that part now sit on
+    it, the frases after the new sentence moved by the difference in length, and the take they
+    sat on before is kept. The whole list, as the other stretch verbs answer.
+    """
+
+    session_id: str
+    segments: list[SegmentView] = Field(default_factory=list)
+
+
 class FindingView(BaseModel):
     kind: str
     frase: int | None = None
