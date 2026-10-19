@@ -123,6 +123,10 @@ _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
 _Avoid_: granularity, mode, shape, Granularidade
 
+**Joined recording** (`origin`):
+A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A recording no join touched is checked exactly as any other.
+_Avoid_: assembled recording (the server's old composed takes), merged, Junção (in prose)
+
 **Canon code**:
 The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
 _Avoid_: id, tag, link, slug
