@@ -118,3 +118,27 @@ async def test_while_a_frase_awaits_no_other_frase_is_re_recorded_but_it_may_be_
         (1000, 1900),
         (1900, 2900),
     ], "a frase que espera não podia ser regravada de novo"
+
+
+async def test_the_awaiting_frase_is_told_only_at_the_span_the_new_sentence_took(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((_, last),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000)]]
+    )
+    laid = (await re_record(client, session.id, last.id, spoken(1.0))).json()["segments"][1]
+
+    moved = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{last.id}/replace",
+        data={"take_id": laid["take_id"], "starts_ms": "1000", "ends_ms": "2200"},
+        files={"file": ("trecho.m4a", b"a equipe traduziu outro pedaco", "audio/mp4")},
+    )
+    divided = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{last.id}/divide", json={"at_ms": 1700}
+    )
+
+    assert [(one.status_code, one.json().get("code")) for one in (moved, divided)] == [
+        (400, "PAUSE_ONLY_ON_THE_LAST_FRASE"),
+        (400, "PAUSE_ONLY_ON_THE_LAST_FRASE"),
+    ], "a frase que espera era traduzida noutro trecho que não o da frase nova"
+    assert (await _read(client, session.id)).get("awaiting_segment_id") == last.id

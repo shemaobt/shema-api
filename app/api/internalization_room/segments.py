@@ -38,6 +38,7 @@ from app.services.internalization_room.sentences import (
     SentenceRefused,
     lay_in_a_sentence,
     refuse_a_sentence_too_long,
+    refuse_another_span_for_the_awaiting_frase,
 )
 from app.services.internalization_room.takes import (
     TakeStore,
@@ -97,6 +98,9 @@ async def divide(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     segment = await segment_for_session(db, session.id, segment_id)
+    await refuse_another_span_for_the_awaiting_frase(
+        db, session, segment, segment.starts_ms, payload.at_ms
+    )
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
     nudge(session.project_id, "stretches")
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
@@ -165,6 +169,7 @@ async def replace(
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
+    await refuse_another_span_for_the_awaiting_frase(db, session, segment, starts_ms, ends_ms)
     await refuse_a_slice_a_version_cannot_take(
         db, session, segment, rehearsal.id, starts_ms, ends_ms
     )

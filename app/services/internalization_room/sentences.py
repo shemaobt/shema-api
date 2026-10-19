@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE, PauseCannotMove
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.fail_safe import her_line
@@ -194,3 +195,19 @@ async def the_sentence_awaiting(db: AsyncSession, session: IRSession) -> Awaitin
                     line=her_line("N5", room_language(session.language)) or "",
                 )
     return None
+
+
+async def refuse_another_span_for_the_awaiting_frase(
+    db: AsyncSession, session: IRSession, segment: IRSegment, starts_ms: int, ends_ms: int
+) -> None:
+    awaiting = await the_sentence_awaiting(db, session)
+    if (
+        awaiting is not None
+        and awaiting.segment_id == segment.id
+        and (starts_ms, ends_ms) != (segment.starts_ms, segment.ends_ms)
+    ):
+        raise PauseCannotMove(
+            f"Frase {awaiting.frase} awaits its translation at exactly "
+            f"{segment.starts_ms} to {segment.ends_ms} ms, the span its new sentence took",
+            ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+        )
