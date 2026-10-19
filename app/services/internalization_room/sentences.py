@@ -16,6 +16,7 @@ from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRT
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     LaidInSentence,
+    frase_numbers,
     unheard_parts,
 )
 from app.services.internalization_room.fail_safe import her_line
@@ -205,14 +206,15 @@ async def the_sentence_awaiting(db: AsyncSession, session: IRSession) -> Awaitin
     if not laid:
         return None
     told = told_back(await final_segments(db, session.id))
+    numbers = frase_numbers(told)
+    on_take = {frase.id: frase.take_id for frase in told}
     for entry in reversed(laid):
-        for number, frase in enumerate(told, start=1):
-            if (frase.id, frase.take_id) == (entry.segment_id, entry.take_id):
-                return AwaitingSentence(
-                    segment_id=frase.id,
-                    frase=number,
-                    line=her_line("N5", room_language(session.language)) or "",
-                )
+        if on_take.get(entry.segment_id) == entry.take_id:
+            return AwaitingSentence(
+                segment_id=entry.segment_id,
+                frase=numbers[entry.segment_id],
+                line=her_line("N5", room_language(session.language)) or "",
+            )
     return None
 
 
