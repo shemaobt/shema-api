@@ -221,6 +221,10 @@ async def frases_read_by_b(room: Room, session_id: str) -> list[dict[str, Any]]:
     return list(rehearsal["frases"])
 
 
+def current(frases: list[dict[str, Any]]) -> list[tuple[int, int]]:
+    return [(f["starts_ms"], f["ends_ms"]) for f in frases if f["replaced_by"] is None]
+
+
 async def count(db: AsyncSession, table: str, column: str, value: str) -> int:
     found = await db.execute(
         text(f"SELECT count(*) FROM {table} WHERE {column} = :v"), {"v": value}

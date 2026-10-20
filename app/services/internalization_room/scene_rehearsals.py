@@ -443,28 +443,37 @@ async def _refuse_a_pause_that_cannot_move(
     rehearsal: IRSceneRehearsal,
     *,
     named: IRSceneFrase,
-    head: str,
+    head: IRSceneFrase,
+    attempt: str | None,
     starts_ms: int,
     ends_ms: int,
 ) -> None:
-    """A **Moved pause** stands only on the last current frase, from its start, inside the
-    recording, in her order.
+    """A **Moved pause** stands only on the last frase of its attempt, from that frase's start
+    to an end inside the recording; the first refusal that applies wins, in her order.
 
-    A frase over the named frase's own place is that frase translated again, and lands at the
-    chain's newest version. A move against a version replaced since, from another start, or
-    shorter than the shortest frase cannot stand there.
+    A frase over the place of its chain's newest version is that frase translated again, and
+    lands there. A move against a version replaced since, from another start, or shorter than
+    the shortest frase cannot stand there. The last frase is read in the attempt the move names,
+    set-aside frases counted, so a move held for its restart or overtaken by one is kept as any
+    frase of that attempt is.
     """
-    if (starts_ms, ends_ms) == (named.starts_ms, named.ends_ms):
+    if (starts_ms, ends_ms) == (head.starts_ms, head.ends_ms):
         return
-    if head != named.id:
+    if head.id != named.id:
         raise PauseCannotMove(
-            f"Scene frase {named.id} was replaced by {head} since it was read",
+            f"Scene frase {named.id} was replaced by {head.id} since it was read",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
         )
-    frases = (await frases_of(db, await restarts_of(db, [rehearsal.id])))[rehearsal.id]
+    found = await db.scalars(
+        select(IRSceneFrase).where(
+            IRSceneFrase.rehearsal_id == rehearsal.id,
+            IRSceneFrase.attempt.is_not_distinct_from(attempt),
+        )
+    )
+    frases = list(found)
     replacing = replaced_by(frases)
     standing = [frase for frase in frases if frase.id not in replacing]
-    last = max(reversed(standing), key=lambda frase: frase.ends_ms, default=None)
+    last = max(standing, key=lambda frase: frase.ends_ms, default=None)
     if last is None or last.id != named.id:
         raise PauseCannotMove(
             "The pause moves only on the last frase of the scene rehearsal",
@@ -502,9 +511,14 @@ async def _place_the_frase(
     head = None
     if replaces is not None:
         head = await _current_of_the_chain(db, rehearsal, replaces, attempt)
-        named = await db.get_one(IRSceneFrase, replaces)
         await _refuse_a_pause_that_cannot_move(
-            db, rehearsal, named=named, head=head, starts_ms=starts_ms, ends_ms=ends_ms
+            db,
+            rehearsal,
+            named=await db.get_one(IRSceneFrase, replaces),
+            head=await db.get_one(IRSceneFrase, head),
+            attempt=attempt,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
         )
     _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
     found = await db.scalars(
@@ -577,9 +591,10 @@ async def keep_a_frase(
     on is read again under the rehearsal's lock, which a restart takes too: the same frase
     resent meanwhile is answered with the first, a rehearsal sent meanwhile refuses the frase,
     one archived meanwhile stamps it, one restarted meanwhile sets it aside, a **Moved pause**
-    whose frase stopped being the last meanwhile is refused, and a frase translated again over
-    its own place is replaced at the chain's newest. A frase that lands over a stretch a current
-    frase holds is out of place, so two frases posted at once over one stretch keep only one.
+    whose frase stopped being the last of its attempt meanwhile is refused, and a frase
+    translated again over its chain's newest place is replaced there. A frase that lands over a
+    stretch a current frase holds is out of place, so two frases posted at once over one stretch
+    keep only one.
     """
     sha256 = recording_digest(audio)
     already = await _the_same_frase(db, rehearsal.id, sha256)

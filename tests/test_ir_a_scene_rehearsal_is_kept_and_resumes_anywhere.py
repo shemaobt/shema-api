@@ -32,6 +32,7 @@ from tests.scene_rehearsal_harness import (
     Room,
     a_room,
     count,
+    current,
     frases_read_by_b,
     key_of,
     read_by_b,
@@ -50,10 +51,6 @@ from tests.scene_rehearsal_harness import (
 async def room(db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch):
     async with a_room(db_session, rival_factory, monkeypatch) as built:
         yield built
-
-
-def current(frases: list[dict[str, Any]]) -> list[tuple[int, int]]:
-    return [(f["starts_ms"], f["ends_ms"]) for f in frases if f["replaced_by"] is None]
 
 
 async def zerar(room: Room) -> str:
