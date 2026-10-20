@@ -1036,6 +1036,10 @@ class TakeResponse(BaseModel):
     #: to Refine.
     ordinal: int | None = None
     pass_number: int | None = None
+    #: The scene rehearsal this part was laid in from when the join made it; absent on a part
+    #: the team recorded as itself. It is how a tablet resuming from the listing knows the
+    #: recording is a joined one.
+    origin: str | None = None
     pericope: str = ""
     recorded_at: str = ""
 
