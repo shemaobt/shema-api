@@ -36,6 +36,7 @@ from app.services.shema import (
     list_projects,
     reaches,
     region_scope,
+    regional_scope_from_roles,
     set_region_scope,
     visible_projects,
 )
@@ -150,18 +151,17 @@ async def test_the_scope_ignores_a_grant_in_another_application(db_session, shem
     assert scope.regions == frozenset({"asia"})
 
 
-@pytest.mark.parametrize("role", ["admin", "gestor", "mesa"])
+@pytest.mark.parametrize("role", ["gestor", "mesa"])
 async def test_a_role_with_no_regional_reach_reaches_nothing_even_with_a_region_row(
-    db_session, client, shema_app, form_app, role
+    db_session, shema_app, form_app, role
 ):
-    """OBT-523: ``admin``, ``gestor`` and ``mesa`` gain no region. Proved with a row in
+    """OBT-523: ``gestor`` and ``mesa`` gain no region. Proved with a row in
     ``shema_user_regions`` — which nothing deletes when a regional role is revoked — because a
-    scope that is empty only for want of a row is an accident of data, not a rule.
-
-    ``admin`` is the one of the three that also reaches the app gate, so it is asked through
-    the real ``Scope`` dependency as well."""
+    scope that is empty only for want of a row is an accident of data, not a rule. (``admin``
+    was the third until OBT-593 gave it every region as a reader; the row still buys it
+    nothing, which the next test holds.)"""
     user = await make_user(db_session, email=f"{role}-scope@shema.test")
-    await grant(db_session, user, shema_app if role == "admin" else form_app, role)
+    await grant(db_session, user, form_app, role)
     await set_region_scope(db_session, user.id, [AFRICA])
 
     for app_key in (APP_KEY, FORM_APP_KEY):
@@ -169,12 +169,29 @@ async def test_a_role_with_no_regional_reach_reaches_nothing_even_with_a_region_
         assert scope.global_ is False
         assert scope.regions == frozenset()
 
-    if role == "admin":
-        res = await client.get(SCOPE_PROBE, headers=await auth_header(db_session, user))
-        assert res.json() == {"global": False, "regions": []}
+
+async def test_the_admin_reads_every_region_and_writes_none_of_them(
+    db_session, client, shema_app, form_app
+):
+    """OBT-593 (Daniel, 19/oct/2026, OBT-592): the Admin without a region **reads** every region,
+    as the coordination — so its scope is global, through the real ``Scope`` dependency too —
+    and **writes** only what is access: the regional half, which is what the Admin may write,
+    is empty, and a row left in ``shema_user_regions`` still buys it nothing (OBT-523's rule,
+    kept on the half it was written for)."""
+    user = await make_user(db_session, email="admin-scope@shema.test")
+    await grant(db_session, user, shema_app, "admin")
+    await set_region_scope(db_session, user.id, [AFRICA])
+
+    scope = await region_scope(db_session, user, APP_KEY)
+    regional = await regional_scope_from_roles(db_session, user, {"admin"})
+    res = await client.get(SCOPE_PROBE, headers=await auth_header(db_session, user))
+
+    assert scope.global_ is True
+    assert regional == RegionScope(global_=False, regions=frozenset())
+    assert res.json() == {"global": True, "regions": []}
 
 
-@pytest.mark.parametrize("role", ["admin", "gestor", "mesa"])
+@pytest.mark.parametrize("role", ["gestor", "mesa"])
 async def test_a_regional_role_keeps_its_scope_beside_a_non_regional_one(
     db_session, shema_app, form_app, role
 ):
@@ -183,12 +200,29 @@ async def test_a_regional_role_keeps_its_scope_beside_a_non_regional_one(
     user = await make_scoped_user(
         db_session, shema_app, email=f"beside-{role}@shema.test", role_key="obtLab", regions=[ASIA]
     )
-    await grant(db_session, user, shema_app if role == "admin" else form_app, role)
+    await grant(db_session, user, form_app, role)
 
     scope = await region_scope(db_session, user, APP_KEY)
 
     assert scope.global_ is False
     assert scope.regions == frozenset({"asia"})
+
+
+async def test_a_regional_role_beside_the_admin_reads_everywhere_and_writes_its_own_regions(
+    db_session, shema_app
+):
+    """An account holding ``obtLab`` in Asia and ``admin``: the reading is the Admin's (every
+    region), the writing is the regional role's (Asia) — the two halves OBT-593 keeps apart."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="beside-admin@shema.test", role_key="obtLab", regions=[ASIA]
+    )
+    await grant(db_session, user, shema_app, "admin")
+
+    scope = await region_scope(db_session, user, APP_KEY)
+    regional = await regional_scope_from_roles(db_session, user, {"obtLab", "admin"})
+
+    assert scope.global_ is True
+    assert regional == RegionScope(global_=False, regions=frozenset({"asia"}))
 
 
 # --- the collection ------------------------------------------------------------------

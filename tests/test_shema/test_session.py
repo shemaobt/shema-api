@@ -180,7 +180,8 @@ async def test_an_account_holding_coordinator_admin_and_gestor_keeps_the_role_it
 
     assert res.json()["role"] == "coordinator"
     assert res.json()["roles"] == ["coordinator", "admin", "gestor"]
-    assert res.json()["regionScope"] == ["africa"]
+    # OBT-593: holding ``admin``, the account reads every region — ``null`` on the wire.
+    assert res.json()["regionScope"] is None
 
 
 async def test_the_service_answers_in_precedence_whatever_order_it_is_handed(db_session, shema_app):

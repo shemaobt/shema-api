@@ -374,8 +374,10 @@ async def test_the_pointer_goes_only_to_a_reader_who_reaches_the_project(
     db_session, shema_app, form_app
 ) -> None:
     """A project's id is its slug, ``<language>-<place>``: whoever the project is out of scope
-    for does not learn it exists (§6.1). The Gestor and a coordinator of another region are told
-    the name and the stage and not where it points; the coordination in scope would be."""
+    for does not learn it exists (§6.1). The Gestor is told the name and the stage and not where
+    it points; a coordinator of another region is not told at all. (Until OBT-593 this test
+    also rang an ``admin`` who coordinated Asia and read a ``null`` pointer; the Admin reaches
+    every region now and reads the pointer — the next test.)"""
     project = await make_shema_project(
         db_session, project_id="sa-di-of-high-egypt", region_key=AFRICA
     )
@@ -384,16 +386,35 @@ async def test_the_pointer_goes_only_to_a_reader_who_reaches_the_project(
     elsewhere = await make_scoped_user(
         db_session, shema_app, email="asia@notices.test", role_key="coordinator", regions=[ASIA]
     )
-    await grant(db_session, elsewhere, shema_app, "admin")
     starter = await make_user(db_session, email="starter@notices.test")
 
     await _arrive(db_session, project.id, starter.id)
 
-    for reader in (gestor, elsewhere):
-        [entry] = await _panel(db_session, reader)
-        assert entry["projectId"] is None
-        assert entry["requestStage"] == "triagem"
-        assert "egypt" not in str(entry).lower()
+    [entry] = await _panel(db_session, gestor)
+    assert entry["projectId"] is None
+    assert entry["requestStage"] == "triagem"
+    assert "egypt" not in str(entry).lower()
+    assert await _panel(db_session, elsewhere) == []
+
+
+async def test_the_pointer_reaches_the_admin_in_every_region(
+    db_session, shema_app, form_app
+) -> None:
+    """OBT-593 (Daniel, 19/oct/2026, OBT-592 item 4): the Admin reads every region, so the
+    arrival's notice carries the project's id to it — the bancada of 14/oct had it ``null``
+    (INT-E2E-057). The arrival still rings the same people; what changed is the reach."""
+    project = await make_shema_project(
+        db_session, project_id="sa-di-of-high-egypt", region_key=AFRICA
+    )
+    admin = await make_user(db_session, email="admin@notices.test")
+    await grant(db_session, admin, shema_app, "admin")
+    starter = await make_user(db_session, email="starter@notices.test")
+
+    await _arrive(db_session, project.id, starter.id)
+
+    [entry] = await _panel(db_session, admin)
+    assert entry["projectId"] == project.id
+    assert entry["requestStage"] == "triagem"
 
 
 # --- the panel's routes, behind the door -----------------------------------------------------

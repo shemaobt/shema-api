@@ -380,11 +380,11 @@ async def test_the_roster_lists_members_in_the_order_they_joined(db_session, cli
     assert [entry["userId"] for entry in res.json()] == [first.id, second.id]
 
 
-async def test_the_admin_reaches_every_roster_and_no_record(db_session, client, shema_app):
-    """The Admin holds no region (OBT-523) and still writes the roster of a project in any region
-    — and that reach stays on the rosters: the collection is empty for it and a record is the
-    same 404 as for anybody out of scope. This is the negative that keeps ``RosterReach`` off
-    every other read."""
+async def test_the_admin_reaches_every_roster_and_reads_every_record(db_session, client, shema_app):
+    """The Admin holds no region and writes the roster of a project in any region — and, since
+    OBT-593 (Daniel, 19/oct/2026), reads every record too: the collection lists the project and
+    the record opens. The roster reach is still ``RosterReach``'s and the reading is the
+    scope's; neither leans on the other."""
     admin = await _admin(db_session, shema_app)
     member = await make_user(db_session, email="far@members.test")
     project = await make_shema_project(db_session, project_id="p-far", region_key=ASIA)
@@ -393,8 +393,9 @@ async def test_the_admin_reaches_every_roster_and_no_record(db_session, client, 
     added = await client.post(_roster(project.id), headers=headers, json={"userId": member.id})
     assert added.status_code == 201, added.text
 
-    assert (await client.get(f"{PREFIX}/projects", headers=headers)).json()["items"] == []
-    assert (await client.get(f"{PREFIX}/projects/{project.id}", headers=headers)).status_code == 404
+    page = await client.get(f"{PREFIX}/projects", headers=headers)
+    assert [item["id"] for item in page.json()["items"]] == [project.id]
+    assert (await client.get(f"{PREFIX}/projects/{project.id}", headers=headers)).status_code == 200
 
 
 async def test_adding_a_live_member_twice_is_a_conflict(db_session, client, shema_app):

@@ -234,6 +234,28 @@ def test_each_role_reads_as_coordination_or_other(
     assert reading.reader_of(ELSEWHERE) is ShemaReader(elsewhere)
 
 
+def test_the_admin_reads_everywhere_and_writes_only_its_regional_reach() -> None:
+    """OBT-593 (Daniel, 19/oct/2026): the ``admin`` row reads as coordination in every region
+    and writes a project only where a regional role it also holds reaches — nothing, for the
+    Admin alone, and nothing when the caller did not say (the fail-closed default). A
+    coordinator writes where it coordinates; an installation admin is not narrowed."""
+    alone = readership(
+        GLOBAL, {"admin"}, platform_admin=False, regional=RegionScope(False, frozenset())
+    )
+    unsaid = readership(GLOBAL, {"admin"}, platform_admin=False)
+    beside = readership(GLOBAL, {"admin", "coordinator"}, platform_admin=False, regional=REGIONAL)
+    coordinator = readership(REGIONAL, {"coordinator"}, platform_admin=False, regional=REGIONAL)
+    installation = readership(GLOBAL, set(), platform_admin=True)
+
+    for reading in (alone, unsaid, beside):
+        assert reading.reader_of(ELSEWHERE) is ShemaReader.COORDINATION
+    assert alone.writes_no_project and unsaid.writes_no_project
+    assert not alone.writes_project(HERE) and not alone.writes_project(ELSEWHERE)
+    assert beside.writes_project(HERE) and not beside.writes_project(ELSEWHERE)
+    assert coordinator.writes is None and coordinator.writes_project(HERE)
+    assert installation.writes is None and installation.writes_project(ELSEWHERE)
+
+
 def test_a_readership_that_coordinates_nothing_reads_everything_as_other() -> None:
     """The fail-closed floor, and what the notification panel's stale reading uses."""
     assert {NO_COORDINATION.reader_of(region) for region in ShemaRegionKey} == {ShemaReader.OTHER}
