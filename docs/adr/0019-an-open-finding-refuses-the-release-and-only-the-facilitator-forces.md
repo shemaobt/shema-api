@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded in part by ADR 0075: the force passes every blocker but a missing recording and is addressed to the passage; that only the facilitator forces, and ADR 0014's rule under force, stand
 date: 2026-09-11
 ---
 
