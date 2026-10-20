@@ -99,16 +99,28 @@ async def kept_rehearsals_of(db: AsyncSession, session: IRSession) -> list[KeptR
         .scalars()
         .all()
     )
-    latest: dict[str, tuple[TeamTurn, int, bool]] = {}
+    latest: dict[str, tuple[TeamTurn, int, KeptRecording, bool]] = {}
     for sibling in siblings:
-        for scope, (number, _) in _latest_kept_of_each_scope(sibling).items():
+        for scope, (number, recording) in _latest_kept_of_each_scope(sibling).items():
             turn = team_turn_of(sibling, number)
             if scope not in latest or turn.at > latest[scope][0].at:
-                latest[scope] = (turn, number, sibling.id != session.id)
-    told = latest.items()
+                latest[scope] = (turn, number, recording, sibling.id != session.id)
+    told = sorted(latest.items(), key=lambda each: each[1][0].at)
+    links = await asyncio.gather(
+        *(
+            signed_listen_url(recording.storage_key, recording.content_type)
+            for _, (_, _, recording, _) in told
+        )
+    )
     return [
-        KeptRehearsal(turn_number=number, words=turn.words, from_other_session=other, scope=scope)
-        for scope, (turn, number, other) in sorted(told, key=lambda each: each[1][0].at)
+        KeptRehearsal(
+            turn_number=number,
+            words=turn.words,
+            from_other_session=other,
+            scope=scope,
+            audio_url=link,
+        )
+        for (scope, (turn, number, _, other)), link in zip(told, links, strict=True)
     ]
 
 
