@@ -396,9 +396,11 @@ class FindingView(BaseModel):
     frase: int | None = Field(
         default=None,
         description=(
-            "The frase the check named, in the number the voice spoke it. A missing element "
-            "placed after frase N says N while `segment_id` points at the stretch after it. "
-            "Null when the analyst named no readable frase."
+            "The frase the check named, in the number the voice speaks it, followed to where "
+            "that stretch stands now: a cut, a telling or a part recorded again moves it. A "
+            "missing element placed after frase N says N while `segment_id` points at the "
+            "stretch after it. Null when the analyst named no readable frase, and when the "
+            "stretch it named is no longer among the told ones."
         ),
     )
     segment_id: str | None = None

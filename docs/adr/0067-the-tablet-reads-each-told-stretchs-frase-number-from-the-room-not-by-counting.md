@@ -27,17 +27,21 @@ Decided by the ticket (ENG-1679):
   counter spelled another way is for review to catch.
 - A stretch told again keeps its position, so it keeps its number. After «recomeçar a tradução»
   every stretch is retired and the next telling is frase 1.
-- A finding's `frase` stays the number the analyst gave and the voice spoke, beside the stretch
-  it resolved to. A missing element placed after frase N says N while its `segment_id` is the
-  stretch after it; reading the number off the pointer would say N+1.
+- A finding's `frase` is the number the analyst gave and the voice spoke, followed to where the
+  stretch it named stands now (ENG-1681). The stretch is the one at that position in the list
+  the analyst was shown, `analysed_segment_ids`, and its number is read off the told stretches
+  as the session read does; it is null once that stretch is not among them. A missing element
+  placed after frase N says N while its `segment_id` is the stretch after it; reading the
+  number off the pointer would say N+1. The stored `chunk` is untouched: the packet hashes it
+  and a Swap is paired on it.
 
 No migration: the number is derived at read time from the stretches that stand. No model call.
 
 Consequences:
 
-- Every number is true of the reading as it stands now, except a finding's: it is the number of
-  the reading the check made, and it goes on being served until the next check even if a cut or
-  a part recorded again has moved the stretches since.
+- Every number the session read and the check's answer serve is true of the reading as it
+  stands now. The text seam, the packet and the retroverification file still carry a finding's
+  `chunk` as the check made it.
 - The `chunks` count of the telling answer is still every stretch that counts, told or not, so
   it can differ from the highest `frase`.
 - The tablet and the Desk parse the session by named keys and ignore the rest, so the new key
