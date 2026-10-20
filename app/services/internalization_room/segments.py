@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import TypeGuard
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -689,7 +690,7 @@ async def current_stretch_at(
     )
 
 
-def is_a_resend(retold: IRSegment | None, retro: IRTake) -> bool:
+def is_a_resend(retold: IRSegment | None, retro: IRTake) -> TypeGuard[IRSegment]:
     return retold is not None and retold.bridge_take_id == retro.id
 
 

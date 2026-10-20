@@ -40,6 +40,7 @@ from tests.hard_stretch_harness import (
 from tests.release_harness import a_claimed_device
 
 OTHER_AUDIO = b"a equipe contou este trecho de outro jeito"
+CORRECTION_AUDIO = b"a equipe corrigiu este trecho"
 CLOCK = "app.services.internalization_room.idempotency.utcnow"
 WAIT_S = 10
 
@@ -165,13 +166,14 @@ async def _replace(
     stretch: int,
     *,
     key: str | None = None,
+    audio: bytes = CORRECTION_AUDIO,
 ) -> httpx.Response:
     starts, ends = SLICES[stretch - 1]
     return await client.post(
         f"{IR}/sessions/{session_id}/segments/{segment_id}/replace",
         headers=_headers(key),
         data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
-        files={"file": ("correcao.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("correcao.m4a", audio, "audio/mp4")},
     )
 
 

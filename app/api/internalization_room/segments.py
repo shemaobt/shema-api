@@ -185,6 +185,9 @@ async def replace(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
+    retold = await room.current_stretch_at(
+        db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
+    )
     retro = await store_take(
         db,
         session_id=session.id,
@@ -200,25 +203,28 @@ async def replace(
     )
     await db.commit()
 
-    text = await heard(
-        audio_bytes,
-        language=room_language(session.language),
-        filename=file.filename,
-        mime_type=file.content_type,
-    )
-    if not text.strip():
-        raise WordlessTelling()
+    if room.is_a_resend(retold, retro):
+        crossed = False
+    else:
+        text = await heard(
+            audio_bytes,
+            language=room_language(session.language),
+            filename=file.filename,
+            mime_type=file.content_type,
+        )
+        if not text.strip():
+            raise WordlessTelling()
 
-    _, crossed = await room.capture_and_note_a_hard_stretch(
-        db,
-        session,
-        take_id=rehearsal.id,
-        starts_ms=starts_ms,
-        ends_ms=ends_ms,
-        bridge_take_id=retro.id,
-        transcript=text,
-        replaces=segment,
-    )
+        _, crossed = await room.capture_and_note_a_hard_stretch(
+            db,
+            session,
+            take_id=rehearsal.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=retro.id,
+            transcript=text,
+            replaces=segment,
+        )
     nudge_stretches(session.project_id, warned=crossed)
     background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(

@@ -252,7 +252,7 @@ async def replace(
             "starts_ms": str(stretch["starts_ms"]),
             "ends_ms": str(stretch["ends_ms"]),
         },
-        files={"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")},
+        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
     )
     assert replaced.status_code == status, replaced.text
     return replaced
