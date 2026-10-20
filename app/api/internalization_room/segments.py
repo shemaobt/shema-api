@@ -29,6 +29,7 @@ from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
     divide_segment,
+    refuse_a_replace_before_its_recording_is_kept,
     refuse_a_slice_a_version_cannot_take,
     segment_for_session,
 )
@@ -193,6 +194,7 @@ async def replace(
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
+    await refuse_a_replace_before_its_recording_is_kept(db, session.id, segment, audio_bytes)
 
     retold = await room.current_stretch_at(
         db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
