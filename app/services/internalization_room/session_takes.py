@@ -105,10 +105,10 @@ async def kept_rehearsals_of(db: AsyncSession, session: IRSession) -> list[KeptR
             turn = team_turn_of(sibling, number)
             if scope not in latest or turn.at > latest[scope][0].at:
                 latest[scope] = (turn, number, sibling.id != session.id)
-    told = latest.values()
+    told = latest.items()
     return [
-        KeptRehearsal(turn_number=number, words=turn.words, from_other_session=other)
-        for turn, number, other in sorted(told, key=lambda each: each[0].at)
+        KeptRehearsal(turn_number=number, words=turn.words, from_other_session=other, scope=scope)
+        for scope, (turn, number, other) in sorted(told, key=lambda each: each[1][0].at)
     ]
 
 

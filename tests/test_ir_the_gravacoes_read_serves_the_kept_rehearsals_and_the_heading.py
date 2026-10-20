@@ -124,7 +124,12 @@ async def test_a_kept_retelling_is_listed_with_its_turn_and_the_words_the_team_s
     body = await _read(client, consultant, session.id)
 
     assert body["kept_rehearsals"] == [
-        {"turn_number": 1, "words": "Noemi voltou com Rute", "from_other_session": False}
+        {
+            "turn_number": 1,
+            "words": "Noemi voltou com Rute",
+            "from_other_session": False,
+            "scope": "S1",
+        }
     ]
 
 
@@ -149,6 +154,30 @@ async def test_two_scopes_kept_are_both_listed_each_with_its_own_words(
     assert [(row["turn_number"], row["words"]) for row in body["kept_rehearsals"]] == [
         (1, "Noemi voltou com Rute"),
         (2, "Boaz viu Rute no campo"),
+    ]
+
+
+async def test_a_kept_rehearsal_names_its_scene_or_the_whole_passage(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    await _told(
+        db_session,
+        session,
+        [
+            ("Boaz viu Rute no campo", "2026-10-19T10:01:00+00:00"),
+            ("Noemi voltou com Rute", "2026-10-19T10:02:00+00:00"),
+        ],
+        {"1": _kept("S2", "k/1"), "2": _kept("whole", "k/2")},
+    )
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["turn_number"], row["scope"]) for row in body["kept_rehearsals"]] == [
+        (1, "S2"),
+        (2, "whole"),
     ]
 
 
@@ -231,8 +260,18 @@ async def test_a_rehearsal_kept_in_another_session_of_the_team_is_listed_marked_
     body = await _read(client, consultant, session.id)
 
     assert body["kept_rehearsals"] == [
-        {"turn_number": 3, "words": "Boaz viu Rute no campo", "from_other_session": True},
-        {"turn_number": 1, "words": "Noemi voltou com Rute", "from_other_session": False},
+        {
+            "turn_number": 3,
+            "words": "Boaz viu Rute no campo",
+            "from_other_session": True,
+            "scope": "S2",
+        },
+        {
+            "turn_number": 1,
+            "words": "Noemi voltou com Rute",
+            "from_other_session": False,
+            "scope": "S1",
+        },
     ]
 
 
@@ -271,10 +310,20 @@ async def test_a_scope_kept_in_two_sessions_is_listed_once_in_the_later_telling(
     from_the_earliest = await _read(client, consultant, earliest.id)
 
     assert from_the_latest["kept_rehearsals"] == [
-        {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": False}
+        {
+            "turn_number": 2,
+            "words": "Noemi voltou com Rute a Belém",
+            "from_other_session": False,
+            "scope": "S1",
+        }
     ]
     assert from_the_earliest["kept_rehearsals"] == [
-        {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": True}
+        {
+            "turn_number": 2,
+            "words": "Noemi voltou com Rute a Belém",
+            "from_other_session": True,
+            "scope": "S1",
+        }
     ]
 
 
@@ -311,7 +360,12 @@ async def test_another_team_language_passage_or_zerar_adds_nothing_to_the_list(
     body = await _read(client, consultant, session.id)
 
     assert body["kept_rehearsals"] == [
-        {"turn_number": 1, "words": "Noemi voltou com Rute", "from_other_session": False}
+        {
+            "turn_number": 1,
+            "words": "Noemi voltou com Rute",
+            "from_other_session": False,
+            "scope": "S1",
+        }
     ]
 
 
