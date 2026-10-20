@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.shema._deps import CoordinatorUser, CurrentUser, Db, Scope
+from app.api.shema._deps import CoordinatorUser, CurrentUser, Db, Scope, WriteScope
 from app.models.shema_org_chart import (
     Region,
     RegionTeamSave,
@@ -93,7 +93,7 @@ async def write_region_team(
     payload: RegionTeamSave,
     user: CoordinatorUser,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
 ) -> RegionTeamSaved:
     """Put three names in three seats, and answer what actually moved.
 

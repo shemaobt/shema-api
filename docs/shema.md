@@ -1116,12 +1116,19 @@ answer the Admin what they answer the coordination, truth included. **What it wr
 other half**: `Readership.writes` is the regional reach alone — nothing for the Admin by itself,
 its own regions for an account that is also a coordinator — and `save_project` and
 `create_project` refuse outside it with a sentence of the Admin's own, after the scope's 404
-(`refuse_admin_writes`, beside the Resource Circle's). The leader's link, the import and the
-withdrawal were never the Admin's (`CoordinatorUser`) and stay so; the roster is still
-`RosterReach`'s. On the wire the Admin's `regionScope` is `null`, as the installation admin's.
+(`refuse_admin_writes`, beside the Resource Circle's). **Every other write that lands in a
+region takes it off `WriteScope`** (`app/api/shema/_deps.py`), the regional half and not the
+reading one — found in review, the day the reading opened: the health reading, the Ritmo's log
+and its undo, the leader's link and its revocation, a Pulse filed or imported, the withdrawal,
+the file import, the region's team and the ETEN credit had all taken the region of the write
+off the session's scope, which for a coordinator of Asia holding `admin` beside it would have
+been every region. For everybody but the Admin `WriteScope` is the value `Scope` was before
+OBT-593; for that account it is Asia. The leader's link, the import and the withdrawal were
+never the Admin's alone (`CoordinatorUser`) and stay so; the roster is still `RosterReach`'s.
+On the wire the Admin's `regionScope` is `null`, as the installation admin's.
 *Not changed and named for the decision's owner:* the Admin releases a sensitive project's
-prayer request (§6.12, OBT-575) and imports a file (BE-14) through `readership.coordination`,
-both writes that predate OBT-592's *writes only access*.
+prayer request (§6.12, OBT-575) through `readership.coordination`, a write that predates
+OBT-592's *writes only access* and did not move with this issue.
 
 ### 6.2 What the region scope is *not* allowed to become
 

@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Response, status
 
-from app.api.shema._deps import APP_KEY, CurrentUser, Db, Scope
+from app.api.shema._deps import APP_KEY, CurrentUser, Db, Scope, WriteScope
 from app.models.shema_meeting import (
     MeetingLogCreate,
     MeetingLogEntry,
@@ -53,7 +53,7 @@ async def read_meeting_log(db: Db, scope: Scope, user: CurrentUser) -> list[Meet
     responses={status.HTTP_200_OK: {"description": "The period's entry was replaced"}},
 )
 async def write_meeting_log(
-    payload: MeetingLogCreate, db: Db, scope: Scope, user: CurrentUser, response: Response
+    payload: MeetingLogCreate, db: Db, scope: WriteScope, user: CurrentUser, response: Response
 ) -> MeetingLogEntry:
     """Log a meeting; the server derives the period, and a second log of it replaces the first.
 
@@ -78,7 +78,7 @@ async def remove_meeting_log(
     scope_key: MeetingScopeKey,
     period: str,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
     user: CurrentUser,
 ) -> None:
     """Undo one period's entry - the period the server returned when it was logged."""

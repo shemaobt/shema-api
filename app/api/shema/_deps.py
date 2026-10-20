@@ -288,6 +288,17 @@ async def _regional(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:
 #: The caller's regional reach, read once — what the Admin writes, and everybody else's scope.
 Regional = Annotated[RegionScope, Depends(_regional)]
 
+#: **The reach a write lands in** (OBT-593, found in review): every route that writes inside a
+#: region it takes off the session — the health reading, the Ritmo's log, the leader's link, a
+#: Pulse filed or imported, the withdrawal, the file import, the region's team, the ETEN credit
+#: — declares this and not :data:`Scope`. It is the regional half: for everybody but the Admin
+#: it is the same value :data:`Scope` was before OBT-593, and for an account holding ``admin``
+#: beside a regional role it is that role's regions and not the Admin's every-region reading,
+#: which would otherwise let a coordinator of Asia file a health reading on an Africa project.
+#: The record's own writes keep :data:`Scope` and refuse with a sentence of the Admin's
+#: (``save_project.refuse_admin_writes``), because there the row is one the caller may read.
+WriteScope = Annotated[RegionScope, Depends(_regional)]
+
 
 async def _scope(user: CurrentUser, granted: Granted, regional: Regional) -> RegionScope:
     """Resolve the caller's region scope, once, for a handler to hand down.
