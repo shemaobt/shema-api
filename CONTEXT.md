@@ -79,6 +79,14 @@ _Avoid_: stretch (the persistent object; a scope is one reading's slice of the p
 An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's number is that part; the earlier ones stay as history.
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
+**Recording time** (`recorded_at`):
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it was stored. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time.
+_Avoid_: upload time, created_at (when the upload landed), timestamp
+
+**Clock offset** (`device_clock_offset_ms`):
+How far the tablet's clock was from the server's when it sent a joined part, in milliseconds, negative when behind. Kept only at five minutes or more; the observer reads it as one line, the team never sees it and the packet never carries it.
+_Avoid_: skew, drift
+
 **Mother tongue**:
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
 _Avoid_: native, L1, Língua materna
