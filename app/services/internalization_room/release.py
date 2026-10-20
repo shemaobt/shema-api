@@ -448,6 +448,12 @@ async def compose_internalization_release(
         return await _composed(db, session)
 
 
+async def _standing_findings(db: AsyncSession, session: IRSession) -> list[Finding]:
+    """The state's findings but those on a whole that stepped aside, which are only stored."""
+    aside = await set_aside_segment_ids(db, session.id)
+    return [f for f in back_translation_of(session).findings if f.segment_id not in aside]
+
+
 async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -456,11 +462,9 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     telling_back = back_translation_of(session)
-    aside = await set_aside_segment_ids(db, session.id)
-    if aside:
-        telling_back = telling_back.model_copy(
-            update={"findings": [f for f in telling_back.findings if f.segment_id not in aside]}
-        )
+    telling_back = telling_back.model_copy(
+        update={"findings": await _standing_findings(db, session)}
+    )
     stretches = await final_segments(db, session.id)
     told = told_back(stretches)
     frases = frase_numbers(told)
@@ -775,7 +779,7 @@ async def approve_release(
         forced_by=forced_by,
         forced_at=datetime.now(UTC) if forced_by else None,
         forced_open_findings=(
-            [finding.model_dump(mode="json") for finding in back_translation_of(session).findings]
+            [finding.model_dump(mode="json") for finding in await _standing_findings(db, session)]
             if forced_by
             else None
         ),

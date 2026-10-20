@@ -447,6 +447,10 @@ async def _finished(
 
     stored = state.the_verdict_to_serve(told)
     if stored is not None:
+        aside = await room.set_aside_segment_ids(db, session.id)
+        state = state.model_copy(
+            update={"findings": [f for f in state.findings if f.segment_id not in aside]}
+        )
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):
             await db.commit()

@@ -19,6 +19,7 @@ from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
 )
+from app.services.internalization_room.release import approve_release
 from app.services.internalization_room.sessions import get_session, save_back_translation
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.room_harness import (
@@ -203,3 +204,43 @@ async def test_a_finding_on_a_whole_that_stepped_aside_leaves_the_packet_and_sta
     assert [f.segment_id for f in (await stored_telling_back(db_session, session)).findings] == [
         over_whole.id
     ]
+
+
+async def _with_a_finding_on_the_whole(
+    client: httpx.AsyncClient, db: AsyncSession
+) -> tuple[IRSession, IRSegment, list[IRTake]]:
+    session, whole, parts = await _whole_then_two_parts(db)
+    await press_terminei(client, session.id, report=_heard(parts))
+    [over_whole, *_] = [s for s in await _stored_stretches(db, session) if s.take_id == whole.id]
+    state = await stored_telling_back(db, session)
+    state.findings = [
+        Finding(kind=FindingKind.MISSING, note="faltou Moabe", segment_id=over_whole.id, chunk=1)
+    ]
+    await save_back_translation(db, await get_session(db, session.id), state)
+    return session, over_whole, parts
+
+
+async def test_a_forced_release_does_not_record_a_finding_on_a_whole_that_stepped_aside(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _over_whole, _parts = await _with_a_finding_on_the_whole(client, db_session)
+
+    release = await approve_release(
+        db_session, await get_session(db_session, session.id), forced_by="a-facilitadora"
+    )
+
+    assert release.forced_open_findings == []
+
+
+async def test_terminei_is_not_refused_by_a_stored_verdict_whose_finding_is_on_the_whole(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _over_whole, parts = await _with_a_finding_on_the_whole(client, db_session)
+
+    answered = await press_terminei(client, session.id, report=_heard(parts))
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["refusal"] is None
+    assert body["finding_segment_id"] is None
+    assert body["findings"] == []
