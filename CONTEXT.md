@@ -412,8 +412,8 @@ _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor is a fact of the ledger, never a blocker). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
 _Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
-**Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
-A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: audio, a telling-back, its reading and an untold stretch are material, not a dispute.
+**Forced release** (`forced_by`, `forced_at`, `forced_open_findings`, `forced_blockers`):
+A **Release** a facilitator minted past the gate, addressed to the passage: every **Blocker** yields to the force but a passage with no rehearsal take, and the row records who forced it, when, the findings open at that moment and the blockers it passed (ADR 0075). The team can never force one. Its **Check block** reads `forcada` when the check was not clean, and `conferida` with `forced` true when only the listening was passed over.
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):

@@ -13,6 +13,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hard_stretches import (
+    a_hard_stretch_stands,
     capture_and_note_a_hard_stretch,
     hard_stretches_of,
     note_a_hard_stretch,
@@ -33,6 +34,7 @@ from app.services.internalization_room.segments import (
     final_segments,
     first_telling_of,
     first_untold,
+    is_a_resend,
     parent_of,
     retired_segments,
     segment_by_id,
@@ -83,6 +85,7 @@ __all__ = [
     "Finding",
     "TellingBackVerdict",
     "TurnOutcome",
+    "a_hard_stretch_stands",
     "analyse_telling_back",
     "append_exchange",
     "append_opening",
@@ -110,6 +113,7 @@ __all__ = [
     "get_session_for_reader",
     "hard_stretches_of",
     "in_a_voice_the_room_has",
+    "is_a_resend",
     "mark_needs_person",
     "mark_the_verdict_heard",
     "note_a_hard_stretch",
