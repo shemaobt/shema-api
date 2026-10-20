@@ -226,9 +226,11 @@ async def lay_in_a_sentence(
     heard_before = not unheard_parts(state, [part], await final_segments(db, session.id))
     old_end = segment.ends_ms
     shift = spliced.ends_ms - old_end
+    followed: dict[tuple[str, int, int], tuple[str, int, int]] = {}
     for one in await current_segments(db, session.id):
         if one.take_id != part.id:
             continue
+        before = (one.take_id, one.starts_ms, one.ends_ms)
         if one.id == segment.id:
             one.ends_ms = spliced.ends_ms
         elif one.starts_ms >= old_end:
@@ -237,6 +239,8 @@ async def lay_in_a_sentence(
         elif one.ends_ms >= old_end:
             one.ends_ms += shift
         one.take_id = take.id
+        if one.id != segment.id:
+            followed[before] = (one.take_id, one.starts_ms, one.ends_ms)
     state.sentences.append(
         LaidInSentence(
             sentence_id=sentence_id,
@@ -250,6 +254,10 @@ async def lay_in_a_sentence(
             heard_before=heard_before,
         )
     )
+    for check in state.checks:
+        for nuance in check.nuances:
+            if nuance.audio in followed:
+                nuance.take_id, nuance.starts_ms, nuance.ends_ms = followed[nuance.audio]
     await _unchecked(state)
     await save_back_translation(db, session, state, commit=False, rule=_unchecked)
     await db.commit()
