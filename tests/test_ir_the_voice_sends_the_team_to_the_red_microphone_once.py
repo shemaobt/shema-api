@@ -39,7 +39,13 @@ MICROPHONE_EN = (
     "and translate it for me phrase by phrase."
 )
 ORAL_TELLING_BACK = "me contem em português"
-BOUNDARY_QUESTIONS = ("Isso entrou no ensaio", "ensaio na língua de vocês?")
+BOUNDARY_QUESTIONS = (
+    "Isso entrou no ensaio",
+    "ensaio na língua de vocês?",
+    "Did this scene go into your rehearsal",
+)
+RED_MICROPHONE = ("microfone vermelho", "red microphone")
+NOT_AN_INSTRUCTION = ("never", "a team recorded", "went back to")
 
 
 @pytest.fixture(autouse=True)
@@ -74,8 +80,12 @@ def test_the_articulation_ends_with_her_one_microphone_sentence_in_each_language
 
     assert guide.count(MICROPHONE_PT) == 1
     assert guide.count(MICROPHONE_EN) == 1
-    assert MICROPHONE_PT in articulation
-    assert MICROPHONE_EN in articulation
+    assert (
+        articulation.index("the fenced block described under")
+        < articulation.index(MICROPHONE_PT)
+        < articulation.index(MICROPHONE_EN)
+        < articulation.index(ORAL_TELLING_BACK)
+    )
     assert "Agora podem ensaiar." in guide
     assert "the one microphone instruction, and nothing after it" in guide
 
@@ -111,18 +121,29 @@ def test_the_validator_keeps_her_microphone_sentence_word_for_word_when_it_corre
     assert MICROPHONE_PT in fixed_lines
     assert MICROPHONE_EN in fixed_lines
     assert ORAL_TELLING_BACK not in validator
+    assert "both halves" not in validator.lower()
 
 
 def test_the_send_off_sends_the_team_to_the_orange_dot_and_never_to_the_red_microphone() -> None:
-    sentences = quoted(the_send_off_item())
+    send_off = the_send_off_item()
+    sentences = quoted(send_off)
 
     assert any("ponto laranja" in sentence for sentence in sentences)
     assert any("orange dot" in sentence for sentence in sentences)
     assert not [
-        sentence
-        for sentence in sentences
-        if "microfone vermelho" in sentence or "red microphone" in sentence
+        sentence for sentence in sentences if any(name in sentence for name in RED_MICROPHONE)
     ]
+    assert "Never the red microphone here." in send_off
+    naming_it = [
+        sentence
+        for sentence in re.split(r"(?<=[.!?])\s+", send_off)
+        if any(name in sentence for name in RED_MICROPHONE)
+    ]
+    assert [
+        sentence
+        for sentence in naming_it
+        if not any(marker in sentence.lower() for marker in NOT_AN_INSTRUCTION)
+    ] == []
 
 
 def test_a_rehearsal_after_the_send_off_is_checked_and_closed_again_by_the_orange_dot() -> None:
@@ -131,6 +152,8 @@ def test_a_rehearsal_after_the_send_off_is_checked_and_closed_again_by_the_orang
 
     assert "check it as any other telling" in after
     assert "close again with the same single instruction (the orange dot)" in after
+    closing = "close again with the same single instruction (the orange dot)"
+    assert not [name for name in RED_MICROPHONE if name in after.split(closing, 1)[1]]
 
 
 @pytest.mark.parametrize("key", list(IRPromptKey), ids=lambda key: key.name)
@@ -156,7 +179,7 @@ async def room(db_session, rival_factory, monkeypatch):
 
 
 @pytest.fixture()
-def the_voice_approves(monkeypatch: pytest.MonkeyPatch, rival_factory):
+def the_bucket(monkeypatch: pytest.MonkeyPatch, rival_factory):
     async def guide(*, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
@@ -176,27 +199,27 @@ def the_voice_approves(monkeypatch: pytest.MonkeyPatch, rival_factory):
     return the_bucket_is_in_memory(monkeypatch)
 
 
-async def rehearsal_takes(rival_factory, session_id: str) -> list[tuple[str, str, int]]:
+async def rehearsal_takes(rival_factory, session_id: str) -> list[dict[str, Any]]:
     async with rival_factory() as fresh:
-        rows = await fresh.execute(
-            select(IRTake.id, IRTake.storage_key, IRTake.size_bytes).where(
-                IRTake.session_id == session_id, IRTake.kind == IRTakeKind.ENSAIO
-            )
+        rows = await fresh.scalars(
+            select(IRTake)
+            .where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.ENSAIO)
+            .order_by(IRTake.id)
         )
-        return sorted(tuple(row) for row in rows)
+        return [{c.key: getattr(row, c.key) for c in IRTake.__table__.columns} for row in rows]
 
 
-async def test_a_scene_rehearsal_sent_leaves_the_passage_recording_as_it_was(
-    room, the_voice_approves, db_session, rival_factory
+@pytest.mark.parametrize("part", [None, 1], ids=["passage_whole", "passage_in_parts"])
+async def test_a_scene_rehearsal_sent_leaves_the_rehearsal_as_it_was(
+    part: int | None, room, the_bucket, db_session, rival_factory
 ) -> None:
     session_id = await a_session(db_session, pericope="P01")
     opened = await room.client.post(f"{IR}/sessions/{session_id}/turns")
     assert opened.status_code == 200, opened.text
-    passage_take = await rehearse(room.client, session_id)
+    passage_take = await rehearse(room.client, session_id, part=part)
     before = await rehearsal_takes(rival_factory, session_id)
-    (key,) = {key for _, key, _ in before}
-    stored = the_voice_approves.objects[key]
-    assert [take_id for take_id, _, _ in before] == [passage_take]
+    assert [take["id"] for take in before] == [passage_take]
+    stores_before = (dict(the_bucket.objects), dict(room.bucket.objects))
 
     rehearsal_id = await recorded(room, session_id)
     await translated(room, session_id, rehearsal_id, [(0, 20000)])
@@ -207,4 +230,9 @@ async def test_a_scene_rehearsal_sent_leaves_the_passage_recording_as_it_was(
     assert sent.status_code == 200, sent.text
 
     assert await rehearsal_takes(rival_factory, session_id) == before
-    assert the_voice_approves.objects[key] == stored
+    assert not [
+        key
+        for key in {*stores_before[0], *stores_before[1]}
+        if the_bucket.objects.get(key) != stores_before[0].get(key)
+        or room.bucket.objects.get(key) != stores_before[1].get(key)
+    ]
