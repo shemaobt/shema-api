@@ -438,13 +438,13 @@ async def test_a_whole_that_stepped_aside_for_a_scene_part_is_listed_as_supersed
     before = the_second_now()
     scene = await send(client, credential, session.id, recording(2, 2), part=1)
     after = the_second_now()
+    await a_beat()
+    await send(client, credential, session.id, recording(2, 3), part=2)
     desk, _user = await at_the_desk(db_session, room_app, project)
 
     listed = await read_downloads(client, desk, session.id)
 
-    assert [(each["key"], each["take_id"]) for each in listed["takes"]] == [
-        ("S1", scene["take_id"])
-    ]
+    assert listed["takes"][0]["take_id"] == scene["take_id"]
     [stepped_aside] = listed["superseded_takes"]
     assert (stepped_aside["key"], stepped_aside["take_id"]) == ("whole", whole["take_id"])
     assert stepped_aside["filename"] == f"{RELEASE_V1}-whole-substituida-{whole['take_id']}.wav"

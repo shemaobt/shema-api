@@ -53,7 +53,7 @@ async def _told_back_and_read(db: AsyncSession) -> tuple[IRSession, IRTake]:
     """
     session = await create_session(db, pericope=P, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    take = ensaio_take(session.id, sha256="a" * 64)
+    take = ensaio_take(session.id, sha256="a" * 64, scope="parte-1", ordinal=1)
     db.add(take)
     await db.commit()
     told = await capture_segment(

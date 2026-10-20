@@ -29,9 +29,15 @@ from app.core.exceptions import (
     StretchNoLongerCounts,
     ValidationError,
 )
-from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
+from app.db.models.internalization_room import (
+    IRRelease,
+    IRSegment,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
 from app.services.internalization_room.back_translation import BackTranslationState, part_length
-from app.services.internalization_room.takes import is_wav
+from app.services.internalization_room.takes import current_parts, is_wav, takes_of
 
 SHORTEST_FRASE_MS = 200
 END_SLACK_MS = 250
@@ -425,15 +431,25 @@ async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
 async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     """The stretches that count, in the order the team told them.
 
-    Current and leaf, which is the whole selection rule of the room in one place. Where a
-    stretch reads is where its audio sits — the part it is a slice of, then the milliseconds
+    Current and leaf, which is the whole selection rule of the room in one place. A stretch told
+    over a whole recording that stepped aside for numbered parts is only stored, and not one.
+    Where a stretch reads is where its audio sits — the part it is a slice of, then the milliseconds
     inside that part — so a stretch written long after its neighbours still reads in its own
     place, and a replacement reads where the row it replaced did. `current_segments` is where
     that order is asked of the database; the hierarchy is walked here, because a stretch the
     team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    return [row for row, divided in _read_in_order(rows) if not divided]
+    takes = await takes_of(db, session_id)
+    by_scene = any(part.ordinal is not None for part in current_parts(takes))
+    set_aside = {
+        take.id
+        for take in takes
+        if by_scene and take.kind is IRTakeKind.ENSAIO and take.ordinal is None
+    }
+    return [
+        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in set_aside
+    ]
 
 
 def told_back(segments: list[IRSegment]) -> list[IRSegment]:

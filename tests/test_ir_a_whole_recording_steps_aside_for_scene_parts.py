@@ -7,27 +7,40 @@ findings, never deleted, and no longer asked for by `terminei` or carried by the
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake
-from app.services.internalization_room.segments import final_segments
+from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.services.internalization_room.sessions import get_session
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.room_harness import (
     Analyst,
     Room,
+    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
     rehearsed_in_parts_of,
     release_packet,
     room_client,
-    stored_telling_back,
     the_analyst_reads,
     the_room_speaks,
 )
+from tests.turn_harness import the_room_agent_is
 
 PART_LENGTH_MS = 2000
+
+
+def _heard(parts: list[IRTake]) -> dict[str, Any]:
+    return played_every_part([part.id for part in parts], duration_ms=PART_LENGTH_MS)
+
+
+async def _stored_stretches(db: AsyncSession, session: IRSession) -> list[IRSegment]:
+    rows = await db.execute(select(IRSegment).where(IRSegment.session_id == session.id))
+    return list(rows.scalars().all())
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +93,7 @@ async def test_terminei_does_not_ask_for_a_whole_that_stepped_aside(
     answered = await press_terminei(
         client,
         session.id,
-        report=played_every_part([part.id for part in parts], duration_ms=PART_LENGTH_MS),
+        report=_heard(parts),
     )
 
     assert answered.status_code == 200, answered.text
@@ -96,7 +109,7 @@ async def test_the_release_does_not_carry_a_whole_that_stepped_aside(
     checked = await press_terminei(
         client,
         session.id,
-        report=played_every_part([part.id for part in parts], duration_ms=PART_LENGTH_MS),
+        report=_heard(parts),
     )
     assert checked.json()["checked"] is True, checked.text
 
@@ -108,20 +121,58 @@ async def test_the_release_does_not_carry_a_whole_that_stepped_aside(
     assert packet["audio"]["recording_grain"] == "parts"
 
 
-async def test_a_wholes_stretches_and_findings_are_kept_when_it_steps_aside(
+async def test_the_analyst_reads_no_frase_told_over_a_whole_that_stepped_aside(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    readings: list[str] = []
+
+    async def reading(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        readings.append(f"{system_prompt}\n{user_content}")
+        return '{"evidence_sufficient": true, "findings": []}'
+
+    the_room_agent_is(monkeypatch, analyst=reading)
+    session, _whole, parts = await _whole_then_two_parts(db_session)
+
+    await press_terminei(client, session.id, report=_heard(parts))
+
+    [read] = readings
+    assert "a frase 3, contada de volta" in read
+    assert "a frase 1, contada de volta" not in read
+    assert "a frase 2, contada de volta" not in read
+
+
+async def test_an_untold_stretch_of_a_whole_that_stepped_aside_does_not_block_the_finish(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, whole, parts = await _whole_then_two_parts(db_session)
-    await press_terminei(
-        client,
-        session.id,
-        report=played_every_part([part.id for part in parts], duration_ms=PART_LENGTH_MS),
-    )
+    [first, *_] = [s for s in await _stored_stretches(db_session, session) if s.take_id == whole.id]
+    await a_piece_still_to_be_told(db_session, await get_session(db_session, session.id), first)
+
+    answered = await press_terminei(client, session.id, report=_heard(parts))
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["refusal"] is None
+    assert answered.json()["untold_segment_id"] is None
+
+
+async def test_the_packet_carries_no_stretch_of_a_whole_that_stepped_aside(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _whole, parts = await _whole_then_two_parts(db_session)
+    await press_terminei(client, session.id, report=_heard(parts))
 
     packet = await release_packet(db_session, session)
 
-    kept = [s for s in await final_segments(db_session, session.id) if s.take_id == whole.id]
-    assert len(kept) == 2, "as frases da gravação inteira saíram do registro"
-    carried = [s for s in packet["back_translation"]["segments"] if s["take_id"] == whole.id]
-    assert len(carried) == 2, "as frases da gravação inteira não viajam com o registro"
-    assert (await stored_telling_back(db_session, session)).checked is True
+    carried = {s["take_id"] for s in packet["back_translation"]["segments"]}
+    assert carried == {part.id for part in parts}
+
+
+async def test_the_stretches_of_a_whole_that_stepped_aside_are_still_stored(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, whole, parts = await _whole_then_two_parts(db_session)
+    await press_terminei(client, session.id, report=_heard(parts))
+
+    stored = await _stored_stretches(db_session, session)
+
+    assert len([s for s in stored if s.take_id == whole.id]) == 2

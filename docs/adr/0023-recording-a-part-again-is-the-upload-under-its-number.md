@@ -118,5 +118,5 @@ keeping them in the record (`src/backtranslation/store.ts` `buildPassageTelling`
 
 **The whole steps aside once a numbered part exists** (ENG-1406). A take with no number is a part
 of its own only while the session holds no numbered one; the moment the team records by scene it is
-history, kept with its stretches and findings and no longer asked for by *terminei* or carried by
-the release.
+history. Its stretches and findings are only stored: they leave *terminei*'s reading, the untold
+check and the packet's segments, and the take is no longer asked for or carried by the release.
