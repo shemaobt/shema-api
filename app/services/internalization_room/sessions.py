@@ -44,6 +44,7 @@ from app.services.internalization_room.back_translation import (
     CheckRound,
     SupersededAttempt,
     findings_after_a_part_is_recorded_again,
+    joined_spans,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
@@ -1271,15 +1272,17 @@ async def report_playback(
     played_ranges: list[tuple[int, int]],
     clip_duration_ms: int | None,
 ) -> BackTranslationState:
-    """Store what the tablet played of each rehearsal part, as it was sent.
+    """Add what the tablet played of each rehearsal part to what is stored, per take.
 
-    The per-part report is stored exactly as the tablet sent it, subject and all. Nothing is
-    computed from it here and nothing is thrown away: the app names the recording each span was
-    played from, and the room has no better answer than the one the player measured.
-
-    **A report with parts replaces, it does not merge.** What arrives is the whole of what the
-    team has heard, never a delta, because the tablet keeps the ledger and the server has no way
-    to tell a part left out of a short report from a part that was never played.
+    **A report with parts adds to what is stored, per take** (ADR 0074). The tablet reports as
+    each part ends and on leaving, so a report names the parts it holds and no more; replacing
+    on it erased a part an earlier report heard, and one tablet's report erased another's on the
+    same session. A take's spans are kept joined where they touch, and its length is the
+    shortest measured, as her server keeps it (store.ts `applyHeard` at 18fa7c4): the player can
+    report the record's length before it reaches the real end, and the real end is all the spans
+    can ever cover. A zero is no measurement and replaces none. What is kept is the listening to
+    the session's current parts only, the set the gate asks of: a part recorded again is a new
+    take, and its old take's listening is about audio nobody will hear again.
 
     **A report with no part named takes nothing away.** An older build sends the flat pair and
     nothing else, and the two builds meet on one session when a team changes tablet mid-passage.
@@ -1298,12 +1301,28 @@ async def report_playback(
     """
     told = await final_segments(db, session.id)
     if played_by_take:
-        state.played_by_take = played_by_take
+        current = {part.id for part in current_parts(await takes_of(db, session.id))}
+        state.played_by_take = _added_up(state.played_by_take, played_by_take, current)
     state.played_ranges = [[start, end] for start, end in played_ranges]
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})
     await save_back_translation(db, session, state)
     return state
+
+
+def _added_up(
+    stored: list[PlayedTake], reported: list[PlayedTake], current: set[str]
+) -> list[PlayedTake]:
+    by_take = {entry.take_id: entry for entry in stored}
+    for entry in reported:
+        earlier = by_take.get(entry.take_id, PlayedTake(take_id=entry.take_id))
+        lengths = [n for n in (earlier.clip_duration_ms, entry.clip_duration_ms) if n]
+        by_take[entry.take_id] = PlayedTake(
+            take_id=entry.take_id,
+            played_ranges=joined_spans([*earlier.played_ranges, *entry.played_ranges]),
+            clip_duration_ms=min(lengths, default=0),
+        )
+    return [entry for take_id, entry in by_take.items() if take_id in current]
 
 
 async def retire_the_part_recorded_again(

@@ -369,42 +369,42 @@ class BackTranslationState(BaseModel):
         return self.analysed_segment_ids is None
 
 
+#: Her absolute allowance: a part, or a sentence laid into one, is heard with at most this much
+#: of it unplayed in total, and never more than half of it (ADR 0017, ADR 0074).
 PLAYBACK_TOLERANCE_MS = 750
+
+#: Played stretches this close are one, as her player and her server join them (ADR 0074).
+JOINED_WITHIN_MS = 250
 
 THE_WHOLE_PASSAGE = "the whole passage"
 
 
-def played_ranges_cover_clip(
-    played_ranges: list[tuple[int, int]], clip_duration_ms: int | None
-) -> bool:
-    """Whether the reported playback reached the whole clip, within tolerance.
+def joined_spans(played: Iterable[tuple[int, int]], *, within_ms: int = 0) -> list[tuple[int, int]]:
+    """The played spans sorted, each joined to the next when no more than `within_ms` apart."""
+    joined: list[tuple[int, int]] = []
+    for start, end in sorted(played):
+        if end <= start:
+            continue
+        if joined and start <= joined[-1][1] + within_ms:
+            joined[-1] = (joined[-1][0], max(joined[-1][1], end))
+        else:
+            joined.append((start, end))
+    return joined
 
-    A telling-back is a check of what was actually heard, not of what the team remembers,
-    so "checked" over a half-listened clip would be a claim about audio nobody played.
-    Reported ranges are merged and must cover [0, duration] with at most 750 ms of slack
-    at either edge or between stretches. This is the arithmetic only: an absent report is
-    not a short one, so it is not this function's to judge and comes back True. Whether a
-    report exists at all, and whether it is about the recording still in play, is
-    `unheard_parts`, which is what the release gate asks.
 
-    The merged reach has to *land on* the clip's end, not merely reach it: a report that
-    runs past the end by more than the same slack cannot be a report about this clip at
-    all. That is the signature of ranges belonging to a different audio — typically the
-    previous, longer clip, left standing when a piece was replaced under it — and taking
-    them as proof would bless as heard a clip nobody played. The slack is the same on
-    both sides because it is the same rounding on both sides.
+def _heard_through(played: list[tuple[int, int]], starts_ms: int, ends_ms: int) -> bool:
+    """Whether the team heard [starts_ms, ends_ms] of one take, under her rule (ADR 0074).
+
+    The stretches are joined before they are cut to the window, as her server keeps them, and
+    what is left unplayed adds up wherever it falls: eight holes of 0.7 s are 5.6 s nobody
+    heard, however short each one is.
     """
-    if not played_ranges or not clip_duration_ms:
-        return True
-    spans = sorted((max(0, int(start)), int(end)) for start, end in played_ranges if end > start)
-    if not spans:
-        return False
-    cursor = 0
-    for start, end in spans:
-        if start > cursor + PLAYBACK_TOLERANCE_MS:
-            return False
-        cursor = max(cursor, end)
-    return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
+    length = ends_ms - starts_ms
+    covered = sum(
+        max(0, min(end, ends_ms) - max(start, starts_ms))
+        for start, end in joined_spans(played, within_ms=JOINED_WITHIN_MS)
+    )
+    return length - covered <= min(PLAYBACK_TOLERANCE_MS, length / 2)
 
 
 def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
@@ -425,11 +425,10 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
     about the others. Asked of the whole passage instead, one retake threw away the listening
     to every part at once, and the answer could never say which part to send the team back to.
 
-    A part is heard when an entry names it and that entry reaches the end of *that part's* own
-    length. Both numbers are required rather than either: a length with nothing played is a
-    report that the team played nothing at all, and spans with no length cannot be checked
-    against anything. The arithmetic itself answers True to both of those — an absent report is
-    not a short one, which is not its question — so the two are asked here, where they are.
+    A part is heard when an entry names it and that entry is heard through *that part's* own
+    length under her rule. Both numbers are required rather than either: a length with nothing
+    played is a report that the team played nothing at all, and spans with no length cannot be
+    checked against anything.
 
     Entries naming recordings the stretches no longer name are ignored rather than refused.
     They are the residue of a part the team recorded again, about audio no stretch is a slice
@@ -445,7 +444,7 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
         for entry in state.played_by_take
         if entry.played_ranges
         and entry.clip_duration_ms
-        and played_ranges_cover_clip(entry.played_ranges, entry.clip_duration_ms)
+        and _heard_through(entry.played_ranges, 0, entry.clip_duration_ms)
     }
     laid = {sentence.take_id: sentence for sentence in state.sentences}
     played = {entry.take_id: entry.played_ranges for entry in state.played_by_take}
@@ -454,22 +453,11 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
         sentence = laid.get(take_id)
         if sentence is None:
             return take_id in heard
-        return (sentence.heard_before or take_id in heard) and _stretch_heard(
+        return (sentence.heard_before or take_id in heard) and _heard_through(
             played.get(take_id, []), sentence.starts_ms, sentence.ends_ms
         )
 
     return sorted(take_id for take_id in set(rehearsal_take_ids) if not is_heard(take_id))
-
-
-def _stretch_heard(played: list[tuple[int, int]], starts_ms: int, ends_ms: int) -> bool:
-    covered, reach = 0, starts_ms
-    for start, end in sorted(played):
-        since, until = max(start, reach), min(end, ends_ms)
-        if until > since:
-            covered += until - since
-            reach = until
-    length = ends_ms - starts_ms
-    return length - covered <= min(PLAYBACK_TOLERANCE_MS, length / 2)
 
 
 UNTRANSLATED_MIN_MS = 500

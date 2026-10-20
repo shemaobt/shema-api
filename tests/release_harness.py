@@ -437,6 +437,7 @@ async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRS
     state = back_translation_of(session)
     state.checked = True
     state.findings = []
+    state.played_by_take = []
     part = await the_one_part_of(db, session)
     await report_playback(
         db,

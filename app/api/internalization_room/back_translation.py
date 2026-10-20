@@ -330,7 +330,9 @@ async def listened_whole(
     check would hand back the line that announces it only after the half minute it announces.
 
     The body is the same report of what the tablet played as the finish's, stored the same
-    way, so the listen it describes is the one the finish then finds.
+    way, so the listen it describes is the one the finish then finds. It is also where the
+    tablet reports as each part ends, and every answer names the parts still unheard, so the
+    tablet never counts by itself (ADR 0074).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -347,14 +349,15 @@ async def listened_whole(
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
     parts = current_parts(await takes_of(db, session.id))
+    unheard = room.unheard_parts(state, [part.id for part in parts])
     if (
         await the_sentence_awaiting(db, session) is not None
         or room.first_untold(final) is not None
-        or room.unheard_parts(state, [part.id for part in parts])
+        or unheard
         or not is_joined(parts)
         or not told
     ):
-        return ListenedWholeResponse(session_id=session.id)
+        return ListenedWholeResponse(session_id=session.id, unheard_take_ids=unheard)
     untranslated = untranslated_parts(parts, told, state.played_by_take)
     if untranslated:
         return ListenedWholeResponse(
