@@ -1,5 +1,5 @@
 ---
-status: amended by ADR 0068: no untold_part blocker, and the listening asks every current part; amended by ADR 0023 (ENG-1406): a take with no number is no part once a numbered one exists, so the old per-stretch fragment is history, not a part of its own
+status: amended by ADR 0068: no untold_part blocker, and the listening asks every current part; amended by ADR 0023 (ENG-1406): a take with no number is no part once a numbered one exists, so the old per-stretch fragment is history, not a part of its own; superseded in part by ADR 0075: no blocker but a missing recording refuses the force
 date: 2026-09-17
 ---
 
