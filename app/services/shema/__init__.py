@@ -277,6 +277,7 @@ from app.services.shema._scope import (
     roster_projects,
     visible_projects,
     within_scope,
+    writing_scope,
 )
 from app.services.shema._submission_archive import (
     MAX_PAYLOAD_BYTES,
@@ -565,4 +566,5 @@ __all__ = [
     "withdraw_invite",
     "withheld_note",
     "within_scope",
+    "writing_scope",
 ]

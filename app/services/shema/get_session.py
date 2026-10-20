@@ -45,7 +45,15 @@ from app.db.models.shema_enums import ShemaRegionKey, ShemaRoleKey
 from app.db.models.shema_org_chart import ShemaRegionTeam
 from app.models.shema_session import SessionApps, ShemaSession
 from app.services.authorization.get_app_by_key import get_app_by_key
-from app.services.shema._scope import RegionScope, role_from, roles_from, scope_from_roles
+from app.services.shema._scope import (
+    RegionScope,
+    readership,
+    reading_scope,
+    regional_scope_from_roles,
+    role_from,
+    roles_from,
+    writing_scope,
+)
 
 
 async def _seat_holder(db: AsyncSession, region_key: str, role: str) -> str:
@@ -63,10 +71,16 @@ async def _seat_holder(db: AsyncSession, region_key: str, role: str) -> str:
 
 
 async def _resolve_name(
-    db: AsyncSession, user: User, role: str | None, scope: RegionScope
+    db: AsyncSession, user: User, role: str | None, regional: RegionScope
 ) -> str | None:
-    if role is not None and not scope.global_ and len(scope.regions) == 1:
-        holder = await _seat_holder(db, next(iter(scope.regions)), role)
+    """The seat's name when the account holds one region under its first role, else the account's.
+
+    Read off the **regional** half and not the reading scope (OBT-593, found in review): the
+    Admin reads every region, and a coordinator of Asia who also holds ``admin`` would have lost
+    the Asia seat's name to ``display_name`` the day the reading opened.
+    """
+    if role is not None and not regional.global_ and len(regional.regions) == 1:
+        holder = await _seat_holder(db, next(iter(regional.regions)), role)
         if holder:
             return holder
     return user.display_name or None
@@ -98,14 +112,22 @@ async def get_session(
 
     ``form_app_key`` is handed in by the router, as ``session_roles`` takes it: a service does
     not import the router that names it.
+
+    **Two scopes since OBT-593, from one read.** ``regionScope`` is the reach of a reader
+    (``reading_scope``: every region for the Admin) and ``writeRegionScope`` the reach of a
+    write (``writing_scope``, off the same ``Readership`` the routes use), so the console can
+    hide what the server refuses without a second rule of its own.
     """
     held = frozenset(roles)
     role = role_from(held)
-    scope = await scope_from_roles(db, user, held)
+    regional = await regional_scope_from_roles(db, user, held)
+    scope = reading_scope(regional, held)
+    reading = readership(scope, held, platform_admin=user.is_platform_admin, regional=regional)
     return ShemaSession(
         role=role,
         roles=list(roles_from(held)),
         regionScope=scope.wire,
-        name=await _resolve_name(db, user, role, scope),
+        writeRegionScope=writing_scope(reading, regional).wire,
+        name=await _resolve_name(db, user, role, regional),
         apps=SessionApps(resourceRequestForm=await _app_url(db, form_app_key)),
     )

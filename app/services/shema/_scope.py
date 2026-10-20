@@ -556,6 +556,26 @@ class Readership(NamedTuple):
         return ShemaReader.OTHER
 
 
+def writing_scope(reading: Readership, regional: RegionScope) -> RegionScope:
+    """Where this caller **writes a project** — the one spelling the session answers from.
+
+    OBT-593 (Daniel, 20/oct/2026, option b): the Admin keeps reading as the coordination,
+    ``readAs: coordination`` included, and the session says beside ``regionScope`` where the
+    account actually writes, so the console can hide *Editar* and *Novo projeto* where the
+    server would answer 403 — a control the server refuses is a dead control, and FE-44 §8.7
+    makes hiding presentation, never enforcement. Derived, not restated: the Resource Circle
+    writes no project (:attr:`Readership.edits_no_project`), an account narrowed by
+    :attr:`Readership.writes` writes there, and everybody else writes where ``regional`` —
+    the rows of its regional roles, or everywhere for an installation admin — reaches, which is
+    exactly what ``_deps.WriteScope`` hands the write routes.
+    """
+    if reading.edits_no_project:
+        return NO_REACH
+    if reading.writes is not None:
+        return reading.writes
+    return regional
+
+
 #: A readership that coordinates nothing: every project reads as ``other``. For a caller that
 #: builds cards and never shows their place — the notification panel's stale reading, whose
 #: entries are an output path.
@@ -780,8 +800,9 @@ class RosterReach(NamedTuple):
 
     Three readers and no fourth: the caller's region ``scope``, their own live memberships, and
     the Admin, who reaches every roster. Membership is the Admin's to write (OBT-522, *só o admin
-    escreve*), and the Admin reaches no region (OBT-523): confined to the regions it holds, the one
-    role that writes rosters could write none.
+    escreve*). Until OBT-593 the Admin reached no region at all (OBT-523), so the one role that
+    writes rosters would have written none without this reach of its own; the Admin reads every
+    region now, and the roster reach is still its own, because it is the reach of a **write**.
 
     **Not a** :class:`RegionScope`, and that is the guard. A global ``RegionScope`` handed to the
     Admin would be one wrong annotation away from ``visible_projects``, ``read_record`` or

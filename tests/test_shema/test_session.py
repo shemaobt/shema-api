@@ -44,8 +44,9 @@ async def seat(db_session, region: ShemaRegionKey, role: ShemaRoleKey, holder: s
 # --- the wire shape ------------------------------------------------------------------
 
 
-async def test_the_response_carries_the_five_keys(db_session, client, shema_app):
-    """``{role, roles, regionScope, name, apps}``, camelCase, exactly as the console reads it.
+async def test_the_response_carries_the_six_keys(db_session, client, shema_app):
+    """``{role, roles, regionScope, writeRegionScope, name, apps}``, camelCase, exactly as the
+    console reads it — the sixth since OBT-593.
 
     The ``regionScope`` spelling is asserted on the JSON and not on the Python attribute,
     because the alias is the only thing standing between the house's snake_case and a
@@ -58,10 +59,18 @@ async def test_the_response_carries_the_five_keys(db_session, client, shema_app)
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert sorted(res.json()) == ["apps", "name", "regionScope", "role", "roles"]
+    assert sorted(res.json()) == [
+        "apps",
+        "name",
+        "regionScope",
+        "role",
+        "roles",
+        "writeRegionScope",
+    ]
     assert res.json()["role"] == "coordinator"
     assert res.json()["roles"] == ["coordinator"]
     assert res.json()["regionScope"] == ["africa"]
+    assert res.json()["writeRegionScope"] == ["africa"]
 
 
 async def test_a_global_scope_is_null_and_not_an_empty_list(db_session, client, shema_app):
@@ -210,6 +219,99 @@ async def test_the_endpoint_needs_no_role_alias_of_its_own(db_session, client, s
 
 
 # --- the name ------------------------------------------------------------------------
+
+
+# --- where the account writes (OBT-593, option b, Daniel 20/oct/2026) -----------------------
+
+
+@pytest.mark.parametrize(
+    ("grants", "regions", "platform", "read", "write"),
+    [
+        (("admin",), [], False, None, []),
+        (("coordinator", "admin"), [ASIA], False, None, ["asia"]),
+        (("obtLab", "admin"), [ASIA], False, None, ["asia"]),
+        (("coordinator",), [AFRICA], False, ["africa"], ["africa"]),
+        (("obtLab",), [AFRICA, ASIA], False, ["africa", "asia"], ["africa", "asia"]),
+        (("resourceCircle",), [AFRICA], False, ["africa"], []),
+        ((), [], True, None, None),
+    ],
+    ids=[
+        "admin alone",
+        "admin+coordinator",
+        "admin+obtLab",
+        "coordinator",
+        "obtLab",
+        "resourceCircle",
+        "installation admin",
+    ],
+)
+async def test_write_region_scope_says_where_the_account_writes_a_project(
+    db_session, shema_app, grants, regions, platform, read, write
+):
+    """``writeRegionScope`` beside ``regionScope``, same spelling: the Admin reads everywhere
+    (``null``) and writes nothing (``[]``) — or the regions of the regional role it holds beside
+    the grant; the coordination and the OBT Lab write where they reach; the Resource Circle
+    reads its regions and writes none (OBT-571); an installation admin writes everywhere. The
+    reading scope of every role is exactly what it was."""
+    user = await make_user(
+        db_session, email=f"{'-'.join(grants) or 'platform'}@write.test", is_platform_admin=platform
+    )
+    for grant_key in grants:
+        await grant(db_session, user, shema_app, grant_key)
+    if regions:
+        await set_region_scope(db_session, user.id, regions)
+
+    session = await _session(db_session, user)
+
+    assert session.region_scope == read
+    assert session.write_region_scope == write
+
+
+async def test_write_region_scope_agrees_with_the_refusal_on_the_wire(
+    db_session, client, shema_app
+):
+    """The field is the routes' own rule and not a second one: where it says the account writes,
+    the record's ``PATCH`` passes; where it says it does not, the ``PATCH`` is the 403."""
+    from tests.test_shema.conftest import make_shema_project
+
+    await make_shema_project(db_session, project_id="p-asia", region_key=ASIA)
+    await make_shema_project(db_session, project_id="p-africa", region_key=AFRICA)
+    user = await make_scoped_user(
+        db_session, shema_app, email="asia-admin@write.test", role_key="coordinator", regions=[ASIA]
+    )
+    await grant(db_session, user, shema_app, "admin")
+    headers = await auth_header(db_session, user)
+    session = (await client.get(SESSION, headers=headers)).json()
+
+    outcomes = {}
+    for project_id in ("p-asia", "p-africa"):
+        record = await client.get(f"/api/shema/projects/{project_id}", headers=headers)
+        patched = await client.patch(
+            f"/api/shema/projects/{project_id}",
+            json={"notes": "tentativa"},
+            headers={**headers, "If-Match": record.headers["ETag"]},
+        )
+        outcomes[project_id] = (record.status_code, patched.status_code)
+
+    assert session["regionScope"] is None and session["writeRegionScope"] == ["asia"]
+    assert outcomes == {"p-asia": (200, 200), "p-africa": (200, 403)}
+
+
+async def test_the_seat_name_follows_the_regional_half_beside_the_admin(db_session, shema_app):
+    """Found in review: with the reading scope global, a coordinator of Asia who also holds
+    ``admin`` would have lost the Asia seat's name to ``display_name``. The name is read off the
+    regional half, so it stays the seat's."""
+    await seat(db_session, ASIA, ShemaRoleKey.COORDINATOR, "Ana da Ásia")
+    user = await make_scoped_user(
+        db_session, shema_app, email="seat-admin@shema.test", role_key="coordinator", regions=[ASIA]
+    )
+    user.display_name = "Some Account Name"
+    await grant(db_session, user, shema_app, "admin")
+
+    session = await _session(db_session, user)
+
+    assert session.region_scope is None
+    assert session.name == "Ana da Ásia"
 
 
 async def test_the_name_comes_from_the_org_chart_seat(db_session, shema_app):
