@@ -28,7 +28,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room_archive import ArchivedSession, KeptPart
-from app.services.internalization_room.conversation import the_conversation
+from app.services.internalization_room.conversation import guide_turns_of
 from app.services.internalization_room.live import live
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
@@ -149,7 +149,7 @@ async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[Archi
             language=session.language,
             status=session.status.value,
             coverage=session.coverage_state,
-            turns=sum(1 for line in the_conversation(session) if line.get("role") == "guide"),
+            turns=guide_turns_of(session),
             kept_takes=kept[session.id],
             release_versions=versions.get(session.id, []),
             created_at=as_utc(session.created_at).isoformat(),
