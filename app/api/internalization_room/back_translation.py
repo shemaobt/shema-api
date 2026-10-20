@@ -157,8 +157,8 @@ async def add_chunk(
     )
     await db.commit()
 
-    if retold is not None and retold.bridge_take_id == retro.id:
-        captured, warned = retold, False
+    if room.is_a_resend(retold, retro):
+        captured, warned = retold, await room.a_hard_stretch_stands(db, retold)
     else:
         text = await heard(
             audio_bytes,

@@ -313,6 +313,12 @@ async def store_take(
     return take
 
 
+async def the_take_already_kept(
+    db: AsyncSession, session_id: str, kind: IRTakeKind, audio: bytes
+) -> IRTake | None:
+    return await _the_same_take(db, session_id, kind, recording_digest(audio))
+
+
 async def _the_same_take(
     db: AsyncSession, session_id: str, kind: IRTakeKind, sha256: str
 ) -> IRTake | None:

@@ -253,3 +253,46 @@ async def test_the_same_recording_sent_again_under_a_new_key_is_a_resend_not_a_t
     assert [(one.tellings, one.transcript) for one in await current(db_session, session_id)] == [
         (1, "o trecho 1")
     ], "a mesma gravação de volta, depois de a resposta se perder, contava como mais uma fala"
+
+
+async def test_the_chunks_door_asks_the_one_function_that_says_what_a_resend_is(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import internalization_room as room
+
+    session_id = await a_session(db_session)
+    take_id = await rehearse(client, session_id)
+    first = await tell(client, session_id, take_id, 1, saying="o trecho 1", audio=b"uma gravacao")
+    monkeypatch.setattr(room, "is_a_resend", lambda *_: True, raising=False)
+
+    resent = await tell(
+        client, session_id, take_id, 1, saying="outra coisa", audio=b"outra gravacao diferente"
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == first.json(), "a porta dos trechos decidia o reenvio por conta própria"
+    assert [(one.tellings, one.transcript) for one in await current(db_session, session_id)] == [
+        (1, "o trecho 1")
+    ], "a porta dos trechos não perguntava à função que diz o que é um reenvio"
+
+
+async def test_a_resend_of_the_telling_that_made_a_hard_stretch_still_asks_for_a_person(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    take_id = await rehearse(client, session_id)
+    await tell(client, session_id, take_id, 1, saying="o trecho 1", audio=b"a primeira")
+    await tell(client, session_id, take_id, 1, saying="o trecho 1, outra vez", audio=b"a segunda")
+    crossing = await tell(
+        client, session_id, take_id, 1, saying="o trecho 1, a terceira", audio=b"a terceira"
+    )
+    assert crossing.json()["needs_person"] is True, crossing.text
+
+    resent = await tell(
+        client, session_id, take_id, 1, saying="outra coisa", audio=b"a terceira", queued=False
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == crossing.json(), (
+        "a resposta que pedia uma pessoa se perdeu e o reenvio dizia que ninguém era preciso"
+    )
