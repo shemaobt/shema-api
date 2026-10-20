@@ -198,6 +198,43 @@ async def test_a_part_joined_from_a_scene_rehearsal_keeps_where_it_came_from(
     assert take.origin == rehearsal.id, "a parte juntada esquecia de que ensaio veio"
 
 
+async def test_the_take_listing_names_the_scene_rehearsal_a_joined_part_came_from(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    rehearsal = await _a_scene_rehearsal(db_session, session, 1)
+    await _joined_upload(client, session.id, part=1, origin=rehearsal.id)
+
+    listed = await client.get(
+        f"{PREFIX}/sessions/{session.id}/takes", headers={"X-Room-Device": TABLET}
+    )
+
+    assert listed.status_code == 200, listed.text
+    (part,) = listed.json()["takes"]
+    assert (part["ordinal"], part["origin"]) == (1, rehearsal.id), (
+        "o tablet que retoma não sabia que a parte era juntada"
+    )
+
+
+async def test_a_part_recorded_as_itself_names_no_origin_in_the_listing(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    await client.post(
+        f"{PREFIX}/sessions/{session.id}/takes",
+        headers={"X-Room-Device": TABLET},
+        data={"kind": "ensaio", "scope": "parte-1", "chunk_index": "1"},
+        files={"file": ("parte.wav", b"parte 1", "audio/wav")},
+    )
+
+    listed = await client.get(
+        f"{PREFIX}/sessions/{session.id}/takes", headers={"X-Room-Device": TABLET}
+    )
+
+    (part,) = listed.json()["takes"]
+    assert part["origin"] is None, "uma parte gravada pela equipe aparecia como juntada"
+
+
 async def test_an_origin_that_names_no_scene_rehearsal_of_the_passage_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

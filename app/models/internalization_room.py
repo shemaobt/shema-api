@@ -1061,6 +1061,8 @@ class TakeResponse(BaseModel):
     #: to Refine.
     ordinal: int | None = None
     pass_number: int | None = None
+    #: A tablet resuming from the listing reads this to know the recording is a joined one.
+    origin: str | None = None
     pericope: str = ""
     recorded_at: str = ""
     duration_ms: int | None = None

@@ -56,6 +56,7 @@ def _view(take: IRTake) -> TakeResponse:
         verified=take.verified_at is not None,
         ordinal=take.ordinal,
         pass_number=take.pass_number,
+        origin=take.origin,
         pericope=take.pericope,
         recorded_at=as_utc(take.recorded_at).isoformat(),
         duration_ms=take.duration_ms,
