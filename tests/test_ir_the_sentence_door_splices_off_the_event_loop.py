@@ -23,8 +23,29 @@ from app.services.internalization_room.sentences import lay_in_a_sentence
 from app.services.internalization_room.sessions import back_translation_of, get_session
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
-from tests.room_harness import nothing_is_read_ahead, room_client, the_bucket_is_in_memory
-from tests.sentence_harness import re_record, rehearsed_in_wav, samples_of, spoken, take_named
+from tests.room_harness import (
+    nothing_is_read_ahead,
+    played_every_part,
+    press_terminei,
+    room_client,
+    stored_telling_back,
+    the_analyst_is_scripted,
+    the_bucket_is_in_memory,
+    the_room_speaks,
+)
+from tests.sentence_harness import (
+    PART,
+    Speaker,
+    laid_in_and_told_again,
+    named_and_heard,
+    nuance_of_frase,
+    re_record,
+    rehearsed_in_wav,
+    samples_of,
+    spoken,
+    take_named,
+)
+from tests.turn_harness import the_room_agent_is
 
 
 @pytest.fixture()
@@ -43,6 +64,19 @@ def transcriber(monkeypatch: pytest.MonkeyPatch) -> None:
         return "a frase nova traduzida"
 
     monkeypatch.setattr(segments_api, "heard", said)
+
+
+@pytest.fixture()
+def analyst(monkeypatch: pytest.MonkeyPatch):
+    return the_analyst_is_scripted(monkeypatch)
+
+
+@pytest.fixture()
+def speaker(monkeypatch: pytest.MonkeyPatch) -> Speaker:
+    the_room_speaks(monkeypatch)
+    voice = Speaker()
+    the_room_agent_is(monkeypatch, turn=voice)
+    return voice
 
 
 @pytest.fixture()
@@ -178,26 +212,12 @@ async def test_a_sentence_laid_in_and_told_while_another_is_spliced_is_not_lost_
         held = await read(key)
         if not rival_has_landed:
             rival_has_landed.append(True)
-            laid = (
-                await re_record(
-                    client, session.id, middle.id, spoken(1.0), sentence_id="sentence-0002"
-                )
-            ).json()["segments"][1]
-            told = await client.post(
-                f"{PREFIX}/sessions/{session.id}/segments/{middle.id}/replace",
-                data={
-                    "take_id": laid["take_id"],
-                    "starts_ms": str(laid["starts_ms"]),
-                    "ends_ms": str(laid["ends_ms"]),
-                },
-                files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
-            )
-            assert told.status_code == 200, told.text
+            await laid_in_and_told_again(client, session.id, middle.id, 1)
         return held
 
     monkeypatch.setattr(store, "get", read_then_a_rival_lays_in_and_is_told)
 
-    laid = await re_record(client, session.id, first.id, spoken(0.5), sentence_id="sentence-0001")
+    laid = await re_record(client, session.id, first.id, spoken(0.5), sentence_id="sentence-0002")
 
     assert laid.status_code == 200, laid.text
     spans = [(one["starts_ms"], one["ends_ms"]) for one in laid.json()["segments"]]
@@ -291,3 +311,55 @@ async def test_a_frase_told_again_while_its_sentence_is_spliced_takes_no_sentenc
         one.sentence_id
         for one in back_translation_of(await get_session(db_session, session.id)).sentences
     ] == []
+
+
+async def test_a_nuance_heard_named_stays_named_through_a_lay_in_that_is_spliced_again(
+    client: httpx.AsyncClient,
+    analyst: Any,
+    speaker: Speaker,
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    store: MemoryStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,), (told,) = await rehearsed_in_wav(db_session, store, [PART])
+    await named_and_heard(client, analyst, speaker, session.id, part.id, nuance_of_frase(3))
+    read = store.get
+    rival_has_landed: list[bool] = []
+
+    async def read_then_a_rival_lays_in_and_is_told(key: str) -> bytes | None:
+        held = await read(key)
+        if not rival_has_landed:
+            rival_has_landed.append(True)
+            await laid_in_and_told_again(client, session.id, told[1].id, 1)
+        return held
+
+    monkeypatch.setattr(store, "get", read_then_a_rival_lays_in_and_is_told)
+    laid = await re_record(client, session.id, told[0].id, spoken(0.5), sentence_id="sentence-0002")
+    assert laid.status_code == 200, laid.text
+    new = laid.json()["segments"][0]
+    told_again = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{told[0].id}/replace",
+        data={
+            "take_id": new["take_id"],
+            "starts_ms": str(new["starts_ms"]),
+            "ends_ms": str(new["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+    assert told_again.status_code == 200, told_again.text
+    analyst.readings = [{"findings": [nuance_of_frase(3)]}]
+    speaker.line = "Vocês contaram bem."
+
+    again = await press_terminei(
+        client, session.id, report=played_every_part([new["take_id"]], duration_ms=3300)
+    )
+
+    assert again.status_code == 200, again.text
+    assert speaker.handed() == [], (
+        "a nuance dita sobre a terceira frase era nomeada de novo depois de duas frases "
+        "regravadas, uma delas emendada outra vez"
+    )
+    async with rival_factory() as reading_db:
+        kept = (await stored_telling_back(reading_db, session)).checks
+    assert [one.voiced for one in kept[-1].nuances] == ["before"]
