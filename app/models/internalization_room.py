@@ -1,8 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_serializer,
+)
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
@@ -1027,6 +1034,18 @@ class FacilitatorSessionsResponse(BaseModel):
     devices: list[FacilitatorHaltedDeviceView] = []
 
 
+def _an_instant_on_the_utc_clock(when: datetime) -> datetime:
+    try:
+        return when.astimezone(UTC)
+    except OverflowError:
+        raise ValueError("A recording time with no instant on the UTC clock") from None
+
+
+#: A **Recording time** as the tablet sends it: an instant with its offset, read on the UTC
+#: clock. One past the calendar's edge once converted is malformed, as one with no offset is.
+SentRecordingTime = Annotated[AwareDatetime, AfterValidator(_an_instant_on_the_utc_clock)]
+
+
 class TakeResponse(BaseModel):
     take_id: str
     session_id: str
@@ -1044,6 +1063,7 @@ class TakeResponse(BaseModel):
     pass_number: int | None = None
     pericope: str = ""
     recorded_at: str = ""
+    duration_ms: int | None = None
 
 
 class TakesResponse(BaseModel):
@@ -1062,6 +1082,8 @@ class MotherTongueTake(BaseModel):
     play_url: str | None
     unread: bool
     duration_ms: int | None = None
+    #: The **Clock offset** of the tablet that joined this part, for the consultant's one line.
+    device_clock_offset_ms: int | None = None
 
 
 class KeptRehearsal(BaseModel):

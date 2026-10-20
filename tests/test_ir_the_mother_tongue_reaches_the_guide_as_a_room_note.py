@@ -127,6 +127,7 @@ async def test_every_take_is_measured_for_its_length(
 ) -> None:
     from app.core.config import Settings
     from app.services.internalization_room import hearing
+    from app.services.platform import audio_duration
     from app.services.translation_helper.transcribe_audio import TranscriptionResult
 
     heard_language = {"code": "und"}
@@ -143,7 +144,7 @@ async def test_every_take_is_measured_for_its_length(
         return 41_000
 
     monkeypatch.setattr(hearing, "transcribe_audio_detailed", _detailed)
-    monkeypatch.setattr(hearing, "measure_ms", _measure)
+    monkeypatch.setattr(audio_duration, "measure_ms", _measure)
     settings = Settings(database_url="sqlite+aiosqlite:///./test.db")
 
     in_their_own = await hearing.heard_speech(b"terena", language="pt", settings=settings)

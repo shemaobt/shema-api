@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -10,10 +11,19 @@ from typing import Protocol
 
 from google_crc32c import Checksum
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
+from app.core.exceptions import (
+    ERROR_CODE_TAKE_DURATION_DIFFERS,
+    ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
+    ERROR_CODE_TAKE_TOO_LONG,
+    NotFoundError,
+    RecordingRefused,
+    UnknownReferenceError,
+    ValidationError,
+)
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
     IRSceneFrase,
@@ -23,6 +33,7 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
+from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
 
@@ -31,6 +42,18 @@ MAX_TAKE_BYTES = 25 * 1024 * 1024
 LISTEN_MINUTES = 15
 
 FILENAMES = {IRTakeKind.ENSAIO: "tomada", IRTakeKind.RETRO: "trecho"}
+
+#: How far the length the tablet sent may sit from the one ffprobe reads off the same bytes:
+#: the two read one file through different containers' rounding, never a different sound.
+DURATION_SLACK_MS = 100
+#: The **Clock offset** worth keeping, her ``CLOCK_SKEW_NOTE_MS``: under five minutes it is a
+#: clock set by hand, not one the consultant should hear about.
+CLOCK_OFFSET_NOTED_MS = 5 * 60_000
+#: The longest length a take can claim: no recording of the room lasts a day, and anything
+#: longer is no recording's length.
+LONGEST_TAKE_MS = 24 * 60 * 60 * 1000
+
+logger = logging.getLogger(__name__)
 
 
 def is_wav(content_type: str) -> bool:
@@ -100,6 +123,60 @@ def recording_digest(audio: bytes) -> str:
 
 
 @dataclass(frozen=True)
+class CheckedRecording:
+    """A recording's hash and the length it keeps, once what the tablet said of it held."""
+
+    sha256: str
+    duration_ms: int | None
+
+
+async def checked_recording(
+    audio: bytes, *, sent_sha256: str | None = None, sent_duration_ms: int | None = None
+) -> CheckedRecording:
+    """Hash and measure the bytes, and refuse a fingerprint or a length they contradict.
+
+    The tablet's length is kept as sent when it is within the slack, or when the bytes cannot be
+    measured; a take sent with none keeps the measured one. Bytes that measure past a day are no
+    recording's, whoever said so.
+    """
+    digest = recording_digest(audio)
+    if sent_sha256 is not None and sent_sha256.lower() != digest:
+        raise RecordingRefused(
+            f"The sha256 sent is not the recording's: {digest}",
+            ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
+        )
+    measured = await measure_ms_bounded(audio)
+    if measured is not None and measured > LONGEST_TAKE_MS:
+        raise RecordingRefused(
+            f"The recording measures {measured} ms, longer than any recording lasts",
+            ERROR_CODE_TAKE_TOO_LONG,
+        )
+    if (
+        sent_duration_ms is not None
+        and measured is not None
+        and abs(sent_duration_ms - measured) > DURATION_SLACK_MS
+    ):
+        raise RecordingRefused(
+            f"The duration_ms sent is not the recording's: it lasts {measured} ms",
+            ERROR_CODE_TAKE_DURATION_DIFFERS,
+        )
+    return CheckedRecording(
+        sha256=digest, duration_ms=measured if sent_duration_ms is None else sent_duration_ms
+    )
+
+
+def recording_time(sent_recorded_at: datetime | None, arrived: datetime) -> datetime:
+    """The tablet's clock when it sent one, else the server's at the recording's arrival."""
+    return arrived if sent_recorded_at is None else sent_recorded_at
+
+
+def noted_clock_offset(sent_recorded_at: datetime, arrived: datetime) -> int | None:
+    """The tablet's clock minus the server's at arrival, in ms, when it is worth keeping."""
+    offset = round((sent_recorded_at - arrived).total_seconds() * 1000)
+    return None if abs(offset) < CLOCK_OFFSET_NOTED_MS else offset
+
+
+@dataclass(frozen=True)
 class StoredRecording:
     """What the bucket holds under a key, described by the bytes that were stored."""
 
@@ -155,6 +232,9 @@ async def store_take(
     content_type: str = AUDIO_MIME,
     store: TakeStore | None = None,
     origin: str | None = None,
+    sent_sha256: str | None = None,
+    sent_duration_ms: int | None = None,
+    sent_recorded_at: datetime | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -163,24 +243,39 @@ async def store_take(
     reverse — an object with no row — costs storage and nothing else.
 
     The checksums describe the bytes that were stored, not the bytes that were promised, so
-    they are computed here rather than trusted from the request.
-    """
-    digest = recording_digest(audio)
-    key = storage_key(session_id, kind, digest, content_type)
+    they are computed here rather than trusted from the request; what the tablet sent of them
+    is checked before anything is stored.
 
-    existing = await db.execute(
-        select(IRTake).where(
-            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == digest
-        )
+    The **Recording time** is the tablet's when it sent one for a take recorded on it, and the
+    server's for a joined part, whose tablet time only measures the **Clock offset**. Two
+    uploads of the same bytes at once both pass the first look: the unique index refuses the
+    second row, and its upload answers with the first. The insert sits in a savepoint, so the
+    refusal undoes it alone and leaves the caller's objects as they were.
+
+    The server's clock is read once, before the bytes are measured or stored: the take's
+    arrival and its offset are both read on it, so neither counts as the tablet's.
+    """
+    arrived = datetime.now(UTC)
+    checked = await checked_recording(
+        audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
     )
-    already = existing.scalar_one_or_none()
+    key = storage_key(session_id, kind, checked.sha256, content_type)
+
+    already = await _the_same_take(db, session_id, kind, checked.sha256)
     if already is not None:
         return already
     await db.commit()
 
     stored = await store_recording(
-        audio, key=key, sha256=digest, content_type=content_type, store=store
+        audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
+    offset = (
+        noted_clock_offset(sent_recorded_at, arrived)
+        if origin is not None and sent_recorded_at is not None
+        else None
+    )
+    if offset is not None:
+        logger.warning("A tablet joining in session %s is %d ms off the server", session_id, offset)
     take = IRTake(
         id=str(uuid.uuid4()),
         project_id=project_id,
@@ -198,10 +293,32 @@ async def store_take(
         content_type=stored.content_type,
         verified_at=stored.verified_at,
         origin=origin,
+        created_at=arrived,
+        recorded_at=recording_time(None if origin is not None else sent_recorded_at, arrived),
+        duration_ms=checked.duration_ms,
+        device_clock_offset_ms=offset,
     )
-    db.add(take)
+    try:
+        async with db.begin_nested():
+            db.add(take)
+    except IntegrityError:
+        winner = await _the_same_take(db, session_id, kind, checked.sha256)
+        if winner is None:
+            raise
+        return winner
     await db.commit()
     return take
+
+
+async def _the_same_take(
+    db: AsyncSession, session_id: str, kind: IRTakeKind, sha256: str
+) -> IRTake | None:
+    found: IRTake | None = await db.scalar(
+        select(IRTake).where(
+            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256
+        )
+    )
+    return found
 
 
 def _verified(landed: StoredObject | None, *, size: int, crc32c: str) -> datetime | None:

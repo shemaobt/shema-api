@@ -10,7 +10,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import NoWordsHeard, UpstreamServiceError, ValidationError
 from app.services.internalization_room.languages import AUTHORED, room_language
 from app.services.internalization_room.rounding import math_round
-from app.services.platform.audio_duration import measure_ms
+from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.translation_helper.transcribe_audio import (
     TranscriptionResult,
     transcribe_audio,
@@ -48,11 +48,6 @@ def spoken_words_only(text: str) -> str:
         return ""
     return re.sub(r"\s{2,}", " ", _BRACKETED.sub(" ", text)).strip()
 
-
-#: How long a take's length is waited for. The probe answers a phone's take in well under a
-#: second; one that has not answered by now is an unknown length, as one that failed is, and
-#: never holds the turn or fails it.
-MEASURING_BOUND_S = 3.0
 
 #: Her `LONG_WORDLESS_TAKE_MS`: a take with no words that runs this long is the team
 #: rehearsing in a language the transcriber cannot write, not a take the room missed.
@@ -208,7 +203,7 @@ async def heard_speech(
         )
     except ValidationError as refusal:
         raise UpstreamServiceError(str(refusal)) from refusal
-    measured = await _length_of(audio)
+    measured = await measure_ms_bounded(audio)
     return HeardSpeech(
         text=spoken_words_only(result.text),
         bridge_language=language,
@@ -218,14 +213,6 @@ async def heard_speech(
         measured_ms=measured,
         mother_tongue_floor=mother_tongue_floor,
     )
-
-
-async def _length_of(audio: bytes) -> int | None:
-    try:
-        return await asyncio.wait_for(measure_ms(audio), MEASURING_BOUND_S)
-    except (TimeoutError, OSError) as failure:
-        logger.warning("The take's length could not be read: %r", failure)
-        return None
 
 
 async def stop_hearing(task: asyncio.Task[HeardSpeech]) -> None:
