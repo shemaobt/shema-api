@@ -13,6 +13,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hard_stretches import (
+    a_hard_stretch_stands,
     capture_and_note_a_hard_stretch,
     hard_stretches_of,
     note_a_hard_stretch,
@@ -84,6 +85,7 @@ __all__ = [
     "Finding",
     "TellingBackVerdict",
     "TurnOutcome",
+    "a_hard_stretch_stands",
     "analyse_telling_back",
     "append_exchange",
     "append_opening",

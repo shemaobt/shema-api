@@ -168,6 +168,15 @@ async def replace(
     asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
 
+    **The same recording sent again is a resend, not one more correction.** A freed idempotency
+    key brings the same bytes back, and the room reads the frase standing at the slice sent, not
+    the id in the path: when that frase already holds the recording, nothing is transcribed,
+    replaced or counted and the answer is the frases as they stand. That is also the answer at
+    the id the first attempt already replaced — 200 with the standing frase, not 400
+    `STRETCH_NO_LONGER_COUNTS`, which a different recording sent there still gets.
+    `needs_person` is true when the stretch carries its mark, so a lost answer that asked for a
+    person asks again.
+
     A frase awaiting the translation of its re-recorded sentence is told again only at exactly
     the span the new sentence took; any other slice answers 400 `FRASE_AWAITS_ITS_TRANSLATION`.
     """
@@ -204,7 +213,7 @@ async def replace(
     await db.commit()
 
     if room.is_a_resend(retold, retro):
-        crossed = False
+        crossed = await room.a_hard_stretch_stands(db, retold)
     else:
         text = await heard(
             audio_bytes,

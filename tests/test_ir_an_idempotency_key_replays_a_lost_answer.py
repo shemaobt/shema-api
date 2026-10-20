@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.exceptions import ConflictError
+from app.services import internalization_room as room
 from app.services.internalization_room import idempotency
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
@@ -212,10 +213,12 @@ async def test_one_correction_per_key(
     heard: str,
     status: int,
     tellings: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
     [stretch] = await _current(db_session, session_id)
+    monkeypatch.setattr(room, "is_a_resend", lambda *_: False)
 
     _answers(client).append(heard)
     first = await _replace(client, session_id, take_id, stretch.id, 1, key="uma-correcao")
@@ -225,7 +228,9 @@ async def test_one_correction_per_key(
     assert again.status_code == first.status_code
     assert again.json() == first.json()
     [standing] = await _current(db_session, session_id)
-    assert standing.tellings == tellings
+    assert standing.tellings == tellings, (
+        "a chave repetida não era respondida pelo replay: a porta voltava a decidir sozinha"
+    )
 
 
 async def test_a_key_reused_with_another_body_is_refused(

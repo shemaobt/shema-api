@@ -11,7 +11,6 @@ it is because the question is about what the analyst is given, which is not a ro
 from __future__ import annotations
 
 import base64
-import itertools
 import json
 import sys
 import uuid
@@ -35,13 +34,13 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.hard_stretch_harness import a_new_recording
 from tests.room_harness import heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
-_RETELLINGS = itertools.count(1)
 
 
 class MemoryStore:
@@ -708,7 +707,7 @@ async def _correct(
         take_id=stretch["take_id"],
         starts_ms=stretch["starts_ms"],
         ends_ms=stretch["ends_ms"],
-        audio=audio or b"contado de novo %d" % next(_RETELLINGS),
+        audio=audio or a_new_recording(),
     )
 
 
@@ -1187,3 +1186,23 @@ async def test_a_recording_whose_first_attempt_came_back_wordless_is_heard_when_
         "a gravação que já estava guardada, sem palavras, foi tomada por reenvio"
     )
     assert await _transcripts(db_session, session_id) == ["a explicação refeita"]
+
+
+async def test_a_resend_of_the_correction_that_made_a_hard_stretch_still_asks_for_a_person(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, stretch = await _one_told_stretch(client)
+    for _ in range(RETELLS_BEFORE_A_WARNING - 2):
+        await _correct(client, session_id, stretch)
+        stretch = (await _units(client, session_id))[0]
+    crossing = await _correct(client, session_id, stretch, audio=b"a explicacao que cruzou")
+    assert crossing.json()["needs_person"] is True, crossing.text
+    stretch = (await _units(client, session_id))[0]
+
+    resent = await _correct(client, session_id, stretch, audio=b"a explicacao que cruzou")
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == crossing.json(), (
+        "a resposta que pedia uma pessoa se perdeu e o reenvio dizia que ninguém era preciso"
+    )
+    assert await _tellings(db_session, session_id) == [RETELLS_BEFORE_A_WARNING]
