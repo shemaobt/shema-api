@@ -390,15 +390,20 @@ async def test_o_ponteiro_para_a_ficha_so_vai_a_quem_alcanca_o_projeto(
     db_session, client, rrf_app, shema_app, posted
 ) -> None:
     """O id de um projeto é o slug da exportação, ``<língua>-<lugar>``; quem não alcança o
-    projeto não aprende que ele existe (§6.1). O Gestor e o Admin não alcançam região: a
-    chegada lhes diz o nome e a etapa, e não para onde ela aponta."""
+    projeto não aprende que ele existe (§6.1). O Gestor não alcança região: a chegada lhe diz o
+    nome e a etapa, e não para onde ela aponta. O Admin alcança todas como leitor desde a
+    OBT-593 (Daniel, 19/out/2026, OBT-592 item 4), e a mesma chegada lhe traz o ponteiro."""
     admin = await pme_admin(db_session, shema_app)
     await as_gestor(db_session, rrf_app)
     team = await as_team(db_session, rrf_app)
     await decidable(db_session, client, team)
 
-    for person in (admin, await user_of(db_session, "gestor@rr.test")):
-        [entry] = await panel_of(db_session, person)
-        assert entry["kind"] == "requestArrival"
-        assert entry["projectId"] is None
-        assert entry["requestName"] is not None
+    [gestor_entry] = await panel_of(db_session, await user_of(db_session, "gestor@rr.test"))
+    assert gestor_entry["kind"] == "requestArrival"
+    assert gestor_entry["projectId"] is None
+    assert gestor_entry["requestName"] is not None
+
+    [admin_entry] = await panel_of(db_session, admin)
+    assert admin_entry["kind"] == "requestArrival"
+    assert admin_entry["projectId"] is not None
+    assert admin_entry["requestName"] == gestor_entry["requestName"]

@@ -72,6 +72,7 @@ from app.api.shema._deps import (
     MayApply,
     Reading,
     Scope,
+    WriteScope,
 )
 from app.api.shema.projects import LOCAL_DAY_HEADER, _expected_version, _local_day
 from app.core.rate_limit import limiter
@@ -154,7 +155,7 @@ def intake_token_key(request: Request) -> str:
 
 @router.post("/intake-links", response_model=IntakeLinkCreated, status_code=status.HTTP_201_CREATED)
 async def mint_intake_link(
-    payload: IntakeLinkCreate, db: Db, scope: Scope, user: CoordinatorUser
+    payload: IntakeLinkCreate, db: Db, scope: WriteScope, user: CoordinatorUser
 ) -> IntakeLinkCreated:
     """Issue one project-scoped, expiring link, and hand back the only copy of its token.
 
@@ -184,7 +185,7 @@ async def list_links(
 
 
 @router.post("/intake-links/{link_id}/revoke", response_model=IntakeLink)
-async def revoke_link(link_id: str, db: Db, scope: Scope, user: CoordinatorUser) -> IntakeLink:
+async def revoke_link(link_id: str, db: Db, scope: WriteScope, user: CoordinatorUser) -> IntakeLink:
     """Close one link now, whatever its clock says. Revoking twice is not an error."""
     return await revoke_intake_link(db, scope, link_id, user=user)
 
@@ -254,7 +255,7 @@ async def file_submission(
     payload: SubmissionImport,
     request: Request,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
     reading: Reading,
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
@@ -285,7 +286,7 @@ async def file_submission(
 async def import_received(
     submission_id: str,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
     reading: Reading,
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],

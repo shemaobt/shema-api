@@ -70,7 +70,7 @@ from app.services.shema._scope import (
     RESOURCE_CIRCLE_ROLE,
     granted_roles,
     reaches,
-    scope_from_roles,
+    regional_scope_from_roles,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,14 @@ async def _recipients(
     **The roles come from the auth spine and the reach comes from** ``_scope.py``, and neither
     is asked here: ``list_role_holders`` is the reverse of the join every guard makes and the
     sibling added it so a module would not reimplement ``require_role`` badly
-    (``docs/shema.md`` §2.4), and ``scope_from_roles`` is the module's only reader of
+    (``docs/shema.md`` §2.4), and ``regional_scope_from_roles`` is the module's only reader of
     ``shema_user_regions``. What this function contributes is the ``and`` between them.
+
+    **The reach asked is the regional half** (OBT-593, found in review): a notice is addressed
+    to whoever acts on the project in its region — the coordination and the mentor of that
+    region — and the Admin's every-region *reading* (``reading_scope``) would otherwise ring an
+    ``admin``+``obtLab`` of Asia for every Pulse of Africa, and an ``admin``+``resourceCircle``
+    for every shared prayer request everywhere. They read it all; they are not told of it all.
 
     It is two queries per holder, which is honest to state and is the right trade at this size:
     the holders of two roles in one product are a handful of people, and the alternative — a
@@ -105,7 +111,9 @@ async def _recipients(
     holders = await authorization_service.list_role_holders(db, app_key, roles)
     reached = []
     for holder in holders:
-        scope = await scope_from_roles(db, holder, await granted_roles(db, holder.id, app_key))
+        scope = await regional_scope_from_roles(
+            db, holder, await granted_roles(db, holder.id, app_key)
+        )
         if reaches(scope, project.region_key):
             reached.append(holder)
     return reached

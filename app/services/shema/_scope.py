@@ -155,6 +155,11 @@ ROLE_PRECEDENCE = (*ROLE_KEYS, ADMIN_ROLE, GESTOR_ROLE, MESA_ROLE, EQUIPE_ROLE)
 #: truth of a sensitive place to coordinators in their regions and the platform admin.
 #: ``coordinator`` is not here because it reads the truth only in its own regions
 #: (:func:`readership`).
+#:
+#: **Since OBT-593 the same tuple widens the scope too** (Daniel, 19/oct/2026, OBT-592): a role
+#: here reaches every region as a *reader* — :func:`reading_scope` — so the record, the
+#: collection, the wall and the notification pointer answer the Admin what they answer the
+#: coordination. What it does **not** widen is the writing: see :attr:`Readership.writes`.
 COORDINATION_EVERYWHERE = (ADMIN_ROLE,)
 
 
@@ -200,6 +205,10 @@ class RegionScope(NamedTuple):
         return "global" if regions is None else ",".join(regions)
 
 
+#: The scope that reaches nothing — the fail-closed floor, named once.
+NO_REACH = RegionScope(global_=False, regions=frozenset())
+
+
 async def granted_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
     """The role keys this account holds in ``app_key``, read fresh.
 
@@ -231,8 +240,11 @@ async def region_scope(db: AsyncSession, user: User, app_key: str) -> RegionScop
     row reaches nothing, and making such an account reach more is an explicit act — name its
     regions. Since OBT-572 retired the unscoped seat there is no role that reaches every
     region; only the platform admin does. The converse holds too: a row reaches nothing
-    without a regional role to be the reach of (:func:`scope_from_roles`), so the ``admin``
-    role gains no region by holding one.
+    without a regional role to be the reach of (:func:`regional_scope_from_roles`), so the
+    ``admin`` role gains no region by holding one — **it reaches every region instead, as a
+    reader** (OBT-593; Daniel, 19/oct/2026, OBT-592). That reach is :func:`reading_scope`'s,
+    and it is a reading: what the Admin may *write* is :attr:`Readership.writes`'s question,
+    answered off the regional roles alone.
     """
     if user.is_platform_admin:
         return RegionScope(global_=True, regions=frozenset())
@@ -247,27 +259,58 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: AbstractSet[st
     request — the defect the sibling's ``Reach`` was written to close (PR #281, review),
     arriving here by a different door because the second read is in another file.
 
+    **What it answers is the reach of a reader**: :func:`regional_scope_from_roles` — the
+    rows, under a regional role — widened by :func:`reading_scope` for a role that reads every
+    region (OBT-593). The write path never asks this function what it may write; it asks
+    :attr:`Readership.writes`, which is built off the regional half alone.
+    """
+    return reading_scope(await regional_scope_from_roles(db, user, granted), granted)
+
+
+async def regional_scope_from_roles(
+    db: AsyncSession, user: User, granted: AbstractSet[str]
+) -> RegionScope:
+    """The reach the account's **regional** roles give it — the rows, and nothing else.
+
     The admin check below repeats :func:`region_scope`'s, which is deliberate rather than
     redundant: this is a second public entry point, and one that answered a regional scope
     for an administrator because its caller happened not to check first would be a guard
     with a way around it.
 
     **A region row is the reach of a regional role, and of nothing else** (OBT-523). An
-    account holding no regional role reaches nothing whatever rows it has — without reading
-    the table. That is what keeps ``admin``, ``gestor`` and ``mesa`` out of the region axis as
-    a property rather than an accident of data: nothing deletes an account's rows when its
+    account holding no regional role reaches nothing here whatever rows it has — without
+    reading the table. That is what keeps ``gestor`` and ``mesa`` out of the region axis as a
+    property rather than an accident of data: nothing deletes an account's rows when its
     regional role is revoked, and an org-chart seat or an operator can leave one behind. For
-    the three regional roles nothing changes.
+    the three regional roles nothing changes. ``admin`` is kept out **here** for the same
+    reason and reaches every region one function up, as a reader (:func:`reading_scope`,
+    OBT-593) — which is exactly why this half stays separate: it is what the Admin may
+    *write*, and a row left behind must not widen that either.
     """
     if user.is_platform_admin:
         return RegionScope(global_=True, regions=frozenset())
     if not any(role in granted for role in REGIONAL_ROLES):
-        return RegionScope(global_=False, regions=frozenset())
+        return NO_REACH
 
     rows = await db.execute(
         select(ShemaUserRegion.region_key).where(ShemaUserRegion.user_id == user.id)
     )
     return RegionScope(global_=False, regions=frozenset(key.value for key in rows.scalars()))
+
+
+def reading_scope(regional: RegionScope, granted: AbstractSet[str]) -> RegionScope:
+    """``regional``, or every region for a role that reads them all (OBT-593).
+
+    Daniel, 19/oct/2026 (OBT-592): *the Admin without a region reads every region, as the
+    coordination, with the truth of the sensitive places* — the bancada of 14/oct had found
+    ``GET /projects`` answering him nothing, the ficha 404 and the prayer wall empty. The roles
+    are :data:`COORDINATION_EVERYWHERE`'s, so reading the truth everywhere (:func:`readership`)
+    and reaching everywhere cannot come apart. Pure, because the caller already holds both
+    facts; the write side is deliberately **not** here (:attr:`Readership.writes`).
+    """
+    if regional.global_ or any(role in granted for role in COORDINATION_EVERYWHERE):
+        return RegionScope(global_=True, regions=frozenset())
+    return regional
 
 
 async def holders_reaching(
@@ -454,6 +497,14 @@ class Readership(NamedTuple):
     #: ``_health_audience.in_health_audience``. Apart from :attr:`reads_health` since OBT-571,
     #: when the Resource Circle began reading health it may not write. Same floor.
     writes_health: bool = False
+    #: Where this caller **writes a project**, when that is narrower than where it reads as
+    #: coordination (OBT-593): the Admin reads every region as coordination and writes only
+    #: what is access (Daniel, 19/oct/2026, OBT-592), so for the ``admin`` role this is the
+    #: reach of its **regional** roles — nothing, unless the account is also a coordinator
+    #: somewhere. ``None`` means *no narrowing*: the coordination writes where it coordinates,
+    #: the ``other`` reader where its scope reaches, as before. The Resource Circle's *writes
+    #: nothing* is :attr:`edits_no_project`'s, a sentence of its own.
+    writes: RegionScope | None = None
 
     def reader_of(self, region_key: ShemaRegionKey | str) -> ShemaReader:
         """``coordination`` for a project in a region this caller coordinates, ``trusted`` for one
@@ -490,6 +541,11 @@ class Readership(NamedTuple):
         """
         return self.trusted is not None
 
+    def writes_project(self, region_key: ShemaRegionKey | str) -> bool:
+        """Whether this caller may write a project in ``region_key`` — the narrowing of
+        :attr:`writes`, or no narrowing (OBT-593)."""
+        return self.writes is None or reaches(self.writes, region_key)
+
     @property
     def collection_reader(self) -> ShemaReader:
         """The reader a collection-level announcement is addressed to."""
@@ -500,6 +556,26 @@ class Readership(NamedTuple):
         return ShemaReader.OTHER
 
 
+def writing_scope(reading: Readership, regional: RegionScope) -> RegionScope:
+    """Where this caller **writes a project** — the one spelling the session answers from.
+
+    OBT-593 (Daniel, 20/oct/2026, option b): the Admin keeps reading as the coordination,
+    ``readAs: coordination`` included, and the session says beside ``regionScope`` where the
+    account actually writes, so the console can hide *Editar* and *Novo projeto* where the
+    server would answer 403 — a control the server refuses is a dead control, and FE-44 §8.7
+    makes hiding presentation, never enforcement. Derived, not restated: the Resource Circle
+    writes no project (:attr:`Readership.edits_no_project`), an account narrowed by
+    :attr:`Readership.writes` writes there, and everybody else writes where ``regional`` —
+    the rows of its regional roles, or everywhere for an installation admin — reaches, which is
+    exactly what ``_deps.WriteScope`` hands the write routes.
+    """
+    if reading.edits_no_project:
+        return NO_REACH
+    if reading.writes is not None:
+        return reading.writes
+    return regional
+
+
 #: A readership that coordinates nothing: every project reads as ``other``. For a caller that
 #: builds cards and never shows their place — the notification panel's stale reading, whose
 #: entries are an output path.
@@ -507,7 +583,11 @@ NO_COORDINATION = Readership(coordination=RegionScope(global_=False, regions=fro
 
 
 def readership(
-    scope: RegionScope, granted: AbstractSet[str], *, platform_admin: bool
+    scope: RegionScope,
+    granted: AbstractSet[str],
+    *,
+    platform_admin: bool,
+    regional: RegionScope | None = None,
 ) -> Readership:
     """Where this caller reads the truth, from the grant and the scope already read.
 
@@ -516,10 +596,14 @@ def readership(
     :func:`scope_from_roles` was written to close.
 
     * An installation admin and — :data:`COORDINATION_EVERYWHERE`, confirmed by Daniel on
-      8/oct/2026 — an ``admin`` coordinate every region: an installation admin passes every
-      guard in this repository, and reading less than the guards let it reach would be a
-      stricter rule on one route than on the route beside it. (The unscoped seat did too, until
-      OBT-572.)
+      8/oct/2026 — an ``admin`` coordinate every region **as readers**: an installation admin
+      passes every guard in this repository, and reading less than the guards let it reach
+      would be a stricter rule on one route than on the route beside it. (The unscoped seat did
+      too, until OBT-572.) **The ``admin`` role writes only what is access** (OBT-593; Daniel,
+      19/oct/2026, OBT-592): its :attr:`Readership.writes` is ``regional`` — the reach of the
+      regional roles the account also holds, :func:`regional_scope_from_roles` — and
+      :data:`NO_REACH` when the caller did not say, which is the fail-closed reading. An
+      installation admin is not narrowed: it passes every guard here.
     * A ``coordinator`` coordinates the regions of its own scope — GATE-04's *cada um na sua
       região*.
     * A ``resourceCircle`` **reads the truth** in the regions of its own scope and coordinates
@@ -529,8 +613,13 @@ def readership(
     * Everybody else coordinates nothing, which is the fail-closed floor: a reader nobody named
       reads the region. The OBT Lab stays here by Daniel's decision of 7/oct/2026.
     """
-    if platform_admin or any(role in granted for role in COORDINATION_EVERYWHERE):
-        return Readership(coordination=RegionScope(global_=True, regions=frozenset()))
+    everywhere = RegionScope(global_=True, regions=frozenset())
+    if platform_admin:
+        return Readership(coordination=everywhere)
+    if any(role in granted for role in COORDINATION_EVERYWHERE):
+        return Readership(
+            coordination=everywhere, writes=NO_REACH if regional is None else regional
+        )
     if COORDINATOR_ROLE in granted:
         return Readership(coordination=scope)
     if RESOURCE_CIRCLE_ROLE in granted:
@@ -711,8 +800,9 @@ class RosterReach(NamedTuple):
 
     Three readers and no fourth: the caller's region ``scope``, their own live memberships, and
     the Admin, who reaches every roster. Membership is the Admin's to write (OBT-522, *só o admin
-    escreve*), and the Admin reaches no region (OBT-523): confined to the regions it holds, the one
-    role that writes rosters could write none.
+    escreve*). Until OBT-593 the Admin reached no region at all (OBT-523), so the one role that
+    writes rosters would have written none without this reach of its own; the Admin reads every
+    region now, and the roster reach is still its own, because it is the reach of a **write**.
 
     **Not a** :class:`RegionScope`, and that is the guard. A global ``RegionScope`` handed to the
     Admin would be one wrong annotation away from ``visible_projects``, ``read_record`` or

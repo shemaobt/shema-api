@@ -41,6 +41,7 @@ from app.api.shema._deps import (
     Db,
     Reading,
     Scope,
+    WriteScope,
 )
 from app.core.exceptions import ValidationError
 from app.models.shema_health import (
@@ -131,7 +132,7 @@ async def file_assessment(
     project_id: str,
     payload: ShemaHealthAssessmentSubmission,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
     reading: Reading,
     user: CurrentUser,
     response: Response,

@@ -29,7 +29,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from app.api.shema._deps import APP_KEY, CurrentUser, Db, Scope
+from app.api.shema._deps import APP_KEY, CurrentUser, Db, Scope, WriteScope
 from app.models.shema_eten import (
     FIRST_REPORT_YEAR,
     LAST_REPORT_YEAR,
@@ -68,7 +68,7 @@ async def put_eten_credit(
     year: Annotated[int, Path(ge=FIRST_REPORT_YEAR, le=LAST_REPORT_YEAR)],
     payload: EtenCreditWrite,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
     user: CurrentUser,
 ) -> EtenCreditEntry:
     """Set one project's manual figure for one fiscal year — ``source: "manual"``."""

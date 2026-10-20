@@ -37,7 +37,14 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.shema._deps import PER_READER_CACHE_CONTROL, CurrentUser, Db, Reading, Scope
+from app.api.shema._deps import (
+    PER_READER_CACHE_CONTROL,
+    CurrentUser,
+    Db,
+    Reading,
+    Scope,
+    WriteScope,
+)
 from app.api.shema.projects import LOCAL_DAY_HEADER, _conflict, _local_day
 from app.core.exceptions import ERROR_CODE_BAD_REQUEST
 from app.models.shema_prayer import PulseLanguage
@@ -127,7 +134,7 @@ def _refused(refused: ImportRefused) -> JSONResponse:
 async def upload_projects_import(
     request: Request,
     db: Db,
-    scope: Scope,
+    scope: WriteScope,
     reading: Reading,
     user: CurrentUser,
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,

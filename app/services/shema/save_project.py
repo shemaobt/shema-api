@@ -81,6 +81,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AuthorizationError, ConflictError, ValidationError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import _audit, _needs
@@ -289,6 +290,36 @@ def refuse_circle_writes(readership: Readership, *, user: User, operation: str) 
     )
 
 
+def refuse_admin_writes(
+    readership: Readership, region_key: ShemaRegionKey, *, user: User, operation: str
+) -> None:
+    """Refuse the Admin a project it reads and does not write — a 403, after the scope's 404.
+
+    OBT-593 (Daniel, 19/oct/2026, OBT-592): the Admin without a region *reads every region, as
+    the coordination* and *writes only what is access* — a member put on or taken off a project
+    through ``/acesso``. The record stays the coordination's of its region, so the Admin's reading
+    scope is global and :attr:`Readership.writes` is the reach of the regional roles the account
+    also holds, nothing for the Admin alone. Like :func:`refuse_circle_writes` it comes **after**
+    ``visible_projects``: a project outside the reach is still the existence-hiding 404, and the
+    403 is about the caller's own grant, which conceals nothing. The sentence is the Admin's own,
+    because an Admin told *the Resource Circle does not edit* would be told about somebody else.
+    """
+    if readership.writes_project(region_key):
+        return
+    logger.warning(
+        "shema authorization refused: the Admin reads a project and writes only access",
+        extra={
+            "shema_operation": operation,
+            "shema_user_id": user.id,
+            "shema_region_key": region_key.value,
+        },
+    )
+    raise AuthorizationError(
+        "The Admin reads every project and writes only access; "
+        "a project is written by the coordination of its region"
+    )
+
+
 def _refuse_impossible_dates(merged: dict[str, Any]) -> None:
     """The cross-record half of *sane ranges* — the half a request model cannot see.
 
@@ -478,6 +509,7 @@ async def save_project(
     if project is None:
         raise refuse_out_of_scope(scope, user=user, operation="save_project", project_id=project_id)
     refuse_circle_writes(readership, user=user, operation="save_project")
+    refuse_admin_writes(readership, project.region_key, user=user, operation="save_project")
 
     payload = _as_the_reader_may_write(project, payload, readership, user=user)
     refuse_prayer_decisions(
@@ -666,6 +698,7 @@ async def create_project(
     project.updated_by = user.id
     project.updated_by_name = _audit.author_name(user)
 
+    refuse_admin_writes(readership, project.region_key, user=user, operation="create_project")
     if not reaches(scope, project.region_key):
         logger.warning(
             "shema authorization refused: a record filed outside the caller's regions",

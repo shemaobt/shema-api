@@ -270,11 +270,14 @@ from app.services.shema._scope import (
     pending_projects,
     reaches,
     readership,
+    reading_scope,
     region_scope,
+    regional_scope_from_roles,
     registered,
     roster_projects,
     visible_projects,
     within_scope,
+    writing_scope,
 )
 from app.services.shema._submission_archive import (
     MAX_PAYLOAD_BYTES,
@@ -511,6 +514,7 @@ __all__ = [
     "read_submission",
     "reader_may_read_media",
     "readership",
+    "reading_scope",
     "reads_assessments",
     "reads_team_health",
     "reads_withheld_requests",
@@ -521,6 +525,7 @@ __all__ = [
     "record_update",
     "recorded_decision",
     "region_scope",
+    "regional_scope_from_roles",
     "registered",
     "reject_pending_project",
     "release_prayer_request",
@@ -561,4 +566,5 @@ __all__ = [
     "withdraw_invite",
     "withheld_note",
     "within_scope",
+    "writing_scope",
 ]

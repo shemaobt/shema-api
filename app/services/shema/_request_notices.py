@@ -13,8 +13,10 @@ Gestor who started it for the team. The arrival reaches the **Admin and the Gest
 way the PME's door reads them (``_scope.SHEMA_APP_ROLES`` and ``FORM_DOOR_ROLES``): ``admin``
 off the ``shema`` grant, which is the one every guard below the door reads, and ``gestor`` off
 the form's. The mesa is told in the form, where it works. Nobody is told about their own act.
-There is **no region** in either: the Admin and the Gestor reach none (OBT-523) and read every
-request (BE-24), and a decision is addressed to one person.
+There is **no region routing** in either: the Gestor reaches none (OBT-523), the Admin reaches
+every one as a reader (OBT-593), both read every request (BE-24), and a decision is addressed
+to one person. Where the row **points** is ``list_notification_panel.py``'s question, asked of
+the reader's reach — which is why the Admin's pointer stopped being ``null`` with OBT-593.
 
 **What.** The registered name and the stage — GATE-03 D4's ceiling, the line BE-24's card
 draws too. The two functions below take a name, a stage, a project and whom to tell, and

@@ -65,8 +65,9 @@ async def list_audit(
     """The most recent acts the caller may be told of, newest first.
 
     **The reach is the reader's coordination**, not the session's scope: the ``admin`` role holds
-    no region row and reaches nothing as a scope, yet coordinates everywhere
-    (``COORDINATION_EVERYWHERE``), and the trail is the coordination's to read.
+    no region row and coordinates everywhere as a reader (``COORDINATION_EVERYWHERE``), and the
+    trail is the coordination's to read. (Its scope reaches every region too since OBT-593; the
+    trail kept asking the reader, which is the question it always was.)
     """
     scope = readership.coordination
     if not allowed:

@@ -71,7 +71,8 @@ async def test_an_account_with_only_a_form_seat_passes_the_door(
 async def test_an_account_with_only_the_admin_role_passes_the_door(
     db_session, client, shema_app, form_app
 ):
-    """The ``admin`` role held in ``shema`` — the grant every admin guard below the door reads."""
+    """The ``admin`` role held in ``shema`` — the grant every admin guard below the door reads.
+    Its ``regionScope`` is ``null``, every region: the Admin reads them all (OBT-593)."""
     user = await make_user(db_session, email="admin-only@door.test")
     await grant(db_session, user, shema_app, "admin")
 
@@ -79,7 +80,7 @@ async def test_an_account_with_only_the_admin_role_passes_the_door(
 
     assert res.status_code == 200, res.text
     assert res.json()["roles"] == ["admin"]
-    assert res.json()["regionScope"] == []
+    assert res.json()["regionScope"] is None
 
 
 async def test_an_installation_admin_passes_the_door_and_is_not_answered_admin(
@@ -241,7 +242,7 @@ async def test_the_session_reads_the_grants_once_per_request(
 
 
 @pytest.mark.parametrize("regional", ["coordinator", "obtLab", "resourceCircle"])
-@pytest.mark.parametrize("extra", ["admin", "gestor", "mesa"])
+@pytest.mark.parametrize("extra", ["gestor", "mesa"])
 async def test_the_session_scope_of_a_regional_role_is_unchanged_beside_a_new_role(
     db_session, client, shema_app, form_app, regional, extra
 ):
@@ -252,7 +253,7 @@ async def test_the_session_scope_of_a_regional_role_is_unchanged_beside_a_new_ro
         role_key=regional,
         regions=[AFRICA],
     )
-    await grant(db_session, user, shema_app if extra == "admin" else form_app, extra)
+    await grant(db_session, user, form_app, extra)
 
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
 
@@ -260,16 +261,39 @@ async def test_the_session_scope_of_a_regional_role_is_unchanged_beside_a_new_ro
     assert res.json()["role"] == regional
 
 
-@pytest.mark.parametrize("role", ["admin", "gestor", "mesa"])
-async def test_admin_gestor_and_mesa_reach_no_region_even_with_a_region_row(
+@pytest.mark.parametrize("regional", ["coordinator", "obtLab", "resourceCircle"])
+async def test_the_session_scope_beside_the_admin_is_every_region(
+    db_session, client, shema_app, regional
+):
+    """OBT-593: the Admin reads every region, so a regional role held beside it answers the
+    Admin's reach on the wire — ``null`` — and keeps its own ``role``. What the regional role
+    writes is still its own regions (``tests/test_shema/test_scope.py``)."""
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email=f"{regional.lower()}-admin@door.test",
+        role_key=regional,
+        regions=[AFRICA],
+    )
+    await grant(db_session, user, shema_app, "admin")
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.json()["regionScope"] is None
+    assert res.json()["role"] == regional
+
+
+@pytest.mark.parametrize("role", ["gestor", "mesa"])
+async def test_gestor_and_mesa_reach_no_region_even_with_a_region_row(
     db_session, client, shema_app, form_app, role
 ):
     """A row left in ``shema_user_regions`` — a revoked coordinator's, an org-chart seat's — is
-    the reach of a regional role, and these three are not one."""
+    the reach of a regional role, and these two are not one. (The ``admin`` reads every region
+    since OBT-593, row or no row.)"""
     from app.services.shema import set_region_scope
 
     user = await make_user(db_session, email=f"{role}-row@door.test")
-    await grant(db_session, user, shema_app if role == "admin" else form_app, role)
+    await grant(db_session, user, form_app, role)
     await set_region_scope(db_session, user.id, [AFRICA])
 
     res = await client.get(SESSION, headers=await auth_header(db_session, user))

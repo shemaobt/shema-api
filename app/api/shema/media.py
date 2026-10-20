@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.shema._deps import CoordinatorUser, CurrentUser, Db, Reading, Scope
+from app.api.shema._deps import CoordinatorUser, CurrentUser, Db, Reading, Scope, WriteScope
 from app.models.shema_privacy import ShemaAudience
 from app.models.shema_record import ShemaMediaAuthorization, ShemaMediaLink
 from app.services.shema import media_download_url, recorded_decision, withdraw_image_authorization
@@ -55,7 +55,7 @@ async def read_media_link(
     response_model=ShemaMediaAuthorization,
 )
 async def withdraw_media_authorization(
-    project_id: str, item_id: str, user: CoordinatorUser, db: Db, scope: Scope
+    project_id: str, item_id: str, user: CoordinatorUser, db: Db, scope: WriteScope
 ) -> ShemaMediaAuthorization:
     """Refuse the sharing of one photo from here on, and erase it from the Pulse that brought it."""
     item = await withdraw_image_authorization(db, scope, project_id, item_id, user=user)
