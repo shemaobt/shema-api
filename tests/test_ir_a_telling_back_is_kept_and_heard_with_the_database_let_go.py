@@ -107,8 +107,22 @@ async def test_a_stretch_replaced_is_kept_and_heard_with_the_database_let_go(
 
 
 async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_its_lookup(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    held: dict[str, bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.api.internalization_room import back_translation as bt_api
+
+    heard = bt_api.heard
+    silent = [True]
+
+    async def silent_once(*args: Any, **kwargs: Any) -> str:
+        if silent.pop() if silent else False:
+            return ""
+        return await heard(*args, **kwargs)
+
+    monkeypatch.setattr(bt_api, "heard", silent_once)
     session, (part,) = await rehearsed_in_parts(db_session, 1)
     again = {
         "take_id": part.id,
@@ -120,7 +134,7 @@ async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_
     route = f"{PREFIX}/sessions/{session.id}/back-translation/chunks"
     headers = {"X-Room-Device": TABLET}
     first = await client.post(route, headers=headers, data=again, files=audio)
-    assert first.status_code == 200, first.text
+    assert first.status_code == 422, first.text
     held.clear()
 
     resent = await client.post(route, headers=headers, data=again, files=audio)
