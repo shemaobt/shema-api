@@ -18,8 +18,9 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     ERROR_CODE_TAKE_DURATION_DIFFERS,
     ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
+    ERROR_CODE_TAKE_TOO_LONG,
     NotFoundError,
-    TakeDoesNotMatchItsBytes,
+    RecordingRefused,
     UnknownReferenceError,
     ValidationError,
 )
@@ -135,21 +136,27 @@ async def checked_recording(
     """Hash and measure the bytes, and refuse a fingerprint or a length they contradict.
 
     The tablet's length is kept as sent when it is within the slack, or when the bytes cannot be
-    measured; a take sent with none keeps the measured one.
+    measured; a take sent with none keeps the measured one. Bytes that measure past a day are no
+    recording's, whoever said so.
     """
     digest = recording_digest(audio)
     if sent_sha256 is not None and sent_sha256.lower() != digest:
-        raise TakeDoesNotMatchItsBytes(
+        raise RecordingRefused(
             f"The sha256 sent is not the recording's: {digest}",
             ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
         )
     measured = await measure_ms_bounded(audio)
+    if measured is not None and measured > LONGEST_TAKE_MS:
+        raise RecordingRefused(
+            f"The recording measures {measured} ms, longer than any recording lasts",
+            ERROR_CODE_TAKE_TOO_LONG,
+        )
     if (
         sent_duration_ms is not None
         and measured is not None
         and abs(sent_duration_ms - measured) > DURATION_SLACK_MS
     ):
-        raise TakeDoesNotMatchItsBytes(
+        raise RecordingRefused(
             f"The duration_ms sent is not the recording's: it lasts {measured} ms",
             ERROR_CODE_TAKE_DURATION_DIFFERS,
         )

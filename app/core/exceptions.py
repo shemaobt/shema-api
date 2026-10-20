@@ -79,6 +79,8 @@ ERROR_CODE_PART_NOT_WAV: Final = "PART_NOT_WAV"
 ERROR_CODE_TAKE_FINGERPRINT_DIFFERS: Final = "TAKE_FINGERPRINT_DIFFERS"
 #: A take or scene rehearsal whose ``duration_ms`` is more than the slack from its sound's length.
 ERROR_CODE_TAKE_DURATION_DIFFERS: Final = "TAKE_DURATION_DIFFERS"
+#: A take or scene rehearsal whose bytes measure longer than any recording of the room can last.
+ERROR_CODE_TAKE_TOO_LONG: Final = "TAKE_TOO_LONG"
 ERROR_CODE_ANOTHER_SENTENCE_AWAITS: Final = "ANOTHER_SENTENCE_AWAITS"
 ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION: Final = "FRASE_AWAITS_ITS_TRANSLATION"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
@@ -296,8 +298,8 @@ class SentenceRefused(Exception):
         self.frases = frases
 
 
-class TakeDoesNotMatchItsBytes(Exception):
-    """A value the tablet sent about a recording that the bytes it sent contradict.
+class RecordingRefused(Exception):
+    """A recording whose bytes contradict what the tablet said of them, or are no recording's.
 
     Refused rather than corrected: the room keeps nothing the tablet would believe it described.
     """
@@ -635,9 +637,7 @@ async def handle_unknown_scene(_request: Request, exc: UnknownScene) -> JSONResp
     )
 
 
-async def handle_take_does_not_match_its_bytes(
-    _request: Request, exc: TakeDoesNotMatchItsBytes
-) -> JSONResponse:
+async def handle_recording_refused(_request: Request, exc: RecordingRefused) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=_error_body(str(exc), exc.code),
@@ -799,7 +799,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
-    app.add_exception_handler(TakeDoesNotMatchItsBytes, handle_take_does_not_match_its_bytes)  # type: ignore[arg-type]
+    app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]

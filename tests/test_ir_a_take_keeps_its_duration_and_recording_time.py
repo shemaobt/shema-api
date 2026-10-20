@@ -591,3 +591,23 @@ async def test_a_joined_parts_offset_does_not_count_the_time_spent_storing_it(
 
     (observed,) = await consultant_read(client, consultant, session.id)
     assert abs(observed["device_clock_offset_ms"] - -480_000) < 1_000
+
+
+def a_wav_whose_header_says_it_lasts_a_month() -> bytes:
+    out = io.BytesIO()
+    with wave.open(out, "wb") as file:
+        file.setnchannels(1)
+        file.setsampwidth(1)
+        file.setframerate(1)
+        file.writeframes(bytes(3_000_000))
+    return out.getvalue()
+
+
+async def test_a_measured_length_no_recording_can_have_is_refused_and_nothing_is_kept(
+    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    answer = await send(client, session.id, a_wav_whose_header_says_it_lasts_a_month())
+
+    assert answer.status_code == 422, answer.text
+    assert await takes_of(db_session, session.id) == []
+    assert store.objects == {}

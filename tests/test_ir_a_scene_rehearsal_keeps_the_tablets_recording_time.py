@@ -7,7 +7,10 @@ when they differ.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import io
+import wave
 from datetime import datetime
 
 import httpx
@@ -126,3 +129,48 @@ async def test_a_scene_rehearsals_recording_time_with_no_utc_instant_is_refused(
     assert refused.status_code == 422, refused.text
     assert "code" not in refused.json()
     assert await count(db_session, "ir_scene_rehearsals", "session_id", session_id) == 0
+
+
+async def test_a_scene_rehearsals_measured_length_no_recording_can_have_is_refused(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    out = io.BytesIO()
+    with wave.open(out, "wb") as file:
+        file.setnchannels(1)
+        file.setsampwidth(1)
+        file.setframerate(1)
+        file.writeframes(bytes(3_000_000))
+
+    refused = await send(room, session_id, out.getvalue())
+
+    assert refused.status_code == 422, refused.text
+    assert await count(db_session, "ir_scene_rehearsals", "session_id", session_id) == 0
+    assert room.bucket.objects == {}
+
+
+async def test_two_scene_rehearsals_kept_at_once_are_listed_in_their_numbering_order(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    first_in_the_bucket = asyncio.Event()
+    second_kept = asyncio.Event()
+    put = room.bucket.put
+
+    async def the_first_upload_is_slow(key: str, data: bytes, content_type: str) -> None:
+        if not first_in_the_bucket.is_set():
+            first_in_the_bucket.set()
+            await asyncio.wait_for(second_kept.wait(), 10)
+        await put(key, data, content_type)
+
+    room.bucket.put = the_first_upload_is_slow  # type: ignore[method-assign]
+    slow = asyncio.create_task(send(room, session_id, recording(4, 6)))
+    await asyncio.wait_for(first_in_the_bucket.wait(), 10)
+    quick = await send(room, session_id, recording(4, 7))
+    second_kept.set()
+    assert quick.status_code == 200, quick.text
+    assert (await slow).status_code == 200
+
+    listed = await read_by_b(room, session_id)
+
+    assert [r["n"] for r in listed] == [1, 2]

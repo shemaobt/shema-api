@@ -22,6 +22,7 @@ Decided (ENG-1273):
   `TAKE_DURATION_DIFFERS`; nothing is stored either way. Within 100 ms the tablet's value is
   kept as sent. The slack is the rounding of two readers of one file, never a different sound.
   When ffprobe cannot read the bytes within 3 s, the tablet's value is kept unchecked, or none.
+  Bytes that measure past a day are no recording's, whoever said so: 422 `TAKE_TOO_LONG`.
 - The **Recording time** is the tablet's for a take recorded on it, and the server's for a
   joined part (her ruling of 24 September), for a part spliced by a re-recorded sentence and for
   a take sent with no time, which is then the row's own arrival (`created_at`). It is written

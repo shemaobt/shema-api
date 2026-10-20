@@ -59,7 +59,6 @@ from app.services.internalization_room.takes import (
     checked_recording,
     extension,
     recording_digest,
-    recording_time,
     store_recording,
 )
 
@@ -92,10 +91,11 @@ async def keep_scene_rehearsal(
     carried the same bytes answers with the winner instead.
 
     What the tablet sent of the recording is checked as a take's is; a scene rehearsal is always
-    recorded on the tablet, so the time it was sent with is its **Recording time**.
+    recorded on the tablet, so the time it was sent with is its **Recording time**. With none,
+    the database stamps it with the row's arrival as the row is numbered, so a passage's
+    rehearsals keep listing in their numbering order.
     """
     session_id, project_id, pericope = session.id, session.project_id, session.pericope
-    arrived = datetime.now(UTC)
     checked = await checked_recording(
         audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
     )
@@ -129,8 +129,6 @@ async def keep_scene_rehearsal(
             n=n,
             device_id=device_id,
             duration_ms=checked.duration_ms,
-            created_at=arrived,
-            recorded_at=recording_time(sent_recorded_at, arrived),
             scene=label,
             scene_said=IRSceneSaid.RECORDING if scene else None,
             scene_foreign=foreign,
@@ -141,6 +139,8 @@ async def keep_scene_rehearsal(
             content_type=stored.content_type,
             verified_at=stored.verified_at,
         )
+        if sent_recorded_at is not None:
+            rehearsal.recorded_at = sent_recorded_at
         db.add(rehearsal)
         try:
             await db.commit()
