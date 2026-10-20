@@ -286,6 +286,7 @@ async def test_a_forced_passage_reads_its_release_id_with_forced_at_set(
 
     assert release["release_id"] == f"internalize-guarani-{P.lower()}-v1"
     assert release["release_id"] == await stored_release_id(db_session, team.id, 1)
+    assert release["version"] == 1
     assert release["forced_at"] is not None
 
 
