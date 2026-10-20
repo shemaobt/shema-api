@@ -40,6 +40,9 @@ from app.services.project.reads_project import reads_project
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
 LISTEN_MINUTES = 15
+#: How long a download link lasts, her ``expiresIn: 3600``: a file handed to Refine is not
+#: played on the spot, so it outlives the fifteen minutes a listen needs.
+DOWNLOAD_LINK_SECONDS = 3600
 
 FILENAMES = {IRTakeKind.ENSAIO: "tomada", IRTakeKind.RETRO: "trecho"}
 
@@ -395,14 +398,27 @@ async def listen_url(
 async def signed_listen_url(
     storage_key: str, content_type: str, *, settings: Settings | None = None
 ) -> str:
+    return await signed_url(storage_key, content_type, minutes=LISTEN_MINUTES, settings=settings)
+
+
+async def signed_url(
+    storage_key: str,
+    content_type: str,
+    *,
+    minutes: int,
+    disposition: str | None = None,
+    settings: Settings | None = None,
+) -> str:
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
+    named = {} if disposition is None else {"response_disposition": disposition}
     return await generate_signed_download_url(
         cfg.gcs_platform_bucket,
         storage_key,
-        expiry_minutes=LISTEN_MINUTES,
+        expiry_minutes=minutes,
         response_content_type=content_type,
+        **named,
     )
 
 
@@ -487,12 +503,34 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     return [take for take in takes if take.id in chosen]
 
 
+def part_positions(parts: list[IRTake]) -> dict[int | None, int | None]:
+    """Each current part's position among the session's current parts, by the number it carries.
+
+    The number the voice says and the **Part key** are both read off this: a rehearsal told
+    whole has no position, and the others count from one in reading order.
+    """
+    positions: dict[int | None, int | None] = {}
+    counted = 0
+    for part in parts:
+        if part.ordinal is None:
+            positions[None] = None
+        else:
+            counted += 1
+            positions[part.ordinal] = counted
+    return positions
+
+
 #: Where a declared part's key lives, and the device a text seam speaks for. A part declared
 #: through the seam has no bytes and no bucket object: it is the address a stretch is a slice
 #: of, and nothing else, so the key carries the name her script gave it.
 TEXT_SEAM_PREFIX = "text-seam"
 TEXT_SEAM_DEVICE = "text-seam"
 TEXT_SEAM_CONTENT_TYPE = "text/plain"
+
+
+def is_declared(take: IRTake) -> bool:
+    """A part the text seam declared: an address with no bytes and no bucket object."""
+    return take.storage_key.startswith(f"{TEXT_SEAM_PREFIX}/")
 
 
 def _declared_key(session_id: str, key: str) -> str:
@@ -549,10 +587,10 @@ async def declared_parts_by_key(db: AsyncSession, session_id: str) -> dict[str, 
     """The parts a seam session declared, by the key her script names them with."""
     prefix = _declared_key(session_id, "")
     result = await db.execute(
-        select(IRTake).where(
-            IRTake.session_id == session_id,
-            IRTake.kind == IRTakeKind.ENSAIO,
-            IRTake.storage_key.startswith(prefix),
-        )
+        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.ENSAIO)
     )
-    return {take.storage_key.removeprefix(prefix): take for take in result.scalars()}
+    return {
+        take.storage_key.removeprefix(prefix): take
+        for take in result.scalars()
+        if is_declared(take)
+    }

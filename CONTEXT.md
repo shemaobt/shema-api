@@ -127,6 +127,14 @@ _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 
+**Part key** (`key`):
+The name a **Part** goes by in a file name and in what Refine receives: `whole` for the rehearsal told whole, `S<n>` for the part in position n among the session's current parts (Marcia's scene key; part n is scene n). A superseded take keeps the key of the part it was.
+_Avoid_: clip key, scope (the tablet's `parte-N`), chunk_index, ordinal (the number as stored)
+
+**Superseded take** (`superseded_takes`, `superseded_at`):
+A rehearsal take that a later take under the same part's number replaced. It is kept, listed apart from the current parts, and downloads as `<release>-<key>-substituida-<take id>.<ext>`; its time is when the take that replaced it reached the server.
+_Avoid_: kept take (kept names a telling kept for the team), replaced take, old take, Substituída (in prose); **Superseded** alone is a telling-back attempt
+
 **Recording grain** (`recording_grain`):
 Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
 _Avoid_: granularity, mode, shape, Granularidade

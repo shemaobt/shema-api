@@ -18,6 +18,7 @@ from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import (
     MotherTongueTakesResponse,
     SentRecordingTime,
+    TakeDownloadsResponse,
     TakeResponse,
     TakesResponse,
 )
@@ -28,6 +29,7 @@ from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
 )
 from app.services.internalization_room.session_takes import mother_tongue_takes_of
+from app.services.internalization_room.take_downloads import take_downloads_of
 from app.services.internalization_room.takes import (
     LONGEST_TAKE_MS,
     TakeStore,
@@ -243,6 +245,22 @@ async def read_the_mother_tongue_takes(
 ) -> MotherTongueTakesResponse:
     session = await room.get_session_for_reader(db, user, session_id)
     return await mother_tongue_takes_of(db, session, store)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/takes/downloads",
+    response_model=TakeDownloadsResponse,
+)
+async def read_the_take_downloads(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> TakeDownloadsResponse:
+    """What the facilitator hands Refine: each take under her file name, links good for an hour.
+
+    Read it again for fresh links; a name follows the passage's latest release at the moment of
+    the read.
+    """
+    session = await room.get_session_for_reader(db, user, session_id)
+    return await take_downloads_of(db, session)
 
 
 @router.get(

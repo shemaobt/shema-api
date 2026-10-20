@@ -28,6 +28,7 @@ from app.db.models.internalization_room import (
 )
 from app.services.device import create_device
 from app.services.internalization_room import questions as question_service
+from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.voice_handles import to_handle
 from app.services.oral_collector import gcs_utils
 from app.services.platform import tts
@@ -96,6 +97,7 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     the_bucket_is_in_memory(monkeypatch)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", sign)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", sign)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "plataforma", raising=False)
     return store
 
@@ -344,6 +346,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/coverage",
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
         f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
+        f"{IR}/facilitator/sessions/{session}/takes/downloads",
     ]
 
     values = {"session_id": session, "number": 0, "version": 1}
@@ -520,6 +523,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
         (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/takes/downloads", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
         (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),
