@@ -7,7 +7,7 @@ date: 2026-10-20
 
 In her app a facilitator saves each rehearsal take as `<release>-<key>.<ext>` and each replaced
 one as `<release>-<key>-substituida-<take id>.<ext>`, through links signed for an hour
-(`src/draft/export.ts`, `retroExport.ts`, `supabaseStore.ts:247` at her freeze 18fa7c4). Ours
+(`src/draft/export.ts`, `retroExport.ts`, `supabaseStore.ts` at her freeze 18fa7c4). Ours
 signed every take for fifteen minutes, named a download by the last segment of its storage key
 (`tomada.m4a` for all), and listed no take apart from the part it was replaced by.
 
