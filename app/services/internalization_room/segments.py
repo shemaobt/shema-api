@@ -37,7 +37,12 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.internalization_room.back_translation import BackTranslationState, part_length
-from app.services.internalization_room.takes import current_parts, is_wav, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    is_wav,
+    takes_of,
+    the_take_already_kept,
+)
 
 SHORTEST_FRASE_MS = 200
 END_SLACK_MS = 250
@@ -687,6 +692,21 @@ async def current_stretch_at(
         ),
         None,
     )
+
+
+async def refuse_a_replace_before_its_recording_is_kept(
+    db: AsyncSession, session_id: str, segment: IRSegment, audio: bytes
+) -> None:
+    kept = await the_take_already_kept(db, session_id, IRTakeKind.RETRO, audio)
+    standing = await current_stretch_at(
+        db,
+        session_id,
+        take_id=segment.take_id,
+        starts_ms=segment.starts_ms,
+        ends_ms=segment.ends_ms,
+    )
+    if kept is None or standing is None or standing.bridge_take_id != kept.id:
+        await refuse_a_stretch_that_is_not_a_unit(db, session_id, segment)
 
 
 async def refuse_a_stretch_that_is_not_a_unit(

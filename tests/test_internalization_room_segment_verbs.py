@@ -1112,3 +1112,25 @@ async def test_a_replace_of_a_divided_stretch_keeps_and_hears_nothing(
     assert client.said == ["o todo contado outra vez"], (  # type: ignore[attr-defined]
         "a frase dividida pagava a transcrição antes de ser recusada"
     )
+
+
+async def test_a_replace_of_the_stretch_replaced_already_is_not_refused_for_the_recording_that_won(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id, whole = await _one_told_stretch(client)
+    client.said.append("a explicação refeita")  # type: ignore[attr-defined]
+    done = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando de novo",
+    )
+    assert done.status_code == 200, done.text
+    replaced = await service.segment_for_session(db_session, session_id, whole["segment_id"])
+
+    await service.refuse_a_replace_before_its_recording_is_kept(
+        db_session, session_id, replaced, b"contando de novo"
+    )
