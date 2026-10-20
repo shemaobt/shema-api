@@ -8,7 +8,6 @@ session with it.
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
-from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
@@ -18,6 +17,7 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import (
     MotherTongueTakesResponse,
+    SentRecordingTime,
     TakeResponse,
     TakesResponse,
 )
@@ -29,6 +29,7 @@ from app.services.internalization_room.scene_rehearsals import (
 )
 from app.services.internalization_room.session_takes import mother_tongue_takes_of
 from app.services.internalization_room.takes import (
+    LONGEST_TAKE_MS,
     TakeStore,
     listen_url,
     store_take,
@@ -86,7 +87,7 @@ async def keep_take(
             "it, and the listen may check it with no tap. Absent on a part recorded as itself."
         ),
     ),
-    recorded_at: AwareDatetime | None = Form(
+    recorded_at: SentRecordingTime | None = Form(
         default=None,
         description=(
             "When the recording stopped, by the tablet's clock, with its offset. It is the "
@@ -97,6 +98,7 @@ async def keep_take(
     duration_ms: int | None = Form(
         default=None,
         ge=0,
+        le=LONGEST_TAKE_MS,
         description=(
             "The length of the file sent, read from the file itself. Refused with "
             "TAKE_DURATION_DIFFERS when more than 100 ms from the length the server measures."

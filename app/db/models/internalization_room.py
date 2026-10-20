@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Enum,
     Index,
@@ -437,7 +438,7 @@ class IRTake(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The **Clock offset** of the tablet that sent this joined part, kept only at five minutes
     #: or more; the consultant's alone.
-    device_clock_offset_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    device_clock_offset_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class IRSceneSaid(enum.StrEnum):

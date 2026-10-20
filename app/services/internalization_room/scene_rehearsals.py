@@ -95,6 +95,7 @@ async def keep_scene_rehearsal(
     recorded on the tablet, so the time it was sent with is its **Recording time**.
     """
     session_id, project_id, pericope = session.id, session.project_id, session.pericope
+    arrived = datetime.now(UTC)
     checked = await checked_recording(
         audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
     )
@@ -111,7 +112,6 @@ async def keep_scene_rehearsal(
         content_type=content_type,
         store=store,
     )
-    recorded_at = recording_time(sent_recorded_at, datetime.now(UTC))
     label = None
     if scene:
         with reading_the_canon_of(session.canon_pin):
@@ -129,7 +129,8 @@ async def keep_scene_rehearsal(
             n=n,
             device_id=device_id,
             duration_ms=checked.duration_ms,
-            recorded_at=recorded_at,
+            created_at=arrived,
+            recorded_at=recording_time(sent_recorded_at, arrived),
             scene=label,
             scene_said=IRSceneSaid.RECORDING if scene else None,
             scene_foreign=foreign,

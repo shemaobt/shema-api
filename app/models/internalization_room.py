@@ -1,8 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_serializer,
+)
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
@@ -1019,6 +1026,18 @@ class FacilitatorSessionsResponse(BaseModel):
 
     sessions: list[FacilitatorSessionView]
     devices: list[FacilitatorHaltedDeviceView] = []
+
+
+def _an_instant_on_the_utc_clock(when: datetime) -> datetime:
+    try:
+        return when.astimezone(UTC)
+    except OverflowError:
+        raise ValueError("A recording time with no instant on the UTC clock") from None
+
+
+#: A **Recording time** as the tablet sends it: an instant with its offset, read on the UTC
+#: clock. One past the calendar's edge once converted is malformed, as one with no offset is.
+SentRecordingTime = Annotated[AwareDatetime, AfterValidator(_an_instant_on_the_utc_clock)]
 
 
 class TakeResponse(BaseModel):

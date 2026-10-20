@@ -38,7 +38,7 @@ def upgrade() -> None:
     _recorded_at_from_created_at("ir_takes")
     with op.batch_alter_table("ir_takes") as batch:
         batch.add_column(sa.Column("duration_ms", sa.Integer(), nullable=True))
-        batch.add_column(sa.Column("device_clock_offset_ms", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("device_clock_offset_ms", sa.BigInteger(), nullable=True))
     op.create_index(
         INDEX,
         "ir_takes",

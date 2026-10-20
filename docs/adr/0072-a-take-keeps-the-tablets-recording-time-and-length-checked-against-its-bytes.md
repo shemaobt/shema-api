@@ -14,7 +14,8 @@ two rows, after which every resend of those bytes failed.
 Decided (ENG-1273):
 
 - The keep door and the scene rehearsal door take three optional form fields: `recorded_at`
-  (an ISO-8601 instant with its offset; one without is FastAPI's 422), `duration_ms` and
+  (an ISO-8601 instant with its offset; one without, or one with no instant on the UTC clock, is
+  FastAPI's 422), `duration_ms` (at most a day: longer is no recording's length, 422) and
   `sha256`. A take or scene rehearsal keeps them in `recorded_at` and `duration_ms`.
 - The server still hashes and measures the bytes. A `sha256` that is not theirs answers 422
   `TAKE_FINGERPRINT_DIFFERS`; a `duration_ms` more than 100 ms from ffprobe's length answers 422
@@ -23,10 +24,11 @@ Decided (ENG-1273):
   When ffprobe cannot read the bytes within 3 s, the tablet's value is kept unchecked, or none.
 - The **Recording time** is the tablet's for a take recorded on it, and the server's for a
   joined part (her ruling of 24 September), for a part spliced by a re-recorded sentence and for
-  a take sent with no time. It is written once and never moved: a resend answers with the row
-  already kept.
+  a take sent with no time, which is then the row's own arrival (`created_at`). It is written
+  once and never moved: a resend answers with the row already kept.
 - A joined part's tablet time measures the **Clock offset** instead: tablet minus server at
-  storing, kept on `device_clock_offset_ms` only at five minutes or more (her
+  the request's arrival, kept on `device_clock_offset_ms` (a 64-bit column: a clock reset to
+  1970 is an offset too, and is kept) only at five minutes or more (her
   `CLOCK_SKEW_NOTE_MS`), served on the consultant's read alone. The tablet stamps that time when
   it builds each send, so the offset measures a clock and not a queue's delay.
 - A partial unique index on `(session_id, kind, sha256)`, skipping the declared parts' empty
@@ -45,4 +47,8 @@ version, as every schema bump did. A tablet that sends a length it did not read 
 loses the take, since its queue gives up a coded refusal for good: the tablet sends one only for
 WAV. Takes stored before carry their upload time and no length. The listening rule still reads
 the length the tablet reports with each listen (ADR 0070); the stored one is for Refine and the
-consultant.
+consultant. The arrival the offset is read against is the server's clock as the take starts
+to be stored, before its bytes are measured or written, and FastAPI reaches it only once the
+whole form has been read: storing and measuring no longer count, but the body's transfer does, so a tablet whose upload of a joined part
+takes minutes reads as that many minutes behind. Closing it needs the moment the request's
+headers reached the server, which nothing in the house stamps; an ASGI middleware would.

@@ -9,7 +9,6 @@ from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
-from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
@@ -36,6 +35,7 @@ from app.models.internalization_room import (
     SceneRehearsalView,
     SceneRestartSnapshot,
     SceneRestartView,
+    SentRecordingTime,
     TurnResponse,
 )
 from app.services import internalization_room as room
@@ -43,7 +43,13 @@ from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.part_names import passage_scenes
-from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
+from app.services.internalization_room.takes import (
+    AUDIO_MIME,
+    LONGEST_TAKE_MS,
+    TakeStore,
+    listen_url,
+    take_store,
+)
 from app.services.internalization_room.turn_dedup import answer_once, answered_turn
 from app.utils.stored_time import as_utc
 
@@ -174,7 +180,7 @@ async def _session(db: AsyncSession, session_id: str, project_id: str) -> IRSess
 async def keep_scene_rehearsal(
     session_id: str,
     scene: str | None = Form(default=None),
-    recorded_at: AwareDatetime | None = Form(
+    recorded_at: SentRecordingTime | None = Form(
         default=None,
         description=(
             "When the recording stopped, by the tablet's clock, with its offset: the scene "
@@ -184,6 +190,7 @@ async def keep_scene_rehearsal(
     duration_ms: int | None = Form(
         default=None,
         ge=0,
+        le=LONGEST_TAKE_MS,
         description=(
             "The length of the file sent, read from the file itself. Refused with "
             "TAKE_DURATION_DIFFERS when more than 100 ms from the length the server measures."

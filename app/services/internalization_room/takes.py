@@ -31,8 +31,8 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
-from app.services.internalization_room.hearing import _length_of
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
+from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
 
@@ -48,6 +48,9 @@ DURATION_SLACK_MS = 100
 #: The **Clock offset** worth keeping, her ``CLOCK_SKEW_NOTE_MS``: under five minutes it is a
 #: clock set by hand, not one the consultant should hear about.
 CLOCK_OFFSET_NOTED_MS = 5 * 60_000
+#: The longest length a take can claim: no recording of the room lasts a day, and anything
+#: longer is no recording's length.
+LONGEST_TAKE_MS = 24 * 60 * 60 * 1000
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +143,7 @@ async def checked_recording(
             f"The sha256 sent is not the recording's: {digest}",
             ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
         )
-    measured = await _length_of(audio)
+    measured = await measure_ms_bounded(audio)
     if (
         sent_duration_ms is not None
         and measured is not None
@@ -155,17 +158,15 @@ async def checked_recording(
     )
 
 
-def recording_time(sent_recorded_at: datetime | None, now: datetime) -> datetime:
-    """The tablet's clock, as the instant it names, or the server's when it sent none."""
-    return now if sent_recorded_at is None else sent_recorded_at.astimezone(UTC)
+def recording_time(sent_recorded_at: datetime | None, arrived: datetime) -> datetime:
+    """The tablet's clock when it sent one, else the server's at the recording's arrival."""
+    return arrived if sent_recorded_at is None else sent_recorded_at
 
 
-def _noted_offset(session_id: str, sent_recorded_at: datetime, now: datetime) -> int | None:
-    offset = round((sent_recorded_at - now).total_seconds() * 1000)
-    if abs(offset) < CLOCK_OFFSET_NOTED_MS:
-        return None
-    logger.warning("A tablet joining in session %s is %d ms off the server", session_id, offset)
-    return offset
+def noted_clock_offset(sent_recorded_at: datetime, arrived: datetime) -> int | None:
+    """The tablet's clock minus the server's at arrival, in ms, when it is worth keeping."""
+    offset = round((sent_recorded_at - arrived).total_seconds() * 1000)
+    return None if abs(offset) < CLOCK_OFFSET_NOTED_MS else offset
 
 
 @dataclass(frozen=True)
@@ -243,7 +244,11 @@ async def store_take(
     uploads of the same bytes at once both pass the first look: the unique index refuses the
     second row, and its upload answers with the first. The insert sits in a savepoint, so the
     refusal undoes it alone and leaves the caller's objects as they were.
+
+    The server's clock is read once, before the bytes are measured or stored: the take's
+    arrival and its offset are both read on it, so neither counts as the tablet's.
     """
+    arrived = datetime.now(UTC)
     checked = await checked_recording(
         audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
     )
@@ -257,7 +262,13 @@ async def store_take(
     stored = await store_recording(
         audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
-    now = datetime.now(UTC)
+    offset = (
+        noted_clock_offset(sent_recorded_at, arrived)
+        if origin is not None and sent_recorded_at is not None
+        else None
+    )
+    if offset is not None:
+        logger.warning("A tablet joining in session %s is %d ms off the server", session_id, offset)
     take = IRTake(
         id=str(uuid.uuid4()),
         project_id=project_id,
@@ -275,13 +286,10 @@ async def store_take(
         content_type=stored.content_type,
         verified_at=stored.verified_at,
         origin=origin,
-        recorded_at=recording_time(None if origin is not None else sent_recorded_at, now),
+        created_at=arrived,
+        recorded_at=recording_time(None if origin is not None else sent_recorded_at, arrived),
         duration_ms=checked.duration_ms,
-        device_clock_offset_ms=(
-            _noted_offset(session_id, sent_recorded_at, now)
-            if origin is not None and sent_recorded_at is not None
-            else None
-        ),
+        device_clock_offset_ms=offset,
     )
     try:
         async with db.begin_nested():

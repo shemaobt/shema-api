@@ -30,6 +30,7 @@ from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.takes import takes_of
+from app.utils.stored_time import as_utc
 from tests.baker import grant_room_app_role, make_app, make_role, make_user
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
@@ -50,7 +51,7 @@ from tests.room_harness import (
     the_room_speaks,
 )
 from tests.scene_rehearsal_harness import recording
-from tests.sentence_harness import re_record, spoken
+from tests.sentence_harness import re_record, spoken, take_named
 
 TEN_OH_TWO = "2026-10-20T10:02:00+00:00"
 WAV_FORMAT_OF_THE_TICKET = {
@@ -277,13 +278,15 @@ async def test_every_take_in_the_packet_carries_the_length_of_its_sound(
 
 
 async def test_a_take_sent_with_no_time_nor_length_keeps_the_servers_clock_and_its_measured_length(
-    client: httpx.AsyncClient, session: IRSession
+    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession
 ) -> None:
     before = the_second_now()
     answer = await kept(client, session.id, recording(2.5, 6))
     after = datetime.now(UTC)
 
     assert before <= instant(answer["recorded_at"]) <= after
+    row = await take_named(db_session, answer["take_id"])
+    assert instant(answer["recorded_at"]) == as_utc(row.created_at)
     assert answer["duration_ms"] == 2500
 
 
@@ -521,3 +524,70 @@ async def test_a_sentence_laid_into_a_part_makes_a_take_on_the_servers_clock_of_
     row = await db_session.get(IRTake, new_take_id)
     assert row is not None
     assert spliced["duration_ms"] == wav_ms(store.objects[row.storage_key])
+
+
+async def test_a_joined_part_from_a_tablet_whose_clock_reads_1970_is_kept_with_its_offset(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    origin = await a_scene_rehearsal(db_session, session)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    behind_ms = (epoch - datetime.now(UTC)).total_seconds() * 1000
+
+    answer = await kept(
+        client, session.id, recording(3, 22), origin=origin.id, recorded_at=epoch.isoformat()
+    )
+
+    row = await take_named(db_session, answer["take_id"])
+    assert row.device_clock_offset_ms is not None
+    assert abs(row.device_clock_offset_ms - behind_ms) <= 5_000
+    (observed,) = await consultant_read(client, consultant, session.id)
+    assert observed["device_clock_offset_ms"] == row.device_clock_offset_ms
+
+
+async def test_a_length_no_recording_can_have_is_refused_and_nothing_is_kept(
+    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    answer = await send(client, session.id, b"bytes que o ffprobe nao le", duration_ms=2**31)
+
+    assert answer.status_code == 422, answer.text
+    assert await takes_of(db_session, session.id) == []
+    assert store.objects == {}
+
+
+@pytest.mark.parametrize("edge", ["0001-01-01T00:00:00+01:00", "9999-12-31T23:59:59-01:00"])
+async def test_a_recording_time_with_no_utc_instant_is_refused(
+    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession, edge: str
+) -> None:
+    answer = await send(client, session.id, recording(3, 23), recorded_at=edge)
+
+    assert answer.status_code == 422, answer.text
+    assert "code" not in answer.json()
+    assert await takes_of(db_session, session.id) == []
+
+
+class SlowBucket(MemoryStore):
+    """A bucket that takes its time, as GCS does on a bad day."""
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        await asyncio.sleep(2)
+        await super().put(key, data, content_type)
+
+
+async def test_a_joined_parts_offset_does_not_count_the_time_spent_storing_it(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(takes_service, "_store", lambda *_, **__: SlowBucket())
+    origin = await a_scene_rehearsal(db_session, session)
+    behind = (datetime.now(UTC) - timedelta(minutes=8)).isoformat()
+
+    await kept(client, session.id, recording(3, 24), origin=origin.id, recorded_at=behind)
+
+    (observed,) = await consultant_read(client, consultant, session.id)
+    assert abs(observed["device_clock_offset_ms"] - -480_000) < 1_000
