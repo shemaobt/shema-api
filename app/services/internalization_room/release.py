@@ -70,6 +70,7 @@ from app.services.internalization_room.sessions import (
     refuse_if_archived,
 )
 from app.services.internalization_room.takes import current_parts, is_wav, takes_of
+from app.utils.stored_time import as_utc
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
@@ -83,8 +84,9 @@ from app.services.internalization_room.takes import current_parts, is_wav, takes
 #: note gone from every finding, in ``findings`` and in the superseded attempts alike: a
 #: consumer diffing the two versions finds one key gone from every finding and nothing renamed.
 #: And to v0.7 with the ``comprehension`` block gone, and its open points with it from
-#: ``open_questions``: the room no longer reads practice or probes (ADR 0056).
-SCHEMA_VERSION = "tripod.internalization-release.v0.7"
+#: ``open_questions``: the room no longer reads practice or probes (ADR 0056). And to v0.8 with
+#: ``duration_ms`` on every take, and ``recorded_at`` its **Recording time** (ADR 0072).
+SCHEMA_VERSION = "tripod.internalization-release.v0.8"
 
 #: The whole of what a facilitator's code can set aside, and the one place that says so. They
 #: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
@@ -238,7 +240,8 @@ def _take_view(take: IRTake) -> dict[str, Any]:
         "size_bytes": take.size_bytes,
         "content_type": take.content_type,
         "verified": take.verified_at is not None,
-        "recorded_at": take.created_at.isoformat() if take.created_at else None,
+        "recorded_at": as_utc(take.recorded_at).isoformat(),
+        "duration_ms": take.duration_ms,
     }
 
 
