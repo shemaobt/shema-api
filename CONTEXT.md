@@ -447,7 +447,7 @@ The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the wor
 _Avoid_: checking turn, Team turn
 
 **Scene frase** (`ir_scene_frases`):
-One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase.
+One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase, and so is a frase whose span strictly overlaps a current frase of its attempt unless it replaces that frase (touching edges stand).
 _Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
 
 **Restart** (`ir_scene_restarts`; «recomeçar a tradução»):
