@@ -280,6 +280,44 @@ async def test_a_frase_with_no_words_is_refused_and_becomes_no_frase(
     assert [call.get("language") for call in room.heard] == ["pt"]
 
 
+@pytest.mark.parametrize("lang", ["pt", "en"])
+async def test_a_frase_is_heard_in_the_sessions_language(
+    room: Room, db_session: AsyncSession, lang: str
+) -> None:
+    session_id = await a_session(db_session, language=lang)
+    rehearsal_id = await recorded(room, session_id)
+
+    kept = await translate(room, session_id, rehearsal_id, (0, 5000), recording(1, 100))
+
+    assert kept.status_code == 200, kept.text
+    assert [call.get("language") for call in room.heard] == [lang]
+
+
+async def test_a_frase_translated_again_keeps_the_earlier_one_and_its_audio_as_history(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    places = [(0, 4000), (4000, 9000), (9000, 13000), (13000, 17000)]
+    *_, third, _fourth = await translated(room, session_id, rehearsal_id, places)
+    earlier_bytes = recording(1, 102)
+    assert earlier_bytes in room.bucket.objects.values()
+
+    again = await translate(
+        room, session_id, rehearsal_id, (9000, 13000), recording(1, 950), replaces=third
+    )
+
+    assert again.status_code == 200, again.text
+    frases = await frases_read_by_b(room, session_id)
+    assert current(frases) == places
+    replacing = next(
+        f["frase_id"] for f in frases if f["replaced_by"] is None and f["starts_ms"] == 9000
+    )
+    assert {f["frase_id"]: f["replaced_by"] for f in frases}[third] == replacing
+    assert await count(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == 5
+    assert earlier_bytes in room.bucket.objects.values()
+
+
 async def test_a_sent_rehearsal_takes_no_frase_and_is_still_heard(
     room: Room, db_session: AsyncSession
 ) -> None:
