@@ -26,14 +26,17 @@ from app.services.internalization_room.sessions import (
     back_translation_of,
     get_session,
     report_playback,
+    save_back_translation,
 )
 from tests.release_harness import PREFIX, ensaio_take
 from tests.room_harness import (
     PART_MS,
+    PLAYBACK_BLOCKER,
     played_every_part,
     press_terminei,
     record_the_part_again,
     rehearsed_in_parts,
+    release_blockers,
     release_packet,
     room_client,
     tell_back_about,
@@ -66,7 +69,7 @@ def _entry(take_id: str, played: list[list[int]], length_ms: int = PART_MS) -> d
 
 def _heard(played: list[list[int]], length_ms: int) -> bool:
     state = BackTranslationState(played_by_take=[_entry("parte", played, length_ms)])
-    return unheard_parts(state, ["parte"]) == []
+    return unheard_parts(state, [IRTake(id="parte")], []) == []
 
 
 def _with_holes(length_ms: int, holes: int, hole_ms: int) -> list[list[int]]:
@@ -79,13 +82,17 @@ async def _a_part_measured_at(db: AsyncSession, part: IRTake, length_ms: int) ->
     await db.commit()
 
 
-async def _a_part_told_to(db: AsyncSession, ends_ms: int) -> tuple[IRSession, IRTake]:
+async def _a_part_never_told(db: AsyncSession) -> tuple[IRSession, IRTake]:
     session, _ = await rehearsed_in_parts(db, 0)
     part = ensaio_take(
         session.id, scope="parte-1", ordinal=1, sha256="d" * 64, project_id=session.project_id
     )
     db.add(part)
     await db.commit()
+    return session, part
+
+
+async def _told_to(db: AsyncSession, session: IRSession, part: IRTake, ends_ms: int) -> None:
     await capture_segment(
         db,
         session,
@@ -95,7 +102,18 @@ async def _a_part_told_to(db: AsyncSession, ends_ms: int) -> tuple[IRSession, IR
         bridge_take_id="retro-1",
         transcript="a parte contada de volta",
     )
+
+
+async def _a_part_told_to(db: AsyncSession, ends_ms: int) -> tuple[IRSession, IRTake]:
+    session, part = await _a_part_never_told(db)
+    await _told_to(db, session, part, ends_ms)
     return session, part
+
+
+async def _the_door_says(client: httpx.AsyncClient, session_id: str) -> list[str]:
+    answered = await client.post(f"{PREFIX}/sessions/{session_id}/back-translation/listened-whole")
+    assert answered.status_code == 200, answered.text
+    return answered.json()["unheard_take_ids"]
 
 
 async def _listened(
@@ -191,7 +209,7 @@ def test_a_sentence_laid_into_a_part_is_heard_under_the_same_rule() -> None:
                 }
             ],
         )
-        return unheard_parts(state, ["parte-nova"])
+        return unheard_parts(state, [IRTake(id="parte-nova")], [])
 
     five_stretches_two_tenths_apart = [
         [1000, 1440],
@@ -290,6 +308,75 @@ async def test_a_part_with_no_measured_length_is_never_shorter_than_its_told_end
     )
 
 
+async def test_a_short_length_reported_before_anything_was_told_never_opens_the_part(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, part = await _a_part_never_told(db_session)
+    await _listened(client, session.id, _entry(part.id, [[0, 1]], 1))
+    await _listened(client, session.id, _entry(part.id, [[0, 2000]], PART_MS))
+
+    await _told_to(db_session, session, part, PART_MS)
+    finished = await press_terminei(client, session.id)
+
+    assert finished.json()["refusal"] == "PART_UNHEARD", (
+        "a parte passava com 2 s de 61 tocados porque o comprimento curto ficou guardado"
+    )
+    assert await _the_door_says(client, session.id) == [part.id]
+
+
+async def test_a_length_stored_before_this_rule_is_read_against_the_take_s_measured_length(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (a,) = await rehearsed_in_parts(db_session, 1)
+    await _a_part_measured_at(db_session, a, PART_MS)
+    state = back_translation_of(session)
+    state.played_by_take = [PlayedTake(**_entry(a.id, [[0, 2000]], 2000))]
+    await save_back_translation(db_session, session, state)
+
+    finished = await press_terminei(client, session.id)
+
+    assert finished.json()["refusal"] == "PART_UNHEARD"
+    assert await _the_door_says(client, session.id) == [a.id]
+    assert PLAYBACK_BLOCKER in await release_blockers(db_session, session)
+
+
+async def test_a_report_landing_beside_another_never_restores_a_short_length(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    session, (a, b) = await rehearsed_in_parts(db_session, 2)
+    await _a_part_measured_at(db_session, a, PART_MS)
+    state = back_translation_of(session)
+    state.played_by_take = [PlayedTake(**_entry(a.id, [[0, 2000]], 2000))]
+    await save_back_translation(db_session, session, state)
+    async with rival_factory() as flat_db, rival_factory() as parts_db:
+        flat = await get_session(flat_db, session.id)
+        named = await get_session(parts_db, session.id)
+        flat_state, named_state = back_translation_of(flat), back_translation_of(named)
+        await report_playback(
+            flat_db,
+            flat,
+            flat_state,
+            played_by_take=[],
+            played_ranges=[(0, PART_MS)],
+            clip_duration_ms=PART_MS,
+        )
+        await report_playback(
+            parts_db,
+            named,
+            named_state,
+            played_by_take=[PlayedTake(**_entry(b.id, [[0, PART_MS]]))],
+            played_ranges=[],
+            clip_duration_ms=None,
+        )
+    await db_session.refresh(session)
+
+    assert await _the_door_says(client, session.id) == [a.id], (
+        "a escrita concorrente devolvia o comprimento curto e a parte passava com 2 s tocados"
+    )
+
+
 async def test_a_part_with_no_measured_length_is_heard_against_the_shortest_length_reported(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -357,6 +444,6 @@ async def test_two_reports_landing_together_keep_the_listening_each_one_brought(
 
     async with rival_factory() as fresh_db:
         stored = back_translation_of(await get_session(fresh_db, session.id))
-    assert unheard_parts(stored, [a.id, b.id]) == [], (
+    assert unheard_parts(stored, [a, b], []) == [], (
         "o relato que leu antes gravava por cima, e a parte ouvida pelo outro sumia"
     )

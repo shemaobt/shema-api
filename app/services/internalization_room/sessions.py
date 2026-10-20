@@ -30,7 +30,6 @@ from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
-    IRSegment,
     IRSession,
     IRSessionStatus,
     IRTake,
@@ -1214,10 +1213,7 @@ def _changed(read: CheckRound, wanted: CheckRound) -> dict[str, Any]:
 def _played_forward(
     read: list[PlayedTake], wanted: list[PlayedTake], fresh: list[PlayedTake]
 ) -> list[PlayedTake]:
-    if wanted == read:
-        return fresh
-    retired = {entry.take_id for entry in read} - {entry.take_id for entry in wanted}
-    return _added_up([entry for entry in fresh if entry.take_id not in retired], wanted)
+    return fresh if wanted == read else _added_up(fresh, wanted)
 
 
 def _added_up(stored: list[PlayedTake], reported: list[PlayedTake]) -> list[PlayedTake]:
@@ -1231,12 +1227,6 @@ def _added_up(stored: list[PlayedTake], reported: list[PlayedTake]) -> list[Play
             clip_duration_ms=min(lengths, default=0),
         )
     return list(by_take.values())
-
-
-def _against_its_take(entry: PlayedTake, take: IRTake, told: list[IRSegment]) -> PlayedTake:
-    told_end = max((one.ends_ms for one in told if one.take_id == take.id), default=0)
-    length = take.duration_ms or max(entry.clip_duration_ms, told_end)
-    return entry.model_copy(update={"clip_duration_ms": length})
 
 
 def _merged_forward(
@@ -1310,13 +1300,10 @@ async def report_playback(
     each part ends and on leaving, so a report names the parts it holds and no more; replacing
     on it erased a part an earlier report heard, and one tablet's report erased another's on the
     same session, and it adds up again when another report landed first. A take's spans are kept
-    joined only where they touch, so the rule can still see a gap. Its length is the take's own
-    measured length whenever the take has one, never the tablet's, whose player can still
-    answer with the previous clip's length when a part ends; a take with none is measured by
-    the shortest length reported, as her `applyHeard`, never below the end of the furthest
-    stretch told on it, and a zero is no measurement. What is kept is the
-    listening to the session's current parts only, the set the gate asks of: a part recorded
-    again is a new take, and its old take's listening is about audio nobody will hear again.
+    joined only where they touch, so the rule can still see a gap, and its length is the
+    shortest reported, as her `applyHeard`; a zero is no measurement. That length is stored and
+    never read as is: every reader goes through `part_length`, and asks of the current parts
+    only, so the entry of a part recorded again stays stored and is never read again.
 
     **A report with no part named takes nothing away.** An older build sends the flat pair and
     nothing else, and the two builds meet on one session when a team changes tablet mid-passage.
@@ -1335,12 +1322,7 @@ async def report_playback(
     """
     told = await final_segments(db, session.id)
     if played_by_take:
-        parts = {part.id: part for part in current_parts(await takes_of(db, session.id))}
-        state.played_by_take = [
-            _against_its_take(entry, parts[entry.take_id], told)
-            for entry in _added_up(state.played_by_take, played_by_take)
-            if entry.take_id in parts
-        ]
+        state.played_by_take = _added_up(state.played_by_take, played_by_take)
     state.played_ranges = [[start, end] for start, end in played_ranges]
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})

@@ -37,20 +37,24 @@ Decided, as hers except for the length (ENG-1419):
   cannot be about this clip") goes: the report names its take (ADR 0017), so it can no longer
   be about other audio.
 - A part's length is its take's own measured length (`duration_ms`, ENG-1273, ADR 0072)
-  whenever the server has one, and it is stored on every report in place of the length the
-  tablet sent. Only a take with none is measured by the reports: the shortest positive length
-  reported, as hers, but never below the end of the furthest stretch told on that take. Here
+  whenever the server has one. Only a take with none is measured by the reports: the shortest
+  positive length reported, as hers, but never below the end of the furthest stretch standing
+  on that take now. The rule lives where the length is read, in one function every reader
+  calls (the gate, the listen door, the untranslated parts, the packet, the dossier, the pause
+  past the end, a laid-in sentence's `heard_before`); the stored number is never read as is,
+  so a row stored before this rule, a part told after its last report, and a write that lands
+  beside another are all read the same way. Here
   ours departs from her `applyHeard`: her tablet trusts its own player, while our server knows
   the recording better than the tablet, whose player can still answer with the previous clip's
   length when a part ends. One such length took as the shortest opened a part for good with 2 s
   of 61 played, hid an untranslated tail on the listen door, and turned the pause past the end
   into a permanent refusal.
 - A report with parts adds to what is stored, per take: spans are unioned and kept joined where
-  they touch, and only entries for the session's current parts are kept, the set the gate asks
-  of. A flat
-  report still takes nothing away. Two reports landing together add up too: the write that read
-  first adds its entries onto the one that landed. This supersedes "a report with parts
-  replaces, it does not merge".
+  they touch. Only the current parts' entries are ever read, so the packet carries the
+  listening to the parts Refine receives and an old take's entry is simply never read again.
+  A flat report still takes nothing away. Two reports landing together add up too: the write
+  that read first adds its entries onto the one that landed. This supersedes "a report with
+  parts replaces, it does not merge".
 - ADR 0070's listen door is the tablet's reporting door: it stores and checks nothing, as
   before, and every answer now carries `unheard_take_ids`, so the tablet never counts by itself
   and the dossier, the release, the refusal and the tablet read one answer.
@@ -64,6 +68,5 @@ would let one inflated measurement block a team that listened.
 
 Consequences: stored reports are re-read under the new rule with no migration. A session in
 flight that passed with several short holes adding past 0.75 s is now refused `PART_UNHEARD`,
-and the team hears that part again. The stored length of a take is corrected on the next
-report about it. On a take with no measured length, one short report still lowers the bar
-for good, down to its told end.
+and the team hears that part again. On a take with no measured length, every take uploaded
+before ENG-1273, one short report still lowers the bar for good, down to its told end.

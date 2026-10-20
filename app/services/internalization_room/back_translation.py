@@ -417,7 +417,42 @@ def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
     return sorted({stretch.take_id for stretch in stretches})
 
 
-def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) -> list[str]:
+def part_length(part: IRTake, played: list[PlayedTake], stretches: list[IRSegment]) -> int:
+    """How long a part runs, for every reader of the listening (ADR 0074).
+
+    The take's own measured length whenever it has one, never a length a report sent: the
+    tablet's player can still answer with the previous clip's length when a part ends. A take
+    with none goes by the length its reports stored, never below the end of the furthest
+    stretch standing on it now. With neither, nothing is known and the answer is zero.
+    """
+    if part.duration_ms:
+        return part.duration_ms
+    reported = max(
+        (entry.clip_duration_ms for entry in played if entry.take_id == part.id), default=0
+    )
+    if not reported:
+        return 0
+    told_to = max((one.ends_ms for one in stretches if one.take_id == part.id), default=0)
+    return max(reported, told_to)
+
+
+def listening_to_the_parts(
+    played: list[PlayedTake], parts: list[IRTake], stretches: list[IRSegment]
+) -> list[PlayedTake]:
+    """What was played of each current part, each against `part_length` rather than as stored."""
+    by_id = {part.id: part for part in parts}
+    return [
+        entry.model_copy(
+            update={"clip_duration_ms": part_length(by_id[entry.take_id], played, stretches)}
+        )
+        for entry in played
+        if entry.take_id in by_id
+    ]
+
+
+def unheard_parts(
+    state: BackTranslationState, parts: list[IRTake], stretches: list[IRSegment]
+) -> list[str]:
     """Which parts of the rehearsal the team has no evidence of having heard, sorted.
 
     Empty is heard. The question is asked once per part and answered per part, because that is
@@ -426,9 +461,9 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
     to every part at once, and the answer could never say which part to send the team back to.
 
     A part is heard when an entry names it and that entry is heard through *that part's* own
-    length under her rule. Both numbers are required rather than either: a length with nothing
-    played is a report that the team played nothing at all, and spans with no length cannot be
-    checked against anything.
+    length (`part_length`) under her rule. Both numbers are required rather than either: a
+    length with nothing played is a report that the team played nothing at all, and spans with
+    no length cannot be checked against anything.
 
     Entries naming recordings the stretches no longer name are ignored rather than refused.
     They are the residue of a part the team recorded again, about audio no stretch is a slice
@@ -439,15 +474,16 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
     row written before the parts were named names every part and the team plays it through
     again (ADR 0017).
     """
+    listening = listening_to_the_parts(state.played_by_take, parts, stretches)
     heard = {
         entry.take_id
-        for entry in state.played_by_take
+        for entry in listening
         if entry.played_ranges
         and entry.clip_duration_ms
         and _heard_through(entry.played_ranges, 0, entry.clip_duration_ms)
     }
     laid = {sentence.take_id: sentence for sentence in state.sentences}
-    played = {entry.take_id: entry.played_ranges for entry in state.played_by_take}
+    played = {entry.take_id: entry.played_ranges for entry in listening}
 
     def is_heard(take_id: str) -> bool:
         sentence = laid.get(take_id)
@@ -457,7 +493,7 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
             played.get(take_id, []), sentence.starts_ms, sentence.ends_ms
         )
 
-    return sorted(take_id for take_id in set(rehearsal_take_ids) if not is_heard(take_id))
+    return sorted(part.id for part in parts if not is_heard(part.id))
 
 
 UNTRANSLATED_MIN_MS = 500
@@ -480,15 +516,17 @@ def untranslated_parts(
     Handed what the tablet played, a stretch of half a second or more that no frase covers is
     one too, played from where it starts: her rule ii (`untranslated.ts:15-65`), which stops
     only the check the room runs by itself. The team's «terminei» is their word that nothing
-    was said there, so the finish never hands it. The length is the one the tablet measured
-    playing the part, and only a WAV part's is trusted, as hers trusts only a WAV clip's.
+    was said there, so the finish never hands it. The length is `part_length`, and only a WAV
+    part's is trusted, as hers trusts only a WAV clip's.
 
     A part is a scene of the join, numbered by its place among the numbered current parts, as
     the voice numbers a part; a part recorded whole is no scene and has no number, which is
     never guessed.
     """
     lengths = {
-        entry.take_id: entry.clip_duration_ms for entry in played or [] if entry.clip_duration_ms
+        part.id: length
+        for part in parts
+        if played is not None and (length := part_length(part, played, told))
     }
     found = []
     position = 0

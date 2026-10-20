@@ -165,6 +165,8 @@ async def lay_in_a_sentence(
         duration_ms=await measure_ms_bounded(spliced.audio),
     )
     db.add(take)
+    state = back_translation_of(session)
+    heard_before = not unheard_parts(state, [part], await final_segments(db, session.id))
     old_end = segment.ends_ms
     shift = spliced.ends_ms - old_end
     for one in await current_segments(db, session.id):
@@ -178,8 +180,6 @@ async def lay_in_a_sentence(
         elif one.ends_ms >= old_end:
             one.ends_ms += shift
         one.take_id = take.id
-    state = back_translation_of(session)
-    heard_before = not unheard_parts(state, [part.id])
     state.sentences.append(
         LaidInSentence(
             sentence_id=sentence_id,

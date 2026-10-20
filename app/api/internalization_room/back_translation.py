@@ -349,7 +349,7 @@ async def listened_whole(
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
     parts = current_parts(await takes_of(db, session.id))
-    unheard = room.unheard_parts(state, [part.id for part in parts])
+    unheard = room.unheard_parts(state, parts, final)
     if (
         await the_sentence_awaiting(db, session) is not None
         or room.first_untold(final) is not None
@@ -414,7 +414,7 @@ async def _finished(
 
     takes = await takes_of(db, session.id)
 
-    unheard = room.unheard_parts(state, [part.id for part in current_parts(takes)])
+    unheard = room.unheard_parts(state, current_parts(takes), final)
     if unheard:
         _, line = process_line("P", "unheard", session.language)
         return BackTranslationVerdictResponse(

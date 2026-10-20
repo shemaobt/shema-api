@@ -51,6 +51,7 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
     findings_remaining,
     frase_numbers,
+    listening_to_the_parts,
     rehearsed_parts,
     unheard_parts,
 )
@@ -475,7 +476,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = rehearsed_parts(stretches)
-    unheard = unheard_parts(telling_back, [part.id for part in parts])
+    unheard = unheard_parts(telling_back, parts, stretches)
     if rehearsed and unheard:
         blockers.append("playback_did_not_cover_the_clip")
 
@@ -512,7 +513,8 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
             ],
             "findings": [_finding_view(finding) for finding in telling_back.findings],
             "played_by_take": [
-                entry.model_dump(mode="json") for entry in telling_back.played_by_take
+                entry.model_dump(mode="json")
+                for entry in listening_to_the_parts(telling_back.played_by_take, parts, stretches)
             ],
             "superseded_attempts": [_attempt_view(attempt) for attempt in telling_back.superseded],
             "superseded_segments": [_segment_view(segment) for segment in replaced],
