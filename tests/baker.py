@@ -248,6 +248,13 @@ def _next_language_code() -> str:
     return f"{next(_language_codes) % 1000:03d}"
 
 
+_emails = itertools.count()
+
+
+def an_email() -> str:
+    return f"user{next(_emails)}@example.com"
+
+
 async def a_language(
     db: AsyncSession, *, name: str | None = None, code: str | None = None
 ) -> Language:

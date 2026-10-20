@@ -46,6 +46,7 @@ from app.services.internalization_room.sessions import (
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
     a_language,
+    an_email,
     make_project,
     make_project_user_access,
     make_user,
@@ -90,14 +91,14 @@ def team_headers(credential: str) -> dict[str, str]:
 
 
 async def a_claimed_device(
-    db: AsyncSession, *, email: str = "fac@example.com", language_name: str | None = None
+    db: AsyncSession, *, email: str | None = None, language_name: str | None = None
 ) -> tuple[Project, str]:
     """A device linked to a project, and the credential it calls the room with.
 
     `language_name` is the team's mother tongue.
     """
     project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
-        db, email=email, language_name=language_name, tablets=1
+        db, email=email or an_email(), language_name=language_name, tablets=1
     )
     return project, tablet.credential
 
