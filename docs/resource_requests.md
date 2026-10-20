@@ -820,10 +820,13 @@ consegue preencher"* — and never Karina's.
 - **The pen**: `_editing.require_editor` lets through `started_by` and **the Admin** —
   `is_platform_admin`, or this app's `admin` grant (OBT-522) — and nobody else, for the `PATCH`
   and the attachment. **The mesa and the Gestor read and answer 403 on writing, which revises
-  GATE-02 D4 (27/aug/2026)**; the revision is Daniel's, 23/sep/2026. Only the platform admin
+  GATE-02 D4 (27/aug/2026)**; the revision is Daniel's, 23/sep/2026. ~~Only the platform admin
   reaches these routes today: the `admin` role carries no capability of the frontend's table,
-  so `CanEditRequests` refuses it first — widening that is a re-emission of
-  `capabilities.json`, not a line here.
+  so `CanEditRequests` refuses it first.~~ **Since OBT-568 (6/oct/2026) the `admin` role carries
+  the Gestor's capabilities** (`ADMIN_CAPABILITIES` *is* `ROLE_CAPABILITIES["gestor"]`), so
+  `CanEditRequests` lets it through and the pen is `require_editor`'s alone, as the line above
+  says. Its reach in the **PME** is OBT-593's (Daniel, 19/oct/2026, OBT-592): every region as a
+  reader, and no project write but access — `docs/shema.md` §6.1.
 - **Submitting** compares the caller with `started_by`, not `created_by` (BE-18 with the right
   subject). The Admin who started an instance for a team submits it; one who did not, does not.
 - **Cancelling**: `POST /requests/{id}/cancel`, starter or Admin, drafts only (a submitted one

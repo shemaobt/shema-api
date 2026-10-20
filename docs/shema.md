@@ -908,8 +908,8 @@ behaviour on it.
 >   CHECK over the five stages a notice announces, not the form's native enum.
 > - **Who hears what is the door's own reading.** The decision reaches `started_by`; the arrival
 >   reaches `admin` off the `shema` grant and `gestor` off the form's; neither reaches the actor; the mesa
->   is told in the form. No region routing: the Admin and the Gestor reach none and read every
->   request (BE-24). A request with no project — the Admin's link (OBT-537), a card the board
+>   is told in the form. No region routing: the Gestor reaches no region, the Admin reaches every
+>   one as a reader (OBT-593), and both read every request (BE-24). A request with no project — the Admin's link (OBT-537), a card the board
 >   opened, a seed — rings nothing here, and an installation with no `shema` app rings nothing
 >   and refuses the form nothing.
 > - **The pointer is answered only to a reader who reaches the project.** A project's id is its
@@ -1097,11 +1097,31 @@ append-only `shema_scope_changes` (§6.10). Other doors still leave rows behind,
 paragraph makes harmless.
 
 **And a row counts only under a regional role — OBT-523 closed the converse.** An account
-holding no regional role reaches nothing whatever rows it has,
+holding no regional role reaches nothing **through the rows** whatever rows it has,
 without the table being read. Nothing deletes an account's rows when its regional role is
 revoked, and a seat or an operator can leave one behind; without this, the `admin`, `gestor`
 and `mesa` of §6.8 would reach a region by accident of data. The three regional roles reach
 exactly what they reached before.
+
+**The Admin reaches every region — as a reader, and by its role, not by a row** (OBT-593;
+Daniel, 19/oct/2026, OBT-592). The bancada of 14/oct found the account holding only `admin`
+with an empty Projetos screen, a 404 ficha and an empty prayer wall (PME-ACE-063, PME-ORA-002,
+INT-E2E-018/022/024/057): the rule above kept it out of the region axis for writing and, with
+it, out of every read. The scope is now two halves (`_scope.py`): `regional_scope_from_roles`
+is the rows under a regional role — unchanged, and still what a row left behind cannot widen —
+and `reading_scope` widens it to every region for `COORDINATION_EVERYWHERE`, the same tuple
+that already made the Admin read the truth of a sensitive place everywhere (OBT-528, confirmed
+8/oct). So the record, the collection, the wall, the audit trail and the notification pointer
+answer the Admin what they answer the coordination, truth included. **What it writes is the
+other half**: `Readership.writes` is the regional reach alone — nothing for the Admin by itself,
+its own regions for an account that is also a coordinator — and `save_project` and
+`create_project` refuse outside it with a sentence of the Admin's own, after the scope's 404
+(`refuse_admin_writes`, beside the Resource Circle's). The leader's link, the import and the
+withdrawal were never the Admin's (`CoordinatorUser`) and stay so; the roster is still
+`RosterReach`'s. On the wire the Admin's `regionScope` is `null`, as the installation admin's.
+*Not changed and named for the decision's owner:* the Admin releases a sensitive project's
+prayer request (§6.12, OBT-575) and imports a file (BE-14) through `readership.coordination`,
+both writes that predate OBT-592's *writes only access*.
 
 ### 6.2 What the region scope is *not* allowed to become
 
@@ -1568,8 +1588,8 @@ leaving shape too, built for its reader.
 
 **A notification that points at a project leaks its slug** (OBT-541) — *true until OBT-552, which made every id an opaque UUID; the rule below still holds and now costs nothing.* A project's id was the
 export slug, `<language>-<place>`, so a notice that carries it tells its reader where a project
-is — and the resource-request form's arrival reaches the Admin and the Gestor, who reach no
-region. `list_notification_panel.py` answers a request notice's `projectId` only to a reader the
+is — and the resource-request form's arrival reaches the Admin and the Gestor; the Gestor reaches
+no region and the Admin, since OBT-593, every one. `list_notification_panel.py` answers a request notice's `projectId` only to a reader the
 project is inside the scope of, or who is one of its live members, through `within_scope` and
 `live_membership_ids`; everybody else gets `null`, which is §6.1's answer for a project out of
 scope. The notification row itself carries no slug and no place in its title or body.
@@ -2016,7 +2036,8 @@ the mesa was refused at the door of a console it now belongs to. Six rules.
   (FE-56, 30/sep/2026) retired both doors with the form's access screen. The concession lives
   in the PME since OBT-543 (§6.10), which also closed `/api/roles` to the two apps for everyone
   else.
-- **`admin`, `gestor` and `mesa` reach no region** — §6.1's last paragraph.
+- **`gestor` and `mesa` reach no region, and `admin` reaches every one as a reader since
+  OBT-593** — §6.1's last two paragraphs.
 
 **Left to others, and named so nobody assumes them done.** ~~OBT-543: granting `admin` should
 grant it in both apps, and an `admin` held in the form passes `assert_can_manage_roles` there
