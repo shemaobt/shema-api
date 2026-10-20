@@ -1126,9 +1126,11 @@ been every region. For everybody but the Admin `WriteScope` is the value `Scope`
 OBT-593; for that account it is Asia. The leader's link, the import and the withdrawal were
 never the Admin's alone (`CoordinatorUser`) and stay so; the roster is still `RosterReach`'s.
 On the wire the Admin's `regionScope` is `null`, as the installation admin's.
-*Not changed and named for the decision's owner:* the Admin releases a sensitive project's
-prayer request (§6.12, OBT-575) through `readership.coordination`, a write that predates
-OBT-592's *writes only access* and did not move with this issue.
+*One write stays the Admin's, and it is decided:* the Admin releases a sensitive project's
+prayer request (§6.12, OBT-575) through `readership.coordination` — a write that predates
+OBT-592's *writes only access* and did not move with this issue. **Daniel, 20/oct/2026:** the
+Admin keeps releasing, an exception to decision 2 recorded as its complement in a comment on
+OBT-592. No code moves for it, and the test that says the Admin releases stands.
 
 ### 6.2 What the region scope is *not* allowed to become
 
