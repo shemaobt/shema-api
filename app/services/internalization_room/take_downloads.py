@@ -12,9 +12,9 @@ from app.models.internalization_room import (
     TakeDownloadsResponse,
 )
 from app.services.internalization_room.release import (
+    _latest_release,
     _mother_tongue,
     release_name,
-    releases_of_passage,
 )
 from app.services.internalization_room.takes import (
     DOWNLOAD_LINK_SECONDS,
@@ -29,13 +29,12 @@ from app.utils.stored_time import as_utc
 
 
 async def _release_id(db: AsyncSession, session: IRSession) -> str:
-    releases = (
-        []
+    latest = (
+        None
         if session.project_id is None
-        else await releases_of_passage(db, session.project_id, session.pericope)
+        else await _latest_release(db, session.project_id, session.pericope)
     )
-    if releases:
-        latest = releases[-1]
+    if latest is not None:
         return str(latest.packet.get("release_id") or latest.id)
     return release_name(await _mother_tongue(db, session), session.pericope, 1)
 
