@@ -470,6 +470,10 @@ _Avoid_: checking turn, Team turn
 One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase, and so is a frase whose span strictly overlaps a current frase of its attempt unless it replaces that frase (touching edges stand).
 _Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
 
+**Moved pause**:
+A **Scene frase** that replaces the rehearsal's last current frase from the same start to a new end. It is refused when the frase it names is not the last current one, when its new end passes the scene recording, or when the frase was replaced since the tablet read it. A frase that replaces another over the same place is that frase translated again, never a moved pause.
+_Avoid_: move-end, cut, split, resize
+
 **Restart** (`ir_scene_restarts`; «recomeçar a tradução»):
 A numbered mark beside a **Scene rehearsal** that sets its frases so far aside, keeping a copy of the record as it was. The rehearsal then has no current frases; a frase recorded before it and sent after it is set aside with the rest. Nothing is deleted.
 _Avoid_: reset, Zerar (the facilitator's, over the whole pericope), Recomeço
