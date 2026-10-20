@@ -29,6 +29,7 @@ from app.services.project.grant_user_access import grant_user_access
 from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
 from app.services.project.update_user_access_role import update_user_access_role
 from tests.baker import (
+    a_language,
     an_email,
     grant_facilitator_app_role,
     make_language,
@@ -391,7 +392,7 @@ async def test_a_role_the_column_already_holds_still_denies_rather_than_grants(c
 async def test_two_default_users_reached_through_an_organization_get_two_different_org_slugs(
     db_session,
 ):
-    language = await make_language(db_session, name="Lingua", code="001")
+    language = await a_language(db_session)
     team = await make_project(db_session, language.id, name="Team")
     await a_user_via_organization(db_session, team)
     await a_user_via_organization(db_session, team)
