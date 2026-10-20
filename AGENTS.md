@@ -90,7 +90,7 @@ aliases list under `app/services/internalization_room/canon/vendor/` — moves o
 `scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
 beside the copy. It keeps the canon it replaces, with the element labels, under
-`canon/kept/<pin>/`: a session reads the canon it opened with until its passage is approved.
+`canon/kept/<pin>/`: a session reads the canon it opened with while its session is live (not archived).
 Then it drops every kept tree whose pin it is not told to keep with `--keep`, the one it just
 made included: which pins an open session names needs a production read, and while production
 carries only tests the sync takes none. Never edit vendored
