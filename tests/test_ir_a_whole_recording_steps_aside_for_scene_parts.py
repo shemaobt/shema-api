@@ -244,3 +244,19 @@ async def test_terminei_is_not_refused_by_a_stored_verdict_whose_finding_is_on_t
     assert body["refusal"] is None
     assert body["finding_segment_id"] is None
     assert body["findings"] == []
+
+
+async def test_a_new_verdict_saved_keeps_the_finding_on_a_whole_that_stepped_aside(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, over_whole, parts = await _with_a_finding_on_the_whole(client, db_session)
+    state = await stored_telling_back(db_session, session)
+    state.analysed_segment_ids = []
+    await save_back_translation(db_session, await get_session(db_session, session.id), state)
+
+    answered = await press_terminei(client, session.id, report=_heard(parts))
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["refusal"] is None
+    kept = (await stored_telling_back(db_session, session)).findings
+    assert [f.segment_id for f in kept] == [over_whole.id]
