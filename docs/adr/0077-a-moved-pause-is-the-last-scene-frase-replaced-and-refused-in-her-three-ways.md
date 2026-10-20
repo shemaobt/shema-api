@@ -14,13 +14,16 @@ of hers to say why.
 Decided (ENG-1349):
 
 - A **Moved pause** is a frase posted through the existing frase door with `replaces`, whose
-  span differs from the span of the frase it names. There is no new route (Henok, 2026-10-19);
+  span differs from the span of its chain's newest version. Measured against the newest
+  version, not the version named, so a tablet that read the frase before a move cannot put the
+  pause back by translating the old frase again over its old place. There is no new route (Henok, 2026-10-19);
   her own move-end goes through her segment door with `supersedes` too.
 - It stands only when, in her order (her `moveEndVerdict`, `src/audio/moveEnd.ts` at 18fa7c4):
   1. the frase it names is still its chain's newest version, else `PAUSE_CANNOT_STAND_THERE`;
-  2. that frase is the last current frase of the rehearsal's current attempt, the one with the
-     greatest end and the later one on a tie, as the Ensaio Final reads "last", else
-     `PAUSE_ONLY_ON_THE_LAST_FRASE`;
+  2. that frase is the last standing frase of the attempt the move names, the one with the
+     greatest end, set-aside frases counted, else `PAUSE_ONLY_ON_THE_LAST_FRASE`. A move whose
+     restart has not landed yet is held and a move overtaken by a restart is set aside, as any
+     frase of that attempt is (ADR 0059);
   3. it keeps the frase's start and is at least 200 ms long, the Ensaio Final's shortest frase,
      else `PAUSE_CANNOT_STAND_THERE`;
   4. its end is inside the scene recording when its length is known, with no slack because the
@@ -32,8 +35,10 @@ Decided (ENG-1349):
 - The codes are the Ensaio Final's own moved-pause codes, answered 400 as there (the Definer,
   2026-10-19): one code per meaning on the wire, and the tablet already maps each to one of her
   three lines.
-- A frase that replaces another over that frase's own place is the frase translated again, and
-  keeps the chain walk to the newest version.
+- A frase over the place of its chain's newest version is that frase translated again, and keeps
+  the chain walk to the newest version. "Replaced since the tablet read it" is scoped to moving a
+  pause: two translations over the same place at once both land, the later chained onto the
+  earlier, and both stay as history, as ENG-1363 has it.
 
 Considered:
 
@@ -46,7 +51,8 @@ Considered:
 Consequences:
 
 - An offline tablet's second move against a frase already replaced is refused, where it used to
-  land at the chain's head. No client sent one before this change.
+  land at the chain's head, and so is a translation over the place a move left. No client sent
+  either before this change.
 - A frase another tablet appends after a move landed, from the old end, is a new frase, so this
   rule does not see it; it overlaps the moved frase and the overlap refusal answers it, and that
   tablet reads the list again.
