@@ -69,6 +69,9 @@ verbatim (`from` and `to` unchanged): a re-measured slice would be a new frase. 
 recording sent again for a stretch that already holds it is a resend and not a telling —
 nothing is superseded, nothing is counted and the stretch's answer is given again — because
 a freed idempotency key brings the same bytes back, and a count that ran ahead of the
-recordings would warn one telling early. Rejected: moving the lookup into `capture_segment`,
+recordings would warn one telling early. The replace door, which a frase told again uses,
+asks the same function (`is_a_resend`) by the same address, so a lost answer whose recording
+comes back under a new key, even at the id the first attempt had already replaced, is answered
+with the standing frase and nothing else. Rejected: moving the lookup into `capture_segment`,
 which would change the text seam and every service-level caller that writes two stretches at
 one slice on purpose.
