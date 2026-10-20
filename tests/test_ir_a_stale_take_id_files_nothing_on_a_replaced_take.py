@@ -12,6 +12,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import back_translation as bt_api
+from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
@@ -29,6 +31,7 @@ from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
 @pytest.fixture()
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     the_transcriber_says(monkeypatch, [])
+    monkeypatch.setattr(segments_api, "heard", bt_api.heard)
     nothing_is_read_ahead(monkeypatch)
     return the_bucket_is_in_memory(monkeypatch)
 
@@ -113,3 +116,33 @@ async def test_a_chunk_over_the_take_a_sentence_was_laid_in_over_files_nothing(
 
     assert current.status_code == 200, current.text
     assert len(await _stretch_ids(db_session, session.id)) == len(stretches) + 1
+
+
+async def test_a_correction_of_a_stretch_on_a_recording_set_aside_by_numbered_parts_writes_nothing(
+    db_session: AsyncSession, client: httpx.AsyncClient
+) -> None:
+    session, (whole, _) = await rehearsed_in_parts_of(db_session, [1, 1], unnumbered_first=True)
+    on_the_whole = await db_session.scalar(
+        select(IRSegment).where(IRSegment.session_id == session.id, IRSegment.take_id == whole.id)
+    )
+    assert on_the_whole is not None
+    stretches = await _stretch_ids(db_session, session.id)
+    tellings = await _telling_ids(db_session, session.id)
+
+    stale = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{on_the_whole.id}/replace",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": whole.id,
+            "starts_ms": str(on_the_whole.starts_ms),
+            "ends_ms": str(on_the_whole.ends_ms),
+        },
+        files={"file": ("de-novo.m4a", b"contado de novo", "audio/mp4")},
+    )
+
+    assert stale.status_code == 400, stale.text
+    assert stale.json()["code"] == "STRETCH_NO_LONGER_COUNTS"
+    assert await _stretch_ids(db_session, session.id) == stretches, (
+        "a correção escrevia uma versão sobre a gravação que as partes numeradas puseram de lado"
+    )
+    assert await _telling_ids(db_session, session.id) == tellings
