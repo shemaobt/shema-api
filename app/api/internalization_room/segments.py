@@ -168,6 +168,15 @@ async def replace(
     asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
 
+    **The same recording sent again is a resend, not one more correction.** A freed idempotency
+    key brings the same bytes back, and the room reads the frase standing at the slice sent, not
+    the id in the path: when that frase already holds the recording, nothing is transcribed,
+    replaced or counted and the answer is the frases as they stand. That is also the answer at
+    the id the first attempt already replaced — 200 with the standing frase, not 400
+    `STRETCH_NO_LONGER_COUNTS`, which a different recording sent there still gets.
+    `needs_person` is true when the stretch carries its mark, so a lost answer that asked for a
+    person asks again.
+
     A frase awaiting the translation of its re-recorded sentence is told again only at exactly
     the span the new sentence took; any other slice answers 400 `FRASE_AWAITS_ITS_TRANSLATION`.
     """
@@ -185,6 +194,9 @@ async def replace(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
+    retold = await room.current_stretch_at(
+        db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
+    )
     retro = await store_take(
         db,
         session_id=session.id,
@@ -200,25 +212,28 @@ async def replace(
     )
     await db.commit()
 
-    text = await heard(
-        audio_bytes,
-        language=room_language(session.language),
-        filename=file.filename,
-        mime_type=file.content_type,
-    )
-    if not text.strip():
-        raise WordlessTelling()
+    if room.is_a_resend(retold, retro):
+        crossed = await room.a_hard_stretch_stands(db, retold)
+    else:
+        text = await heard(
+            audio_bytes,
+            language=room_language(session.language),
+            filename=file.filename,
+            mime_type=file.content_type,
+        )
+        if not text.strip():
+            raise WordlessTelling()
 
-    _, crossed = await room.capture_and_note_a_hard_stretch(
-        db,
-        session,
-        take_id=rehearsal.id,
-        starts_ms=starts_ms,
-        ends_ms=ends_ms,
-        bridge_take_id=retro.id,
-        transcript=text,
-        replaces=segment,
-    )
+        _, crossed = await room.capture_and_note_a_hard_stretch(
+            db,
+            session,
+            take_id=rehearsal.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=retro.id,
+            transcript=text,
+            replaces=segment,
+        )
     nudge_stretches(session.project_id, warned=crossed)
     background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(

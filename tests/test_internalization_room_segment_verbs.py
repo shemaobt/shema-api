@@ -34,6 +34,7 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.hard_stretch_harness import a_new_recording
 from tests.room_harness import heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
@@ -689,6 +690,7 @@ async def _correct(
     stretch: dict[str, Any],
     *,
     saying: str | None = "Noemi mandou Rute voltar, e Rute foi junto.",
+    audio: bytes | None = None,
 ) -> httpx.Response:
     """The team explains one stretch again over the recording that did not move.
 
@@ -705,7 +707,7 @@ async def _correct(
         take_id=stretch["take_id"],
         starts_ms=stretch["starts_ms"],
         ends_ms=stretch["ends_ms"],
-        audio=b"contado de novo",
+        audio=audio or a_new_recording(),
     )
 
 
@@ -1041,3 +1043,166 @@ async def test_the_replace_answer_names_the_take_the_replacement_stored(
     stored = await _retro_take_ids(db_session, session_id) - first
     assert len(stored) == 1
     assert [one["bridge_take_id"] for one in answered.json()["segments"]] == [stored.pop()]
+
+
+# ---------------------------------------------------------------------------
+# The same recording sent again is a resend, not one more telling — ENG-1726
+# ---------------------------------------------------------------------------
+
+
+async def _transcripts(db: AsyncSession, session_id: str) -> list[str | None]:
+    db.expire_all()
+    return [one.transcript for one in await service.current_segments(db, session_id)]
+
+
+async def test_the_same_recording_sent_again_to_the_replace_door_is_a_resend_not_a_telling(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    first = await _correct(
+        client, session_id, whole, saying="a explicação refeita", audio=b"contando de novo"
+    )
+    standing = (await _units(client, session_id))[0]
+
+    resent = await _correct(
+        client, session_id, standing, saying="outra coisa", audio=b"contando de novo"
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == first.json(), "o reenvio da mesma gravação respondia como outra fala"
+    assert await _tellings(db_session, session_id) == [2], (
+        "a mesma gravação de volta contava como mais uma fala"
+    )
+    assert await _transcripts(db_session, session_id) == ["a explicação refeita"], (
+        "o reenvio trocava a explicação por uma cópia da mesma gravação"
+    )
+    assert client.said == ["outra coisa"], "o reenvio mandou transcrever o que já estava ouvido"  # type: ignore[attr-defined]
+
+
+async def test_the_replace_door_asks_the_one_function_that_says_what_a_resend_is(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import internalization_room as room
+
+    session_id, _, whole = await _one_told_stretch(client)
+    monkeypatch.setattr(room, "is_a_resend", lambda *_: True, raising=False)
+
+    answered = await _correct(
+        client, session_id, whole, saying="outra coisa", audio=b"uma gravacao diferente"
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert [one["segment_id"] for one in answered.json()["segments"]] == [whole["segment_id"]], (
+        "a porta da troca decidia o reenvio por conta própria"
+    )
+    assert await _tellings(db_session, session_id) == [1], (
+        "a porta da troca não perguntava à função que diz o que é um reenvio"
+    )
+
+
+async def test_a_resend_to_the_id_the_first_attempt_replaced_is_answered_with_the_standing_frase(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    first = await _correct(
+        client, session_id, whole, saying="a explicação refeita", audio=b"contando de novo"
+    )
+
+    resent = await _correct(
+        client, session_id, whole, saying="outra coisa", audio=b"contando de novo"
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == first.json(), (
+        "a resposta perdida, com a gravação de volta no id velho, era recusada como já trocada"
+    )
+    assert await _tellings(db_session, session_id) == [2]
+
+
+async def test_a_different_recording_after_a_resend_supersedes_and_counts_as_before(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    await _correct(client, session_id, whole, audio=b"contando de novo")
+    standing = (await _units(client, session_id))[0]
+    await _correct(client, session_id, standing, audio=b"contando de novo")
+    standing = (await _units(client, session_id))[0]
+    client.said.clear()  # type: ignore[attr-defined]
+
+    again = await _correct(
+        client, session_id, standing, saying="a terceira explicação", audio=b"contando outra vez"
+    )
+
+    assert again.status_code == 200, again.text
+    assert await _tellings(db_session, session_id) == [3], (
+        "uma gravação diferente deixou de contar depois de um reenvio"
+    )
+    assert await _transcripts(db_session, session_id) == ["a terceira explicação"]
+
+
+async def test_the_recording_an_old_frase_held_is_not_a_resend_to_its_replaced_id(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    await _correct(client, session_id, whole, audio=b"contando de novo")
+
+    refused = await _correct(client, session_id, whole, audio=b"o trecho inteiro")
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "STRETCH_NO_LONGER_COUNTS", (
+        "a gravação que a frase velha guardava passou por reenvio no id que já foi trocado"
+    )
+    assert await _tellings(db_session, session_id) == [2]
+
+
+async def test_the_recording_a_divided_frase_held_is_not_a_resend_to_the_divided_frase(
+    client: httpx.AsyncClient,
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    await _divide(client, session_id, whole["segment_id"], 8000)
+
+    refused = await _correct(client, session_id, whole, audio=b"o trecho inteiro")
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST", (
+        "a frase dividida respondeu como se a gravação dela ainda estivesse de pé"
+    )
+    assert len(await _units(client, session_id)) == 2
+
+
+async def test_a_recording_whose_first_attempt_came_back_wordless_is_heard_when_sent_again(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    wordless = await _correct(client, session_id, whole, saying=None, audio=b"contando de novo")
+    assert wordless.status_code == 422, wordless.text
+
+    resent = await _correct(
+        client, session_id, whole, saying="a explicação refeita", audio=b"contando de novo"
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert await _tellings(db_session, session_id) == [2], (
+        "a gravação que já estava guardada, sem palavras, foi tomada por reenvio"
+    )
+    assert await _transcripts(db_session, session_id) == ["a explicação refeita"]
+
+
+async def test_a_resend_of_the_correction_that_made_a_hard_stretch_still_asks_for_a_person(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, stretch = await _one_told_stretch(client)
+    for _ in range(RETELLS_BEFORE_A_WARNING - 2):
+        await _correct(client, session_id, stretch)
+        stretch = (await _units(client, session_id))[0]
+    crossing = await _correct(client, session_id, stretch, audio=b"a explicacao que cruzou")
+    assert crossing.json()["needs_person"] is True, crossing.text
+    stretch = (await _units(client, session_id))[0]
+
+    resent = await _correct(client, session_id, stretch, audio=b"a explicacao que cruzou")
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == crossing.json(), (
+        "a resposta que pedia uma pessoa se perdeu e o reenvio dizia que ninguém era preciso"
+    )
+    assert await _tellings(db_session, session_id) == [RETELLS_BEFORE_A_WARNING]
