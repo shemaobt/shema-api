@@ -398,27 +398,27 @@ async def listen_url(
 async def signed_listen_url(
     storage_key: str, content_type: str, *, settings: Settings | None = None
 ) -> str:
+    return await signed_url(storage_key, content_type, minutes=LISTEN_MINUTES, settings=settings)
+
+
+async def signed_url(
+    storage_key: str,
+    content_type: str,
+    *,
+    minutes: int,
+    disposition: str | None = None,
+    settings: Settings | None = None,
+) -> str:
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
+    named = {} if disposition is None else {"response_disposition": disposition}
     return await generate_signed_download_url(
         cfg.gcs_platform_bucket,
         storage_key,
-        expiry_minutes=LISTEN_MINUTES,
+        expiry_minutes=minutes,
         response_content_type=content_type,
-    )
-
-
-async def download_url(take: IRTake, filename: str, *, settings: Settings | None = None) -> str:
-    cfg = settings or get_settings()
-    if not cfg.gcs_platform_bucket:
-        raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
-    return await generate_signed_download_url(
-        cfg.gcs_platform_bucket,
-        take.storage_key,
-        expiry_minutes=DOWNLOAD_LINK_SECONDS // 60,
-        response_content_type=take.content_type,
-        response_disposition=f'attachment; filename="{filename}"',
+        **named,
     )
 
 
@@ -503,20 +503,21 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     return [take for take in takes if take.id in chosen]
 
 
-def part_keys(parts: list[IRTake]) -> dict[int | None, str]:
-    """The **Part key** of each current part, by its number: `whole`, then `S1`, `S2`, ... in order.
+def part_positions(parts: list[IRTake]) -> dict[int | None, int | None]:
+    """Each current part's position among the session's current parts, by the number it carries.
 
-    The same counting `mother_tongue_takes_of` does for a part's position.
+    The number the voice says and the **Part key** are both read off this: a rehearsal told
+    whole has no position, and the others count from one in reading order.
     """
-    keys: dict[int | None, str] = {}
-    position = 0
+    positions: dict[int | None, int | None] = {}
+    counted = 0
     for part in parts:
         if part.ordinal is None:
-            keys[None] = "whole"
+            positions[None] = None
         else:
-            position += 1
-            keys[part.ordinal] = f"S{position}"
-    return keys
+            counted += 1
+            positions[part.ordinal] = counted
+    return positions
 
 
 #: Where a declared part's key lives, and the device a text seam speaks for. A part declared
@@ -525,6 +526,11 @@ def part_keys(parts: list[IRTake]) -> dict[int | None, str]:
 TEXT_SEAM_PREFIX = "text-seam"
 TEXT_SEAM_DEVICE = "text-seam"
 TEXT_SEAM_CONTENT_TYPE = "text/plain"
+
+
+def is_declared(take: IRTake) -> bool:
+    """A part the text seam declared: an address with no bytes and no bucket object."""
+    return take.storage_key.startswith(f"{TEXT_SEAM_PREFIX}/")
 
 
 def _declared_key(session_id: str, key: str) -> str:
@@ -581,10 +587,10 @@ async def declared_parts_by_key(db: AsyncSession, session_id: str) -> dict[str, 
     """The parts a seam session declared, by the key her script names them with."""
     prefix = _declared_key(session_id, "")
     result = await db.execute(
-        select(IRTake).where(
-            IRTake.session_id == session_id,
-            IRTake.kind == IRTakeKind.ENSAIO,
-            IRTake.storage_key.startswith(prefix),
-        )
+        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.ENSAIO)
     )
-    return {take.storage_key.removeprefix(prefix): take for take in result.scalars()}
+    return {
+        take.storage_key.removeprefix(prefix): take
+        for take in result.scalars()
+        if is_declared(take)
+    }

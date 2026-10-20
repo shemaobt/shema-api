@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +19,10 @@ from app.services.internalization_room.release import (
 from app.services.internalization_room.takes import (
     DOWNLOAD_LINK_SECONDS,
     current_parts,
-    download_url,
     extension,
-    part_keys,
+    is_declared,
+    part_positions,
+    signed_url,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -39,14 +41,26 @@ async def _release_id(db: AsyncSession, session: IRSession) -> str:
 
 
 def _with_bytes(take: IRTake) -> bool:
-    return take.kind is IRTakeKind.ENSAIO and take.sha256 != ""
+    return take.kind is IRTakeKind.ENSAIO and not is_declared(take)
+
+
+def _link(take: IRTake, filename: str) -> Awaitable[str]:
+    return signed_url(
+        take.storage_key,
+        take.content_type,
+        minutes=DOWNLOAD_LINK_SECONDS // 60,
+        disposition=f'attachment; filename="{filename}"',
+    )
 
 
 async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloadsResponse:
     """The session's rehearsal takes named the way Refine receives them, with hour-long links."""
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    keys = part_keys(parts)
+    keys = {
+        ordinal: "whole" if position is None else f"S{position}"
+        for ordinal, position in part_positions(parts).items()
+    }
     release_id = await _release_id(db, session)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
@@ -63,7 +77,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
 
     names = [filename(take) for take in rehearsals]
     links = await asyncio.gather(
-        *(download_url(take, name) for take, name in zip(rehearsals, names, strict=True))
+        *(_link(take, name) for take, name in zip(rehearsals, names, strict=True))
     )
     live: list[TakeDownload] = []
     superseded: list[SupersededTakeDownload] = []

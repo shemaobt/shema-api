@@ -41,6 +41,6 @@ extension**, because ADR 0048 names compressed takes `.m4a`.
 
 Consequences: a leaked link works for an hour, four times longer than any other link the room
 signs. A list read before an approval names its files after the version before it until it is
-read again, so Refine matches by take id and sha256 and never by the name. Takes already stored
+read again, so Refine matches by take id and sha256 and never by the name. A take recorded after an approval downloads under the approved version's name until the next approval, as in her app (`releaseIdFor` is `max(1, finalizeCount)`); Refine's guard is the take's id and sha256, never the name, and the draft's badge (ENG-1235) and the Desk's row (ENG-1298) say that a draft is no longer approved as it stands. Takes already stored
 download under the new names with their bytes untouched. The name is the passage's, as the
 version is: a release another conversation of the same passage minted names this session's files.

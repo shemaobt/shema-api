@@ -49,6 +49,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
+    the_one_part_of,
 )
 from tests.room_harness import (
     nothing_is_read_ahead,
@@ -350,8 +351,6 @@ async def test_the_name_follows_the_passages_latest_release(client, db_session, 
     desk, _user = await at_the_desk(db_session, room_app, project)
     first_read = await read_downloads(client, desk, session.id)
     assert first_read["release_id"] == RELEASE_V1
-
-    from tests.release_harness import the_one_part_of
 
     again = await record_the_part_again(
         db_session,
