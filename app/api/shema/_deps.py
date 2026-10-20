@@ -120,6 +120,8 @@ from app.services.shema._scope import (
     RosterReach,
     granted_roles,
     readership,
+    reading_scope,
+    regional_scope_from_roles,
     scope_from_roles,
     session_roles,
 )
@@ -272,12 +274,29 @@ async def _consent_writer(
 ConsentWriter = Annotated[User, Depends(_consent_writer)]
 
 
-async def _scope(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:
+async def _regional(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:
+    """The reach of the caller's **regional** roles — the one read of the region table.
+
+    Resolved once per request and shared by :data:`Scope` and :data:`Reading`: the first widens
+    it for a role that reads every region, the second keeps it as what the Admin may write
+    (OBT-593). Two dependencies reading the same rows would be the defect
+    ``_scope.scope_from_roles`` was written to close, arriving by a third door.
+    """
+    return await regional_scope_from_roles(db, user, set(granted))
+
+
+#: The caller's regional reach, read once — what the Admin writes, and everybody else's scope.
+Regional = Annotated[RegionScope, Depends(_regional)]
+
+
+async def _scope(user: CurrentUser, granted: Granted, regional: Regional) -> RegionScope:
     """Resolve the caller's region scope, once, for a handler to hand down.
 
     Chained behind ``CurrentUser`` rather than beside it, so an account with no role in this
     app is refused by the app gate with the message that names the app, and only a member
-    gets as far as being asked how far they reach.
+    gets as far as being asked how far they reach. **It is the reach of a reader**
+    (``_scope.reading_scope``, OBT-593): every region for the Admin, the rows for everybody
+    else; a write asks :data:`Reading` what it may write.
 
     **The router receives this value and does nothing with it but pass it on.**
     ``docs/shema.md`` §6.2 refuses two temptations by name, and the first is a scope the
@@ -286,7 +305,7 @@ async def _scope(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:
     and a filter applied in a handler is a filter the next handler writes slightly
     differently.
     """
-    return await scope_from_roles(db, user, set(granted))
+    return reading_scope(regional, set(granted))
 
 
 #: The caller's reach, for a handler to pass straight into a service.
@@ -313,7 +332,9 @@ async def _may_apply(user: CurrentUser, granted: Granted) -> bool:
 MayApply = Annotated[bool, Depends(_may_apply)]
 
 
-async def _reading(user: CurrentUser, granted: Granted, scope: Scope) -> Readership:
+async def _reading(
+    user: CurrentUser, granted: Granted, scope: Scope, regional: Regional
+) -> Readership:
     """Where this caller reads the truth of a sensitive place — the reader of OBT-528.
 
     No database read of its own: :func:`_granted` and :func:`_scope` are resolved once per
@@ -325,7 +346,7 @@ async def _reading(user: CurrentUser, granted: Granted, scope: Scope) -> Readers
     (OBT-553, ``_health_audience.reads_team_health``) and, apart from it since OBT-571, the
     health writer (``_health_audience.in_health_audience``).
     """
-    reading = readership(scope, granted, platform_admin=user.is_platform_admin)
+    reading = readership(scope, granted, platform_admin=user.is_platform_admin, regional=regional)
     return reading._replace(
         withheld_prayer=reads_withheld_requests(granted, platform_admin=user.is_platform_admin),
         reads_health=reads_team_health(granted, platform_admin=user.is_platform_admin),
