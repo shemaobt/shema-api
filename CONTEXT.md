@@ -290,6 +290,10 @@ _Avoid_: passage, round, visit, visita, attempt
 A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
 _Avoid_: closed passage (a session done, which may hold no release), fechada, complete
 
+**Draft** (*rascunho*):
+The team's recording of a passage with its frases and telling-back, kept across openings: the live **Session** of that pericope and language holds it, and an approval leaves it open under its version until a new or dropped take un-approves it (ADR 0071). A Zerar archives it, and the next opening starts a new one.
+_Avoid_: rascunho final (the approved version's words on the screen), release (the record of an approval), session (what holds the draft, not the draft)
+
 **Inactive team** (*equipe inativa*):
 A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of the book is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
 _Avoid_: stalled, parada, idle, dormant
