@@ -18,6 +18,7 @@ from tests.scene_rehearsal_harness import (
     IR,
     Room,
     a_room,
+    count,
     frases_read_by_b,
     recorded,
     recording,
@@ -113,6 +114,9 @@ async def test_the_same_bytes_sent_again_are_still_the_same_frase(
     again = await translate(room, session_id, rehearsal_id, (0, 4000), audio)
 
     assert again.status_code == 200, again.text
+    assert [f["frase_id"] for f in again.json()["frases"]] == [
+        f["frase_id"] for f in first.json()["frases"]
+    ]
     assert await current_places(room, session_id) == [(0, 4000)]
 
 
@@ -205,3 +209,20 @@ async def test_a_frase_replacing_a_chain_by_the_version_it_had_is_kept_over_the_
 
     assert once_more.status_code == 200, once_more.text
     assert await current_places(room, session_id) == [(0, 5000)]
+
+
+async def test_a_late_frase_of_an_attempt_a_restart_closed_is_kept_set_aside_over_the_frase_it_set_aside(  # noqa: E501
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await translated(room, session_id, rehearsal_id, [(0, 4000)])
+    restarted = await restart(room, session_id, rehearsal_id)
+    assert restarted.status_code == 200, restarted.text
+    closing = restarted.json()["after_restart"]
+
+    late = await translate(room, session_id, rehearsal_id, (0, 4000), recording(1, 900))
+
+    assert late.status_code == 200, late.text
+    assert await current_places(room, session_id) == []
+    assert await count(db_session, "ir_scene_frases", "restart_id", closing) == 2
