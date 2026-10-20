@@ -723,12 +723,12 @@ class VerdictHeardResponse(BaseModel):
 
 
 class ListenedWholeResponse(BaseModel):
-    """What follows the team's full listen of the recording, before any «terminei».
+    """What follows a listening report, before any «terminei»: the parts still unheard, and more.
 
-    Only a joined recording is ever checked by itself, and only once a passage record: when
-    `automatic_check` is true the tablet says `fixed_line`, her N-2, reads «conferindo…» on
-    «terminei» and presses the finish itself, with no tap. Otherwise the tablet does what it
-    does after a listen today.
+    `unheard_take_ids` answers every report. Only a joined recording is ever checked by itself,
+    and only once a passage record: when `automatic_check` is true the tablet says
+    `fixed_line`, her N-2, reads «conferindo…» on «terminei» and presses the finish itself,
+    with no tap. Otherwise the tablet does what it does after a listen today.
     """
 
     session_id: str

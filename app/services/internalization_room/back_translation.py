@@ -395,9 +395,9 @@ def joined_spans(played: Iterable[tuple[int, int]], *, within_ms: int = 0) -> li
 def _heard_through(played: list[tuple[int, int]], starts_ms: int, ends_ms: int) -> bool:
     """Whether the team heard [starts_ms, ends_ms] of one take, under her rule (ADR 0074).
 
-    The stretches are joined before they are cut to the window, as her server keeps them, and
-    what is left unplayed adds up wherever it falls: eight holes of 0.7 s are 5.6 s nobody
-    heard, however short each one is.
+    The stretches are joined before they are cut to the window, as her server keeps them, so a
+    gap of 250 ms or less costs nothing; the gaps left after the join add up wherever they fall:
+    eight holes of 0.7 s are 5.6 s nobody heard, however short each one is.
     """
     length = ends_ms - starts_ms
     covered = sum(

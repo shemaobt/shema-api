@@ -25,18 +25,29 @@ Hers, at her freeze 18fa7c4:
   the take record's duration until it has reached the clip's real end, and the real end is what
   the ranges can ever cover."
 
-Decided, as hers (ENG-1419):
+Decided, as hers except for the length (ENG-1419):
 
 - One rule decides a window of one take, a whole part or a sentence laid into one: played
   spans 250 ms or less apart are joined, then cut to the window, and the window is heard when
-  what they leave uncovered adds up to at most `min(750 ms, half its length)`. A whole part
-  still needs spans and a positive length to be heard at all.
+  what they leave uncovered adds up to at most `min(750 ms, half its length)`. Any number of
+  gaps of 250 ms or less therefore costs nothing, as in her `mergeRanges`; the gaps left after
+  the join add up wherever they fall. A whole part still needs spans and a positive length to
+  be heard at all.
 - Spans past a part's end are cut to it. The overrun refusal ("a report that runs past the end
   cannot be about this clip") goes: the report names its take (ADR 0017), so it can no longer
   be about other audio.
+- A part's length is its take's own measured length (`duration_ms`, ENG-1273, ADR 0072)
+  whenever the server has one, and it is stored on every report in place of the length the
+  tablet sent. Only a take with none is measured by the reports: the shortest positive length
+  reported, as hers, but never below the end of the furthest stretch told on that take. Here
+  ours departs from her `applyHeard`: her tablet trusts its own player, while our server knows
+  the recording better than the tablet, whose player can still answer with the previous clip's
+  length when a part ends. One such length took as the shortest opened a part for good with 2 s
+  of 61 played, hid an untranslated tail on the listen door, and turned the pause past the end
+  into a permanent refusal.
 - A report with parts adds to what is stored, per take: spans are unioned and kept joined where
-  they touch, the length kept is the shortest positive one measured (a zero is no measurement),
-  and only entries for the session's current parts are kept, the set the gate asks of. A flat
+  they touch, and only entries for the session's current parts are kept, the set the gate asks
+  of. A flat
   report still takes nothing away. Two reports landing together add up too: the write that read
   first adds its entries onto the one that landed. This supersedes "a report with parts
   replaces, it does not merge".
@@ -47,11 +58,12 @@ Decided, as hers (ENG-1419):
 Rejected: **keeping the gap rule**, which passes a part with seconds unheard; **keeping the
 replace and persisting the ledger on the tablet**, because a relaunch and a second tablet on the
 session (ENG-1392) would both still erase listening; **a new door**, because the listen door
-already stores and checks nothing; **a percentage**, for ADR 0017's reason; **the longest
-length**, which would let one inflated measurement block a team that listened.
+already stores and checks nothing; **a percentage**, for ADR 0017's reason; **her shortest
+length over a measured take**, for the reason above; **the longest length reported**, which
+would let one inflated measurement block a team that listened.
 
 Consequences: stored reports are re-read under the new rule with no migration. A session in
 flight that passed with several short holes adding past 0.75 s is now refused `PART_UNHEARD`,
-and the team hears that part again.
-A take's length only ever comes down: one short measurement lowers the bar for that take
-for good, as on hers, and nothing raises it again short of recording the part again.
+and the team hears that part again. The stored length of a take is corrected on the next
+report about it. On a take with no measured length, one short report still lowers the bar
+for good, down to its told end.

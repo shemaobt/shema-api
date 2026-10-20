@@ -320,7 +320,7 @@ async def listened_whole(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> ListenedWholeResponse:
-    """The team listened to the whole recording: whether the room now checks it by itself.
+    """What the team listened to: which parts are still unheard, and whether the room checks.
 
     Her joined recording is checked once with no tap after its first full listen
     (`ensaioFinal.ts:431-455` at her freeze), and the voice says so first — her N-2, «Ouvimos

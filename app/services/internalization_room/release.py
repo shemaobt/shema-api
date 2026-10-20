@@ -384,7 +384,7 @@ async def compose_internalization_release(
     report satisfied the coverage arithmetic the way an unread telling-back satisfied
     ``checked`` — and so did a report the team had since made untrue by recording the passage
     again. Both said the team heard themselves when nobody knows whether they did. The package
-    is refused unless every current part was played through, each in its own milliseconds.
+    is refused unless every current part was heard, each in its own milliseconds (ADR 0074).
 
     Only whether anything is unheard is read here. Which parts they are is the same answer, and
     it is what the room says to the team when it sends them back; this decides one thing.

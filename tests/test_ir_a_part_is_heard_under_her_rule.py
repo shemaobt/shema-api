@@ -15,17 +15,19 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     unheard_parts,
 )
+from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.sessions import (
     back_translation_of,
     get_session,
     report_playback,
 )
-from tests.release_harness import PREFIX
+from tests.release_harness import PREFIX, ensaio_take
 from tests.room_harness import (
     PART_MS,
     played_every_part,
@@ -58,17 +60,42 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield room
 
 
+def _entry(take_id: str, played: list[list[int]], length_ms: int = PART_MS) -> dict[str, Any]:
+    return {"take_id": take_id, "played_ranges": played, "clip_duration_ms": length_ms}
+
+
 def _heard(played: list[list[int]], length_ms: int) -> bool:
-    state = BackTranslationState(
-        played_by_take=[
-            {"take_id": "parte", "played_ranges": played, "clip_duration_ms": length_ms}
-        ]
-    )
+    state = BackTranslationState(played_by_take=[_entry("parte", played, length_ms)])
     return unheard_parts(state, ["parte"]) == []
 
 
-def _entry(take_id: str, played: list[list[int]], length_ms: int = PART_MS) -> dict[str, Any]:
-    return {"take_id": take_id, "played_ranges": played, "clip_duration_ms": length_ms}
+def _with_holes(length_ms: int, holes: int, hole_ms: int) -> list[list[int]]:
+    step = length_ms // holes
+    return [[at, at + step - hole_ms] for at in range(0, step * holes, step)]
+
+
+async def _a_part_measured_at(db: AsyncSession, part: IRTake, length_ms: int) -> None:
+    part.duration_ms = length_ms
+    await db.commit()
+
+
+async def _a_part_told_to(db: AsyncSession, ends_ms: int) -> tuple[IRSession, IRTake]:
+    session, _ = await rehearsed_in_parts(db, 0)
+    part = ensaio_take(
+        session.id, scope="parte-1", ordinal=1, sha256="d" * 64, project_id=session.project_id
+    )
+    db.add(part)
+    await db.commit()
+    await capture_segment(
+        db,
+        session,
+        take_id=part.id,
+        starts_ms=0,
+        ends_ms=ends_ms,
+        bridge_take_id="retro-1",
+        transcript="a parte contada de volta",
+    )
+    return session, part
 
 
 async def _listened(
@@ -235,23 +262,53 @@ async def test_the_packet_carries_the_listening_to_the_current_parts_only(
     ) == sorted([fresh.id, b.id, c.id]), "o pacote levava a escuta de uma parte aposentada"
 
 
-async def test_the_shortest_length_measured_for_a_take_is_the_one_it_is_heard_against(
+async def test_a_part_is_heard_against_its_take_s_measured_length_whatever_a_report_says(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session, (a,) = await rehearsed_in_parts(db_session, 1)
-    played = [[0, 9000]]
+    session, a = await _a_part_told_to(db_session, 1000)
+    await _a_part_measured_at(db_session, a, PART_MS)
 
-    measured_long = await _listened(client, session.id, _entry(a.id, played, TEN_SECONDS))
-    measured_short = await _listened(client, session.id, _entry(a.id, played, 9000))
-    measured_long_again = await _listened(client, session.id, _entry(a.id, played, TEN_SECONDS))
-    not_measured = await _listened(client, session.id, _entry(a.id, played, 0))
+    await _listened(client, session.id, _entry(a.id, [[0, 1]], 1))
+    answered = await _listened(client, session.id, _entry(a.id, [[0, 2000]], PART_MS))
+    finished = await press_terminei(client, session.id)
 
-    assert measured_long.json()["unheard_take_ids"] == [a.id]
+    assert answered.json()["unheard_take_ids"] == [a.id], (
+        "um comprimento curto relatado abria a parte com 2 s de 61 tocados"
+    )
+    assert finished.json()["refusal"] == "PART_UNHEARD"
+
+
+async def test_a_part_with_no_measured_length_is_never_shorter_than_its_told_end(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, part = await _a_part_told_to(db_session, 5000)
+
+    answered = await _listened(client, session.id, _entry(part.id, [[0, 4000]], 4000))
+
+    assert answered.json()["unheard_take_ids"] == [part.id], (
+        "a parte passava como ouvida contra um comprimento menor que a frase contada nela"
+    )
+
+
+async def test_a_part_with_no_measured_length_is_heard_against_the_shortest_length_reported(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, part = await _a_part_told_to(db_session, 5000)
+    played = [[0, 8000]]
+
+    measured_long = await _listened(client, session.id, _entry(part.id, played, 9000))
+    not_measured = await _listened(client, session.id, _entry(part.id, [], 0))
+    measured_short = await _listened(client, session.id, _entry(part.id, played, 8500))
+    measured_long_again = await _listened(client, session.id, _entry(part.id, played, 9000))
+
+    assert measured_long.json()["unheard_take_ids"] == [part.id]
+    assert not_measured.json()["unheard_take_ids"] == [part.id], (
+        "um zero tomava o lugar de uma medida"
+    )
     assert measured_short.json()["unheard_take_ids"] == []
     assert measured_long_again.json()["unheard_take_ids"] == [], (
         "uma medida mais longa tomava o lugar da mais curta"
     )
-    assert not_measured.json()["unheard_take_ids"] == [], "um zero tomava o lugar de uma medida"
 
 
 async def test_the_listen_door_stores_the_report_and_answers_which_parts_are_still_unheard(
@@ -262,10 +319,10 @@ async def test_the_listen_door_stores_the_report_and_answers_which_parts_are_sti
     first = await _listened(
         client,
         session.id,
-        _entry(a.id, [[0, TEN_SECONDS]], TEN_SECONDS),
-        _entry(b.id, EIGHT_HOLES_OF_SEVEN_TENTHS, TEN_SECONDS),
+        _entry(a.id, [[0, PART_MS]]),
+        _entry(b.id, _with_holes(PART_MS, 8, 700)),
     )
-    second = await _listened(client, session.id, _entry(b.id, [[0, TEN_SECONDS]], TEN_SECONDS))
+    second = await _listened(client, session.id, _entry(b.id, [[0, PART_MS]]))
     finished = await press_terminei(client, session.id)
 
     assert first.json()["unheard_take_ids"] == sorted([b.id, c.id])
