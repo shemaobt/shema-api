@@ -53,3 +53,16 @@ and now by the same mechanism. **And a captured telling is one transaction**: th
 the telling-back state and the mark commit together, so the count and the mark cannot come
 apart. The `>=` gate stays, for the stretches the builds that could left standing at the number
 with no mark.
+
+**Amended on 20 October 2026 (ENG-1695): the chunks door reads the address, not the flag.** The
+door used to make a version only when the chunk arrived with `retelling` on. Since the tablet
+stopped resending a frase whose answer was lost — it says «não entendi» and the team tells
+that slice again under a new key — the server can hold a frase the tablet no longer knows it
+sent, and the second telling arrived with the flag off: two current frases stood on one
+slice, with two numbers, both read by her Analyst. A chunk whose take, start and end are those
+of a stretch that counts is now that stretch's next version, whatever else it carries: same
+position, same number, the earlier telling kept in the history, the count of tellings one
+more. The flag is gone from the door, and a client that still sends it is not refused. The
+pass is unchanged (`pass_of_a_telling`), and a telling at any other slice is a new frase as
+before. Rejected: moving the lookup into `capture_segment`, which would change the text seam
+and every service-level caller that writes two stretches at one slice on purpose.

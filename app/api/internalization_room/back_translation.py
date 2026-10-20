@@ -81,7 +81,6 @@ async def add_chunk(
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
-    retelling: bool = Form(default=False),
     device_id: str = device_dep,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
@@ -96,16 +95,17 @@ async def add_chunk(
     moments the team re-records: a transcriber that times out raises past the store, and a
     chunk nobody could make out is refused after it.
 
-    `retelling` says the team is telling one stretch back a second time after a finding, and
-    the address they send is that stretch's own. So a retelling is a **new version of the
-    stretch it retells**, not a stretch of its own at the next position: the row it replaces
-    stops counting and hands it the count of tellings that stretch has had. At
-    `RETELLS_BEFORE_A_WARNING` the stretch is a hard stretch and the room asks for a person to
-    come and watch, once. A warning, not a cap — nothing is refused past it, and the chunk is
-    kept either way. Their work is never the thing thrown away.
+    A telling at the exact slice of a stretch that counts is a **new version of that stretch**,
+    not a stretch of its own at the next position: the row it replaces stops counting, keeps its
+    place and its number, and hands the new one the count of tellings that stretch has had. The
+    tablet sends the stretch's own address back both when the team tells it again after a finding
+    and when a lost answer made it say «não entendi» and tell it under a new key, and the
+    room reads the address, not a flag. At `RETELLS_BEFORE_A_WARNING` the stretch is a hard
+    stretch and the room asks for a person to come and watch, once. A warning, not a cap —
+    nothing is refused past it, and the chunk is kept either way. Their work is never the thing
+    thrown away.
 
-    A retelling of a slice no stretch currently covers is a first telling: the untold stretch
-    the room leads the team to arrives with the flag on and nothing to replace.
+    A telling at a slice no stretch currently covers is a first telling.
 
     The telling is transcribed in the session's bridge language, within `TRANSCRIBER_BOUND_SECONDS`.
 
@@ -132,12 +132,8 @@ async def add_chunk(
     state = room.back_translation_of(session)
     told = await room.final_segments(db, session.id)
     refuse_a_telling_over_part_of_a_frase(told, rehearsal.id, starts_ms, ends_ms)
-    retold = (
-        await room.current_stretch_at(
-            db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
-        )
-        if retelling
-        else None
+    retold = await room.current_stretch_at(
+        db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
     )
     pass_number = pass_of_a_telling(state)
 

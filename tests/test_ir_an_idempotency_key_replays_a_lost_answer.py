@@ -563,4 +563,4 @@ async def test_a_store_that_fails_after_a_cancellation_frees_the_key(
     resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
 
     assert resent.status_code == 200, resent.text
-    assert len(await _current(db_session, session_id)) == 2
+    assert [one.tellings for one in await _current(db_session, session_id)] == [2]
