@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from dataclasses import dataclass
@@ -100,7 +101,7 @@ async def lay_in_a_sentence(
     part = await take_by_id(db, segment.take_id)
     if not is_wav(part.content_type):
         raise _not_wav(part)
-    base = pcm16(await store.get(part.storage_key) or b"")
+    base = await asyncio.to_thread(pcm16, await store.get(part.storage_key) or b"")
     if base is None:
         raise _not_wav(part)
     awaiting = await the_sentence_awaiting(db, session)
@@ -111,21 +112,23 @@ async def lay_in_a_sentence(
             f"Frase {awaiting.frase} awaits its translation; one sentence at a time",
             frases=[awaiting.frase],
         )
-    sentence = pcm16(audio)
+    sentence = await asyncio.to_thread(pcm16, audio)
     if sentence is None or (sentence.rate, sentence.channels) != (base.rate, base.channels):
         raise SentenceRefused(
             400,
             ERROR_CODE_SENTENCE_FORMAT_DIFFERS,
             f"A sentence is WAV PCM16 at {base.rate} Hz, {base.channels} channel(s), as its part",
         )
-    laid = trim_silence(sentence)
+    laid = await asyncio.to_thread(trim_silence, sentence)
     if sentence.ms(laid.frames) < SHORTEST_SENTENCE_MS:
         raise SentenceRefused(
             400,
             ERROR_CODE_SENTENCE_TOO_SHORT,
             f"A sentence lasts at least {SHORTEST_SENTENCE_MS} ms",
         )
-    spliced = splice_sentence(base, segment.starts_ms, segment.ends_ms, laid)
+    spliced = await asyncio.to_thread(
+        splice_sentence, base, segment.starts_ms, segment.ends_ms, laid
+    )
     recorded = hashlib.sha256(audio).hexdigest()
     raw = await store_recording(
         audio,
