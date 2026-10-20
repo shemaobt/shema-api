@@ -37,14 +37,19 @@ Decided, as hers except for the length (ENG-1419):
   cannot be about this clip") goes: the report names its take (ADR 0017), so it can no longer
   be about other audio.
 - A part's length is its take's own measured length (`duration_ms`, ENG-1273, ADR 0072)
-  whenever the server has one. Only a take with none is measured by the reports: the shortest
-  positive length reported, as hers, but never below the end of the furthest stretch standing
-  on that take now. The rule lives where the length is read, in one function every reader
+  whenever the server has one. Only a take with none (every take uploaded before ENG-1273,
+  and any take whose measurement timed out) is measured by the reports: the longest positive
+  length any report gave, never below the end of the furthest stretch standing on that take
+  now, and the told end alone when the reports gave no positive length. Zero is never a
+  length: the tablet sets its measure only when a part plays to its very end. A take no
+  report names has no length to know, and the pause past its end stays open, as hers. The
+  longest, not the shortest: a wrong length then errs on the strict side and the team plays
+  again; it never opens the gate, and the floor still stops a short report. The rule lives where the length is read, in one function every reader
   calls (the gate, the listen door, the untranslated parts, the packet, the dossier, the pause
   past the end, a laid-in sentence's `heard_before`); the stored number is never read as is,
   so a row stored before this rule, a part told after its last report, and a write that lands
-  beside another are all read the same way. Here
-  ours departs from her `applyHeard`: her tablet trusts its own player, while our server knows
+  beside another are all read the same way. Here ours departs from her `applyHeard`, which
+  keeps the shortest: her tablet trusts its own player, while our server knows
   the recording better than the tablet, whose player can still answer with the previous clip's
   length when a part ends. One such length took as the shortest opened a part for good with 2 s
   of 61 played, hid an untranslated tail on the listen door, and turned the pause past the end
@@ -63,10 +68,10 @@ Rejected: **keeping the gap rule**, which passes a part with seconds unheard; **
 replace and persisting the ledger on the tablet**, because a relaunch and a second tablet on the
 session (ENG-1392) would both still erase listening; **a new door**, because the listen door
 already stores and checks nothing; **a percentage**, for ADR 0017's reason; **her shortest
-length over a measured take**, for the reason above; **the longest length reported**, which
-would let one inflated measurement block a team that listened.
+length**, over a measured take and over an unmeasured one, for the reasons above; **a report's
+length over a measured take**, which would let one wrong measurement decide.
 
 Consequences: stored reports are re-read under the new rule with no migration. A session in
 flight that passed with several short holes adding past 0.75 s is now refused `PART_UNHEARD`,
-and the team hears that part again. On a take with no measured length, every take uploaded
-before ENG-1273, one short report still lowers the bar for good, down to its told end.
+and the team hears that part again. On a take with no measured length, one inflated report
+raises the bar for good, and the team plays that part again.

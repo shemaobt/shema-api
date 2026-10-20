@@ -377,24 +377,34 @@ async def test_a_report_landing_beside_another_never_restores_a_short_length(
     )
 
 
-async def test_a_part_with_no_measured_length_is_heard_against_the_shortest_length_reported(
+async def test_a_part_with_no_measured_length_is_heard_against_the_longest_length_reported(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, part = await _a_part_told_to(db_session, 5000)
     played = [[0, 8000]]
 
-    measured_long = await _listened(client, session.id, _entry(part.id, played, 9000))
+    first = await _listened(client, session.id, _entry(part.id, played, 8500))
     not_measured = await _listened(client, session.id, _entry(part.id, [], 0))
-    measured_short = await _listened(client, session.id, _entry(part.id, played, 8500))
-    measured_long_again = await _listened(client, session.id, _entry(part.id, played, 9000))
+    longer = await _listened(client, session.id, _entry(part.id, played, 9000))
+    shorter_again = await _listened(client, session.id, _entry(part.id, played, 8500))
 
-    assert measured_long.json()["unheard_take_ids"] == [part.id]
-    assert not_measured.json()["unheard_take_ids"] == [part.id], (
-        "um zero tomava o lugar de uma medida"
+    assert first.json()["unheard_take_ids"] == []
+    assert not_measured.json()["unheard_take_ids"] == [], "um zero valia como comprimento"
+    assert longer.json()["unheard_take_ids"] == [part.id]
+    assert shorter_again.json()["unheard_take_ids"] == [part.id], (
+        "uma medida mais curta depois da mais longa abria a parte"
     )
-    assert measured_short.json()["unheard_take_ids"] == []
-    assert measured_long_again.json()["unheard_take_ids"] == [], (
-        "uma medida mais longa tomava o lugar da mais curta"
+
+
+async def test_a_part_reported_with_no_length_is_heard_against_its_told_end(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, part = await _a_part_told_to(db_session, PART_MS)
+
+    answered = await _listened(client, session.id, _entry(part.id, [[0, PART_MS]], 0))
+
+    assert answered.json()["unheard_take_ids"] == [], (
+        "a parte tocada até o fim contado ficava não ouvida porque o relato não trazia comprimento"
     )
 
 

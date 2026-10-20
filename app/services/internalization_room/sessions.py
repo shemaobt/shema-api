@@ -1220,11 +1220,10 @@ def _added_up(stored: list[PlayedTake], reported: list[PlayedTake]) -> list[Play
     by_take = {entry.take_id: entry for entry in stored}
     for entry in reported:
         earlier = by_take.get(entry.take_id, PlayedTake(take_id=entry.take_id))
-        lengths = [n for n in (earlier.clip_duration_ms, entry.clip_duration_ms) if n]
         by_take[entry.take_id] = PlayedTake(
             take_id=entry.take_id,
             played_ranges=joined_spans([*earlier.played_ranges, *entry.played_ranges]),
-            clip_duration_ms=min(lengths, default=0),
+            clip_duration_ms=max(earlier.clip_duration_ms, entry.clip_duration_ms),
         )
     return list(by_take.values())
 
@@ -1301,7 +1300,7 @@ async def report_playback(
     on it erased a part an earlier report heard, and one tablet's report erased another's on the
     same session, and it adds up again when another report landed first. A take's spans are kept
     joined only where they touch, so the rule can still see a gap, and its length is the
-    shortest reported, as her `applyHeard`; a zero is no measurement. That length is stored and
+    longest reported, so a zero never replaces a measurement. That length is stored and
     never read as is: every reader goes through `part_length`, and asks of the current parts
     only, so the entry of a part recorded again stays stored and is never read again.
 

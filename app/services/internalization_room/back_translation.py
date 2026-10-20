@@ -422,16 +422,16 @@ def part_length(part: IRTake, played: list[PlayedTake], stretches: list[IRSegmen
 
     The take's own measured length whenever it has one, never a length a report sent: the
     tablet's player can still answer with the previous clip's length when a part ends. A take
-    with none goes by the length its reports stored, never below the end of the furthest
-    stretch standing on it now. With neither, nothing is known and the answer is zero.
+    with none goes by the longest length a report gave, so a wrong one errs on the side of
+    playing again, never below the end of the furthest stretch standing on it now. Zero is no
+    length. A take no report names has no length to know, and the answer is zero.
     """
     if part.duration_ms:
         return part.duration_ms
-    reported = max(
-        (entry.clip_duration_ms for entry in played if entry.take_id == part.id), default=0
-    )
-    if not reported:
+    lengths = [entry.clip_duration_ms for entry in played if entry.take_id == part.id]
+    if not lengths:
         return 0
+    reported = max(lengths)
     told_to = max((one.ends_ms for one in stretches if one.take_id == part.id), default=0)
     return max(reported, told_to)
 

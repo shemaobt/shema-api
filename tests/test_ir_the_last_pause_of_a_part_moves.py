@@ -240,6 +240,34 @@ async def test_a_pause_on_a_part_with_no_measured_length_moves_as_far_as_its_tol
     )
 
 
+async def test_a_pause_on_a_part_with_no_measured_length_moves_within_a_longer_length_reported(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    session, parts = await _rehearsed(db_session)
+    state = back_translation_of(session)
+    state.played_by_take = [
+        PlayedTake(take_id=part.id, played_ranges=[(0, 1000)], clip_duration_ms=1000)
+        for part in parts
+    ]
+    await save_back_translation(db_session, session, state)
+    reported = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/listened-whole",
+        json={
+            "played_by_take": [
+                {"take_id": parts[1].id, "played_ranges": [[0, 5000]], "clip_duration_ms": 5000}
+            ]
+        },
+    )
+    assert reported.status_code == 200, reported.text
+    last = (await final_segments(db_session, session.id))[-1]
+
+    moved = await _move(client, session.id, last, ends_ms=4000)
+
+    assert moved.status_code == 200, (
+        "o comprimento curto guardado nunca subia, e a pausa dentro dos 5000 ms era recusada"
+    )
+
+
 async def test_a_frase_that_is_no_longer_the_last_is_refused_at_the_capture_as_well(
     db_session: AsyncSession,
 ) -> None:
