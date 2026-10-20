@@ -249,7 +249,7 @@ def test_the_admin_reads_everywhere_and_writes_only_its_regional_reach() -> None
 
     for reading in (alone, unsaid, beside):
         assert reading.reader_of(ELSEWHERE) is ShemaReader.COORDINATION
-    assert alone.writes_no_project and unsaid.writes_no_project
+    assert alone.writes == unsaid.writes == RegionScope(False, frozenset())
     assert not alone.writes_project(HERE) and not alone.writes_project(ELSEWHERE)
     assert beside.writes_project(HERE) and not beside.writes_project(ELSEWHERE)
     assert coordinator.writes is None and coordinator.writes_project(HERE)

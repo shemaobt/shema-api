@@ -547,11 +547,6 @@ class Readership(NamedTuple):
         return self.writes is None or reaches(self.writes, region_key)
 
     @property
-    def writes_no_project(self) -> bool:
-        """Whether :attr:`writes` names no region at all — the Admin alone (OBT-593)."""
-        return self.writes is not None and not self.writes.global_ and not self.writes.regions
-
-    @property
     def collection_reader(self) -> ShemaReader:
         """The reader a collection-level announcement is addressed to."""
         if self.coordinates_anything:
