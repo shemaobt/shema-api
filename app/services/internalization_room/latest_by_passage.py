@@ -23,7 +23,13 @@ from app.services.internalization_room.live import live
 async def latest_releases(db: AsyncSession, project_id: str) -> dict[str, PassageRelease]:
     """Each passage's live release with the highest **Version**, whichever session wrote it."""
     rows = await db.execute(
-        select(IRRelease.pericope, IRRelease.version, IRRelease.forced_at, IRRelease.approved_at)
+        select(
+            IRRelease.pericope,
+            IRRelease.version,
+            IRRelease.forced_at,
+            IRRelease.approved_at,
+            IRRelease.packet["release_id"].as_string().label("release_id"),
+        )
         .join(IRSession, IRSession.id == IRRelease.session_id)
         .where(IRRelease.project_id == project_id, live())
         .order_by(IRRelease.version.desc())
@@ -32,7 +38,10 @@ async def latest_releases(db: AsyncSession, project_id: str) -> dict[str, Passag
     for row in rows:
         if row.pericope not in latest:
             latest[row.pericope] = PassageRelease(
-                version=row.version, forced_at=row.forced_at, approved_at=row.approved_at
+                release_id=row.release_id,
+                version=row.version,
+                forced_at=row.forced_at,
+                approved_at=row.approved_at,
             )
     return latest
 

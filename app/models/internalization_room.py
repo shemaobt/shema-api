@@ -167,6 +167,7 @@ class PassageRelease(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    release_id: str
     version: int
     forced_at: datetime | None
     approved_at: datetime

@@ -12,10 +12,10 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -249,3 +249,67 @@ async def test_the_team_detail_counts_approved_passages(
     assert detail.status_code == 200, detail.text[:300]
     assert detail.json()["approved_total"] == 2
     assert detail.json()["closed_total"] == 3
+
+
+async def stored_release_id(db: AsyncSession, team_id: str, version: int) -> str:
+    rows = await db.execute(
+        select(IRRelease).where(IRRelease.project_id == team_id, IRRelease.version == version)
+    )
+    return rows.scalars().one().packet["release_id"]
+
+
+async def test_a_passage_approved_as_version_1_by_the_team_reads_its_release_id_version_1_not_forced(  # noqa: E501
+    room, desk_client, db_session, room_app
+) -> None:
+    team, tablet = await a_claimed_device(db_session, language_name="Guarani")
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    await approved_by_the_team(room, tablet, await ready_session(db_session, project_id=team.id))
+
+    release = (await listed(desk_client, desk, team.id))[P]["release"]
+
+    assert release["release_id"] == f"internalize-guarani-{P.lower()}-v1"
+    assert release["release_id"] == await stored_release_id(db_session, team.id, 1)
+    assert release["version"] == 1
+    assert release["forced_at"] is None
+
+
+async def test_a_forced_passage_reads_its_release_id_with_forced_at_set(
+    room, desk_client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session, language_name="Guarani")
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await ready_session(db_session, project_id=team.id)
+    forced = await room.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text[:300]
+
+    release = (await listed(desk_client, desk, team.id))[P]["release"]
+
+    assert release["release_id"] == f"internalize-guarani-{P.lower()}-v1"
+    assert release["release_id"] == await stored_release_id(db_session, team.id, 1)
+    assert release["forced_at"] is not None
+
+
+async def test_a_passage_never_approved_reads_no_release(desk_client, db_session, room_app) -> None:
+    team, _tablet = await a_claimed_device(db_session, language_name="Guarani")
+    desk, _ = await at_the_desk(db_session, room_app, team)
+
+    assert (await listed(desk_client, desk, team.id))[P]["release"] is None
+
+
+async def test_a_passage_reset_with_zerar_and_approved_again_reads_version_2_with_the_version_2_id(
+    room, desk_client, db_session, room_app
+) -> None:
+    team, tablet = await a_claimed_device(db_session, language_name="Guarani")
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    await approved_by_the_team(room, tablet, await ready_session(db_session, project_id=team.id))
+    zerado = await room.post(
+        f"{PREFIX}/facilitator/projects/{team.id}/passages/{P}/archive", headers=desk
+    )
+    assert zerado.status_code == 200, zerado.text[:300]
+    await approved_by_the_team(room, tablet, await ready_session(db_session, project_id=team.id))
+
+    release = (await listed(desk_client, desk, team.id))[P]["release"]
+
+    assert release["version"] == 2
+    assert release["release_id"] == f"internalize-guarani-{P.lower()}-v2"
+    assert release["release_id"] == await stored_release_id(db_session, team.id, 2)
