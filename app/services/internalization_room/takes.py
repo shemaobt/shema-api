@@ -40,6 +40,9 @@ from app.services.project.reads_project import reads_project
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
 LISTEN_MINUTES = 15
+#: How long a download link lasts, her ``expiresIn: 3600``: a file handed to Refine is not
+#: played on the spot, so it outlives the fifteen minutes a listen needs.
+DOWNLOAD_LINK_SECONDS = 3600
 
 FILENAMES = {IRTakeKind.ENSAIO: "tomada", IRTakeKind.RETRO: "trecho"}
 
@@ -406,6 +409,19 @@ async def signed_listen_url(
     )
 
 
+async def download_url(take: IRTake, filename: str, *, settings: Settings | None = None) -> str:
+    cfg = settings or get_settings()
+    if not cfg.gcs_platform_bucket:
+        raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
+    return await generate_signed_download_url(
+        cfg.gcs_platform_bucket,
+        take.storage_key,
+        expiry_minutes=DOWNLOAD_LINK_SECONDS // 60,
+        response_content_type=take.content_type,
+        response_disposition=f'attachment; filename="{filename}"',
+    )
+
+
 async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> IRTake:
     """The rehearsal recording a stretch claims to have come out of, or a refusal.
 
@@ -485,6 +501,22 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
             newest[take.ordinal] = take
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
+
+
+def part_keys(parts: list[IRTake]) -> dict[int | None, str]:
+    """The **Part key** of each current part, by its number: `whole`, then `S1`, `S2`, ... in order.
+
+    The same counting `mother_tongue_takes_of` does for a part's position.
+    """
+    keys: dict[int | None, str] = {}
+    position = 0
+    for part in parts:
+        if part.ordinal is None:
+            keys[None] = "whole"
+        else:
+            position += 1
+            keys[part.ordinal] = f"S{position}"
+    return keys
 
 
 #: Where a declared part's key lives, and the device a text seam speaks for. A part declared

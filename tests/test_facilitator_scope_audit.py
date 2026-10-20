@@ -86,10 +86,12 @@ FORCE = {"json": {"force": True}}
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The real application, so no route is out of scope by not being mounted here."""
     from app.api.internalization_room import takes as take_routes
+    from app.core.config import get_settings
     from app.core.database import get_db
     from app.main import app
     from app.services.internalization_room import questions as question_service
     from app.services.internalization_room import session_takes
+    from app.services.internalization_room import takes as takes_service
 
     class MemoryStore:
         def __init__(self) -> None:
@@ -115,6 +117,12 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
+
+    async def _signed_download(bucket: str, key: str, **kw) -> str:
+        return f"https://storage.example/{bucket}/{key}"
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed_download)
     monkeypatch.setattr(session_takes, "listen_url", _signed_take)
     the_bucket_is_in_memory(monkeypatch)
 
@@ -378,6 +386,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/mother-tongue-takes", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/takes/downloads", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/takes/downloads", {}),
             "ids": (session_id, absent),
         },
         {

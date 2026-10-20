@@ -1094,6 +1094,35 @@ class MotherTongueTakesResponse(BaseModel):
     finished_at: str | None = None
 
 
+class TakeDownload(BaseModel):
+    """One rehearsal take for Refine: its **Part key**, its file name, a link that saves it."""
+
+    take_id: str
+    key: str
+    filename: str
+    url: str
+    sha256: str
+    size_bytes: int
+    duration_ms: int | None
+    content_type: str
+
+
+class SupersededTakeDownload(TakeDownload):
+    """A **Superseded take**, with when the take that replaced it reached the server."""
+
+    superseded_at: str
+
+
+class TakeDownloadsResponse(BaseModel):
+    """The session's rehearsal takes by file name, live parts and superseded takes apart."""
+
+    session_id: str
+    release_id: str
+    links_valid_for_s: int
+    takes: list[TakeDownload]
+    superseded_takes: list[SupersededTakeDownload]
+
+
 class SceneFraseView(BaseModel):
     """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
 
