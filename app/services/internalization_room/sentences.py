@@ -36,7 +36,7 @@ from app.services.internalization_room.takes import (
     store_recording,
     take_by_id,
 )
-from app.services.internalization_room.wav import pcm16, splice_sentence, trim_silence
+from app.services.internalization_room.wav import Spliced, pcm16, splice_sentence, trim_silence
 from app.services.platform.audio_duration import measure_ms_bounded
 
 WAV = "audio/wav"
@@ -51,11 +51,11 @@ class AwaitingSentence:
     line: str
 
 
-def _not_wav(part: IRTake) -> SentenceRefused:
+def _not_wav(part_id: str) -> SentenceRefused:
     return SentenceRefused(
         409,
         ERROR_CODE_PART_NOT_WAV,
-        f"Part {part.id} was not recorded as WAV PCM16; record the part again",
+        f"Part {part_id} was not recorded as WAV PCM16; record the part again",
     )
 
 
@@ -68,19 +68,21 @@ def refuse_a_sentence_too_long(audio: bytes) -> None:
         )
 
 
-async def lay_in_a_sentence(
+async def _part_to_splice(
     db: AsyncSession,
     session: IRSession,
     segment: IRSegment,
     *,
     sentence_id: str,
     audio: bytes,
-    device_id: str,
-    store: TakeStore,
-) -> None:
+) -> IRTake | None:
     await db.execute(select(IRSession.id).where(IRSession.id == session.id).with_for_update())
     await db.refresh(session)
-    await db.refresh(segment)
+    await db.execute(
+        select(IRSegment)
+        .where(IRSegment.session_id == session.id)
+        .execution_options(populate_existing=True)
+    )
     laid_before = next(
         (one for one in back_translation_of(session).sentences if one.sentence_id == sentence_id),
         None,
@@ -95,15 +97,12 @@ async def lay_in_a_sentence(
                 ERROR_CODE_SENTENCE_ID_REUSED,
                 f"Sentence {sentence_id} was already laid in with another recording",
             )
-        return
+        return None
     if segment.id not in {one.id for one in await final_segments(db, session.id)}:
         raise StretchNoLongerCounts("A frase that no longer counts takes no sentence")
     part = await take_by_id(db, segment.take_id)
     if not is_wav(part.content_type):
-        raise _not_wav(part)
-    base = await asyncio.to_thread(pcm16, await store.get(part.storage_key) or b"")
-    if base is None:
-        raise _not_wav(part)
+        raise _not_wav(part.id)
     awaiting = await the_sentence_awaiting(db, session)
     if awaiting is not None and awaiting.segment_id != segment.id:
         raise SentenceRefused(
@@ -112,23 +111,78 @@ async def lay_in_a_sentence(
             f"Frase {awaiting.frase} awaits its translation; one sentence at a time",
             frases=[awaiting.frase],
         )
-    sentence = await asyncio.to_thread(pcm16, audio)
+    return part
+
+
+@dataclass(frozen=True)
+class _Splice:
+    part_id: str
+    starts_ms: int
+    ends_ms: int
+    spliced: Spliced
+
+
+async def _splice_of(
+    part: IRTake, starts_ms: int, ends_ms: int, audio: bytes, store: TakeStore
+) -> _Splice:
+    spliced = await asyncio.to_thread(
+        _spliced_bytes,
+        part.id,
+        await store.get(part.storage_key) or b"",
+        audio,
+        starts_ms,
+        ends_ms,
+    )
+    return _Splice(part.id, starts_ms, ends_ms, spliced)
+
+
+def _spliced_bytes(
+    part_id: str, held: bytes, audio: bytes, starts_ms: int, ends_ms: int
+) -> Spliced:
+    base = pcm16(held)
+    if base is None:
+        raise _not_wav(part_id)
+    sentence = pcm16(audio)
     if sentence is None or (sentence.rate, sentence.channels) != (base.rate, base.channels):
         raise SentenceRefused(
             400,
             ERROR_CODE_SENTENCE_FORMAT_DIFFERS,
             f"A sentence is WAV PCM16 at {base.rate} Hz, {base.channels} channel(s), as its part",
         )
-    laid = await asyncio.to_thread(trim_silence, sentence)
+    laid = trim_silence(sentence)
     if sentence.ms(laid.frames) < SHORTEST_SENTENCE_MS:
         raise SentenceRefused(
             400,
             ERROR_CODE_SENTENCE_TOO_SHORT,
             f"A sentence lasts at least {SHORTEST_SENTENCE_MS} ms",
         )
-    spliced = await asyncio.to_thread(
-        splice_sentence, base, segment.starts_ms, segment.ends_ms, laid
-    )
+    return splice_sentence(base, starts_ms, ends_ms, laid)
+
+
+async def lay_in_a_sentence(
+    db: AsyncSession,
+    session: IRSession,
+    segment: IRSegment,
+    *,
+    sentence_id: str,
+    audio: bytes,
+    device_id: str,
+    store: TakeStore,
+) -> None:
+    made: _Splice | None = None
+    while True:
+        part = await _part_to_splice(db, session, segment, sentence_id=sentence_id, audio=audio)
+        if part is None:
+            return
+        if made is not None and (made.part_id, made.starts_ms, made.ends_ms) == (
+            part.id,
+            segment.starts_ms,
+            segment.ends_ms,
+        ):
+            break
+        await db.commit()
+        made = await _splice_of(part, segment.starts_ms, segment.ends_ms, audio, store)
+    spliced = made.spliced
     recorded = hashlib.sha256(audio).hexdigest()
     raw = await store_recording(
         audio,
