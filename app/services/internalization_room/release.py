@@ -62,6 +62,7 @@ from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
     retired_segments,
+    set_aside_segment_ids,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -447,6 +448,14 @@ async def compose_internalization_release(
         return await _composed(db, session)
 
 
+async def _standing_findings(
+    db: AsyncSession, session: IRSession, takes: list[IRTake]
+) -> list[Finding]:
+    """The state's findings but those on a whole that stepped aside, which are only stored."""
+    aside = await set_aside_segment_ids(db, session.id, takes)
+    return [f for f in back_translation_of(session).findings if f.segment_id not in aside]
+
+
 async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -454,13 +463,16 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     if await is_the_demo_team(db, session.project_id):
         raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
+    takes = await takes_of(db, session.id)
     telling_back = back_translation_of(session)
-    stretches = await final_segments(db, session.id)
+    telling_back = telling_back.model_copy(
+        update={"findings": await _standing_findings(db, session, takes)}
+    )
+    stretches = await final_segments(db, session.id, takes)
     told = told_back(stretches)
     frases = frase_numbers(told)
     replaced = await retired_segments(db, session.id)
     divided = await divided_segments(db, session.id)
-    takes = await takes_of(db, session.id)
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
     parts = current_parts(takes)
@@ -769,7 +781,10 @@ async def approve_release(
         forced_by=forced_by,
         forced_at=datetime.now(UTC) if forced_by else None,
         forced_open_findings=(
-            [finding.model_dump(mode="json") for finding in back_translation_of(session).findings]
+            [
+                finding.model_dump(mode="json")
+                for finding in await _standing_findings(db, session, await takes_of(db, session.id))
+            ]
             if forced_by
             else None
         ),

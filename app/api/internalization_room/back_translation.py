@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError, WordlessTelling
 from app.core.stage_clock import stage, stopwatch
-from app.db.models.internalization_room import IRSession, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
@@ -369,13 +369,24 @@ async def listened_whole(
     )
 
 
+async def _without_the_whole_set_aside(
+    db: AsyncSession, session: IRSession, state: room.BackTranslationState, takes: list[IRTake]
+) -> room.BackTranslationState:
+    """The state as the team is told of it: findings on a set-aside whole are only stored."""
+    aside = await room.set_aside_segment_ids(db, session.id, takes)
+    return state.model_copy(
+        update={"findings": [f for f in state.findings if f.segment_id not in aside]}
+    )
+
+
 async def _finished(
     session: IRSession,
     payload: FinishBackTranslationRequest | None,
     db: AsyncSession,
 ) -> BackTranslationVerdictResponse:
     state = room.back_translation_of(session)
-    final = await room.final_segments(db, session.id)
+    takes = await takes_of(db, session.id)
+    final = await room.final_segments(db, session.id, takes)
     told = room.told_back(final)
     if payload is not None and (
         payload.played_by_take or payload.played_ranges or payload.clip_duration_ms
@@ -407,8 +418,6 @@ async def _finished(
             untold_segment_id=untold.id,
             refusal=CheckRefusal.FRASE_AWAITING,
         )
-
-    takes = await takes_of(db, session.id)
 
     unheard = room.unheard_parts(state, current_parts(takes), final)
     if unheard:
@@ -443,6 +452,7 @@ async def _finished(
 
     stored = state.the_verdict_to_serve(told)
     if stored is not None:
+        state = await _without_the_whole_set_aside(db, session, state, takes)
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):
             await db.commit()
@@ -500,6 +510,7 @@ async def _finished(
             told_back=verdict.told_back,
         )
 
+    shown = await _without_the_whole_set_aside(db, session, state, takes)
     return BackTranslationVerdictResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
@@ -507,7 +518,7 @@ async def _finished(
         checked=verdict.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
-        findings=finding_views(state.findings),
+        findings=finding_views(shown.findings),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
         check_at=state.checks[-1].at if state.checks else None,

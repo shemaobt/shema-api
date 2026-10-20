@@ -115,3 +115,8 @@ numbered part. Marcia's app reads the same
 way: a re-recorded clip stales the frases told on the old one and the check leaves them out,
 keeping them in the record (`src/backtranslation/store.ts` `buildPassageTelling`, frozen at
 18fa7c4).
+
+**The whole steps aside once a numbered part exists** (ENG-1406). A take with no number is a part
+of its own only while the session holds no numbered one; the moment the team records by scene it is
+history. Its stretches and findings are only stored: they leave *terminei*'s reading, the untold
+check and the packet's segments, and the take is no longer asked for or carried by the release.

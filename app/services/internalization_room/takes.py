@@ -483,7 +483,9 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     of them is the part, and the earlier ones stay as history, which the **Retroverification
     file** is where anybody reads.
 
-    A take with no number is the rehearsal told whole, which is one part of its own.
+    A take with no number is the rehearsal told whole, which is one part of its own — but only
+    while the session holds no numbered part. Once the team has recorded by scene the whole is
+    history, kept with its stretches and findings and no longer a part anybody is asked for.
 
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
     the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
@@ -499,6 +501,8 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     for take in takes:
         if take.kind is IRTakeKind.ENSAIO:
             newest[take.ordinal] = take
+    if any(ordinal is not None for ordinal in newest):
+        newest.pop(None, None)
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
 
