@@ -8,8 +8,10 @@ Desk's team card observe.
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -27,8 +29,10 @@ from app.db.models.project import Project
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.segments import final_segments
 from tests.baker import make_app, make_role
+from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import (
     Script,
     a_scripted_room,
@@ -533,3 +537,15 @@ async def test_a_demo_team_that_approved_before_being_marked_still_reads_and_ope
     assert (read.status_code, opened.status_code) == (200, 200), (read.text, opened.text)
     assert read.json()["approved"] is None
     assert opened.json()["approved"] is None
+
+
+async def test_asking_whether_a_draft_is_approved_answers_none_when_its_kept_canon_is_gone(
+    client, db_session, monkeypatch, tmp_path: Path
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=team.id)
+    await approved_by_the_team(client, tablet, session.id)
+    assert await approved_draft(db_session, session) is not None, "the control: it is approved"
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, "a" * 40))
+
+    assert await approved_draft(db_session, session) is None
