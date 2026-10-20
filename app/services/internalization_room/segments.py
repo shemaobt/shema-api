@@ -689,6 +689,10 @@ async def current_stretch_at(
     )
 
 
+def is_a_resend(retold: IRSegment | None, retro: IRTake) -> bool:
+    return retold is not None and retold.bridge_take_id == retro.id
+
+
 async def refuse_a_stretch_that_is_not_a_unit(
     db: AsyncSession, session_id: str, segment: IRSegment
 ) -> None:
