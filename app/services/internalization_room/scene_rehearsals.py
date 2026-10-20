@@ -433,6 +433,43 @@ async def _current_of_the_chain(
     return current
 
 
+async def _place_the_frase(
+    db: AsyncSession,
+    rehearsal: IRSceneRehearsal,
+    *,
+    starts_ms: int,
+    ends_ms: int,
+    replaces: str | None,
+    attempt: str | None,
+) -> str | None:
+    """The chain head the frase replaces, once its place is free.
+
+    A frase over a stretch a current frase of its attempt holds is out of place, unless it
+    replaces that frase. Frases that only touch at an edge do not overlap.
+    """
+    head = (
+        None if replaces is None else await _current_of_the_chain(db, rehearsal, replaces, attempt)
+    )
+    found = await db.scalars(
+        select(IRSceneFrase).where(
+            IRSceneFrase.rehearsal_id == rehearsal.id,
+            IRSceneFrase.restart_id.is_(None),
+            IRSceneFrase.attempt.is_not_distinct_from(attempt),
+        )
+    )
+    frases = list(found)
+    superseded = replaced_by(frases)
+    for frase in frases:
+        if frase.id in superseded or frase.id == head:
+            continue
+        if starts_ms < frase.ends_ms and frase.starts_ms < ends_ms:
+            raise FraseOutOfPlace(
+                f"A frase from {starts_ms} ms to {ends_ms} ms overlaps the frase {frase.id}, "
+                f"from {frase.starts_ms} ms to {frase.ends_ms} ms"
+            )
+    return head
+
+
 async def _refuse_another_rehearsals_attempt(
     db: AsyncSession, rehearsal: IRSceneRehearsal, attempt: str
 ) -> None:
@@ -483,7 +520,8 @@ async def keep_a_frase(
     on is read again under the rehearsal's lock, which a restart takes too: the same frase
     resent meanwhile is answered with the first, a rehearsal sent meanwhile refuses the frase,
     one archived meanwhile stamps it, one restarted meanwhile sets it aside, and a frase replaced
-    meanwhile is replaced at its newest.
+    meanwhile is replaced at its newest. A frase that lands over a stretch a current frase holds
+    is out of place, so two frases posted at once over one stretch keep only one.
     """
     sha256 = recording_digest(audio)
     already = await _the_same_frase(db, rehearsal.id, sha256)
@@ -493,8 +531,14 @@ async def keep_a_frase(
     _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
     if after_restart is not None:
         await _refuse_another_rehearsals_attempt(db, rehearsal, after_restart)
-    if replaces is not None:
-        await _current_of_the_chain(db, rehearsal, replaces, after_restart)
+    await _place_the_frase(
+        db,
+        rehearsal,
+        starts_ms=starts_ms,
+        ends_ms=ends_ms,
+        replaces=replaces,
+        attempt=after_restart,
+    )
     await db.commit()
 
     folder = f"{_prefix(session.id, rehearsal.sha256)}/frases/{sha256}"
@@ -522,10 +566,13 @@ async def keep_a_frase(
     if already is not None:
         return already
     await _refuse_a_standing_claim(db, rehearsal)
-    chain_head = (
-        None
-        if replaces is None
-        else await _current_of_the_chain(db, rehearsal, replaces, after_restart)
+    chain_head = await _place_the_frase(
+        db,
+        rehearsal,
+        starts_ms=starts_ms,
+        ends_ms=ends_ms,
+        replaces=replaces,
+        attempt=after_restart,
     )
 
     frase = IRSceneFrase(

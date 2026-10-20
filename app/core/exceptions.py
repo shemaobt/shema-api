@@ -330,7 +330,8 @@ class WordlessTelling(ValidationError):
 
 
 class FraseOutOfPlace(ValidationError):
-    """A scene frase that ends before it starts, or past the end of its scene recording."""
+    """A scene frase that ends before it starts, past the end of its scene recording, or over a
+    stretch a current frase of its attempt holds and does not replace."""
 
 
 class UnknownScene(ValidationError):
