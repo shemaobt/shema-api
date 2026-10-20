@@ -58,6 +58,7 @@ from tests.room_harness import (
     room_client,
     tell_back_about,
     the_bucket_is_in_memory,
+    the_upload_landed_at,
     upload_a_part,
 )
 from tests.scene_rehearsal_harness import recording
@@ -449,6 +450,45 @@ async def test_a_whole_that_stepped_aside_for_a_scene_part_is_listed_as_supersed
     assert (stepped_aside["key"], stepped_aside["take_id"]) == ("whole", whole["take_id"])
     assert stepped_aside["filename"] == f"{RELEASE_V1}-whole-substituida-{whole['take_id']}.wav"
     assert before <= datetime.fromisoformat(stepped_aside["superseded_at"]) <= after
+
+
+async def _superseded_at_of_the_whole(
+    client, db_session, room_app, landed: list[tuple[int | None, int]]
+) -> str:
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    whole_id = None
+    for index, (part, minute) in enumerate(landed):
+        sent = await send(client, credential, session.id, recording(2, index + 1), part=part)
+        await the_upload_landed_at(
+            db_session, sent["take_id"], datetime(2026, 10, 20, 9, minute, tzinfo=UTC)
+        )
+        if part is None:
+            whole_id = sent["take_id"]
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    listed = await read_downloads(client, desk, session.id)
+    [stepped_aside] = [t for t in listed["superseded_takes"] if t["take_id"] == whole_id]
+    return stepped_aside["superseded_at"]
+
+
+async def test_a_whole_is_superseded_when_the_first_numbered_part_after_it_landed(
+    client, db_session, room_app
+):
+    stamped = await _superseded_at_of_the_whole(
+        client, db_session, room_app, [(1, 10), (None, 20), (2, 30)]
+    )
+
+    assert datetime.fromisoformat(stamped) == datetime(2026, 10, 20, 9, 30, tzinfo=UTC)
+
+
+async def test_a_whole_with_no_numbered_part_after_it_is_superseded_when_the_first_part_landed(
+    client, db_session, room_app
+):
+    stamped = await _superseded_at_of_the_whole(
+        client, db_session, room_app, [(1, 10), (2, 15), (None, 20)]
+    )
+
+    assert datetime.fromisoformat(stamped) == datetime(2026, 10, 20, 9, 10, tzinfo=UTC)
 
 
 async def test_a_compressed_take_keeps_its_m4a(client, db_session, room_app):

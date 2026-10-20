@@ -70,14 +70,15 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         take.id: as_utc(successor.created_at).isoformat()
         for take, successor in _each_with_its_successor(takes)
     }
-    numbered_at = [
+    numbered_at = sorted(
         as_utc(take.created_at)
         for take in takes
         if take.kind is IRTakeKind.ENSAIO and take.ordinal is not None
-    ]
+    )
     for take in rehearsals:
         if take.id not in live_ids and take.id not in replaced_at:
-            replaced_at[take.id] = min(numbered_at).isoformat()
+            later = [at for at in numbered_at if at > as_utc(take.created_at)]
+            replaced_at[take.id] = (later or numbered_at)[0].isoformat()
 
     def filename(take: IRTake) -> str:
         stem = f"{release_id}-{keys[take.ordinal]}"
