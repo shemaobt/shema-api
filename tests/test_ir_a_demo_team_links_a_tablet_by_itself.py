@@ -38,7 +38,7 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
-from tests.hard_stretch_harness import marks
+from tests.hard_stretch_harness import a_new_recording, marks
 from tests.hard_stretch_harness import row as session_row
 from tests.release_harness import desk_release, ready_session, releases_of, team_release
 
@@ -48,7 +48,6 @@ PAGE = f"{IR}/demo"
 REFUSAL = "That claim code is not valid."
 LINKED = "Linked. Go back to the tablet."
 DEMO_NAME = "Equipe Demonstração"
-AUDIO = b"a equipe explicou este trecho em portugues"
 
 
 class _MemoryStore:
@@ -239,7 +238,7 @@ async def one_stretch_told_until_it_is_hard(
             f"{IR}/sessions/{session_id}/back-translation/chunks",
             headers=tablet,
             data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", "retelling": "true"},
-            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+            files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
         )
         assert telling.status_code == 200, telling.text[:300]
 

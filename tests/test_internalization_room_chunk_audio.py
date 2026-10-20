@@ -19,6 +19,7 @@ from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.hard_stretch_harness import a_new_recording
 
 PREFIX = "/api/internalization-room"
 DEVICE = "tablet-da-equipe-1"
@@ -96,13 +97,18 @@ async def _rehearsed(client: httpx.AsyncClient) -> tuple[str, str]:
 
 
 async def _tell_back(
-    client: httpx.AsyncClient, session_id: str, take_id: str, **extra: str
+    client: httpx.AsyncClient,
+    session_id: str,
+    take_id: str,
+    *,
+    audio: bytes = AUDIO,
+    **extra: str,
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
         headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", **extra},
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
 
 
@@ -210,7 +216,9 @@ async def test_a_transcriber_outage_counts_nothing_and_is_a_wordless_refusal(
         raise UpstreamServiceError("a transcricao esta fora do ar")
 
     monkeypatch.setattr(hearing, "transcribe_audio", _down)
-    outage = await _tell_back(client, session_id, take_id, retelling="true")
+    outage = await _tell_back(
+        client, session_id, take_id, audio=a_new_recording(), retelling="true"
+    )
 
     assert outage.status_code == 422, outage.text
     assert outage.json()["code"] == "WORDLESS_TELLING"
@@ -246,12 +254,16 @@ async def test_reaching_the_number_warns_and_still_takes_the_next_telling(
     session_id, take_id = await _rehearsed(client)
 
     asked = [
-        (await _tell_back(client, session_id, take_id, retelling="true")).json()["needs_person"]
+        (
+            await _tell_back(client, session_id, take_id, audio=a_new_recording(), retelling="true")
+        ).json()["needs_person"]
         for _ in range(RETELLS_BEFORE_A_WARNING)
     ]
     assert asked == [False] * (RETELLS_BEFORE_A_WARNING - 1) + [True]
 
-    accepted = await _tell_back(client, session_id, take_id, retelling="true")
+    accepted = await _tell_back(
+        client, session_id, take_id, audio=a_new_recording(), retelling="true"
+    )
 
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["captured"] is True

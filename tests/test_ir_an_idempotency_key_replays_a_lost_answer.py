@@ -20,6 +20,7 @@ from tests.hard_stretch_harness import (
     DEVICE,
     IR,
     SLICES,
+    a_new_recording,
 )
 from tests.hard_stretch_harness import (
     MemoryStore as _MemoryStore,
@@ -372,12 +373,17 @@ async def test_a_retold_chunk_sent_twice_under_one_key_counts_one_telling(
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
     _answers(client).append("o trecho 1 de novo")
-    retold = await _chunk(client, session_id, take_id, 1, again=True)
+    retold = await _chunk(client, session_id, take_id, 1, again=True, audio=OTHER_AUDIO)
     assert retold.status_code == 200, retold.text
 
     _answers(client).append("o trecho 1 pela terceira vez")
-    first = await _chunk(client, session_id, take_id, 1, key="terceira", again=True)
-    again = await _chunk(client, session_id, take_id, 1, key="terceira", again=True)
+    third_audio = a_new_recording()
+    first = await _chunk(
+        client, session_id, take_id, 1, key="terceira", again=True, audio=third_audio
+    )
+    again = await _chunk(
+        client, session_id, take_id, 1, key="terceira", again=True, audio=third_audio
+    )
 
     assert first.status_code == 200, first.text
     assert again.json() == first.json()
@@ -395,7 +401,9 @@ async def test_a_stretch_superseded_while_a_chunk_is_heard_refuses_the_chunk(
     held = Held("o trecho 1 de novo")
     _answers(client).extend([held, "o trecho 1 corrigido"])
 
-    chunk = asyncio.create_task(_chunk(client, session_id, take_id, 1, again=True))
+    chunk = asyncio.create_task(
+        _chunk(client, session_id, take_id, 1, again=True, audio=OTHER_AUDIO)
+    )
     try:
         await held.until_reached()
         superseded = await _replace(client, session_id, take_id, stretch.id, 1)
@@ -563,4 +571,4 @@ async def test_a_store_that_fails_after_a_cancellation_frees_the_key(
     resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
 
     assert resent.status_code == 200, resent.text
-    assert len(await _current(db_session, session_id)) == 2
+    assert [one.tellings for one in await _current(db_session, session_id)] == [1]
