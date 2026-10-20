@@ -59,6 +59,7 @@ from app.services.internalization_room.takes import (
     checked_recording,
     extension,
     recording_digest,
+    recording_time,
     store_recording,
 )
 
@@ -110,9 +111,7 @@ async def keep_scene_rehearsal(
         content_type=content_type,
         store=store,
     )
-    recorded_at = (
-        datetime.now(UTC) if sent_recorded_at is None else sent_recorded_at.astimezone(UTC)
-    )
+    recorded_at = recording_time(sent_recorded_at, datetime.now(UTC))
     label = None
     if scene:
         with reading_the_canon_of(session.canon_pin):

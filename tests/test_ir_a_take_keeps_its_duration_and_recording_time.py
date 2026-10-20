@@ -307,7 +307,7 @@ async def test_a_joined_part_keeps_the_servers_clock_and_the_packet_carries_no_t
     assert "device_clock_offset_ms" not in take
 
 
-async def test_a_joined_part_from_a_tablet_8_minutes_behind_keeps_the_offset_for_the_observer_only(
+async def test_a_joined_part_from_a_tablet_8_minutes_behind_keeps_the_offset_for_the_consultant(
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,

@@ -159,7 +159,6 @@ async def keep_take(
         sent_duration_ms=duration_ms,
         sent_recorded_at=recorded_at,
     )
-    await db.refresh(session)
     await room.retire_the_part_recorded_again(db, session, take)
     nudge(session.project_id, "takes")
     return _view(take)

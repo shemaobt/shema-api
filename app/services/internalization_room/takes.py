@@ -46,7 +46,7 @@ FILENAMES = {IRTakeKind.ENSAIO: "tomada", IRTakeKind.RETRO: "trecho"}
 #: the two read one file through different containers' rounding, never a different sound.
 DURATION_SLACK_MS = 100
 #: The **Clock offset** worth keeping, her ``CLOCK_SKEW_NOTE_MS``: under five minutes it is a
-#: clock set by hand, not one the observer should hear about.
+#: clock set by hand, not one the consultant should hear about.
 CLOCK_OFFSET_NOTED_MS = 5 * 60_000
 
 logger = logging.getLogger(__name__)
@@ -155,6 +155,11 @@ async def checked_recording(
     )
 
 
+def recording_time(sent_recorded_at: datetime | None, now: datetime) -> datetime:
+    """The tablet's clock, as the instant it names, or the server's when it sent none."""
+    return now if sent_recorded_at is None else sent_recorded_at.astimezone(UTC)
+
+
 def _noted_offset(session_id: str, sent_recorded_at: datetime, now: datetime) -> int | None:
     offset = round((sent_recorded_at - now).total_seconds() * 1000)
     if abs(offset) < CLOCK_OFFSET_NOTED_MS:
@@ -236,7 +241,8 @@ async def store_take(
     The **Recording time** is the tablet's when it sent one for a take recorded on it, and the
     server's for a joined part, whose tablet time only measures the **Clock offset**. Two
     uploads of the same bytes at once both pass the first look: the unique index refuses the
-    second row, and its upload answers with the first.
+    second row, and its upload answers with the first. The insert sits in a savepoint, so the
+    refusal undoes it alone and leaves the caller's objects as they were.
     """
     checked = await checked_recording(
         audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
@@ -269,11 +275,7 @@ async def store_take(
         content_type=stored.content_type,
         verified_at=stored.verified_at,
         origin=origin,
-        recorded_at=(
-            sent_recorded_at.astimezone(UTC)
-            if origin is None and sent_recorded_at is not None
-            else now
-        ),
+        recorded_at=recording_time(None if origin is not None else sent_recorded_at, now),
         duration_ms=checked.duration_ms,
         device_clock_offset_ms=(
             _noted_offset(session_id, sent_recorded_at, now)
@@ -281,15 +283,15 @@ async def store_take(
             else None
         ),
     )
-    db.add(take)
     try:
-        await db.commit()
+        async with db.begin_nested():
+            db.add(take)
     except IntegrityError:
-        await db.rollback()
         winner = await _the_same_take(db, session_id, kind, checked.sha256)
         if winner is None:
             raise
         return winner
+    await db.commit()
     return take
 
 

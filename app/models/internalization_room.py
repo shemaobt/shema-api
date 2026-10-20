@@ -1057,7 +1057,7 @@ class MotherTongueTake(BaseModel):
     play_url: str | None
     unread: bool
     duration_ms: int | None = None
-    #: The **Clock offset** of the tablet that joined this part, for the observer's one line.
+    #: The **Clock offset** of the tablet that joined this part, for the consultant's one line.
     device_clock_offset_ms: int | None = None
 
 

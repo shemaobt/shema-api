@@ -84,7 +84,7 @@ When a take was recorded. A take recorded on the tablet keeps the tablet's own c
 _Avoid_: upload time, created_at (when the upload landed), timestamp
 
 **Clock offset** (`device_clock_offset_ms`):
-How far the tablet's clock was from the server's when it sent a joined part, in milliseconds, negative when behind. Kept only at five minutes or more; the observer reads it as one line, the team never sees it and the packet never carries it.
+How far the tablet's clock was from the server's when it sent a joined part, in milliseconds, negative when behind. Kept only at five minutes or more; the consultant reads it as one line, the team never sees it and the packet never carries it.
 _Avoid_: skew, drift
 
 **Mother tongue**:

@@ -436,7 +436,7 @@ class IRTake(Base):
     #: How long the sound runs, as the tablet sent it when it matched the bytes, or as measured.
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The **Clock offset** of the tablet that sent this joined part, kept only at five minutes
-    #: or more; the observer's alone.
+    #: or more; the consultant's alone.
     device_clock_offset_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
