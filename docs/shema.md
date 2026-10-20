@@ -1125,7 +1125,28 @@ off the session's scope, which for a coordinator of Asia holding `admin` beside 
 been every region. For everybody but the Admin `WriteScope` is the value `Scope` was before
 OBT-593; for that account it is Asia. The leader's link, the import and the withdrawal were
 never the Admin's alone (`CoordinatorUser`) and stay so; the roster is still `RosterReach`'s.
-On the wire the Admin's `regionScope` is `null`, as the installation admin's.
+On the wire the Admin's `regionScope` is `null`, as the installation admin's — **and beside
+it, since the review, `writeRegionScope`** (Daniel, 20/oct/2026, option b): the regions the
+account writes a project in, in `regionScope`'s own spelling — `null` every region, `[]` none —
+`[]` for the Admin alone, the regional role's regions for an account holding `admin` beside
+one, `[]` for the Resource Circle, and for everybody else what they already wrote. It exists
+because `readAs: coordination` is a contract the console reads as *edits* (`recordAccess.ts`),
+and with the Admin reading every region as the coordination the console would draw *Editar*
+and *Novo projeto* on projects the server answers 403 — a new dead control. `readAs` stays
+`coordination`, so the Admin keeps reading as the coordination does, the photo of a withheld
+project included (the `trusted` reader would have lost it, against the decision of 9/oct); the
+console hides by this field and the server refuses regardless (FE-44 §8.7). The field is
+`writing_scope` over the same `Readership` the write routes use, never a second rule, and the
+session is the one place it is answered: a per-record bit would be a second place for the two
+to disagree, and the console already holds the record's region. Three more things the review
+settled: the **seat's name** in the session is read off the regional half, so a coordinator of
+Asia holding `admin` keeps the Asia seat's name; a **Pulse's notice** is addressed by the
+regional half too — the mentor and the coordination of the project's region — so an
+`admin`+`obtLab` of Asia reads Africa's Pulse and is not told of it; and the **nine write
+routes answer 404** to an `admin`+`coordinator` outside its regions while the record answers
+403 — the write path's own scope hides a row it does not reach, the record's refuses a row it
+reads, and aligning the nine to 403 would mean every writing service learning both scopes for
+an asymmetry that leaks nothing (the reader already sees the project).
 *One write stays the Admin's, and it is decided:* the Admin releases a sensitive project's
 prayer request (§6.12, OBT-575) through `readership.coordination` — a write that predates
 OBT-592's *writes only access* and did not move with this issue. **Daniel, 20/oct/2026:** the
