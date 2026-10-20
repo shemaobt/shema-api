@@ -1,6 +1,6 @@
 """ENG-1577 — the runner's two doors judge a session by the canon it opened with.
 
-ENG-1219 made a session keep the canon it opened with until its passage is approved, and the
+ENG-1219 made a session keep the canon it opened with while it is live, and the
 tablet reads it that way. The text seam's round and the golden doors' turn are the same room
 driven by text, so a re-pin that lands between a runner's session and its turn must not hand
 that session the new map. A canon is re-pinned here the way `the_canon_moves_on` publishes

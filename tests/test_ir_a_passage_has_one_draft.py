@@ -14,7 +14,6 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import (
@@ -29,7 +28,6 @@ from app.services.internalization_room.back_translation import BackTranslationSt
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.segments import final_segments
-from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import make_app, make_role
 from tests.opening_harness import (
     Script,
@@ -51,6 +49,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
+    told_back_with_an_open_finding,
 )
 from tests.room_harness import (
     heard_every_part,
@@ -157,6 +156,14 @@ async def parts_told_and_played(db: AsyncSession, session: IRSession) -> None:
     )
 
 
+async def the_takes_the_desk_lists(
+    client: httpx.AsyncClient, desk: dict[str, str], session_id: str
+) -> list[dict[str, Any]]:
+    listed = await client.get(f"{PREFIX}/facilitator/sessions/{session_id}/takes", headers=desk)
+    assert listed.status_code == 200, listed.text[:300]
+    return listed.json()["takes"]
+
+
 async def the_teams_card(
     desk_client: httpx.AsyncClient, desk: dict[str, str], team: Project
 ) -> dict[str, Any]:
@@ -217,11 +224,14 @@ async def test_a_passage_approved_as_v1_reads_approved_v1_with_the_approvals_nam
     }
 
 
-async def test_opening_the_approved_passage_again_returns_the_same_draft_still_approved_with_its_telling_back(  # noqa: E501
-    client, db_session
+async def test_opening_the_approved_passage_again_returns_the_same_draft_still_approved_with_its_telling_back_and_parts(  # noqa: E501
+    client, db_session, room_app
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=team.id)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    parts_before = await the_takes_the_desk_lists(client, desk, session.id)
+    assert parts_before, "the control: there is a recording to be handed back"
     told_before = (await the_tablet_reads(client, tablet, session.id))["back_translation"]
     assert told_before["segments"], "the control: there is a telling-back to be handed back"
     await approved_by_the_team(client, tablet, session.id)
@@ -231,6 +241,7 @@ async def test_opening_the_approved_passage_again_returns_the_same_draft_still_a
     assert reopened["session_id"] == session.id
     assert reopened["approved"]["version"] == 1
     assert reopened["back_translation"]["segments"] == told_before["segments"]
+    assert await the_takes_the_desk_lists(client, desk, reopened["session_id"]) == parts_before
 
 
 async def test_a_draft_never_approved_reads_no_approval(client, db_session) -> None:
@@ -244,8 +255,15 @@ async def test_a_draft_never_approved_reads_no_approval(client, db_session) -> N
 
 async def test_a_facilitators_forced_approval_reads_forced(client, db_session, room_app) -> None:
     team, tablet = await a_claimed_device(db_session)
-    session = await ready_session(db_session, project_id=team.id)
+    session, _take = await rehearsed_session(db_session, project_id=team.id)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
     desk, _ = await at_the_desk(db_session, room_app, team)
+    refused = await client.post(team_release(session.id), headers=team_headers(tablet))
+    assert refused.json()["blockers"] == ["telling_back_not_checked"], (
+        "the control: a finding is open"
+    )
 
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
@@ -256,9 +274,10 @@ async def test_a_facilitators_forced_approval_reads_forced(client, db_session, r
 
 
 async def test_a_part_recorded_again_after_approval_un_approves_the_draft_and_the_next_approval_is_v2(  # noqa: E501
-    client, db_session
+    client, db_session, room_app
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
     session, parts = await rehearsed_in_parts(db_session, 3, project_id=team.id)
     await parts_told_and_played(db_session, session)
     first = await approved_by_the_team(client, tablet, session.id)
@@ -276,17 +295,11 @@ async def test_a_part_recorded_again_after_approval_un_approves_the_draft_and_th
 
     read = await the_tablet_reads(client, tablet, session.id)
     assert read["approved"] is None
-    standing = {
-        take.ordinal: take.id for take in current_parts(await takes_of(db_session, session.id))
-    }
-    assert (standing[1], standing[3]) == (parts[0].id, parts[2].id)
-    fresh = (
-        await db_session.execute(
-            select(IRTake).where(
-                IRTake.session_id == session.id, IRTake.ordinal == 2, IRTake.id != parts[1].id
-            )
-        )
-    ).scalar_one()
+    by_part: dict[int, list[str]] = {}
+    for take in await the_takes_the_desk_lists(client, desk, session.id):
+        by_part.setdefault(take["ordinal"], []).append(take["take_id"])
+    assert (by_part[1], by_part[3]) == ([parts[0].id], [parts[2].id])
+    fresh = await db_session.get(IRTake, again.json()["take_id"])
     await db_session.refresh(session)
     await tell_back_about(db_session, session, fresh)
     await parts_told_and_played(db_session, session)
@@ -486,3 +499,37 @@ async def test_a_raised_hand_asked_before_a_zerar_still_counts_as_the_teams_acti
 
     card = await the_teams_card(desk_client, desk, team)
     assert moment(card["last_activity_at"]) == asked_at
+
+
+async def test_a_take_naming_no_session_still_counts_as_the_teams_activity(
+    desk_client, db_session, per_request, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    written_at = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
+
+    await a_take_written_on(per_request, team, "nenhuma-sessao-deste-teste", at=written_at)
+
+    card = await the_teams_card(desk_client, desk, team)
+    assert moment(card["last_activity_at"]) == written_at
+
+
+async def test_a_demo_team_that_approved_before_being_marked_still_reads_and_opens_with_no_approval(
+    client, db_session, script
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=team.id)
+    await approved_by_the_team(client, tablet, session.id)
+    team.is_demo_team = True
+    await db_session.commit()
+
+    read = await client.get(read_of(session.id), headers=team_headers(tablet))
+    opened = await client.post(
+        f"{PREFIX}/sessions",
+        headers=team_headers(tablet),
+        json={"pericope": P, "language": session.language},
+    )
+
+    assert (read.status_code, opened.status_code) == (200, 200), (read.text, opened.text)
+    assert read.json()["approved"] is None
+    assert opened.json()["approved"] is None

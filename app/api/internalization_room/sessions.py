@@ -16,6 +16,7 @@ from app.api.internalization_room._deps import (
     linked_tablet_dep,
 )
 from app.api.internalization_room.back_translation import finding_views
+from app.api.internalization_room.release import approval_of
 from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -24,7 +25,6 @@ from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
-    ApprovedDraftView,
     BackTranslationProgress,
     CreateSessionRequest,
     FacilitatorHaltedDeviceView,
@@ -340,14 +340,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         opened=was_opened(session),
         moment=moment_view(session),
         kept_takes=await kept_takes_of(session),
-        approved=ApprovedDraftView(
-            version=approved.version,
-            release_id=approved.packet["release_id"],
-            approved_at=as_utc(approved.approved_at).isoformat(),
-            forced=approved.forced_by is not None,
-        )
-        if approved
-        else None,
+        approved=approval_of(approved) if approved else None,
     )
 
 

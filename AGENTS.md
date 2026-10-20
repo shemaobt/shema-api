@@ -90,10 +90,10 @@ aliases list under `app/services/internalization_room/canon/vendor/` — moves o
 `scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
 beside the copy. It keeps the canon it replaces, with the element labels, under
-`canon/kept/<pin>/`: a session reads the canon it opened with while its session is live (not archived).
-Then it drops every kept tree whose pin it is not told to keep with `--keep`, the one it just
-made included: which pins an open session names needs a production read, and while production
-carries only tests the sync takes none. Never edit vendored
+`canon/kept/<pin>/`: a session reads the canon it opened with while it is live, until a Zerar
+archives it. Then it drops every kept tree whose pin it is not told to keep with `--keep`, the
+one it just made included: which pins an open session names needs a production read, and while
+production carries only tests the sync takes none. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.
