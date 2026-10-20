@@ -57,8 +57,11 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
     keys = {
-        ordinal: "whole" if position is None else f"S{position}"
-        for ordinal, position in part_positions(parts).items()
+        None: "whole",
+        **{
+            ordinal: "whole" if position is None else f"S{position}"
+            for ordinal, position in part_positions(parts).items()
+        },
     }
     release_id = await _release_id(db, session)
     live_ids = {part.id for part in parts}
@@ -67,6 +70,14 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         take.id: as_utc(successor.created_at).isoformat()
         for take, successor in _each_with_its_successor(takes)
     }
+    numbered_at = [
+        as_utc(take.created_at)
+        for take in takes
+        if take.kind is IRTakeKind.ENSAIO and take.ordinal is not None
+    ]
+    for take in rehearsals:
+        if take.id not in live_ids and take.id not in replaced_at:
+            replaced_at[take.id] = min(numbered_at).isoformat()
 
     def filename(take: IRTake) -> str:
         stem = f"{release_id}-{keys[take.ordinal]}"

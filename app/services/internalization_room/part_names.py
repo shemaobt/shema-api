@@ -118,9 +118,8 @@ def addresses_for(
     **The position, not the stored number.** The tablet numbers its parts from one and the text
     seam declares them from zero, and both mean the same first part: the number the voice says
     is where the part sits among the numbered parts that are current, in the order they are
-    handed in (`current_parts`, in `takes.py`). A rehearsal told whole is counted by none of
-    it — the tablet sends no number for it, and a session holding one of those *and* numbered
-    parts would otherwise hear its first part called the second.
+    handed in (`current_parts`, in `takes.py`). A rehearsal told whole is a current part only
+    while the session holds no numbered one, so it never shares a count with them.
 
     **The title only where the rehearsal's parts are the map's scenes.** The room directs the
     team to record whole or scene by scene and nothing enforces it: a team that merged two

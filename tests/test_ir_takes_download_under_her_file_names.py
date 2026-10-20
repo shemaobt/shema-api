@@ -428,6 +428,29 @@ async def test_a_rehearsal_told_whole_downloads_as_whole(client, db_session, roo
     ]
 
 
+async def test_a_whole_that_stepped_aside_for_a_scene_part_is_listed_as_superseded_under_whole(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    whole = await send(client, credential, session.id, recording(2, 1), part=None)
+    await a_beat()
+    before = the_second_now()
+    scene = await send(client, credential, session.id, recording(2, 2), part=1)
+    after = the_second_now()
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    listed = await read_downloads(client, desk, session.id)
+
+    assert [(each["key"], each["take_id"]) for each in listed["takes"]] == [
+        ("S1", scene["take_id"])
+    ]
+    [stepped_aside] = listed["superseded_takes"]
+    assert (stepped_aside["key"], stepped_aside["take_id"]) == ("whole", whole["take_id"])
+    assert stepped_aside["filename"] == f"{RELEASE_V1}-whole-substituida-{whole['take_id']}.wav"
+    assert before <= datetime.fromisoformat(stepped_aside["superseded_at"]) <= after
+
+
 async def test_a_compressed_take_keeps_its_m4a(client, db_session, room_app):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_rehearsal(db_session, project.id)
