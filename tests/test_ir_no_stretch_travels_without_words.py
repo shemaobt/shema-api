@@ -73,6 +73,9 @@ async def _the_analyst_has_read(
     db: AsyncSession, session: IRSession, stretches: list[IRSegment]
 ) -> None:
     """The verdict the team already has, and the report of the clip they already played."""
+    told_to: dict[str, int] = {}
+    for stretch in stretches:
+        told_to[stretch.take_id] = max(told_to.get(stretch.take_id, CLIP_MS), stretch.ends_ms)
     await report_playback(
         db,
         session,
@@ -82,8 +85,8 @@ async def _the_analyst_has_read(
             analysed_segment_ids=[stretch.id for stretch in stretches],
         ),
         played_by_take=[
-            PlayedTake(take_id=take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
-            for take_id in sorted({stretch.take_id for stretch in stretches})
+            PlayedTake(take_id=take_id, played_ranges=[(0, end)], clip_duration_ms=end)
+            for take_id, end in sorted(told_to.items())
         ],
         played_ranges=[[0, CLIP_MS]],
         clip_duration_ms=CLIP_MS,

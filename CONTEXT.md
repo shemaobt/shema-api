@@ -79,6 +79,14 @@ _Avoid_: stretch (the persistent object; a scope is one reading's slice of the p
 An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's number is that part; the earlier ones stay as history.
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
+**Recording time** (`recorded_at`):
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time.
+_Avoid_: upload time, created_at (when the upload landed), timestamp
+
+**Clock offset** (`device_clock_offset_ms`):
+How far the tablet's clock was from the server's when it sent a joined part, in milliseconds, negative when behind. Kept only at five minutes or more; the consultant reads it as one line, the team never sees it and the packet never carries it.
+_Avoid_: skew, drift
+
 **Mother tongue**:
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
 _Avoid_: native, L1, Língua materna
@@ -118,6 +126,14 @@ _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 **Part**:
 One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part, until the team records by scene: then the whole is history, kept but no longer a part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
+
+**Part key** (`key`):
+The name a **Part** goes by in a file name and in what Refine receives: `whole` for the rehearsal told whole, `S<n>` for the part in position n among the session's current parts (Marcia's scene key; part n is scene n). A superseded take keeps the key of the part it was.
+_Avoid_: clip key, scope (the tablet's `parte-N`), chunk_index, ordinal (the number as stored)
+
+**Superseded take** (`superseded_takes`, `superseded_at`):
+A rehearsal take that a later take under the same part's number replaced. It is kept, listed apart from the current parts, and downloads as `<release>-<key>-substituida-<take id>.<ext>`; its time is when the take that replaced it reached the server.
+_Avoid_: kept take (kept names a telling kept for the team), replaced take, old take, Substituída (in prose); **Superseded** alone is a telling-back attempt
 
 **Recording grain** (`recording_grain`):
 Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
@@ -258,11 +274,11 @@ One reading of the telling-back and the verdict spoken on it, kept in the passag
 _Avoid_: attempt (a **Superseded** recording), Rodada
 
 **Heard the rehearsal** (`unheard_parts`):
-The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again. A part with a sentence laid in keeps the listening it had where nothing changed, and is unheard until its new sentence is played, with at most 0.75 s of it unplayed and never more than half of it (ADR 0069).
-_Avoid_: complete playback, Ouviu o ensaio
+The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds and per take, before closing. Played stretches 0.25 s or less apart count as one; a part, and a sentence laid into one, is heard when what is left unplayed adds up to at most 0.75 s and never more than half of it. It is an absolute allowance, never a percentage. Listening reports add up per take, so a later report never takes away a part an earlier one heard; a part recorded again is a new take and unheard until it is played (ADR 0017, ADR 0069, ADR 0074).
+_Avoid_: complete playback, Ouviu o ensaio, coverage with tolerance
 
 **Unheard part** (`unheard_take_ids`):
-A current **Part** of the rehearsal the team's listening report does not cover, named by its take in the refusal the check answers with before the analyst runs. A part recorded again is unheard until it is played through; a part with a sentence laid in, until that sentence is.
+A current **Part** of the rehearsal the team's listening reports do not cover under the rule of **Heard the rehearsal**, named by its take in the refusal the check answers with before the analyst runs, and on every answer of the listen door. A part recorded again is unheard until it is played; a part with a sentence laid in, until that sentence is.
 _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
 
 **Abandoned**:
@@ -451,7 +467,7 @@ The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the wor
 _Avoid_: checking turn, Team turn
 
 **Scene frase** (`ir_scene_frases`):
-One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase.
+One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase, and so is a frase whose span strictly overlaps a current frase of its attempt unless it replaces that frase (touching edges stand).
 _Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
 
 **Restart** (`ir_scene_restarts`; «recomeçar a tradução»):

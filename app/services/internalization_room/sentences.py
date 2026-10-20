@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,7 @@ from app.services.internalization_room.takes import (
     take_by_id,
 )
 from app.services.internalization_room.wav import pcm16, splice_sentence, trim_silence
+from app.services.platform.audio_duration import measure_ms_bounded
 
 WAV = "audio/wav"
 SENTENCE_LIMIT_BYTES = 4 * 1024 * 1024
@@ -140,6 +142,7 @@ async def lay_in_a_sentence(
         content_type=WAV,
         store=store,
     )
+    now = datetime.now(UTC)
     take = IRTake(
         id=str(uuid.uuid4()),
         project_id=part.project_id,
@@ -157,8 +160,13 @@ async def lay_in_a_sentence(
         content_type=WAV,
         verified_at=stored.verified_at,
         origin=part.origin,
+        created_at=now,
+        recorded_at=now,
+        duration_ms=await measure_ms_bounded(spliced.audio),
     )
     db.add(take)
+    state = back_translation_of(session)
+    heard_before = not unheard_parts(state, [part], await final_segments(db, session.id))
     old_end = segment.ends_ms
     shift = spliced.ends_ms - old_end
     for one in await current_segments(db, session.id):
@@ -172,8 +180,6 @@ async def lay_in_a_sentence(
         elif one.ends_ms >= old_end:
             one.ends_ms += shift
         one.take_id = take.id
-    state = back_translation_of(session)
-    heard_before = not unheard_parts(state, [part.id])
     state.sentences.append(
         LaidInSentence(
             sentence_id=sentence_id,

@@ -42,6 +42,7 @@ from tests.release_harness import (
     ready_session,
     reported_playback,
     retro_take,
+    the_one_part_of,
     told_back_with_an_open_finding,
 )
 
@@ -156,23 +157,25 @@ async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession)
     assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
 
 
-async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_release(
+async def test_a_listening_report_that_runs_past_its_part_is_cut_to_it_and_travels(
     db_session: AsyncSession,
 ) -> None:
-    """The shape the partial replacement creates: a shorter clip under an older report.
+    """Sixty-one seconds played of a part measured at thirty-seven is that part heard through.
 
-    The report is complete and coherent about *something* — it just cannot be about the
-    61-second stretch it is filed against, because the clip is 37 seconds long. The
-    package that carries it must not travel.
+    The report names its take (ADR 0017), so what runs past the end can no longer be about
+    other audio; it is cut to the part, as hers cuts it (ADR 0074).
     """
     session = await ready_session(db_session)
     state = await checked_telling_back(db_session, session)
+    state.played_by_take = []
+    part = await the_one_part_of(db_session, session)
+    part.duration_ms = 37000
+    await db_session.commit()
     await reported_playback(db_session, session, state, clip_duration_ms=37000)
 
-    with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+    packet = await build_internalization_release(db_session, session)
 
-    assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
+    assert packet["readiness"] == "ready_for_refine"
 
 
 async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSession) -> None:

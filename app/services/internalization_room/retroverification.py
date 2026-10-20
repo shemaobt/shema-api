@@ -43,6 +43,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     frase_numbers,
+    listening_to_the_parts,
     nuances_said,
     said_before,
     unheard_parts,
@@ -128,7 +129,7 @@ def _take_view(take: IRTake) -> RetroverificationTake:
         ordinal=take.ordinal,
         pass_number=take.pass_number,
         sha256=take.sha256,
-        recorded_at=_moment(take.created_at),
+        recorded_at=_moment(take.recorded_at),
         url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
     )
 
@@ -198,24 +199,27 @@ def _history_of(
 
 
 def _listening(
-    telling_back: BackTranslationState, parts: list[str]
+    telling_back: BackTranslationState, parts: list[IRTake], stretches: list[IRSegment]
 ) -> list[RetroverificationListening]:
     """The report part by part, with the parts nobody heard named as such.
 
     Asked of every current part of the rehearsal, told or not, which is what `terminei` and the
     release ask to be heard (ADR 0068): a part recorded again and never played has its row here.
     """
-    unheard = set(unheard_parts(telling_back, parts))
-    reported = {entry.take_id: entry for entry in telling_back.played_by_take}
+    unheard = set(unheard_parts(telling_back, parts, stretches))
+    reported = {
+        entry.take_id: entry
+        for entry in listening_to_the_parts(telling_back.played_by_take, parts, stretches)
+    }
     listened = []
-    for take_id in parts:
-        entry = reported.get(take_id)
+    for part in parts:
+        entry = reported.get(part.id)
         listened.append(
             RetroverificationListening(
-                take_id=take_id,
+                take_id=part.id,
                 played_ranges=list(entry.played_ranges) if entry else [],
                 clip_duration_ms=entry.clip_duration_ms if entry else 0,
-                heard=take_id not in unheard,
+                heard=part.id not in unheard,
             )
         )
     return listened
@@ -391,7 +395,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             )
             for attempt in telling_back.superseded
         ],
-        listening=_listening(telling_back, [part.id for part in current_parts(takes)]),
+        listening=_listening(telling_back, current_parts(takes), stretches),
         hard_stretches=[
             RetroverificationHardStretch(
                 segment_id=_walked_forward(mark.segment_id, replaced_by, standing),

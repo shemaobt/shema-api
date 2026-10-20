@@ -52,7 +52,7 @@ async def test_a_row_holding_the_old_practice_and_probe_releases_with_no_compreh
     assert "comprehension" not in artifact, (
         "o pacote ainda levava a leitura de ensaio e sondas que a sala não faz mais"
     )
-    assert artifact["schema_version"] == "tripod.internalization-release.v0.7"
+    assert artifact["schema_version"] == "tripod.internalization-release.v0.8"
     assert artifact["open_questions"] == 0, (
         "um ponto antigo do registro de compreensão ainda contava como pergunta em aberto"
     )

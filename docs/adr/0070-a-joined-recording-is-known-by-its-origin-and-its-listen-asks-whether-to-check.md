@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0074: the listen door is where the tablet reports, and every answer names the parts still unheard
 date: 2026-10-19
 ---
 

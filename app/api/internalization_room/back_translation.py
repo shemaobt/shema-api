@@ -320,7 +320,7 @@ async def listened_whole(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> ListenedWholeResponse:
-    """The team listened to the whole recording: whether the room now checks it by itself.
+    """What the team listened to: which parts are still unheard, and whether the room checks.
 
     Her joined recording is checked once with no tap after its first full listen
     (`ensaioFinal.ts:431-455` at her freeze), and the voice says so first — her N-2, «Ouvimos
@@ -330,7 +330,9 @@ async def listened_whole(
     check would hand back the line that announces it only after the half minute it announces.
 
     The body is the same report of what the tablet played as the finish's, stored the same
-    way, so the listen it describes is the one the finish then finds.
+    way, so the listen it describes is the one the finish then finds. It is also where the
+    tablet reports as each part ends, and every answer names the parts still unheard, so the
+    tablet never counts by itself (ADR 0074).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -347,14 +349,15 @@ async def listened_whole(
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
     parts = current_parts(await takes_of(db, session.id))
+    unheard = room.unheard_parts(state, parts, final)
     if (
         await the_sentence_awaiting(db, session) is not None
         or room.first_untold(final) is not None
-        or room.unheard_parts(state, [part.id for part in parts])
+        or unheard
         or not is_joined(parts)
         or not told
     ):
-        return ListenedWholeResponse(session_id=session.id)
+        return ListenedWholeResponse(session_id=session.id, unheard_take_ids=unheard)
     untranslated = untranslated_parts(parts, told, state.played_by_take)
     if untranslated:
         return ListenedWholeResponse(
@@ -411,7 +414,7 @@ async def _finished(
 
     takes = await takes_of(db, session.id)
 
-    unheard = room.unheard_parts(state, [part.id for part in current_parts(takes)])
+    unheard = room.unheard_parts(state, current_parts(takes), final)
     if unheard:
         _, line = process_line("P", "unheard", session.language)
         return BackTranslationVerdictResponse(

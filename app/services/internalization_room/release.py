@@ -51,6 +51,7 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
     findings_remaining,
     frase_numbers,
+    listening_to_the_parts,
     rehearsed_parts,
     unheard_parts,
 )
@@ -70,6 +71,7 @@ from app.services.internalization_room.sessions import (
     refuse_if_archived,
 )
 from app.services.internalization_room.takes import current_parts, is_wav, takes_of
+from app.utils.stored_time import as_utc
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
@@ -83,8 +85,9 @@ from app.services.internalization_room.takes import current_parts, is_wav, takes
 #: note gone from every finding, in ``findings`` and in the superseded attempts alike: a
 #: consumer diffing the two versions finds one key gone from every finding and nothing renamed.
 #: And to v0.7 with the ``comprehension`` block gone, and its open points with it from
-#: ``open_questions``: the room no longer reads practice or probes (ADR 0056).
-SCHEMA_VERSION = "tripod.internalization-release.v0.7"
+#: ``open_questions``: the room no longer reads practice or probes (ADR 0056). And to v0.8 with
+#: ``duration_ms`` on every take, and ``recorded_at`` its **Recording time** (ADR 0072).
+SCHEMA_VERSION = "tripod.internalization-release.v0.8"
 
 #: The whole of what a facilitator's code can set aside, and the one place that says so. They
 #: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
@@ -238,7 +241,8 @@ def _take_view(take: IRTake) -> dict[str, Any]:
         "size_bytes": take.size_bytes,
         "content_type": take.content_type,
         "verified": take.verified_at is not None,
-        "recorded_at": take.created_at.isoformat() if take.created_at else None,
+        "recorded_at": as_utc(take.recorded_at).isoformat(),
+        "duration_ms": take.duration_ms,
     }
 
 
@@ -381,7 +385,7 @@ async def compose_internalization_release(
     report satisfied the coverage arithmetic the way an unread telling-back satisfied
     ``checked`` — and so did a report the team had since made untrue by recording the passage
     again. Both said the team heard themselves when nobody knows whether they did. The package
-    is refused unless every current part was played through, each in its own milliseconds.
+    is refused unless every current part was heard, each in its own milliseconds (ADR 0074).
 
     Only whether anything is unheard is read here. Which parts they are is the same answer, and
     it is what the room says to the team when it sends them back; this decides one thing.
@@ -472,7 +476,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = rehearsed_parts(stretches)
-    unheard = unheard_parts(telling_back, [part.id for part in parts])
+    unheard = unheard_parts(telling_back, parts, stretches)
     if rehearsed and unheard:
         blockers.append("playback_did_not_cover_the_clip")
 
@@ -509,7 +513,8 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
             ],
             "findings": [_finding_view(finding) for finding in telling_back.findings],
             "played_by_take": [
-                entry.model_dump(mode="json") for entry in telling_back.played_by_take
+                entry.model_dump(mode="json")
+                for entry in listening_to_the_parts(telling_back.played_by_take, parts, stretches)
             ],
             "superseded_attempts": [_attempt_view(attempt) for attempt in telling_back.superseded],
             "superseded_segments": [_segment_view(segment) for segment in replaced],

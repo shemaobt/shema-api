@@ -1,8 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_serializer,
+)
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
@@ -562,9 +569,8 @@ class PlayedTake(BaseModel):
     it. Named, the rule the room applies is per part: what the team heard of one part is judged
     against that part alone.
 
-    The tablet keeps the ledger and sends all of it every time, because what is stored is what
-    was sent: a report listing one part is a report that one part was played and the others
-    were not.
+    Reports add up per take (ADR 0074): the tablet reports as each part ends and on leaving, so
+    a report listing one part says what was played of that part and nothing about the others.
 
     A length of zero is the honest default for an entry that arrives without one, rather than a
     refusal. Nothing can be measured against it, so it costs the release — and `terminei` still
@@ -717,12 +723,12 @@ class VerdictHeardResponse(BaseModel):
 
 
 class ListenedWholeResponse(BaseModel):
-    """What follows the team's full listen of the recording, before any «terminei».
+    """What follows a listening report, before any «terminei»: the parts still unheard, and more.
 
-    Only a joined recording is ever checked by itself, and only once a passage record: when
-    `automatic_check` is true the tablet says `fixed_line`, her N-2, reads «conferindo…» on
-    «terminei» and presses the finish itself, with no tap. Otherwise the tablet does what it
-    does after a listen today.
+    `unheard_take_ids` answers every report. Only a joined recording is ever checked by itself,
+    and only once a passage record: when `automatic_check` is true the tablet says
+    `fixed_line`, her N-2, reads «conferindo…» on «terminei» and presses the finish itself,
+    with no tap. Otherwise the tablet does what it does after a listen today.
     """
 
     session_id: str
@@ -753,6 +759,13 @@ class ListenedWholeResponse(BaseModel):
             "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order: a part "
             "with no translated frase, or a WAV part with half a second or more no frase "
             "covers. Empty otherwise."
+        ),
+    )
+    unheard_take_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The current parts the room still counts as unheard after storing this report, "
+            "sorted, by the rule of ADR 0074; empty when every part is heard."
         ),
     )
 
@@ -1021,6 +1034,18 @@ class FacilitatorSessionsResponse(BaseModel):
     devices: list[FacilitatorHaltedDeviceView] = []
 
 
+def _an_instant_on_the_utc_clock(when: datetime) -> datetime:
+    try:
+        return when.astimezone(UTC)
+    except OverflowError:
+        raise ValueError("A recording time with no instant on the UTC clock") from None
+
+
+#: A **Recording time** as the tablet sends it: an instant with its offset, read on the UTC
+#: clock. One past the calendar's edge once converted is malformed, as one with no offset is.
+SentRecordingTime = Annotated[AwareDatetime, AfterValidator(_an_instant_on_the_utc_clock)]
+
+
 class TakeResponse(BaseModel):
     take_id: str
     session_id: str
@@ -1036,8 +1061,11 @@ class TakeResponse(BaseModel):
     #: to Refine.
     ordinal: int | None = None
     pass_number: int | None = None
+    #: A tablet resuming from the listing reads this to know the recording is a joined one.
+    origin: str | None = None
     pericope: str = ""
     recorded_at: str = ""
+    duration_ms: int | None = None
 
 
 class TakesResponse(BaseModel):
@@ -1056,6 +1084,8 @@ class MotherTongueTake(BaseModel):
     play_url: str | None
     unread: bool
     duration_ms: int | None = None
+    #: The **Clock offset** of the tablet that joined this part, for the consultant's one line.
+    device_clock_offset_ms: int | None = None
 
 
 class KeptRehearsal(BaseModel):
@@ -1070,6 +1100,35 @@ class MotherTongueTakesResponse(BaseModel):
     kept_rehearsals: list[KeptRehearsal] = Field(default_factory=list)
     recording_grain: Literal["parts", "whole"] | None = None
     finished_at: str | None = None
+
+
+class TakeDownload(BaseModel):
+    """One rehearsal take for Refine: its **Part key**, its file name, a link that saves it."""
+
+    take_id: str
+    key: str
+    filename: str
+    url: str
+    sha256: str
+    size_bytes: int
+    duration_ms: int | None
+    content_type: str
+
+
+class SupersededTakeDownload(TakeDownload):
+    """A **Superseded take**, with when the take that replaced it reached the server."""
+
+    superseded_at: str
+
+
+class TakeDownloadsResponse(BaseModel):
+    """The session's rehearsal takes by file name, live parts and superseded takes apart."""
+
+    session_id: str
+    release_id: str
+    links_valid_for_s: int
+    takes: list[TakeDownload]
+    superseded_takes: list[SupersededTakeDownload]
 
 
 class SceneFraseView(BaseModel):

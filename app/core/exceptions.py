@@ -75,6 +75,12 @@ ERROR_CODE_SENTENCE_TOO_SHORT: Final = "SENTENCE_TOO_SHORT"
 ERROR_CODE_SENTENCE_FORMAT_DIFFERS: Final = "SENTENCE_FORMAT_DIFFERS"
 ERROR_CODE_SENTENCE_ID_REUSED: Final = "SENTENCE_ID_REUSED"
 ERROR_CODE_PART_NOT_WAV: Final = "PART_NOT_WAV"
+#: A take or scene rehearsal whose ``sha256`` is not the hash of the bytes sent with it.
+ERROR_CODE_TAKE_FINGERPRINT_DIFFERS: Final = "TAKE_FINGERPRINT_DIFFERS"
+#: A take or scene rehearsal whose ``duration_ms`` is more than the slack from its sound's length.
+ERROR_CODE_TAKE_DURATION_DIFFERS: Final = "TAKE_DURATION_DIFFERS"
+#: A take or scene rehearsal whose bytes measure longer than any recording of the room can last.
+ERROR_CODE_TAKE_TOO_LONG: Final = "TAKE_TOO_LONG"
 ERROR_CODE_ANOTHER_SENTENCE_AWAITS: Final = "ANOTHER_SENTENCE_AWAITS"
 ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION: Final = "FRASE_AWAITS_ITS_TRANSLATION"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
@@ -292,6 +298,17 @@ class SentenceRefused(Exception):
         self.frases = frases
 
 
+class RecordingRefused(Exception):
+    """A recording whose bytes contradict what the tablet said of them, or are no recording's.
+
+    Refused rather than corrected: the room keeps nothing the tablet would believe it described.
+    """
+
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
+
+
 class FraseAwaitsItsTranslation(ValidationError):
     pass
 
@@ -313,7 +330,8 @@ class WordlessTelling(ValidationError):
 
 
 class FraseOutOfPlace(ValidationError):
-    """A scene frase that ends before it starts, or past the end of its scene recording."""
+    """A scene frase that ends before it starts, past the end of its scene recording, or over a
+    stretch a current frase of its attempt holds and does not replace."""
 
 
 class UnknownScene(ValidationError):
@@ -620,6 +638,13 @@ async def handle_unknown_scene(_request: Request, exc: UnknownScene) -> JSONResp
     )
 
 
+async def handle_recording_refused(_request: Request, exc: RecordingRefused) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), exc.code),
+    )
+
+
 async def handle_idempotency_key_in_flight(
     _request: Request, exc: IdempotencyKeyInFlight
 ) -> JSONResponse:
@@ -775,6 +800,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
+    app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]

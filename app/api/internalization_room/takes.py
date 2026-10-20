@@ -17,6 +17,8 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import (
     MotherTongueTakesResponse,
+    SentRecordingTime,
+    TakeDownloadsResponse,
     TakeResponse,
     TakesResponse,
 )
@@ -27,7 +29,9 @@ from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
 )
 from app.services.internalization_room.session_takes import mother_tongue_takes_of
+from app.services.internalization_room.take_downloads import take_downloads_of
 from app.services.internalization_room.takes import (
+    LONGEST_TAKE_MS,
     TakeStore,
     listen_url,
     store_take,
@@ -52,8 +56,10 @@ def _view(take: IRTake) -> TakeResponse:
         verified=take.verified_at is not None,
         ordinal=take.ordinal,
         pass_number=take.pass_number,
+        origin=take.origin,
         pericope=take.pericope,
-        recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
+        recorded_at=as_utc(take.recorded_at).isoformat(),
+        duration_ms=take.duration_ms,
     )
 
 
@@ -84,6 +90,30 @@ async def keep_take(
             "it, and the listen may check it with no tap. Absent on a part recorded as itself."
         ),
     ),
+    recorded_at: SentRecordingTime | None = Form(
+        default=None,
+        description=(
+            "When the recording stopped, by the tablet's clock, with its offset. It is the "
+            "take's recording time however late the upload lands; a joined part keeps the "
+            "server's clock instead, and this only measures how far the tablet's is off."
+        ),
+    ),
+    duration_ms: int | None = Form(
+        default=None,
+        ge=0,
+        le=LONGEST_TAKE_MS,
+        description=(
+            "The length of the file sent, read from the file itself. Refused with "
+            "TAKE_DURATION_DIFFERS when more than 100 ms from the length the server measures."
+        ),
+    ),
+    sha256: str | None = Form(
+        default=None,
+        description=(
+            "The sha256 of the bytes sent, in hex. Refused with TAKE_FINGERPRINT_DIFFERS when "
+            "it is not theirs; nothing is stored."
+        ),
+    ),
     file: UploadFile = File(...),
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -107,6 +137,10 @@ async def keep_take(
     one service, called once the bytes are safe. It does not live inside the storing: that
     primitive knows nothing of parts — the routes that keep a telling of a stretch store through
     it as well — and what follows from a part arriving is the room's question, not storage's.
+
+    The tablet's fingerprint and length are checked against the bytes and refused when they
+    disagree, never corrected. A joined part keeps the server's clock as its recording time,
+    and a resend answers with the row already kept, its time unmoved.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -126,6 +160,9 @@ async def keep_take(
         ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",
         origin=origin,
+        sent_sha256=sha256,
+        sent_duration_ms=duration_ms,
+        sent_recorded_at=recorded_at,
     )
     await room.retire_the_part_recorded_again(db, session, take)
     nudge(session.project_id, "takes")
@@ -209,6 +246,22 @@ async def read_the_mother_tongue_takes(
 ) -> MotherTongueTakesResponse:
     session = await room.get_session_for_reader(db, user, session_id)
     return await mother_tongue_takes_of(db, session, store)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/takes/downloads",
+    response_model=TakeDownloadsResponse,
+)
+async def read_the_take_downloads(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> TakeDownloadsResponse:
+    """What the facilitator hands Refine: each take under her file name, links good for an hour.
+
+    Read it again for fresh links; a name follows the passage's latest release at the moment of
+    the read.
+    """
+    session = await room.get_session_for_reader(db, user, session_id)
+    return await take_downloads_of(db, session)
 
 
 @router.get(

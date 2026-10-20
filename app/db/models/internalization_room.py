@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Enum,
     Index,
@@ -394,6 +395,15 @@ class IRTake(Base):
     __tablename__ = "ir_takes"
     __table_args__ = (
         UniqueConstraint("session_id", "storage_key", name="uq_ir_takes_session_storage_key"),
+        Index(
+            "uq_ir_takes_session_kind_sha256",
+            "session_id",
+            "kind",
+            "sha256",
+            unique=True,
+            postgresql_where=text("sha256 <> ''"),
+            sqlite_where=text("sha256 <> ''"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -419,6 +429,16 @@ class IRTake(Base):
     #: The **Scene rehearsal** this part was joined from, as the tablet declared it. Null on a
     #: part recorded as itself; a recording with any current part carrying one is **Joined**.
     origin: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The take's **Recording time**: the tablet's clock for a take recorded on it, the server's
+    #: for a joined or spliced part and for a take sent with none. Never moved once stored.
+    recorded_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: How long the sound runs, as the tablet sent it when it matched the bytes, or as measured.
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The **Clock offset** of the tablet that sent this joined part, kept only at five minutes
+    #: or more; the consultant's alone.
+    device_clock_offset_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class IRSceneSaid(enum.StrEnum):
@@ -472,6 +492,10 @@ class IRSceneRehearsal(Base):
     sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     sent_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The rehearsal's **Recording time**: the tablet's clock when it sent one, else the server's.
+    recorded_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
     #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
