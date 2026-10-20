@@ -219,10 +219,10 @@ async def test_a_scene_rehearsal_sent_leaves_the_rehearsal_as_it_was(
     passage_take = await rehearse(room.client, session_id, part=part)
     before = await rehearsal_takes(rival_factory, session_id)
     assert [take["id"] for take in before] == [passage_take]
-    stores_before = (dict(the_bucket.objects), dict(room.bucket.objects))
 
     rehearsal_id = await recorded(room, session_id)
     await translated(room, session_id, rehearsal_id, [(0, 20000)])
+    stores_before = (dict(the_bucket.objects), dict(room.bucket.objects))
     sent = await room.client.post(
         f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send",
         data={"turn_id": "turno-da-cena"},
@@ -230,9 +230,4 @@ async def test_a_scene_rehearsal_sent_leaves_the_rehearsal_as_it_was(
     assert sent.status_code == 200, sent.text
 
     assert await rehearsal_takes(rival_factory, session_id) == before
-    assert not [
-        key
-        for key in {*stores_before[0], *stores_before[1]}
-        if the_bucket.objects.get(key) != stores_before[0].get(key)
-        or room.bucket.objects.get(key) != stores_before[1].get(key)
-    ]
+    assert (the_bucket.objects, room.bucket.objects) == stores_before
