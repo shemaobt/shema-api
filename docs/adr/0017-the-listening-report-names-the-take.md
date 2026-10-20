@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0074: a part is heard under her rule, and reports add up per take
 date: 2026-09-11
 ---
 

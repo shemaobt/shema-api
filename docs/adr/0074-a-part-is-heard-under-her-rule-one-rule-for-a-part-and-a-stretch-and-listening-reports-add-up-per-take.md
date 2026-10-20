@@ -37,8 +37,9 @@ Decided, as hers (ENG-1419):
 - A report with parts adds to what is stored, per take: spans are unioned and kept joined where
   they touch, the length kept is the shortest positive one measured (a zero is no measurement),
   and only entries for the session's current parts are kept, the set the gate asks of. A flat
-  report still takes nothing away. This supersedes "a report with parts replaces, it does not
-  merge".
+  report still takes nothing away. Two reports landing together add up too: the write that read
+  first adds its entries onto the one that landed. This supersedes "a report with parts
+  replaces, it does not merge".
 - ADR 0070's listen door is the tablet's reporting door: it stores and checks nothing, as
   before, and every answer now carries `unheard_take_ids`, so the tablet never counts by itself
   and the dossier, the release, the refusal and the tablet read one answer.
@@ -52,3 +53,5 @@ length**, which would let one inflated measurement block a team that listened.
 Consequences: stored reports are re-read under the new rule with no migration. A session in
 flight that passed with several short holes adding past 0.75 s is now refused `PART_UNHEARD`,
 and the team hears that part again.
+A take's length only ever comes down: one short measurement lowers the bar for that take
+for good, as on hers, and nothing raises it again short of recording the part again.

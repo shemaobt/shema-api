@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0074: the new sentence is heard under the same rule as a part
 date: 2026-10-19
 ---
 

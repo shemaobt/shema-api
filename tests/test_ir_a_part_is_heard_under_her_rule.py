@@ -13,11 +13,17 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     unheard_parts,
+)
+from app.services.internalization_room.sessions import (
+    back_translation_of,
+    get_session,
+    report_playback,
 )
 from tests.release_harness import PREFIX
 from tests.room_harness import (
@@ -268,3 +274,32 @@ async def test_the_listen_door_stores_the_report_and_answers_which_parts_are_sti
     assert second.json()["unheard_take_ids"] == [c.id]
     assert finished.json()["refusal"] == "PART_UNHEARD"
     assert finished.json()["unheard_take_ids"] == [c.id]
+
+
+async def test_two_reports_landing_together_keep_the_listening_each_one_brought(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session, (a, b) = await rehearsed_in_parts(db_session, 2)
+    async with rival_factory() as first_db, rival_factory() as second_db:
+        first = await get_session(first_db, session.id)
+        second = await get_session(second_db, session.id)
+        first_state, second_state = back_translation_of(first), back_translation_of(second)
+
+        for db, read, state, part in (
+            (first_db, first, first_state, a),
+            (second_db, second, second_state, b),
+        ):
+            await report_playback(
+                db,
+                read,
+                state,
+                played_by_take=[PlayedTake(**_entry(part.id, [[0, PART_MS]]))],
+                played_ranges=[],
+                clip_duration_ms=None,
+            )
+
+    async with rival_factory() as fresh_db:
+        stored = back_translation_of(await get_session(fresh_db, session.id))
+    assert unheard_parts(stored, [a.id, b.id]) == [], (
+        "o relato que leu antes gravava por cima, e a parte ouvida pelo outro sumia"
+    )
