@@ -11,6 +11,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.internalization_room import IRTake
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.sessions import (
@@ -68,7 +69,7 @@ async def _unheard_after_playing(
         PlayedTake(take_id=laid, played_ranges=played, clip_duration_ms=3400),
         PlayedTake(take_id=other, played_ranges=[(0, 2000)], clip_duration_ms=2000),
     ]
-    return unheard_parts(state, [laid, other])
+    return unheard_parts(state, [IRTake(id=laid), IRTake(id=other)], [])
 
 
 async def test_a_part_heard_before_needs_only_its_new_sentence_heard(
@@ -77,7 +78,7 @@ async def test_a_part_heard_before_needs_only_its_new_sentence_heard(
     session_id, laid, other = await _laid_in(client, db_session, store, heard_before=True)
 
     kept = await stored_telling_back(db_session, await get_session(db_session, session_id))
-    assert unheard_parts(kept, [laid, other]) == [laid], (
+    assert unheard_parts(kept, [IRTake(id=laid), IRTake(id=other)], []) == [laid], (
         "a frase nova apagava o que a equipe já tinha ouvido da outra parte"
     )
     almost = await _unheard_after_playing(db_session, session_id, laid, other, [(1000, 1800)])

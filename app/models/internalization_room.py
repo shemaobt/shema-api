@@ -569,9 +569,8 @@ class PlayedTake(BaseModel):
     it. Named, the rule the room applies is per part: what the team heard of one part is judged
     against that part alone.
 
-    The tablet keeps the ledger and sends all of it every time, because what is stored is what
-    was sent: a report listing one part is a report that one part was played and the others
-    were not.
+    Reports add up per take (ADR 0074): the tablet reports as each part ends and on leaving, so
+    a report listing one part says what was played of that part and nothing about the others.
 
     A length of zero is the honest default for an entry that arrives without one, rather than a
     refusal. Nothing can be measured against it, so it costs the release — and `terminei` still
@@ -724,12 +723,12 @@ class VerdictHeardResponse(BaseModel):
 
 
 class ListenedWholeResponse(BaseModel):
-    """What follows the team's full listen of the recording, before any «terminei».
+    """What follows a listening report, before any «terminei»: the parts still unheard, and more.
 
-    Only a joined recording is ever checked by itself, and only once a passage record: when
-    `automatic_check` is true the tablet says `fixed_line`, her N-2, reads «conferindo…» on
-    «terminei» and presses the finish itself, with no tap. Otherwise the tablet does what it
-    does after a listen today.
+    `unheard_take_ids` answers every report. Only a joined recording is ever checked by itself,
+    and only once a passage record: when `automatic_check` is true the tablet says
+    `fixed_line`, her N-2, reads «conferindo…» on «terminei» and presses the finish itself,
+    with no tap. Otherwise the tablet does what it does after a listen today.
     """
 
     session_id: str
@@ -760,6 +759,13 @@ class ListenedWholeResponse(BaseModel):
             "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order: a part "
             "with no translated frase, or a WAV part with half a second or more no frase "
             "covers. Empty otherwise."
+        ),
+    )
+    unheard_take_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The current parts the room still counts as unheard after storing this report, "
+            "sorted, by the rule of ADR 0074; empty when every part is heard."
         ),
     )
 

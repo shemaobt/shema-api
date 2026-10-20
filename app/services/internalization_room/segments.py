@@ -30,7 +30,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import BackTranslationState, part_length
 from app.services.internalization_room.takes import is_wav
 
 SHORTEST_FRASE_MS = 200
@@ -99,8 +99,8 @@ async def refuse_a_slice_a_version_cannot_take(
             "A passage already approved keeps its pauses where they fell",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
         )
-    content_type = await db.execute(select(IRTake.content_type).where(IRTake.id == take_id))
-    if not is_wav(content_type.scalar_one()):
+    take = (await db.execute(select(IRTake).where(IRTake.id == take_id))).scalar_one()
+    if not is_wav(take.content_type):
         raise PauseCannotMove(
             "A compressed recording keeps its pauses where they fell",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
@@ -117,8 +117,7 @@ async def refuse_a_slice_a_version_cannot_take(
             f"A frase from {starts_ms} ms to {ends_ms} ms is shorter than {SHORTEST_FRASE_MS} ms",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
         )
-    played = (one.clip_duration_ms for one in state.played_by_take if one.take_id == take_id)
-    length = next(played, 0)
+    length = part_length(take, state.played_by_take, part)
     if length and ends_ms > length + END_SLACK_MS:
         raise PauseCannotMove(
             f"A pause at {ends_ms} ms falls past the end of a recording of {length} ms",

@@ -304,7 +304,7 @@ async def test_a_declared_session_has_her_parts_heard(client, db_session) -> Non
     assert [take.kind for take in takes] == [IRTakeKind.ENSAIO] * 3
     state = room.back_translation_of(session)
     assert [entry.clip_duration_ms for entry in state.played_by_take] == [20000, 25000, 45000]
-    assert unheard_parts(state, [take.id for take in takes]) == [], (
+    assert unheard_parts(state, takes, []) == [], (
         "o roteiro dela marca cada clipe como ouvido por inteiro antes da primeira rodada; "
         "sem isso a passagem nunca fecha e a rodada dela mede outra coisa"
     )

@@ -382,6 +382,38 @@ async def test_a_listen_that_left_a_joined_scene_unheard_checks_nothing(
     assert body["fixed_line"] == ""
 
 
+async def test_the_listen_door_answers_which_parts_are_unheard_on_a_joined_recording_too(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (first, second) = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]])
+
+    listened = await _listened_whole(client, session.id, report=_heard([first]))
+
+    assert listened.status_code == 200, listened.text
+    body = listened.json()
+    assert body["unheard_take_ids"] == [second.id]
+    assert body["automatic_check"] is False
+    assert body["refusal"] is None
+
+
+async def test_a_short_length_reported_never_hides_an_untranslated_tail_on_a_measured_part(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (part,) = await _recorded(db_session, [[(0, 1000)]])
+    part.duration_ms = PART_MS
+    await db_session.commit()
+    played_whole_reported_short = {
+        "played_by_take": [
+            {"take_id": part.id, "played_ranges": [[0, PART_MS]], "clip_duration_ms": 1200}
+        ]
+    }
+
+    listened = await _listened_whole(client, session.id, report=played_whole_reported_short)
+
+    assert listened.status_code == 200, listened.text
+    assert listened.json()["untranslated"] == [{"take_id": part.id, "scene": 1, "from_ms": 1000}]
+
+
 async def test_a_listen_with_a_frase_awaiting_its_translation_checks_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

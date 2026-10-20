@@ -146,7 +146,7 @@ async def _team_release_blocked(
         untold_segment_id = untold.id if untold else None
         takes = await takes_of(db, session.id)
         state = room.back_translation_of(session)
-        unheard_take_ids = room.unheard_parts(state, [part.id for part in current_parts(takes)])
+        unheard_take_ids = room.unheard_parts(state, current_parts(takes), final)
     return TeamReleaseResponse(
         session_id=session.id,
         blockers=blockers,
