@@ -1041,3 +1041,74 @@ async def test_the_replace_answer_names_the_take_the_replacement_stored(
     stored = await _retro_take_ids(db_session, session_id) - first
     assert len(stored) == 1
     assert [one["bridge_take_id"] for one in answered.json()["segments"]] == [stored.pop()]
+
+
+# ---------------------------------------------------------------------------
+# A replace the door will refuse keeps nothing and pays for nothing — ENG-1727
+# ---------------------------------------------------------------------------
+
+
+async def test_a_replace_of_a_stretch_that_no_longer_counts_keeps_and_hears_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id, whole = await _one_told_stretch(client)
+    client.said.append("a explicação refeita")  # type: ignore[attr-defined]
+    done = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando de novo",
+    )
+    assert done.status_code == 200, done.text
+    kept = await _retro_take_ids(db_session, session_id)
+    client.said.append("uma terceira vez")  # type: ignore[attr-defined]
+
+    refused = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando outra vez",
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "STRETCH_NO_LONGER_COUNTS"
+    assert await _retro_take_ids(db_session, session_id) == kept, (
+        "a troca recusada guardava a gravação antes de recusar"
+    )
+    assert client.said == ["uma terceira vez"], (  # type: ignore[attr-defined]
+        "a troca recusada pagava a transcrição antes de recusar"
+    )
+
+
+async def test_a_replace_of_a_divided_stretch_keeps_and_hears_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id, whole = await _one_told_stretch(client)
+    await _divide(client, session_id, whole["segment_id"], 8000)
+    kept = await _retro_take_ids(db_session, session_id)
+    client.said.append("o todo contado outra vez")  # type: ignore[attr-defined]
+
+    refused = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando o todo outra vez",
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
+    assert await _retro_take_ids(db_session, session_id) == kept, (
+        "a frase dividida guardava a gravação antes de ser recusada"
+    )
+    assert client.said == ["o todo contado outra vez"], (  # type: ignore[attr-defined]
+        "a frase dividida pagava a transcrição antes de ser recusada"
+    )

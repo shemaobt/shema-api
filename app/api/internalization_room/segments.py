@@ -30,6 +30,7 @@ from app.services.internalization_room.nudge_channel import nudge, nudge_stretch
 from app.services.internalization_room.segments import (
     divide_segment,
     refuse_a_slice_a_version_cannot_take,
+    refuse_a_stretch_that_is_not_a_unit,
     segment_for_session,
 )
 from app.services.internalization_room.sentences import (
@@ -184,6 +185,7 @@ async def replace(
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
+    await refuse_a_stretch_that_is_not_a_unit(db, session.id, segment)
 
     retro = await store_take(
         db,
