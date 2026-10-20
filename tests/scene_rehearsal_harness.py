@@ -174,11 +174,17 @@ async def translate(
     audio: bytes,
     *,
     replaces: str | None = None,
+    after_restart: str | None = None,
 ) -> httpx.Response:
     starts, ends = place
     data = {
         name: str(value)
-        for name, value in (("starts_ms", starts), ("ends_ms", ends), ("replaces", replaces))
+        for name, value in (
+            ("starts_ms", starts),
+            ("ends_ms", ends),
+            ("replaces", replaces),
+            ("after_restart", after_restart),
+        )
         if value is not None
     }
     return await room.client.post(

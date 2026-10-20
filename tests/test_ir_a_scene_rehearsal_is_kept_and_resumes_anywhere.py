@@ -415,22 +415,6 @@ async def restarted(room: Room, session_id: str, rehearsal_id: str) -> str:
     return str(answered.json()["after_restart"])
 
 
-async def translate_after(
-    room: Room,
-    session_id: str,
-    rehearsal_id: str,
-    place: tuple[int, int],
-    audio: bytes,
-    after_restart: str,
-) -> httpx.Response:
-    starts, ends = place
-    return await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
-        data={"starts_ms": str(starts), "ends_ms": str(ends), "after_restart": after_restart},
-        files={"file": ("frase.wav", audio, "audio/wav")},
-    )
-
-
 async def snapshots(db: AsyncSession, rehearsal_id: str) -> list[dict[str, Any]]:
     found = await db.execute(
         text("SELECT snapshot FROM ir_scene_restarts WHERE rehearsal_id = :r ORDER BY n"),
@@ -472,8 +456,8 @@ async def test_the_same_restart_sent_twice_is_one_restart(
     attempt = str(uuid.uuid4())
     first = await restart(room, session_id, rehearsal_id, attempt)
     assert first.status_code == 200, first.text
-    kept = await translate_after(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 800), attempt
+    kept = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 800), after_restart=attempt
     )
     assert kept.status_code == 200, kept.text
 
@@ -494,8 +478,8 @@ async def test_a_frase_recorded_before_a_restart_and_sent_after_it_is_set_aside(
     after = await restarted(room, session_id, rehearsal_id)
 
     late = await translate(room, session_id, rehearsal_id, (5000, 11000), recording(1, 600))
-    fresh = await translate_after(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 601), after
+    fresh = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 601), after_restart=after
     )
 
     assert late.status_code == 200, late.text
@@ -531,8 +515,8 @@ async def test_a_frase_of_an_offline_restart_waits_for_that_restart_and_then_cou
     await translated(room, session_id, rehearsal_id, [(0, 5000)])
     attempt = str(uuid.uuid4())
 
-    early = await translate_after(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt
+    early = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=attempt
     )
 
     assert early.status_code == 200, early.text
@@ -606,9 +590,13 @@ async def test_two_restarts_sent_in_order_leave_the_second_attempt_current(
     x, y = str(uuid.uuid4()), str(uuid.uuid4())
 
     assert (await restart(room, session_id, rehearsal_id, x)).status_code == 200
-    fx = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), x)
+    fx = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=x
+    )
     assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 200
-    fy = await translate_after(room, session_id, rehearsal_id, (0, 6000), recording(1, 601), y)
+    fy = await translate(
+        room, session_id, rehearsal_id, (0, 6000), recording(1, 601), after_restart=y
+    )
 
     assert (fx.status_code, fy.status_code) == (200, 200)
     (rehearsal,) = await read_by_b(room, session_id)
@@ -624,9 +612,13 @@ async def test_a_restart_that_lands_before_the_one_it_closes_waits_for_it(
     x, y = str(uuid.uuid4()), str(uuid.uuid4())
 
     early = await restart(room, session_id, rehearsal_id, y, closes=x)
-    fy = await translate_after(room, session_id, rehearsal_id, (0, 6000), recording(1, 601), y)
+    fy = await translate(
+        room, session_id, rehearsal_id, (0, 6000), recording(1, 601), after_restart=y
+    )
     assert (await restart(room, session_id, rehearsal_id, x)).status_code == 200
-    fx = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), x)
+    fx = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=x
+    )
     retried = await restart(room, session_id, rehearsal_id, y, closes=x)
 
     assert early.status_code == 409, early.text
@@ -645,8 +637,8 @@ async def test_a_frase_naming_another_scene_rehearsals_restart_is_refused(
     sibling_id = await recorded(room, session_id, recording(10, 2))
     theirs = await restarted(room, session_id, sibling_id)
 
-    refused = await translate_after(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), theirs
+    refused = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=theirs
     )
 
     assert refused.status_code == 422, refused.text
@@ -662,7 +654,9 @@ async def test_an_earlier_restart_resent_after_a_later_one_landed_changes_nothin
     x, y = str(uuid.uuid4()), str(uuid.uuid4())
     assert (await restart(room, session_id, rehearsal_id, x)).status_code == 200
     assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 200
-    fy = await translate_after(room, session_id, rehearsal_id, (0, 6000), recording(1, 601), y)
+    fy = await translate(
+        room, session_id, rehearsal_id, (0, 6000), recording(1, 601), after_restart=y
+    )
     assert fy.status_code == 200, fy.text
 
     again = await restart(room, session_id, rehearsal_id, x)
@@ -798,8 +792,8 @@ async def test_the_reader_reads_a_held_frase_whose_restart_never_landed(
     rehearsal_id = await recorded(room, session_id)
     attempt = str(uuid.uuid4())
     room.answers.append("esperando o recomeço")
-    held = await translate_after(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt
+    held = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=attempt
     )
     assert held.status_code == 200, held.text
     await sent(db_session, rehearsal_id)
@@ -823,9 +817,13 @@ async def test_the_readers_held_frases_leave_the_list_as_their_restarts_land(
     rehearsal_id = await recorded(room, session_id)
     x, y = str(uuid.uuid4()), str(uuid.uuid4())
     assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 409
-    fy = await translate_after(room, session_id, rehearsal_id, (0, 6000), recording(1, 601), y)
+    fy = await translate(
+        room, session_id, rehearsal_id, (0, 6000), recording(1, 601), after_restart=y
+    )
     assert (await restart(room, session_id, rehearsal_id, x)).status_code == 200
-    fx = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), x)
+    fx = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=x
+    )
     assert (fy.status_code, fx.status_code) == (200, 200)
 
     (read,) = await read_by_the_reader(room, session_id)
@@ -847,7 +845,9 @@ async def test_a_held_frase_stays_held_when_a_sibling_rehearsals_restart_of_that
     rehearsal_id = await recorded(room, session_id)
     sibling_id = await recorded(room, session_id, recording(10, 2))
     z = str(uuid.uuid4())
-    held = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), z)
+    held = await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=z
+    )
     assert held.status_code == 200, held.text
 
     assert (await restart(room, session_id, sibling_id, z)).status_code == 200
@@ -908,7 +908,9 @@ async def test_one_read_of_a_rehearsal_reads_its_restarts_once(
     session_id = await a_session(db_session)
     rehearsal_id = await recorded(room, session_id)
     attempt = await restarted(room, session_id, rehearsal_id)
-    await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt)
+    await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=attempt
+    )
     said: list[str] = []
 
     def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
@@ -929,7 +931,9 @@ async def test_one_read_at_the_desk_reads_the_restarts_once(
     session_id = await a_session(db_session)
     rehearsal_id = await recorded(room, session_id)
     attempt = await restarted(room, session_id, rehearsal_id)
-    await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt)
+    await translate(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), after_restart=attempt
+    )
     said: list[str] = []
 
     def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:

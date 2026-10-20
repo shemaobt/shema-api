@@ -30,7 +30,7 @@ from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.room_harness import the_room_speaks
-from tests.scene_rehearsal_harness import recording
+from tests.scene_rehearsal_harness import recording, translate
 from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
@@ -203,15 +203,14 @@ async def a_frase(
     after_restart: str | None = None,
 ) -> httpx.Response:
     room.answers.append(said)
-    data = {"starts_ms": str(place[0]), "ends_ms": str(place[1])}
-    if replaces is not None:
-        data["replaces"] = replaces
-    if after_restart is not None:
-        data["after_restart"] = after_restart
-    return await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
-        data=data,
-        files={"file": ("frase.wav", recording(1, tone), "audio/wav")},
+    return await translate(
+        room,
+        session_id,
+        rehearsal_id,
+        place,
+        recording(1, tone),
+        replaces=replaces,
+        after_restart=after_restart,
     )
 
 

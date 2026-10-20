@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.hard_stretch_harness import a_session
 from tests.scene_rehearsal_harness import (
-    IR,
     Room,
     a_room,
     count,
@@ -40,22 +39,6 @@ async def current_places(room: Room, session_id: str) -> list[tuple[int, int]]:
         for f in await frases_read_by_b(room, session_id)
         if f["replaced_by"] is None
     ]
-
-
-async def translate_after(
-    room: Room,
-    session_id: str,
-    rehearsal_id: str,
-    place: tuple[int, int],
-    audio: bytes,
-    after_restart: str,
-) -> httpx.Response:
-    starts, ends = place
-    return await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
-        data={"starts_ms": str(starts), "ends_ms": str(ends), "after_restart": after_restart},
-        files={"file": ("frase.wav", audio, "audio/wav")},
-    )
 
 
 async def test_a_frase_over_a_stretch_a_current_frase_holds_is_refused_as_out_of_place_naming_that_frase(  # noqa: E501
@@ -144,13 +127,13 @@ async def test_a_frase_of_a_new_attempt_over_a_stretch_of_the_earlier_attempt_is
     restarted = await restart(room, session_id, rehearsal_id)
     assert restarted.status_code == 200, restarted.text
 
-    kept = await translate_after(
+    kept = await translate(
         room,
         session_id,
         rehearsal_id,
         (0, 4000),
         recording(1, 900),
-        restarted.json()["after_restart"],
+        after_restart=restarted.json()["after_restart"],
     )
 
     assert kept.status_code == 200, kept.text
@@ -184,8 +167,13 @@ async def test_a_frase_of_an_attempt_whose_restart_has_not_landed_is_kept_over_t
     rehearsal_id = await recorded(room, session_id)
     await translated(room, session_id, rehearsal_id, [(0, 4000)])
 
-    held = await translate_after(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 900), str(uuid.uuid4())
+    held = await translate(
+        room,
+        session_id,
+        rehearsal_id,
+        (0, 4000),
+        recording(1, 900),
+        after_restart=str(uuid.uuid4()),
     )
 
     assert held.status_code == 200, held.text
