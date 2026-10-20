@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,7 @@ from app.services.internalization_room.back_translation import (
     frase_numbers,
     unheard_parts,
 )
+from app.services.internalization_room.hearing import _length_of
 from app.services.internalization_room.segments import current_segments, final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
@@ -157,6 +159,8 @@ async def lay_in_a_sentence(
         content_type=WAV,
         verified_at=stored.verified_at,
         origin=part.origin,
+        recorded_at=datetime.now(UTC),
+        duration_ms=await _length_of(spliced.audio),
     )
     db.add(take)
     old_end = segment.ends_ms

@@ -104,7 +104,8 @@ async def _keep(
     ordinal: int | None,
     sha: str,
     size_bytes: int = 2048,
-    created_at: datetime | None = None,
+    recorded_at: datetime | None = None,
+    duration_ms: int | None = None,
     pass_number: int | None = None,
 ) -> str:
     take = ensaio_take(
@@ -112,10 +113,12 @@ async def _keep(
         ordinal=ordinal,
         sha256=sha,
         project_id=team.id,
-        created_at=created_at,
         pass_number=pass_number,
     )
     take.size_bytes = size_bytes
+    take.duration_ms = duration_ms
+    if recorded_at is not None:
+        take.recorded_at = recorded_at
     db.add(take)
     await db.commit()
     takes_service._store().objects[take.storage_key] = b"audio"
@@ -203,19 +206,33 @@ async def test_the_fingerprint_is_the_first_twelve_characters_of_the_sha256(
     assert [row["fingerprint"] for row in body["takes"]] == ["0123456789ab"]
 
 
-async def test_the_time_is_the_moment_the_take_was_kept_with_its_offset(
+async def test_the_time_is_the_takes_recording_time_with_its_offset(
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,
     team: Project,
     db_session: AsyncSession,
 ) -> None:
-    kept_at = datetime(2026, 9, 1, 10, 2, tzinfo=UTC)
-    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, created_at=kept_at)
+    recorded_at = datetime(2026, 9, 1, 10, 2, tzinfo=UTC)
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, recorded_at=recorded_at)
 
     body = await _read(client, consultant, session.id)
 
     assert [row["recorded_at"] for row in body["takes"]] == ["2026-09-01T10:02:00+00:00"]
+
+
+async def test_the_consultant_reads_the_duration_the_take_kept(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, duration_ms=3000)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [row["duration_ms"] for row in body["takes"]] == [3000]
 
 
 async def test_a_take_that_kept_no_duration_shows_none_never_one_guessed_from_its_size(

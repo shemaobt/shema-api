@@ -56,11 +56,11 @@ from app.services.internalization_room.opening_claim import (
 )
 from app.services.internalization_room.takes import (
     TakeStore,
+    checked_recording,
     extension,
     recording_digest,
     store_recording,
 )
-from app.services.platform.audio_duration import measure_ms
 
 NUMBERING_TRIES = 50
 
@@ -78,6 +78,9 @@ async def keep_scene_rehearsal(
     content_type: str,
     scene: str | None,
     store: TakeStore | None = None,
+    sent_sha256: str | None = None,
+    sent_duration_ms: int | None = None,
+    sent_recorded_at: datetime | None = None,
 ) -> IRSceneRehearsal:
     """Store the scene as sent and number it in its session; the same bytes are the same one.
 
@@ -86,9 +89,15 @@ async def keep_scene_rehearsal(
     Two keeps at once can read the same last number: the unique index refuses the second,
     which walks to the next number, the house loop ``speaker_service`` uses. A loser that
     carried the same bytes answers with the winner instead.
+
+    What the tablet sent of the recording is checked as a take's is; a scene rehearsal is always
+    recorded on the tablet, so the time it was sent with is its **Recording time**.
     """
     session_id, project_id, pericope = session.id, session.project_id, session.pericope
-    sha256 = recording_digest(audio)
+    checked = await checked_recording(
+        audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
+    )
+    sha256 = checked.sha256
     already = await _the_same_scene(db, session_id, sha256)
     if already is not None:
         return already
@@ -101,7 +110,9 @@ async def keep_scene_rehearsal(
         content_type=content_type,
         store=store,
     )
-    duration_ms = await measure_ms(audio)
+    recorded_at = (
+        datetime.now(UTC) if sent_recorded_at is None else sent_recorded_at.astimezone(UTC)
+    )
     label = None
     if scene:
         with reading_the_canon_of(session.canon_pin):
@@ -118,7 +129,8 @@ async def keep_scene_rehearsal(
             pericope=pericope,
             n=n,
             device_id=device_id,
-            duration_ms=duration_ms,
+            duration_ms=checked.duration_ms,
+            recorded_at=recorded_at,
             scene=label,
             scene_said=IRSceneSaid.RECORDING if scene else None,
             scene_foreign=foreign,

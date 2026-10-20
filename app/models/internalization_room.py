@@ -1038,6 +1038,7 @@ class TakeResponse(BaseModel):
     pass_number: int | None = None
     pericope: str = ""
     recorded_at: str = ""
+    duration_ms: int | None = None
 
 
 class TakesResponse(BaseModel):
@@ -1056,6 +1057,8 @@ class MotherTongueTake(BaseModel):
     play_url: str | None
     unread: bool
     duration_ms: int | None = None
+    #: The **Clock offset** of the tablet that joined this part, for the observer's one line.
+    device_clock_offset_ms: int | None = None
 
 
 class KeptRehearsal(BaseModel):

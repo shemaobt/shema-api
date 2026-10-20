@@ -128,7 +128,7 @@ def _take_view(take: IRTake) -> RetroverificationTake:
         ordinal=take.ordinal,
         pass_number=take.pass_number,
         sha256=take.sha256,
-        recorded_at=_moment(take.created_at),
+        recorded_at=_moment(take.recorded_at),
         url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
     )
 

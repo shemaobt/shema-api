@@ -52,9 +52,11 @@ async def mother_tongue_takes_of(
                 part=None if take.ordinal is None else position,
                 size_kb=(take.size_bytes + 512) // 1024,
                 fingerprint=take.sha256[:12],
-                recorded_at=as_utc(take.created_at).isoformat(),
+                recorded_at=as_utc(take.recorded_at).isoformat(),
                 play_url=link,
                 unread=link is None,
+                duration_ms=take.duration_ms,
+                device_clock_offset_ms=take.device_clock_offset_ms,
             )
         )
     approved_at = (
