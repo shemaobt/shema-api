@@ -47,6 +47,7 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
+from tests.hard_stretch_harness import a_new_recording
 from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 
@@ -60,7 +61,6 @@ GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 FIRST_QUESTION = "Quem aparece nesta parte?"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 EXCERPT = "Noemi voltou"
-AUDIO = b"a equipe explicou este trecho em portugues"
 
 BLOCKING = "blocking"
 WARNING = "warning"
@@ -633,7 +633,7 @@ async def _tell_back_again(
             "ends_ms": "9000",
             "retelling": "true",
         },
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
     )
 
 

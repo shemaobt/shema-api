@@ -24,7 +24,7 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
-from tests.hard_stretch_harness import MemoryStore, voice
+from tests.hard_stretch_harness import MemoryStore, a_new_recording, voice
 from tests.release_harness import ready_session
 from tests.room_harness import nothing_is_read_ahead
 from tests.stream_harness import Listening, listening
@@ -223,7 +223,7 @@ async def tell(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
         headers=team.tablet,
         data=data,
-        files={"file": ("trecho.m4a", b"a equipe contou o trecho", "audio/mp4")},
+        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
     )
     assert told.status_code == 200, told.text
     return told
@@ -252,7 +252,7 @@ async def replace(
             "starts_ms": str(stretch["starts_ms"]),
             "ends_ms": str(stretch["ends_ms"]),
         },
-        files={"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")},
+        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
     )
     assert replaced.status_code == status, replaced.text
     return replaced

@@ -107,8 +107,22 @@ async def test_a_stretch_replaced_is_kept_and_heard_with_the_database_let_go(
 
 
 async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_its_lookup(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    held: dict[str, bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.api.internalization_room import back_translation as bt_api
+
+    heard = bt_api.heard
+    silent = [True]
+
+    async def silent_once(*args: Any, **kwargs: Any) -> str:
+        if silent.pop() if silent else False:
+            return ""
+        return await heard(*args, **kwargs)
+
+    monkeypatch.setattr(bt_api, "heard", silent_once)
     session, (part,) = await rehearsed_in_parts(db_session, 1)
     again = {
         "take_id": part.id,
@@ -120,7 +134,7 @@ async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_
     route = f"{PREFIX}/sessions/{session.id}/back-translation/chunks"
     headers = {"X-Room-Device": TABLET}
     first = await client.post(route, headers=headers, data=again, files=audio)
-    assert first.status_code == 200, first.text
+    assert first.status_code == 422, first.text
     held.clear()
 
     resent = await client.post(route, headers=headers, data=again, files=audio)
@@ -132,29 +146,33 @@ async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_
 
 
 async def test_a_replacement_sent_again_is_heard_with_the_database_let_go_not_under_its_lookup(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    held: dict[str, bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.api.internalization_room import segments as segments_api
+
+    heard = segments_api.heard
+    silent = [True]
+
+    async def silent_once(*args: Any, **kwargs: Any) -> str:
+        if silent.pop() if silent else False:
+            return ""
+        return await heard(*args, **kwargs)
+
+    monkeypatch.setattr(segments_api, "heard", silent_once)
     session, (part,) = await rehearsed_in_parts(db_session, 1)
     stretch = await stretch_on(db_session, session, part)
     headers = {"X-Room-Device": TABLET}
     slice_ = {"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)}
     audio = {"file": ("trecho.m4a", b"a equipe contou outra vez", "audio/mp4")}
-    first = await client.post(
-        f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
-        headers=headers,
-        data=slice_,
-        files=audio,
-    )
-    assert first.status_code == 200, first.text
-    standing = await stretch_on(db_session, session, part)
+    route = f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace"
+    first = await client.post(route, headers=headers, data=slice_, files=audio)
+    assert first.status_code == 422, first.text
     held.clear()
 
-    resent = await client.post(
-        f"{PREFIX}/sessions/{session.id}/segments/{standing.id}/replace",
-        headers=headers,
-        data=slice_,
-        files=audio,
-    )
+    resent = await client.post(route, headers=headers, data=slice_, files=audio)
 
     assert resent.status_code == 200, resent.text
     assert held == {"stt": False}, (
