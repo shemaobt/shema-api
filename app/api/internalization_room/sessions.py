@@ -24,6 +24,7 @@ from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
+    ApprovedDraftView,
     BackTranslationProgress,
     CreateSessionRequest,
     FacilitatorHaltedDeviceView,
@@ -66,6 +67,7 @@ from app.services.internalization_room.prepare_opening import (
     take_prepared,
 )
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.session_takes import kept_takes_of
@@ -325,6 +327,7 @@ def _settle_later(
 
 
 async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
+    approved = await approved_draft(db, session)
     return SessionStateResponse(
         session_id=session.id,
         pericope=session.pericope,
@@ -337,6 +340,14 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         opened=was_opened(session),
         moment=moment_view(session),
         kept_takes=await kept_takes_of(session),
+        approved=ApprovedDraftView(
+            version=approved.version,
+            release_id=approved.packet["release_id"],
+            approved_at=as_utc(approved.approved_at).isoformat(),
+            forced=approved.forced_by is not None,
+        )
+        if approved
+        else None,
     )
 
 

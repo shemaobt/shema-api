@@ -619,6 +619,20 @@ async def _release_of(
     return latest
 
 
+async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | None:
+    """The release this session's draft stands approved under, or none (ADR 0071).
+
+    A passage never approved is answered before the composer runs, which also keeps the
+    panorama and the demo team, whose composer raises, off it: neither ever has a release.
+    """
+    if session.project_id is None:
+        return None
+    if await _latest_release(db, session.project_id, session.pericope) is None:
+        return None
+    artifact, _blockers = await compose_internalization_release(db, session)
+    return await _release_of(db, session, artifact["package_sha256"])
+
+
 async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
     """The last release of this passage for this team, whichever session wrote it.
 
