@@ -47,7 +47,7 @@ from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import final_segments, set_aside_segment_ids
 from app.services.internalization_room.segments import told_back as stretches_told_back
 from app.services.internalization_room.sessions import (
     append_exchange,
@@ -247,9 +247,11 @@ async def save_the_spoken_verdict(
 
     async def as_it_stands(read: BackTranslationState) -> None:
         standing = await final_segments(db, session_id)
-        read.findings = findings_on_stretches_that_count(
-            read.findings, (one.id for one in standing)
-        )
+        aside = await set_aside_segment_ids(db, session_id)
+        read.findings = [
+            *findings_on_stretches_that_count(read.findings, (one.id for one in standing)),
+            *(f for f in base.findings if f.segment_id in aside),
+        ]
         if not read.already_analysed(stretches_told_back(standing)):
             read.checked = False
             read.verdict = None
