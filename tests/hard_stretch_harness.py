@@ -13,6 +13,7 @@ module keeps its own three-line fixtures and calls what is here.
 from __future__ import annotations
 
 import base64
+import itertools
 from typing import Any
 
 import httpx
@@ -42,6 +43,12 @@ DESK = "/api/facilitator/teams"
 DEVICE = "tablet-da-equipe-1"
 P = "P01"
 AUDIO = b"a equipe explicou este trecho em portugues"
+_RECORDINGS = itertools.count(1)
+
+
+def a_new_recording() -> bytes:
+    return AUDIO + b"-%d" % next(_RECORDINGS)
+
 
 #: The stretches the helpers below tell, as slices of the one rehearsal recording.
 SLICES = [(0, 9000), (9000, 18000), (18000, 27000)]
@@ -137,7 +144,7 @@ async def tell(
     again: bool = False,
     saying: str | None = None,
     queued: bool = True,
-    audio: bytes = AUDIO,
+    audio: bytes | None = None,
 ) -> httpx.Response:
     """Tell stretch `stretch` (1-based) back, as a first telling or as one more.
 
@@ -155,7 +162,7 @@ async def tell(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
         headers={"X-Room-Device": DEVICE},
         data=data,
-        files={"file": ("trecho.m4a", audio, "audio/mp4")},
+        files={"file": ("trecho.m4a", audio or a_new_recording(), "audio/mp4")},
     )
 
 

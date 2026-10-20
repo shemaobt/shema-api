@@ -117,15 +117,7 @@ async def test_the_second_telling_of_a_slice_keeps_the_frases_place_in_its_recor
 ) -> None:
     session_id = await a_session(db_session)
     take_id = await rehearse(client, session_id)
-    for stretch in (1, 2):
-        await tell(
-            client,
-            session_id,
-            take_id,
-            stretch,
-            saying=f"o trecho {stretch}",
-            audio=f"o trecho {stretch}".encode(),
-        )
+    await told(client, session_id, take_id, 2)
 
     again = await tell(client, session_id, take_id, 2, saying="o trecho 2, de outro jeito")
 
@@ -243,3 +235,21 @@ async def test_a_request_carrying_the_old_retelling_flag_is_answered_like_one_wi
     assert rows[0] == rows[1] == [(0, 9000, 1, 2)], (
         "a bandeira antiga mudava o que a porta guardava"
     )
+
+
+async def test_the_same_recording_sent_again_under_a_new_key_is_a_resend_not_a_telling(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    take_id = await rehearse(client, session_id)
+    first = await tell(client, session_id, take_id, 1, saying="o trecho 1", audio=b"a gravacao")
+
+    resent = await tell(
+        client, session_id, take_id, 1, saying="outra coisa", audio=b"a gravacao", queued=False
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert resent.json() == first.json(), "o reenvio da mesma gravação respondia como outra fala"
+    assert [(one.tellings, one.transcript) for one in await current(db_session, session_id)] == [
+        (1, "o trecho 1")
+    ], "a mesma gravação de volta, depois de a resposta se perder, contava como mais uma fala"

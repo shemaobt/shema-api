@@ -157,25 +157,28 @@ async def add_chunk(
     )
     await db.commit()
 
-    text = await heard(
-        audio_bytes,
-        language=room_language(session.language),
-        filename=file.filename,
-        mime_type=file.content_type,
-    )
-    if not text.strip():
-        raise WordlessTelling()
-    captured, warned = await room.capture_and_note_a_hard_stretch(
-        db,
-        session,
-        take_id=rehearsal.id,
-        starts_ms=starts_ms,
-        ends_ms=ends_ms,
-        bridge_take_id=retro.id,
-        transcript=text,
-        replaces=retold,
-        state=state,
-    )
+    if retold is not None and retold.bridge_take_id == retro.id:
+        captured, warned = retold, False
+    else:
+        text = await heard(
+            audio_bytes,
+            language=room_language(session.language),
+            filename=file.filename,
+            mime_type=file.content_type,
+        )
+        if not text.strip():
+            raise WordlessTelling()
+        captured, warned = await room.capture_and_note_a_hard_stretch(
+            db,
+            session,
+            take_id=rehearsal.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=retro.id,
+            transcript=text,
+            replaces=retold,
+            state=state,
+        )
     nudge_stretches(session.project_id, warned=warned)
     background.add_task(read_ahead, session_id=session.id)
     standing = await room.final_segments(db, session.id)
