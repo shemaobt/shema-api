@@ -18,7 +18,6 @@ from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
     IR,
-    SLICES,
     MemoryStore,
     a_session,
     current,
@@ -66,28 +65,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
-
-
-async def _telling(
-    client: httpx.AsyncClient,
-    session_id: str,
-    take_id: str,
-    stretch: int,
-    saying: str,
-    *,
-    flag: bool = False,
-) -> httpx.Response:
-    starts, ends = SLICES[stretch - 1]
-    client.said.append(saying)  # type: ignore[attr-defined]
-    data = {"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)}
-    if flag:
-        data["retelling"] = "true"
-    return await client.post(
-        f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Device": DEVICE},
-        data=data,
-        files={"file": ("trecho.m4a", saying.encode(), "audio/mp4")},
-    )
 
 
 async def _history(
@@ -141,9 +118,16 @@ async def test_the_second_telling_of_a_slice_keeps_the_frases_place_in_its_recor
     session_id = await a_session(db_session)
     take_id = await rehearse(client, session_id)
     for stretch in (1, 2):
-        await _telling(client, session_id, take_id, stretch, f"o trecho {stretch}")
+        await tell(
+            client,
+            session_id,
+            take_id,
+            stretch,
+            saying=f"o trecho {stretch}",
+            audio=f"o trecho {stretch}".encode(),
+        )
 
-    again = await _telling(client, session_id, take_id, 2, "o trecho 2, de outro jeito")
+    again = await tell(client, session_id, take_id, 2, saying="o trecho 2, de outro jeito")
 
     assert again.status_code == 200, again.text
     assert sorted(one.ordinal for one in await retro_takes(db_session, session_id)) == [1, 2, 2], (
@@ -225,7 +209,7 @@ async def test_a_telling_on_another_slice_is_a_new_frase_beside_the_one_standing
     take_id = await rehearse(client, session_id)
     await told(client, session_id, take_id, 1)
 
-    next_one = await _telling(client, session_id, take_id, 2, "o trecho 2")
+    next_one = await tell(client, session_id, take_id, 2, saying="o trecho 2")
 
     assert next_one.status_code == 200, next_one.text
     assert (next_one.json()["frase"], next_one.json()["chunks"]) == (2, 2)
@@ -244,8 +228,8 @@ async def test_a_request_carrying_the_old_retelling_flag_is_answered_like_one_wi
     for flag in (False, True):
         session_id = await a_session(db_session)
         take_id = await rehearse(client, session_id)
-        await _telling(client, session_id, take_id, 1, "o trecho 1")
-        again = await _telling(client, session_id, take_id, 1, "o trecho 1 de novo", flag=flag)
+        await tell(client, session_id, take_id, 1, saying="o trecho 1")
+        again = await tell(client, session_id, take_id, 1, saying="o trecho 1 de novo", again=flag)
         assert again.status_code == 200, again.text
         answers.append({k: v for k, v in again.json().items() if k != "session_id"})
         rows.append(

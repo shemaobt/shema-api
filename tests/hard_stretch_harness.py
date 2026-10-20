@@ -137,6 +137,7 @@ async def tell(
     again: bool = False,
     saying: str | None = None,
     queued: bool = True,
+    audio: bytes = AUDIO,
 ) -> httpx.Response:
     """Tell stretch `stretch` (1-based) back, as a first telling or as one more.
 
@@ -154,7 +155,7 @@ async def tell(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
         headers={"X-Room-Device": DEVICE},
         data=data,
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
 
 
