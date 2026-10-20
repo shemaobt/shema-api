@@ -48,7 +48,7 @@ from app.services.shema._submission_notices import (
     notify_submission,
 )
 from tests.baker import make_user
-from tests.test_shema.conftest import auth_header, make_scoped_user, make_shema_project
+from tests.test_shema.conftest import auth_header, grant, make_scoped_user, make_shema_project
 
 AFRICA = ShemaRegionKey.AFRICA
 ASIA = ShemaRegionKey.ASIA
@@ -325,6 +325,28 @@ def test_need_totals_stay_per_currency() -> None:
     assert urgent.raised == 4
     assert urgent.categories == ("food", "medical", "transport")
     assert urgent.totals == {"BRL": Decimal("150.50"), "USD": Decimal("10.00")}
+
+
+async def test_a_pulse_is_told_by_the_regional_reach_and_not_by_the_admins_reading(
+    db_session, shema_app
+) -> None:
+    """OBT-593, found in review: the notice goes to whoever acts in the project's region. An
+    ``obtLab`` of Asia who also holds ``admin`` reads Africa's Pulse (every region) and is not
+    told of it; the mentor of Africa is."""
+    project = await _project(db_session, "kuikuro-africa")
+    asia_admin = await make_scoped_user(
+        db_session, shema_app, email="asia-admin@notices.test", role_key="obtLab", regions=[ASIA]
+    )
+    await grant(db_session, asia_admin, shema_app, "admin")
+    africa = await make_scoped_user(
+        db_session, shema_app, email="africa-lab@notices.test", role_key="obtLab", regions=[AFRICA]
+    )
+
+    await _pulse(db_session, project, prayer=False)
+
+    told = {row.user_id for row in await _rows(db_session, ARRIVAL_EVENT)}
+    assert africa.id in told
+    assert asia_admin.id not in told
 
 
 async def test_the_place_goes_only_to_a_reader_who_reaches_the_project(
