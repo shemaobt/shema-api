@@ -29,6 +29,7 @@ from app.services.internalization_room.back_translation import BackTranslationSt
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import make_app, make_role
 from tests.opening_harness import (
     Script,
@@ -60,7 +61,6 @@ from tests.room_harness import (
     the_room_speaks,
     upload_a_part,
 )
-from tests.test_ir_zerar_archives_a_pericope import a_retro_take_uploaded, zerar
 
 TEAMS_URL = "/api/facilitator/teams"
 
@@ -98,6 +98,26 @@ async def room_app(db_session: AsyncSession):
     app = await make_app(db_session, app_key="internalization-room", name="Internalization Room")
     await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
     return app
+
+
+async def zerar(
+    client: httpx.AsyncClient, desk: dict[str, str], team_id: str, pericope: str
+) -> None:
+    answered = await client.post(
+        f"{PREFIX}/facilitator/projects/{team_id}/passages/{pericope}/archive", headers=desk
+    )
+    assert answered.status_code == 200, answered.text[:300]
+
+
+async def a_retro_take_uploaded(
+    client: httpx.AsyncClient, credential: str, session_id: str
+) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/takes",
+        headers=team_headers(credential),
+        data={"kind": "retro", "scope": P},
+        files={"file": ("retro.m4a", f"retro {uuid.uuid4()}".encode(), "audio/mp4")},
+    )
 
 
 def read_of(session_id: str) -> str:
@@ -256,6 +276,10 @@ async def test_a_part_recorded_again_after_approval_un_approves_the_draft_and_th
 
     read = await the_tablet_reads(client, tablet, session.id)
     assert read["approved"] is None
+    standing = {
+        take.ordinal: take.id for take in current_parts(await takes_of(db_session, session.id))
+    }
+    assert (standing[1], standing[3]) == (parts[0].id, parts[2].id)
     fresh = (
         await db_session.execute(
             select(IRTake).where(
@@ -427,12 +451,14 @@ async def test_live_work_after_a_zerar_is_the_teams_last_activity(
     first = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
     assert (await a_retro_take_uploaded(client, tablet, first["session_id"])).status_code == 200
     await zerar(client, desk, team.id, P)
+    after_the_zerar = datetime.now(UTC).replace(microsecond=0)
+    assert (await the_teams_card(desk_client, desk, team))["last_activity_at"] is None
 
     again = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
     assert (await a_retro_take_uploaded(client, tablet, again["session_id"])).status_code == 200
 
     last = moment((await the_teams_card(desk_client, desk, team))["last_activity_at"])
-    assert datetime.now(UTC) - last < timedelta(minutes=1)
+    assert last >= after_the_zerar
 
 
 async def test_a_raised_hand_asked_before_a_zerar_still_counts_as_the_teams_activity(
