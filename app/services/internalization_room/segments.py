@@ -440,16 +440,27 @@ async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    takes = await takes_of(db, session_id)
-    by_scene = any(part.ordinal is not None for part in current_parts(takes))
-    set_aside = {
-        take.id
-        for take in takes
-        if by_scene and take.kind is IRTakeKind.ENSAIO and take.ordinal is None
-    }
+    set_aside = await _wholes_set_aside(db, session_id)
     return [
         row for row, divided in _read_in_order(rows) if not divided and row.take_id not in set_aside
     ]
+
+
+async def _wholes_set_aside(db: AsyncSession, session_id: str) -> set[str]:
+    """The rehearsal takes with no number once the session holds a numbered part."""
+    takes = await takes_of(db, session_id)
+    if not any(part.ordinal is not None for part in current_parts(takes)):
+        return set()
+    return {take.id for take in takes if take.kind is IRTakeKind.ENSAIO and take.ordinal is None}
+
+
+async def set_aside_segment_ids(db: AsyncSession, session_id: str) -> set[str]:
+    """Every stored stretch told over a whole that stepped aside, retired or not."""
+    set_aside = await _wholes_set_aside(db, session_id)
+    if not set_aside:
+        return set()
+    rows = await db.execute(select(IRSegment.id).where(IRSegment.take_id.in_(set_aside)))
+    return set(rows.scalars().all())
 
 
 def told_back(segments: list[IRSegment]) -> list[IRSegment]:

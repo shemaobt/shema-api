@@ -15,7 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
-from app.services.internalization_room.sessions import get_session
+from app.services.internalization_room.back_translation import (
+    Finding,
+    FindingKind,
+)
+from app.services.internalization_room.sessions import get_session, save_back_translation
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.room_harness import (
     Analyst,
@@ -26,6 +30,7 @@ from tests.room_harness import (
     rehearsed_in_parts_of,
     release_packet,
     room_client,
+    stored_telling_back,
     the_analyst_reads,
     the_room_speaks,
 )
@@ -176,3 +181,25 @@ async def test_the_stretches_of_a_whole_that_stepped_aside_are_still_stored(
     stored = await _stored_stretches(db_session, session)
 
     assert len([s for s in stored if s.take_id == whole.id]) == 2
+
+
+async def test_a_finding_on_a_whole_that_stepped_aside_leaves_the_packet_and_stays_stored(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, whole, parts = await _whole_then_two_parts(db_session)
+    await press_terminei(client, session.id, report=_heard(parts))
+    [over_whole, *_] = [
+        s for s in await _stored_stretches(db_session, session) if s.take_id == whole.id
+    ]
+    state = await stored_telling_back(db_session, session)
+    state.findings = [
+        Finding(kind=FindingKind.MISSING, note="faltou Moabe", segment_id=over_whole.id, chunk=1)
+    ]
+    await save_back_translation(db_session, await get_session(db_session, session.id), state)
+
+    packet = await release_packet(db_session, session)
+
+    assert packet["back_translation"]["findings"] == []
+    assert [f.segment_id for f in (await stored_telling_back(db_session, session)).findings] == [
+        over_whole.id
+    ]

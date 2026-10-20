@@ -62,6 +62,7 @@ from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
     retired_segments,
+    set_aside_segment_ids,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -455,6 +456,11 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     telling_back = back_translation_of(session)
+    aside = await set_aside_segment_ids(db, session.id)
+    if aside:
+        telling_back = telling_back.model_copy(
+            update={"findings": [f for f in telling_back.findings if f.segment_id not in aside]}
+        )
     stretches = await final_segments(db, session.id)
     told = told_back(stretches)
     frases = frase_numbers(told)
