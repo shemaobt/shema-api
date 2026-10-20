@@ -152,7 +152,7 @@ async def test_the_takes_come_in_reading_order_each_named_by_its_position_among_
     ]
 
 
-async def test_a_rehearsal_told_whole_has_no_part_and_does_not_move_the_numbered_ones(
+async def test_a_rehearsal_told_whole_steps_aside_and_does_not_move_the_numbered_ones(
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,
@@ -160,13 +160,12 @@ async def test_a_rehearsal_told_whole_has_no_part_and_does_not_move_the_numbered
     db_session: AsyncSession,
 ) -> None:
     first = await _keep(db_session, session, team, ordinal=1, sha="a" * 64)
-    whole = await _keep(db_session, session, team, ordinal=None, sha="w" * 64)
+    await _keep(db_session, session, team, ordinal=None, sha="w" * 64)
     second = await _keep(db_session, session, team, ordinal=2, sha="b" * 64)
 
     body = await _read(client, consultant, session.id)
 
     assert [(row["take_id"], row["part"]) for row in body["takes"]] == [
-        (whole, None),
         (first, 1),
         (second, 2),
     ]

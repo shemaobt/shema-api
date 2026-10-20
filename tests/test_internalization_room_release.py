@@ -214,8 +214,8 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     landed: the outbox drains whenever the link comes back, so the abandoned take can be written
     down *after* the take that replaced it, and it is written down that way here on purpose.
 
-    The whole-passage take `ready_session` leaves is a part of its own: it carries no number,
-    and the undivided recording reads before the numbered parts on either engine.
+    The whole-passage take `ready_session` leaves is history once a numbered part exists, so
+    the packet carries only the numbered one.
 
     Composed rather than built, because the gate is not the subject: the two takes under part
     one carry no telling of their own, which is a part nobody told back and a refusal of its
@@ -252,7 +252,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
-    assert seen == [(None, None, "a" * 64), (1, 2, "c" * 64)], (
+    assert seen == [(1, 2, "c" * 64)], (
         "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
         "nos rótulos dizia qual era qual; e pela chegada a escolha sairia trocada, porque a "
         "passada 1 foi anotada depois da 2"

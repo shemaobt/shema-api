@@ -116,7 +116,7 @@ The recording of the whole passage in the mother tongue, and the station where i
 _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 
 **Part**:
-One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
+One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part, until the team records by scene: then the whole is history, kept but no longer a part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 
 **Recording grain** (`recording_grain`):
