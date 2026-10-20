@@ -27,6 +27,7 @@ from app.models.internalization_room_desk_sessions import (
     DeskSessionState,
 )
 from app.services.internalization_room.canon.parse_map import served_maps
+from app.services.internalization_room.conversation import guide_turns_of
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
@@ -163,11 +164,7 @@ def _item(
         ended_at=end.ended_at,
         attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
         attended_by=session.attended_by,
-        turns=sum(
-            1
-            for line in session.messages or []
-            if line.get("role") == "guide" and not line.get("told_back")
-        ),
+        turns=guide_turns_of(session),
         engaged_elements=None
         if beads is None
         else sum(1 for bead in beads if bead.status == CoverageStatus.ENGAGED.value),
