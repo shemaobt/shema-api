@@ -576,6 +576,18 @@ def frase_numbers(told: list[IRSegment]) -> dict[str, int]:
     return {segment.id: number for number, segment in enumerate(told, start=1)}
 
 
+def finding_frase(
+    finding: Finding, analysed_segment_ids: list[str] | None, numbers: dict[str, int]
+) -> int | None:
+    if (
+        finding.chunk is None
+        or analysed_segment_ids is None
+        or finding.chunk > len(analysed_segment_ids)
+    ):
+        return finding.chunk
+    return numbers.get(analysed_segment_ids[finding.chunk - 1])
+
+
 def segments_block(
     segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
 ) -> str:
