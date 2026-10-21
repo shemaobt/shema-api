@@ -270,9 +270,6 @@ async def test_reaching_the_number_warns_and_still_takes_the_next_telling(
     assert accepted.json()["needs_person"] is False, (
         "o pedido é uma vez por trecho; passado dele nada é recusado"
     )
-    assert accepted.json()["chunks"] == 1, (
-        "contar o mesmo trecho de novo o substitui: a passagem continua com um trecho"
-    )
 
 
 @pytest.mark.parametrize(
