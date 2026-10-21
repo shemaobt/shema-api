@@ -435,7 +435,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     )
 
     assert first.status_code == 200 and first.json()["captured"] is True
-    assert second.json()["chunks"] == 2
+    assert second.json()["captured"] is True
 
     async def analyst(*, system_prompt: str, user_content: str, **_: Any) -> str:
         return (

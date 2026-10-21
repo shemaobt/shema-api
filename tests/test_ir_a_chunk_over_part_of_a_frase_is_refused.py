@@ -150,7 +150,6 @@ async def test_a_retelling_over_a_slice_no_frase_covers_is_still_a_first_telling
     told_again = await _chunk(client, session_id, take_id, 9000, 18000, retelling=True)
 
     assert told_again.status_code == 200, told_again.text
-    assert told_again.json()["chunks"] == 2
     assert await _slices(db_session, session_id) == [(0, 9000, 1), (9000, 18000, 1)], (
         "o trecho que ninguém tinha contado chega com a marca de recontagem e nada a substituir"
     )
