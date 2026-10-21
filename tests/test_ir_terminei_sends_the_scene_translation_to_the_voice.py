@@ -28,7 +28,7 @@ from app.services import internalization_room as room_service
 from tests.baker import make_app, make_project_user_access, make_role, make_user, make_user_app_role
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
-from tests.hearing_harness import nothing_settles, the_transcriber_hears
+from tests.hearing_harness import nothing_settles, the_loop_clock_passes, the_transcriber_hears
 from tests.room_harness import the_room_speaks
 from tests.scene_rehearsal_harness import recording, translate
 from tests.turn_harness import the_room_agent_is
@@ -532,14 +532,16 @@ async def test_a_send_whose_turn_never_lands_leaves_the_rehearsal_sendable(
     session_id = await an_opened_session(room, db_session)
     rehearsal_id = await a_rehearsal(room, session_id)
     await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
-    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 300)
-    room.guide.thinks = 1.0
+    room.guide.holds = asyncio.Event()
+    first = asyncio.create_task(send(room, session_id, rehearsal_id, "turno-perdido"))
+    await asyncio.wait_for(room.guide.asked.wait(), timeout=10)
+    the_loop_clock_passes(monkeypatch, get_settings().internalization_room_turn_bound_ms / 1000 + 1)
 
-    lost = await send(room, session_id, rehearsal_id, "turno-perdido")
+    lost = await asyncio.wait_for(first, timeout=10)
 
     assert lost.status_code == 502, lost.text
     assert (await read_by_the_desk(room, session_id, rehearsal_id))["sent_at"] is None
-    room.guide.thinks = 0.0
+    room.guide.holds = None
     landed = await send(room, session_id, rehearsal_id, "turno-que-chega")
     assert landed.status_code == 200, landed.text
     assert room.guide.inputs == [f"{ONE_PT} um", f"{ONE_PT} um"]

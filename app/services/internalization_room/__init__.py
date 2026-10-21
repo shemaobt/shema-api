@@ -3,6 +3,7 @@ from app.services.internalization_room.back_translation import (
     Finding,
     analyse_telling_back,
     current_findings,
+    finding_frase,
     findings_block,
     findings_remaining,
     frase_numbers,
@@ -40,6 +41,7 @@ from app.services.internalization_room.segments import (
     segment_by_id,
     segment_for_session,
     set_aside_segment_ids,
+    stale_segments,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -103,6 +105,7 @@ __all__ = [
     "divide_segment",
     "divided_segments",
     "final_segments",
+    "finding_frase",
     "findings_block",
     "findings_remaining",
     "first_telling_of",
@@ -139,6 +142,7 @@ __all__ = [
     "session_is_done",
     "sessions_waiting_on_a_person",
     "set_aside_segment_ids",
+    "stale_segments",
     "start_the_translation_over",
     "stored_as_done",
     "synthesize_facilitator_speech",
