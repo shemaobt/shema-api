@@ -331,10 +331,13 @@ class InboxPage:
     the correct answer and the whole reason it travels: a consumer that counts what arrived
     reads a smaller number than the team list it opened from, with neither screen looking
     wrong, and the smaller number is the one that gets believed.
+
+    ``answered_total`` is the same count for the questions already answered or resolved.
     """
 
     questions: list[IRQuestion]
     open_total: int
+    answered_total: int
     next_cursor: str | None
 
 
@@ -443,9 +446,16 @@ async def inbox_page(
         )
     ).scalar_one()
 
+    answered_total = (
+        await db.execute(
+            select(func.count()).select_from(IRQuestion).where(restriction, _IN_THE_RECORD)
+        )
+    ).scalar_one()
+
     return InboxPage(
         questions=questions,
         open_total=open_total,
+        answered_total=answered_total,
         next_cursor=_encode(_place_of(questions[-1])) if more and questions else None,
     )
 

@@ -279,3 +279,18 @@ async def test_a_question_with_no_team_is_refused_rather_than_open_to_everyone(c
     assert refused.status_code == 404
     await db_session.refresh(orphan)
     assert orphan.status is IRQuestionStatus.OPEN
+
+
+async def test_a_reply_moves_one_from_open_total_to_answered_total_on_the_next_read(
+    client, db_session
+):
+    mine, headers = await a_facilitator(db_session, email="a@example.com")
+    question = await a_question_of(db_session, mine.id, tag="minha")
+    inbox = f"{IR}/facilitator/questions"
+
+    before = (await client.get(inbox, headers=headers)).json()
+    await client.post(reply_url(question.id), headers=headers, **REPLY_FILE)
+    after = (await client.get(inbox, headers=headers)).json()
+
+    assert (before["open_total"], before["answered_total"]) == (1, 0)
+    assert (after["open_total"], after["answered_total"]) == (0, 1)
