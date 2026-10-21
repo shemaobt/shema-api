@@ -14,10 +14,8 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.db.models.project import Project
-from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.sessions import create_session
 from tests.baker import (
     grant_room_app_role,
@@ -27,28 +25,15 @@ from tests.baker import (
     open_ir_session,
 )
 from tests.release_harness import ensaio_take
+from tests.signer_harness import Signer, the_bucket_signs
 
 IR = "/api/internalization-room"
 P = "P01"
 
 
-class Signer:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, int, str | None]] = []
-
-    async def __call__(
-        self, bucket: str, key: str, *, expiry_minutes: int, response_content_type: str | None
-    ) -> str:
-        self.calls.append((key, expiry_minutes, response_content_type))
-        return f"https://signed.example/{bucket}/{key}?grant={len(self.calls)}"
-
-
 @pytest.fixture(autouse=True)
 def signer(monkeypatch: pytest.MonkeyPatch) -> Signer:
-    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
-    signing = Signer()
-    monkeypatch.setattr(takes_service, "generate_signed_download_url", signing)
-    return signing
+    return the_bucket_signs(monkeypatch)
 
 
 @pytest.fixture()
