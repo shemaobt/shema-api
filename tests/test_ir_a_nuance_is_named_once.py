@@ -6,11 +6,13 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
 from app.services import internalization_room as room
+from app.services.internalization_room import verdict_round
 from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.sessions import get_session, start_the_translation_over
 from tests.text_seam_harness import RUNNER_KEY, the_app
 from tests.turn_harness import the_room_agent_is
 
@@ -355,3 +357,35 @@ async def test_a_round_with_nothing_new_after_a_clean_round_is_served_the_verdic
     )
     assert len(speaker.drafts) == 1
     assert len(await _the_kept_rounds(db_session, first["sessionId"])) == 1
+
+
+async def test_a_round_a_restart_lands_in_answers_without_the_nuance_the_restart_cleared(
+    client,
+    analyst,
+    speaker,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+    declared = await client.post(
+        f"{SEAM}/session",
+        json={"pericopeId": "P02", "language": "Brazilian Portuguese", "clips": CLIPS},
+    )
+    session_id = str(declared.json()["sessionId"])
+    written = verdict_round.append_exchange
+
+    async def written_after_a_restart(*args: Any, **kwargs: Any) -> Any:
+        async with rival_factory() as restarting_db:
+            await start_the_translation_over(
+                restarting_db, await get_session(restarting_db, session_id)
+            )
+        return await written(*args, **kwargs)
+
+    monkeypatch.setattr(verdict_round, "append_exchange", written_after_a_restart)
+
+    result = await _a_round(client, TELLING, session_id=session_id)
+
+    assert [one["kind"] for one in result["findings"]] == [], (
+        "a rodada em que o recomeço caiu devolvia a nuance que o recomeço já tinha apagado"
+    )

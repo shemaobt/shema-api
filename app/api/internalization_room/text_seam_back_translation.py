@@ -93,7 +93,7 @@ def _reported(current: list[Finding], state: BackTranslationState) -> list[Round
             frase=one.chunk,
             stretchId=one.segment_id,
         )
-        for one in state.checks[-1].nuances
+        for one in (state.checks[-1].nuances if state.checks else [])
         if one.voiced != "before"
     ]
 
