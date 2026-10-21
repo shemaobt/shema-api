@@ -42,6 +42,7 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.takes import (
     current_parts,
+    refuse_a_take_that_is_no_longer_a_part,
     rehearsal_take_of,
     store_take,
     takes_of,
@@ -125,6 +126,7 @@ async def add_chunk(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
+    await refuse_a_take_that_is_no_longer_a_part(db, session.id, rehearsal)
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -520,7 +522,7 @@ async def _finished(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=verdict.outcome.fixed_line,
-        checked=verdict.checked,
+        checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
         findings=finding_views(shown.findings),
