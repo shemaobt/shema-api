@@ -308,6 +308,7 @@ class BackTranslationState(BaseModel):
     checks: list[CheckRound] = Field(default_factory=list)
     nuances: list[Nuance] = Field(default_factory=list)
     sentences: list[LaidInSentence] = Field(default_factory=list)
+    pauses_moved: int = 0
 
     @model_validator(mode="before")
     @classmethod
@@ -574,6 +575,18 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 
 def frase_numbers(told: list[IRSegment]) -> dict[str, int]:
     return {segment.id: number for number, segment in enumerate(told, start=1)}
+
+
+def finding_frase(
+    finding: Finding, analysed_segment_ids: list[str] | None, numbers: dict[str, int]
+) -> int | None:
+    if (
+        finding.chunk is None
+        or analysed_segment_ids is None
+        or finding.chunk > len(analysed_segment_ids)
+    ):
+        return finding.chunk
+    return numbers.get(analysed_segment_ids[finding.chunk - 1])
 
 
 def segments_block(

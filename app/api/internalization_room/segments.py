@@ -46,6 +46,7 @@ from app.services.internalization_room.sentences import (
 )
 from app.services.internalization_room.takes import (
     TakeStore,
+    refuse_a_take_that_is_no_longer_a_part,
     rehearsal_take_of,
     store_take,
     take_store,
@@ -209,6 +210,7 @@ async def replace(
     await refuse_a_slice_a_version_cannot_take(
         db, session, segment, rehearsal.id, starts_ms, ends_ms
     )
+    await refuse_a_take_that_is_no_longer_a_part(db, session.id, rehearsal)
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:

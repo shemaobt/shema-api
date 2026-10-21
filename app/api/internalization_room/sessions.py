@@ -368,7 +368,9 @@ async def _progress(
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
-        findings=finding_views(findings),
+        findings=finding_views(
+            findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
+        ),
         superseded_attempts=len(state.superseded),
         awaiting_segment_id=awaiting.segment_id if awaiting else None,
         rerecorded_sentences=[
