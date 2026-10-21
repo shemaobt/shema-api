@@ -308,6 +308,7 @@ class BackTranslationState(BaseModel):
     checks: list[CheckRound] = Field(default_factory=list)
     nuances: list[Nuance] = Field(default_factory=list)
     sentences: list[LaidInSentence] = Field(default_factory=list)
+    pauses_moved: int = 0
 
     @model_validator(mode="before")
     @classmethod
