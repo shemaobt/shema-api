@@ -594,7 +594,7 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     )
 
 
-async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_the_halt_back(
+async def test_a_halt_raised_while_the_guide_answered_still_stands_after_its_visit_is_undone(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     models: _Models,
@@ -614,8 +614,7 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_th
     async with rival_factory() as fresh:
         undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
     assert undone.status is IRSessionStatus.NEEDS_PERSON, (
-        "o turno apagava o lifted_halt de uma parada que nem existia quando começou, e"
-        " desfazer a visita não trazia o pedido de volta"
+        "o turno levantava uma parada que nem existia quando começou"
     )
     assert undone.halt_kind == HaltKind.BLOCKING.value
 
