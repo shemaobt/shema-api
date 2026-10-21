@@ -163,10 +163,12 @@ def _package_sha256(artifact: dict[str, Any]) -> str:
 
 
 #: What a packet says beside the draft rather than about it: its name and number, when it was
-#: read, the check stamped on it, whose it is and the schema it was written under.
+#: read, the check stamped on it, whose it is, the canon it was read against and the schema it
+#: was written under.
 _BESIDE_THE_DRAFT = frozenset(
     {
         "schema_version",
+        "canon_vendor_pin",
         "package_sha256",
         "release_id",
         "version",
@@ -196,7 +198,7 @@ def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
     }
     content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
     content["back_translation"] = {
-        **{k: v for k, v in told.items() if k not in ("segments", "retro_takes")},
+        **{k: v for k, v in told.items() if k not in ("segments", "retro_takes", "played_by_take")},
         "segments": [_without_derived(frase) for frase in told.get("segments", [])],
         "retro_takes": [take.get("sha256") for take in told.get("retro_takes", [])],
     }
@@ -210,7 +212,8 @@ def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
 
     The draft is its own content: the takes by fingerprint and order, the stretches, the
     telling with its findings and history, the questions, and the nuances. Never the schema
-    version or what is read off the content, so a deploy that adds or reshapes those never
+    version, the canon pin, the listening, or what is read off the content, so a deploy that
+    adds or reshapes those, a canon re-vendored or a listen that fills a tolerated gap never
     un-approves a draft nobody changed. Both sides are read the same way on the spot, from the
     stored packet and the composed one, never through the stored ``package_sha256``, which is
     the published hash of a whole packet and moves with the schema (ADR 0078, amending 0020).
@@ -390,16 +393,13 @@ def _check_block(
         return {**entry, **_scene(keys, take_id)}
 
     last_round_nuances = telling_back.checks[-1].nuances if telling_back.checks else []
-    read_last = {(one.segment_id, one.quote) for one in last_round_nuances}
     voiced = {(one.segment_id, one.quote): one.voiced for one in last_round_nuances if one.voiced}
     said_earlier = {(one.segment_id, one.quote) for one in nuances_said(telling_back.checks)}
     nuances = []
     for nuance in telling_back.nuances:
         entry = addressed("nuance", nuance.segment_id)
         key = (nuance.segment_id, nuance.quote)
-        said = voiced.get(key) or (
-            "before" if key not in read_last and key in said_earlier else None
-        )
+        said = voiced.get(key) or ("before" if key in said_earlier else None)
         nuances.append({**entry, "voiced": said} if said else entry)
     return {
         "version": version,

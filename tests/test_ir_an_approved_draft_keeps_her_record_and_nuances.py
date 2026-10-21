@@ -611,11 +611,23 @@ def published_hash(packet: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+async def stored_with(db: AsyncSession, session: IRSession, change) -> None:
+    """Rewrite this session's one stored release by `change`, as if it had been approved so."""
+    [row] = await releases_of(db, session.id)
+    packet = copy.deepcopy(row.packet)
+    change(packet)
+    row.packet = packet
+    row.package_sha256 = packet["package_sha256"]
+    await db.commit()
+
+
 async def stored_under_v08(db: AsyncSession, session: IRSession) -> None:
     """Rewrite this session's one release as the v0.8 deploy stored it: no part keys, scenes,
     indexes or nuances, and the published hash that schema gave it."""
-    [row] = await releases_of(db, session.id)
-    packet = copy.deepcopy(row.packet)
+    await stored_with(db, session, as_v08)
+
+
+def as_v08(packet: dict) -> None:
     packet["schema_version"] = "tripod.internalization-release.v0.8"
     for take in packet["audio"]["rehearsal_takes"]:
         take.pop("key")
@@ -626,9 +638,6 @@ async def stored_under_v08(db: AsyncSession, session: IRSession) -> None:
         finding.pop("index", None)
         finding.pop("scene", None)
     packet["package_sha256"] = published_hash(packet)
-    row.packet = packet
-    row.package_sha256 = packet["package_sha256"]
-    await db.commit()
 
 
 async def approved_on_the_tablet(client, credential: str, session: IRSession) -> Any:
@@ -750,3 +759,91 @@ async def test_a_nuance_said_before_a_fail_safe_round_reads_before_on_a_forced_a
 
     check = (await stored_packet(client, db_session, room_app, project, session))["check"]
     assert [(one["frase"], one.get("voiced")) for one in check["nuances"]] == [(2, "before")]
+
+
+async def test_a_listening_gap_filled_after_approval_leaves_the_draft_approved(client, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    told = await final_segments(db_session, session.id)
+    state = BackTranslationState(
+        scope=P, findings=[], checked=True, analysed_segment_ids=[one.id for one in told]
+    )
+    a_gap = [[0, 20000], [20500, CLIP_MS]]
+    await reported_playback(db_session, session, state, played_ranges=a_gap)
+    assert (await approved(client, credential, session))["version"] == 1, "the gap is tolerated"
+
+    filled = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/listened-whole",
+        json=await heard_every_part(db_session, session.id),
+        headers=team_headers(credential),
+    )
+
+    assert filled.status_code == 200, filled.text
+    assert (await approved_on_the_tablet(client, credential, session))["version"] == 1
+    assert (await approved(client, credential, session))["version"] == 1
+
+
+async def test_one_draft_under_two_canon_pins_is_one_approved_draft(client, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_clean_draft_approved(client, db_session, project, credential)
+
+    await stored_with(
+        db_session, session, lambda packet: packet.update(canon_vendor_pin="um-pin-anterior")
+    )
+
+    assert (await approved_on_the_tablet(client, credential, session))["version"] == 1
+    assert (await approved(client, credential, session))["version"] == 1
+
+
+def another_question(packet: dict) -> None:
+    packet["raised_questions"].append(
+        {"question_id": "outra-pergunta", "status": "resolved", "asked_at": None}
+    )
+
+
+def another_finding(packet: dict) -> None:
+    packet["back_translation"]["findings"].append(
+        {"kind": "addition", "segment_id": None, "chunk": 9}
+    )
+
+
+def another_take(packet: dict) -> None:
+    packet["audio"]["rehearsal_takes"][0]["sha256"] = "f" * 64
+
+
+def the_takes_reordered(packet: dict) -> None:
+    packet["audio"]["rehearsal_takes"].reverse()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [another_question, another_finding, another_take, the_takes_reordered],
+    ids=["questions", "findings", "takes", "take order"],
+)
+async def test_a_draft_differing_in_one_part_of_its_content_is_not_approved(
+    client, db_session, change
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_clean_draft_approved(client, db_session, project, credential)
+
+    await stored_with(db_session, session, change)
+
+    assert await approved_on_the_tablet(client, credential, session) is None
+
+
+async def test_a_draft_whose_recorded_nuance_differs_is_not_approved(
+    client, analyst, speaker, db_session
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await approved(client, credential, session)
+
+    await stored_with(
+        db_session, session, lambda packet: packet["check"]["nuances"][0].update(idx="outro")
+    )
+
+    assert await approved_on_the_tablet(client, credential, session) is None

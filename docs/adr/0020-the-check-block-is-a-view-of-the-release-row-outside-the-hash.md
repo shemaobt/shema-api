@@ -1,5 +1,5 @@
 ---
-status: accepted; amended 21 Oct 2026 by ADR 0078 (an approval compares the draft's content, not the published hash)
+status: amended by ADR 0078: an approval compares the draft's content, not the published hash
 date: 2026-09-15
 ---
 
