@@ -16,15 +16,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment
+from app.services.internalization_room.back_translation import Finding, FindingKind
 from app.services.internalization_room.segments import current_segments, divide_segment
+from app.services.internalization_room.sessions import (
+    back_translation_of,
+    get_session,
+    save_back_translation,
+)
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
+    a_piece_still_to_be_told,
     nothing_is_read_ahead,
+    played_every_part,
+    press_terminei,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
+    release_blockers,
     room_client,
+    the_analyst_is_scripted,
     the_bucket_is_in_memory,
     the_room_speaks,
     upload_a_part,
@@ -306,3 +317,176 @@ async def test_laying_a_sentence_in_answers_with_the_stale_ones_to_a_tablet_that
     assert answered[-1]["segment_id"] == part_two[0].id, (
         "a frase gravada de novo respondia sem a parte regravada e a tablet a apagava da lista"
     )
+
+
+THE_KEYS_OF_A_STRETCH = {
+    "segment_id",
+    "take_id",
+    "starts_ms",
+    "ends_ms",
+    "pass_number",
+    "told",
+    "bridge_take_id",
+    "frase",
+}
+
+
+def _only_what_counts(rows: list[dict], expected_takes: list[str]) -> None:
+    assert [row["take_id"] for row in rows] == expected_takes, (
+        "uma tablet que não pediu recebeu a parte regravada na lista"
+    )
+    assert all(set(row) == THE_KEYS_OF_A_STRETCH for row in rows), (
+        "uma tablet que não pediu recebeu uma chave nova em cada trecho"
+    )
+
+
+async def test_the_session_read_without_asking_is_the_list_it_always_was(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3)
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    assert read.status_code == 200, read.text
+    rows = read.json()["back_translation"]["segments"]
+    _only_what_counts(rows, [one.id, three.id])
+    assert [row["frase"] for row in rows] == [1, 2]
+
+
+async def test_a_division_without_asking_answers_the_list_it_always_did(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3)
+    by_part = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    divided = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{by_part[one.id]}/divide",
+        headers={"X-Room-Device": TABLET},
+        json={"at_ms": PART_MS // 2},
+    )
+
+    assert divided.status_code == 200, divided.text
+    _only_what_counts(divided.json()["segments"], [one.id, one.id, three.id])
+
+
+async def test_a_retelling_without_asking_answers_the_list_it_always_did(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3)
+    by_part = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    told = await _tell_again(client, session.id, by_part[one.id], take_id=one.id)
+
+    assert told.status_code == 200, told.text
+    _only_what_counts(told.json()["segments"], [one.id, three.id])
+
+
+async def test_a_sentence_laid_in_without_asking_answers_the_list_it_always_did(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _takes, (part_one, _part_two) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)], [(0, 2000)]]
+    )
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    laid = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{part_one[1].id}/sentence",
+        data={"sentence_id": "sentence-0001"},
+        files={"file": ("frase.wav", spoken(1.0), "audio/wav")},
+    )
+
+    assert laid.status_code == 200, laid.text
+    rows = laid.json()["segments"]
+    assert len(rows) == 3, "uma tablet que não pediu recebeu a parte regravada na lista"
+    assert all(set(row) == THE_KEYS_OF_A_STRETCH for row in rows), (
+        "uma tablet que não pediu recebeu uma chave nova em cada trecho"
+    )
+
+
+async def test_a_stale_stretch_takes_no_frase_number_and_the_standing_ones_keep_theirs(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    asked = await _read_asking_for_stale(client, session.id)
+
+    assert [(row["stale"], row["frase"]) for row in asked] == [
+        (False, 1),
+        (False, 2),
+        (True, None),
+    ], "a parte regravada tomava um número da voz, ou desnumerava as frases que contam"
+
+
+async def test_the_check_neither_reads_nor_waits_on_a_stale_stretch(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3)
+    standing = await current_segments(db_session, session.id)
+    await a_piece_still_to_be_told(db_session, session, standing[1])
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    assert [row for row in await _read_asking_for_stale(client, session.id) if row["stale"]]
+
+    answered = await press_terminei(
+        client,
+        session.id,
+        report=played_every_part([one.id, again.json()["take_id"], three.id]),
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert len(analyst.shown) == 1, (
+        "o terminei esperou por um trecho da parte regravada em vez de ler o que conta"
+    )
+    assert "parte 0 contada de volta" in analyst.shown[0]
+    assert "parte 2 contada de volta" in analyst.shown[0]
+    assert "a primeira metade contada de volta" not in analyst.shown[0]
+    assert "parte 1 contada de volta" not in analyst.shown[0]
+
+
+async def test_the_release_gate_does_not_count_a_stale_stretch(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    standing = await current_segments(db_session, session.id)
+    await a_piece_still_to_be_told(db_session, session, standing[1])
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    assert [row for row in await _read_asking_for_stale(client, session.id) if row["stale"]]
+
+    blockers = await release_blockers(db_session, session)
+
+    assert "untold_stretch" not in blockers, (
+        "a liberação esperava pelo trecho por contar de uma parte que a equipe já regravou"
+    )
+
+
+async def test_a_finding_on_a_stale_stretch_is_never_served(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3)
+    stale = {row.take_id: row.id for row in await current_segments(db_session, session.id)}[two.id]
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    fresh = await get_session(db_session, session.id)
+    state = back_translation_of(fresh)
+    state.findings = [
+        Finding(kind=FindingKind.UNCLEAR, note="nao deu para ouvir", segment_id=stale)
+    ]
+    await save_back_translation(db_session, fresh, state)
+
+    for params in ({}, {"include_stale": "true"}):
+        read = await client.get(f"{PREFIX}/sessions/{session.id}", params=params)
+
+        progress = read.json()["back_translation"]
+        assert progress["findings"] == [], "a tablet era mandada a um trecho que já não conta"
+        assert progress["finding_segment_id"] is None
