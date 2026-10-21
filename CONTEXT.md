@@ -128,7 +128,7 @@ One rehearsal take of a passage: the unit the team listens to, tells stretches f
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 
 **Part key** (`key`):
-The name a **Part** goes by in a file name and in what Refine receives: `whole` for the rehearsal told whole, `S<n>` for the part in position n among the session's current parts (Marcia's scene key; part n is scene n). A superseded take keeps the key of the part it was.
+The name a **Part** goes by in a file name and in what Refine receives: `whole` for the rehearsal told whole, `S<n>` for the part in position n among the session's current parts (Marcia's scene key; part n is scene n), with no cap at the passage's scene count. A superseded take keeps the key of the part it was. A pinned take in the **Packet** carries it as `key`; a frase, and a **Finding** or **Nuance** in the **Check block**, carry the key of the part they stand on as `scene`.
 _Avoid_: clip key, scope (the tablet's `parte-N`), chunk_index, ordinal (the number as stored)
 
 **Superseded take** (`superseded_takes`, `superseded_at`):
@@ -189,7 +189,7 @@ that one file.
 _Avoid_: range, offset, position, Endereço
 
 **Frase number** (`frase`):
-The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam). A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English). The tablet reads it from the room and never counts: `frase` on every stretch of the session read and of the answers of a cut, a replacement and a restart, and on the telling answer for the stretch just told, is its position among the told stretches now, null on a piece nobody has told (ADR 0067). A **Finding** keeps the number the voice spoke, and the session read and the check's answer serve it as the stretch it named is numbered now, null once that stretch is no longer told (ENG-1681).
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam); the number itself is `index` in the **Check block**'s findings and nuances. A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English). The tablet reads it from the room and never counts: `frase` on every stretch of the session read and of the answers of a cut, a replacement and a restart, and on the telling answer for the stretch just told, is its position among the told stretches now, null on a piece nobody has told (ADR 0067). A **Finding** keeps the number the voice spoke, and the session read and the check's answer serve it as the stretch it named is numbered now, null once that stretch is no longer told (ENG-1681).
 _Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
 
 **Divided stretch** (`parent_id`, `ordinal`):
@@ -214,6 +214,10 @@ _Avoid_: log, history, audit, Evento de cobertura
 **Finding**:
 The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear. An addition or an unclear always names its **Chunk**; one that names none, or names one outside this reading, is not raised — it is dropped with a log line, the way the retired kind is, and a reply left with no finding at all once every one of them is dropped this way is refused, not read as a clean telling-back.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
+
+**Nuance** (`nuances`):
+A detail the analyst found in a told frase that the story tells another way, and that never blocks. It is never a **Finding**: it is never counted open, and a check whose only findings are nuances is **Checked**. The voice names one at a time, at most once. Each **Check round** keeps the nuances it stood on, with `voiced`: `now` when that round's verdict named it, `before` when an earlier round had, absent when no verdict has. The **Check block** carries the nuances standing at the approval as kind and address with `voiced`, never the quote, the story or the note; the **Retroverification file** keeps the quote and the story.
+_Avoid_: detail, soft finding, nuança (in prose)
 
 **Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
 An element of the Map that is absent and whose place fits an existing chunk: before it, inside it, or after it when a later chunk exists. The team records that stretch again and tells it again.
@@ -405,7 +409,7 @@ The number of a release within its pericope and project, from one, never reused.
 _Avoid_: revision, pass (the count of tellings of a stretch), v-number
 
 **Packet**:
-The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
+The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone. Its frases and pinned takes name their **Part key**.
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:
@@ -417,7 +421,7 @@ A **Release** a facilitator minted past the gate, addressed to the passage: ever
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):
-The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address, and where the retroverification file is. Never the analyst's note.
+The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Never the analyst's note.
 _Avoid_: check state, manifest check, conferência
 
 **Retroverification file** (`retroverificacao`):

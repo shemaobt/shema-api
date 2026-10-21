@@ -71,7 +71,7 @@ from app.services.internalization_room.sessions import (
     is_panorama,
     refuse_if_archived,
 )
-from app.services.internalization_room.takes import current_parts, is_wav, takes_of
+from app.services.internalization_room.takes import current_parts, is_wav, part_keys, takes_of
 from app.utils.stored_time import as_utc
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
@@ -87,8 +87,9 @@ from app.utils.stored_time import as_utc
 #: consumer diffing the two versions finds one key gone from every finding and nothing renamed.
 #: And to v0.7 with the ``comprehension`` block gone, and its open points with it from
 #: ``open_questions``: the room no longer reads practice or probes (ADR 0056). And to v0.8 with
-#: ``duration_ms`` on every take, and ``recorded_at`` its **Recording time** (ADR 0072).
-SCHEMA_VERSION = "tripod.internalization-release.v0.8"
+#: ``duration_ms`` on every take, and ``recorded_at`` its **Recording time** (ADR 0072). And to
+#: v0.9 with ``key`` on every rehearsal take and ``scene`` on every frase (ADR 0078).
+SCHEMA_VERSION = "tripod.internalization-release.v0.9"
 
 #: The whole of what a facilitator's code can set aside, and the one place that says so. They
 #: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
@@ -268,11 +269,16 @@ def _check_status(conferida: bool, forced: bool) -> CheckStatus:
     return "forcada" if forced else "sem_conferencia"
 
 
+def _scene(keys: dict[str, str], take_id: str | None) -> dict[str, str]:
+    return {"scene": keys[take_id]} if take_id in keys else {}
+
+
 def _check_block(
     telling_back: BackTranslationState,
     told: list[IRSegment],
     session_id: str,
     *,
+    keys: dict[str, str],
     heard_complete: bool,
     version: int | None,
     forced: bool,
@@ -296,21 +302,41 @@ def _check_block(
     is in ``divided_segments`` or ``superseded_segments`` with its recording named, so nothing
     is lost by not repeating it here.
 
-    The note never enters. What is open is a kind and an address; why it is open is the
-    consultant's material and travels in the retroverification file.
+    ``index`` is her whole-number name for the same frase and travels exactly where ``frase``
+    does; ``scene`` is the **Part key** of the part the stretch is a slice of. Neither is stable
+    across versions — a division renumbers — and ``idx`` is the key that is.
+
+    ``nuances`` are the ones standing at this reading, in her shape: a finding's keys and
+    ``voiced``, which the last check round says (``now`` when its verdict named it, ``before``
+    when an earlier one had) and which is absent when no verdict said it. They sit here and
+    not in the hashed ``back_translation`` because ``voiced`` moves with no content moving: a
+    later round turns a ``now`` into ``before``, and inside the hash that would un-approve an
+    unchanged draft (ADR 0078).
+
+    The note never enters, nor a nuance's quote or story. What is open is a kind and an
+    address; why it is open is the consultant's material and travels in the retroverification
+    file.
     """
     frase_of = frase_numbers(told)
     take_of = {stretch.id: stretch.take_id for stretch in told}
-    findings: list[dict[str, Any]] = []
-    for finding in telling_back.findings:
+
+    def addressed(kind: str, segment_id: str | None) -> dict[str, Any]:
         entry: dict[str, Any] = {
-            "kind": finding.kind.value,
-            "idx": finding.segment_id,
-            "clipKey": take_of.get(finding.segment_id) if finding.segment_id else None,
+            "kind": kind,
+            "idx": segment_id,
+            "clipKey": take_of.get(segment_id) if segment_id else None,
         }
-        if finding.segment_id in frase_of:
-            entry["frase"] = frase_of[finding.segment_id]
-        findings.append(entry)
+        if segment_id in frase_of:
+            entry["frase"] = entry["index"] = frase_of[segment_id]
+        return {**entry, **_scene(keys, take_of.get(segment_id))}
+
+    last_round = telling_back.checks[-1].nuances if telling_back.checks else []
+    voiced = {(one.segment_id, one.quote): one.voiced for one in last_round}
+    nuances = []
+    for nuance in telling_back.nuances:
+        entry = addressed("nuance", nuance.segment_id)
+        said = voiced.get((nuance.segment_id, nuance.quote))
+        nuances.append({**entry, "voiced": said} if said else entry)
     return {
         "version": version,
         "status": _check_status(telling_back.checked, forced),
@@ -318,7 +344,10 @@ def _check_block(
         "forced": forced,
         "heardComplete": heard_complete,
         "lastCheckAt": telling_back.checked_at.isoformat() if telling_back.checked_at else None,
-        "findings": findings,
+        "findings": [
+            addressed(finding.kind.value, finding.segment_id) for finding in telling_back.findings
+        ],
+        "nuances": nuances,
         "retroUrl": RETRO_ROUTE.format(session_id=session_id),
     }
 
@@ -476,6 +505,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
     parts = current_parts(takes)
+    keys = part_keys(parts)
 
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
@@ -515,13 +545,18 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         "canon_vendor_pin": vendor_pin(),
         "audio": {
             "recording_grain": _recording_grain(parts),
-            "rehearsal_takes": [_take_view(take) for take in parts],
+            "rehearsal_takes": [{**_take_view(take), "key": keys[take.id]} for take in parts],
         },
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
             "segments": [
-                {**_segment_view(segment), "frase": frases[segment.id]} for segment in told
+                {
+                    **_segment_view(segment),
+                    "frase": frases[segment.id],
+                    **_scene(keys, segment.take_id),
+                }
+                for segment in told
             ],
             "findings": [_finding_view(finding) for finding in telling_back.findings],
             "played_by_take": [
@@ -550,7 +585,13 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     artifact["check"] = _check_block(
-        telling_back, told, session.id, heard_complete=not unheard, version=None, forced=False
+        telling_back,
+        told,
+        session.id,
+        keys=keys,
+        heard_complete=not unheard,
+        version=None,
+        forced=False,
     )
     artifact["language"] = await _mother_tongue(db, session)
     artifact["session_language"] = session.language

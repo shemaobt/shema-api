@@ -1,0 +1,528 @@
+"""ENG-1258 — an approved draft is internalize-<lang>-<passage>-v<N> with her record and nuances.
+
+Each approved **Version** keeps Marcia's approval record: its name, each pinned take with its
+duration and its **Part key**, each frase and each finding with the scene of the part it stands
+on, each finding with a whole-number `index`, and the **Nuances** the check found with whether
+the voice said them. A check whose only findings are nuances is conferida.
+
+Expected values come from the ticket, the Definer's Definition of 2026-10-19 and her
+`ApprovalFinding` (Tripod-Internalization 18fa7c4, src/draft/store.ts). Every case reads the
+packet the Desk reads back by version, which is the record as it was stored.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Any
+
+import pytest
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.internalization_room import back_translation as bt_api
+from app.db.models.auth import App
+from app.db.models.internalization_room import IRRelease, IRSession
+from app.db.models.language import Language
+from app.services.internalization_room import takes as takes_service
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Finding,
+    FindingKind,
+)
+from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.release import build_internalization_release
+from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.sessions import create_session, get_session
+from tests.baker import make_app, make_role
+from tests.release_harness import (
+    APP_KEY,
+    CLIP_MS,
+    PREFIX,
+    TABLET,
+    P,
+    a_claimed_device,
+    at_the_desk,
+    desk_release,
+    desk_release_at,
+    ready_session,
+    reported_playback,
+    team_headers,
+    team_release,
+    the_one_part_of,
+    told_back_with_an_open_finding,
+)
+from tests.room_harness import (
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+    rehearsed_in_parts,
+    room_client,
+    stored_telling_back,
+    the_analyst_is_scripted,
+    the_bucket_is_in_memory,
+    the_room_speaks,
+    upload_a_part,
+)
+from tests.scene_rehearsal_harness import recording
+from tests.turn_harness import the_room_agent_is
+
+BUCKET = "balde-de-teste"
+STORAGE = "https://armazenamento.exemplo"
+
+ON_FRASE_2 = {
+    "kind": "nuance",
+    "note": "NOTA-DA-NUANCE-7e1a",
+    "frase": 2,
+    "quote": "contada de volta",
+    "story": "HISTORIA-DA-NUANCE-7e1a",
+}
+ON_FRASE_3 = {
+    "kind": "nuance",
+    "note": "A parte ficou solta.",
+    "frase": 3,
+    "quote": "parte 2",
+    "story": "a história diz qual parte",
+}
+NAMES_FRASE_2 = "Só um detalhe, na frase 2: vocês traduziram de outro jeito."
+NAMES_FRASE_3 = "Só um detalhe, na frase 3: vocês disseram de outro jeito."
+
+
+class Speaker:
+    def __init__(self) -> None:
+        self.line = "Vocês contaram bem."
+
+    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return self.line
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from app.core.config import get_settings
+
+    the_bucket_is_in_memory(monkeypatch)
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", BUCKET, raising=False)
+
+    async def _signed(bucket: str, key: str, **_kwargs: object) -> str:
+        return f"{STORAGE}/{bucket}/{key}?assinado"
+
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed)
+    async with room_client(db_session, monkeypatch) as room:
+        yield room
+
+
+@pytest.fixture()
+async def room_app(db_session: AsyncSession) -> App:
+    app = await make_app(db_session, app_key=APP_KEY, name="Internalization Room")
+    await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
+    return app
+
+
+@pytest.fixture()
+def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
+
+    async def said(*_: Any, **__: Any) -> str:
+        return "a equipe contou o trecho de volta"
+
+    monkeypatch.setattr(bt_api, "heard", said)
+
+
+@pytest.fixture()
+def analyst(monkeypatch: pytest.MonkeyPatch):
+    return the_analyst_is_scripted(monkeypatch)
+
+
+@pytest.fixture()
+def speaker(monkeypatch: pytest.MonkeyPatch) -> Speaker:
+    the_room_speaks(monkeypatch)
+    voice = Speaker()
+    the_room_agent_is(monkeypatch, turn=voice)
+    return voice
+
+
+async def approved(client, credential: str, session: IRSession) -> dict[str, Any]:
+    answer = await client.post(team_release(session.id), headers=team_headers(credential))
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+async def forced(client, db, room_app, project, session: IRSession) -> None:
+    desk, _user = await at_the_desk(db, room_app, project)
+    answer = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert answer.status_code == 200, answer.text
+
+
+async def stored_packet(client, db, room_app, project, session, version: int = 1) -> dict:
+    desk, _user = await at_the_desk(db, room_app, project)
+    read = await client.get(desk_release_at(session.id, version), headers=desk)
+    assert read.status_code == 200, read.text
+    return read.json()
+
+
+async def read_with(db: AsyncSession, session: IRSession, findings: list[Finding]) -> None:
+    """The state one reading that raised these findings leaves behind, stored with the report."""
+    told = await final_segments(db, session.id)
+    state = BackTranslationState(
+        scope=P,
+        findings=findings,
+        checked=not findings,
+        analysed_segment_ids=[stretch.id for stretch in told],
+    )
+    await reported_playback(db, session, state)
+
+
+def an_addition_on(segment_id: str | None) -> Finding:
+    """An addition the analyst numbered 9, a number no frase here has: the record reads its own."""
+    return Finding(
+        kind=FindingKind.ADDITION,
+        note="a equipe pôs algo a mais",
+        segment_id=segment_id,
+        chunk=9,
+    )
+
+
+def keys_of_the_takes(packet: dict) -> list[str | None]:
+    return [take.get("key") for take in packet["audio"]["rehearsal_takes"]]
+
+
+def scenes_of_the_frases(packet: dict) -> list[tuple[int, str | None]]:
+    segments = packet["back_translation"]["segments"]
+    return [(frase["frase"], frase.get("scene")) for frase in segments]
+
+
+async def test_the_first_approval_of_a_terena_teams_p01_is_named_internalize_terena_p01_v1(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_session(db_session, pericope="P01", project_id=project.id)
+
+    body = await approved(client, credential, session)
+
+    assert body["release_id"] == "internalize-terena-p01-v1"
+    assert body["version"] == 1
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert packet["release_id"] == "internalize-terena-p01-v1"
+    assert packet["version"] == 1
+
+
+async def test_a_second_approval_of_the_same_passage_is_named_v2(client, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_session(db_session, pericope="P01", project_id=project.id)
+    await approved(client, credential, session)
+    await capture_segment(
+        db_session,
+        session,
+        take_id=(await the_one_part_of(db_session, session)).id,
+        starts_ms=0,
+        ends_ms=CLIP_MS,
+        bridge_take_id="retro-novo",
+        transcript="uma frase a mais, contada de volta",
+    )
+
+    body = await approved(client, credential, session)
+
+    assert body["release_id"] == "internalize-terena-p01-v2"
+    assert body["version"] == 2
+
+
+async def test_a_team_whose_mother_tongue_is_empty_names_its_release_lrl(client, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    await db_session.execute(
+        update(Language).where(Language.id == project.language_id).values(name="")
+    )
+    await db_session.commit()
+    session = await ready_session(db_session, project_id=project.id)
+
+    body = await approved(client, credential, session)
+
+    assert body["release_id"] == "internalize-lrl-p03-v1"
+
+
+async def test_the_approval_record_gives_every_pinned_take_its_duration_and_key_and_every_finding_its_index_and_scene(  # noqa: E501
+    client, db_session, room_app, quiet
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await create_session(db_session, pericope=P, project_id=project.id, language="pt")
+    sent = []
+    for part, (seconds, tone) in enumerate(((3, 1), (2.5, 2), (2, 3)), start=1):
+        answer = await upload_a_part(
+            client,
+            session.id,
+            part=part,
+            audio=recording(seconds, tone),
+            content_type="audio/wav",
+            headers=team_headers(credential),
+        )
+        assert answer.status_code == 200, answer.text
+        sent.append(answer.json())
+    session = await get_session(db_session, session.id)
+    for index, take in enumerate(sent):
+        await capture_segment(
+            db_session,
+            session,
+            take_id=take["take_id"],
+            starts_ms=0,
+            ends_ms=take["duration_ms"],
+            bridge_take_id=f"retro-{index}",
+            transcript=f"parte {index} contada de volta",
+        )
+    told = await final_segments(db_session, session.id)
+    await read_with(db_session, session, [an_addition_on(told[1].id)])
+
+    await forced(client, db_session, room_app, project, session)
+
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert [(take["duration_ms"], take["key"]) for take in packet["audio"]["rehearsal_takes"]] == [
+        (3000, "S1"),
+        (2500, "S2"),
+        (2000, "S3"),
+    ]
+    segments = packet["back_translation"]["segments"]
+    assert scenes_of_the_frases(packet) == [(1, "S1"), (2, "S2"), (3, "S3")]
+    assert all({"starts_ms", "ends_ms"} <= frase.keys() for frase in segments)
+    assert packet["check"]["findings"] == [
+        {
+            "kind": "addition",
+            "idx": told[1].id,
+            "clipKey": sent[1]["take_id"],
+            "frase": 2,
+            "index": 2,
+            "scene": "S2",
+        }
+    ]
+    assert packet["schema_version"] == "tripod.internalization-release.v0.9"
+
+
+async def test_a_rehearsal_told_whole_is_the_scene_whole(client, db_session, room_app):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_session(
+        db_session, project_id=project.id, tell=told_back_with_an_open_finding
+    )
+
+    await forced(client, db_session, room_app, project, session)
+
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert keys_of_the_takes(packet) == ["whole"]
+    assert scenes_of_the_frases(packet) == [(1, "whole")]
+    assert [finding.get("scene") for finding in packet["check"]["findings"]] == ["whole"]
+
+
+async def test_the_part_key_follows_the_parts_position_not_its_stored_number(
+    client, db_session, room_app
+):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session, parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    for part, stored_as in zip(parts, (0, 4, 9), strict=True):
+        part.ordinal = stored_as
+    await db_session.commit()
+    told = await final_segments(db_session, session.id)
+    await read_with(db_session, session, [an_addition_on(told[0].id)])
+
+    await forced(client, db_session, room_app, project, session)
+
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert keys_of_the_takes(packet) == ["S1", "S2", "S3"]
+    assert scenes_of_the_frases(packet) == [(1, "S1"), (2, "S2"), (3, "S3")]
+    assert [finding.get("scene") for finding in packet["check"]["findings"]] == ["S1"]
+
+
+async def test_a_part_past_the_passages_last_scene_reads_the_key_of_its_position(
+    client, db_session, room_app
+):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    assert len(scene_ids_for(P)) == 3
+    session, _parts = await rehearsed_in_parts(db_session, 4, project_id=project.id)
+    told = await final_segments(db_session, session.id)
+    await read_with(db_session, session, [an_addition_on(told[3].id)])
+
+    await forced(client, db_session, room_app, project, session)
+
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert keys_of_the_takes(packet) == ["S1", "S2", "S3", "S4"]
+    assert scenes_of_the_frases(packet) == [(1, "S1"), (2, "S2"), (3, "S3"), (4, "S4")]
+    assert [finding.get("scene") for finding in packet["check"]["findings"]] == ["S4"]
+
+
+async def test_a_finding_on_no_stretch_of_the_reading_has_no_index_and_no_scene(
+    client, db_session, room_app
+):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    await read_with(db_session, session, [an_addition_on(None)])
+
+    await forced(client, db_session, room_app, project, session)
+
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert packet["check"]["findings"] == [{"kind": "addition", "idx": None, "clipKey": None}]
+
+
+async def test_a_check_with_only_a_nuance_is_conferida_and_its_approval_carries_the_nuance_said_now(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    frase_2 = (await final_segments(db_session, session.id))[1]
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    body = await approved(client, credential, session)
+
+    assert pressed.json()["checked"] is True, pressed.text
+    assert body["version"] == 1
+    assert body["blockers"] == []
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    assert check["conferida"] is True
+    assert check["status"] == "conferida"
+    assert check["findings"] == []
+    assert check["nuances"] == [
+        {
+            "kind": "nuance",
+            "idx": frase_2.id,
+            "clipKey": parts[1].id,
+            "frase": 2,
+            "index": 2,
+            "scene": "S2",
+            "voiced": "now",
+        }
+    ]
+
+
+async def test_the_checks_own_round_keeps_the_nuance_it_said(client, analyst, speaker, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    frase_2 = (await final_segments(db_session, session.id))[1]
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    last = (await stored_telling_back(db_session, session)).checks[-1]
+    assert [(one.segment_id, one.voiced) for one in last.nuances] == [(frase_2.id, "now")]
+
+
+async def test_a_nuance_the_voice_never_said_carries_no_voiced(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    body = await approved(client, credential, session)
+
+    assert body["version"] == 1
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    assert check["conferida"] is True
+    [nuance] = check["nuances"]
+    assert nuance["frase"] == 2
+    assert "voiced" not in nuance
+
+
+async def test_a_nuance_said_in_an_earlier_check_reads_before(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    report = await heard_every_part(db_session, session.id)
+    analyst.readings = [{"findings": [ON_FRASE_3, ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    first = await press_terminei(client, session.id, report=report)
+    await heard_to_its_end(client, session, first)
+    speaker.line = NAMES_FRASE_3
+    await press_terminei(client, session.id, report=report)
+
+    await approved(client, credential, session)
+
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    assert [(one["frase"], one.get("voiced")) for one in check["nuances"]] == [
+        (2, "before"),
+        (3, "now"),
+    ]
+
+
+async def test_the_approval_record_never_carries_a_nuances_quote_story_or_note(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    await approved(client, credential, session)
+
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    assert len(check["nuances"]) == 1
+    carried = json.dumps(check, ensure_ascii=False)
+    for words in (ON_FRASE_2["quote"], ON_FRASE_2["story"], ON_FRASE_2["note"]):
+        assert words not in carried
+
+
+async def test_a_nuances_voice_never_unapproves_the_draft(client, analyst, speaker, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    report = await heard_every_part(db_session, session.id)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    first = await press_terminei(client, session.id, report=report)
+    await heard_to_its_end(client, session, first)
+    await approved(client, credential, session)
+    await press_terminei(client, session.id, report=report)
+    last = (await stored_telling_back(db_session, session)).checks[-1]
+    assert [one.voiced for one in last.nuances] == ["before"]
+
+    again = await approved(client, credential, session)
+
+    assert again["version"] == 1
+
+
+async def heard_to_its_end(client, session: IRSession, pressed) -> None:
+    heard = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/heard",
+        json={"at": pressed.json()["check_at"]},
+    )
+    assert heard.status_code == 200, heard.text
+
+
+async def test_a_release_stored_before_this_ticket_keeps_its_packet(client, db_session, room_app):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_session(db_session, project_id=project.id)
+    packet = await build_internalization_release(db_session, session)
+    packet["schema_version"] = "tripod.internalization-release.v0.7"
+    packet["check"].pop("nuances", None)
+    for entry in packet["audio"]["rehearsal_takes"]:
+        entry.pop("key", None)
+    for entry in packet["back_translation"]["segments"]:
+        entry.pop("scene", None)
+    legacy_id = str(uuid.uuid4())
+    packet["release_id"] = legacy_id
+    packet["version"] = 1
+    db_session.add(
+        IRRelease(
+            id=legacy_id,
+            session_id=session.id,
+            project_id=project.id,
+            pericope=P,
+            version=1,
+            package_sha256=packet["package_sha256"],
+            packet=packet,
+            device_id=TABLET,
+        )
+    )
+    await db_session.commit()
+
+    served = await stored_packet(client, db_session, room_app, project, session)
+
+    assert served == packet

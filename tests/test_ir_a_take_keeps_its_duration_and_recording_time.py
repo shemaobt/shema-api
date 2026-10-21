@@ -274,7 +274,7 @@ async def test_every_take_in_the_packet_carries_the_length_of_its_sound(
     packet = await ready_to_release(db_session, session)
 
     assert [take["duration_ms"] for take in packet["audio"]["rehearsal_takes"]] == [3000, 2500]
-    assert packet["schema_version"] == "tripod.internalization-release.v0.8"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.9"
 
 
 async def test_a_take_sent_with_no_time_nor_length_keeps_the_servers_clock_and_its_measured_length(

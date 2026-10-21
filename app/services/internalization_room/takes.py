@@ -538,6 +538,15 @@ def part_positions(parts: list[IRTake]) -> dict[int | None, int | None]:
     return positions
 
 
+def part_keys(parts: list[IRTake]) -> dict[str, str]:
+    """Each current part's **Part key** by its take id: `whole`, or `S<n>` at position n."""
+    positions = part_positions(parts)
+    return {
+        part.id: "whole" if positions[part.ordinal] is None else f"S{positions[part.ordinal]}"
+        for part in parts
+    }
+
+
 #: Where a declared part's key lives, and the device a text seam speaks for. A part declared
 #: through the seam has no bytes and no bucket object: it is the address a stretch is a slice
 #: of, and nothing else, so the key carries the name her script gave it.
