@@ -193,7 +193,18 @@ def refuse_a_telling_over_part_of_a_frase(
 ) -> None:
     if any(sits_at(one, take_id, starts_ms, ends_ms) for one in told):
         return
-    over = next(
+    over = _frase_standing_over(told, take_id, starts_ms, ends_ms)
+    if over is not None:
+        raise OverlapsAStandingFrase(
+            f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} falls over the frase "
+            f"standing from {over.starts_ms} ms to {over.ends_ms} ms without being it"
+        )
+
+
+def _frase_standing_over(
+    told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
+) -> IRSegment | None:
+    return next(
         (
             one
             for one in told
@@ -201,10 +212,16 @@ def refuse_a_telling_over_part_of_a_frase(
         ),
         None,
     )
+
+
+def refuse_a_stale_telling_over_a_standing_frase(
+    told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
+) -> None:
+    over = _frase_standing_over(told, take_id, starts_ms, ends_ms)
     if over is not None:
         raise OverlapsAStandingFrase(
-            f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} falls over the frase "
-            f"standing from {over.starts_ms} ms to {over.ends_ms} ms without being it"
+            f"A stretch waiting to be told again is told where no frase stands, and one already "
+            f"stands from {over.starts_ms} ms to {over.ends_ms} ms of {take_id}"
         )
 
 
@@ -262,7 +279,7 @@ async def capture_segment(
         refuse_a_version_that_tells_nothing(transcript)
         await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
         if replaces.stale:
-            refuse_a_telling_over_part_of_a_frase(
+            refuse_a_stale_telling_over_a_standing_frase(
                 await final_segments(db, session.id), take_id, starts_ms, ends_ms
             )
             parent_id = None

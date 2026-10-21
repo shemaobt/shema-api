@@ -38,6 +38,7 @@ from tests.room_harness import (
     the_analyst_is_scripted,
     the_bucket_is_in_memory,
     the_room_speaks,
+    the_transcriber_says,
     upload_a_part,
 )
 from tests.sentence_harness import rehearsed_in_wav, spoken
@@ -65,6 +66,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, stor
         return "a parte contada de novo"
 
     monkeypatch.setattr(segments_api, "heard", _heard)
+    the_transcriber_says(monkeypatch, [])
     async with room_client(db_session, monkeypatch) as door:
         yield door
 
@@ -78,13 +80,14 @@ async def _tell_again(
     starts_ms: int = 0,
     ends_ms: int = PART_MS,
     params: dict[str, str] | None = None,
+    audio: bytes = RETELLING,
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",
         headers={"X-Room-Device": TABLET},
         params=params,
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
-        files={"file": ("de-novo.m4a", RETELLING, "audio/mp4")},
+        files={"file": ("de-novo.m4a", audio, "audio/mp4")},
     )
 
 
@@ -490,3 +493,43 @@ async def test_a_finding_on_a_stale_stretch_is_never_served(
         progress = read.json()["back_translation"]
         assert progress["findings"] == [], "a tablet era mandada a um trecho que já não conta"
         assert progress["finding_segment_id"] is None
+
+
+async def test_two_stale_stretches_of_one_part_are_not_both_told_over_the_same_slice(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3)
+    first = {row.take_id: row.id for row in await current_segments(db_session, session.id)}[two.id]
+    second_take = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert second_take.status_code == 200, second_take.text
+    told_on_second = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": second_take.json()["take_id"],
+            "starts_ms": "0",
+            "ends_ms": str(PART_MS),
+        },
+        files={"file": ("contada.m4a", RETELLING, "audio/mp4")},
+    )
+    assert told_on_second.status_code == 200, told_on_second.text
+    third_take = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO + b"3")
+    assert third_take.status_code == 200, third_take.text
+    stale = [row for row in await _read_asking_for_stale(client, session.id) if row["stale"]]
+    assert len(stale) == 2, "the part recorded three times serves the stretch of each earlier take"
+    over = third_take.json()["take_id"]
+
+    again = await _tell_again(client, session.id, first, take_id=over)
+    assert again.status_code == 200, again.text
+    twice = await _tell_again(
+        client, session.id, stale[1]["segment_id"], take_id=over, audio=RETELLING + b"outra"
+    )
+
+    assert twice.status_code == 400, twice.text
+    standing = await client.get(f"{PREFIX}/sessions/{session.id}")
+    at_that_slice = [
+        row
+        for row in standing.json()["back_translation"]["segments"]
+        if (row["take_id"], row["starts_ms"], row["ends_ms"]) == (over, 0, PART_MS)
+    ]
+    assert len(at_that_slice) == 1, "dois trechos ficaram de pé no mesmo lugar da mesma gravação"
