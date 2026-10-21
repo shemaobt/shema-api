@@ -677,9 +677,6 @@ class IRSegment(Base):
         UtcDateTime(timezone=True), nullable=True
     )
     superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    #: Retired because its part was recorded again, and kept to be told again: the one
-    #: retirement a tablet that asks still gets the stretch back from. A stretch replaced, or
-    #: abandoned by a telling-back started over, is never this.
     stale: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
