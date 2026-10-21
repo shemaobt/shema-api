@@ -359,15 +359,11 @@ async def test_a_round_with_nothing_new_after_a_clean_round_is_served_the_verdic
     assert len(await _the_kept_rounds(db_session, first["sessionId"])) == 1
 
 
-async def test_a_round_a_restart_lands_in_answers_without_the_nuance_the_restart_cleared(
-    client,
-    analyst,
-    speaker,
+async def _a_round_a_restart_lands_in(
+    client: httpx.AsyncClient,
     rival_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    analyst.readings = [{"findings": [ON_FRASE_3]}]
-    speaker.line = NAMES_FRASE_3
+) -> dict:
     declared = await client.post(
         f"{SEAM}/session",
         json={"pericopeId": "P02", "language": "Brazilian Portuguese", "clips": CLIPS},
@@ -383,11 +379,40 @@ async def test_a_round_a_restart_lands_in_answers_without_the_nuance_the_restart
         return await written(*args, **kwargs)
 
     monkeypatch.setattr(verdict_round, "append_exchange", written_after_a_restart)
+    return await _a_round(client, TELLING, session_id=session_id)
 
-    result = await _a_round(client, TELLING, session_id=session_id)
+
+async def test_a_round_a_restart_lands_in_answers_without_the_nuance_the_restart_cleared(
+    client,
+    analyst,
+    speaker,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+
+    result = await _a_round_a_restart_lands_in(client, rival_factory, monkeypatch)
 
     assert [one["kind"] for one in result["findings"]] == [], (
         "a rodada em que o recomeço caiu devolvia a nuance que o recomeço já tinha apagado"
+    )
+
+
+async def test_a_round_a_restart_lands_in_answers_without_the_finding_the_restart_cleared(
+    client,
+    analyst,
+    speaker,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    an_addition = {"kind": "addition", "note": "Ela voltou com as noras.", "frase": 1}
+    analyst.readings = [{"findings": [an_addition]}]
+
+    result = await _a_round_a_restart_lands_in(client, rival_factory, monkeypatch)
+
+    assert (result["findings"], result["findingsRemaining"]) == ([], 0), (
+        "a rodada em que o recomeço caiu devolvia o achado que o recomeço já tinha apagado"
     )
 
 

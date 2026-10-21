@@ -239,11 +239,11 @@ async def play_a_round(
 
     return TextRoundResponse(
         sessionId=session.id,
-        findings=_reported(verdict.current, state),
+        findings=_reported([one for one in verdict.current if one in state.findings], state),
         spoken=verdict.said,
         outcome=room.outcome_tag(verdict.outcome),
         conferida=verdict.checked and state.checked,
-        findingsRemaining=verdict.findings_remaining,
+        findingsRemaining=min(verdict.findings_remaining, room.findings_remaining(state.findings)),
         missingWithoutFrase=sum(
             1
             for finding in verdict.read_this_round
