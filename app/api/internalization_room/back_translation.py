@@ -185,7 +185,6 @@ async def add_chunk(
     numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(
         session_id=session.id,
-        chunks=len(told) if retold is not None else len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
@@ -518,7 +517,7 @@ async def _finished(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=verdict.outcome.fixed_line,
-        checked=verdict.checked,
+        checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
         findings=finding_views(shown.findings),

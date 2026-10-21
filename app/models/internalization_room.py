@@ -538,10 +538,6 @@ class FixedLineView(BaseModel):
 
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
-    #: How many stretches the passage has after this call, not how many recordings the team
-    #: sent. A retelling replaces the stretch it retells, so it adds none — the number moves
-    #: only when the team tells a stretch nobody had told yet.
-    chunks: int
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
@@ -1093,6 +1089,8 @@ class KeptRehearsal(BaseModel):
     turn_number: int
     words: str
     from_other_session: bool
+    scope: str
+    audio_url: str
 
 
 class MotherTongueTakesResponse(BaseModel):
