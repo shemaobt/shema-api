@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import internalization_room as room_service
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.device_harness import TABLET_TEAM
+from tests.golden_rehearsal_harness import the_room_stands_in
 from tests.hard_stretch_harness import a_session
 from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.room_harness import the_room_speaks
@@ -153,3 +154,22 @@ async def test_a_checking_turn_that_carries_all_six_facts_shows_them_in_her_orde
         "os fatos não chegavam ao Guia na ordem dela: ledger, ensaios de cena, ensaios "
         "guardados, passagens anteriores, momento, leituras aceitas"
     )
+
+
+async def test_the_turn_that_sends_the_open_scenes_rehearsal_tells_the_guide_the_articulation(
+    room, guide, db_session
+) -> None:
+    session_id, rehearsal_id = await _a_p11_scene_4_rehearsal(room, db_session)
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 4})
+
+    checking = await room.client.post(
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/send",
+        data={"turn_id": str(uuid.uuid4())},
+    )
+
+    assert checking.status_code == 200, checking.text
+    facts = guide.systems[-1].partition(CACHE_BREAK)[2]
+    assert (
+        "MOMENT: Articulation of part 4 of 4 \N{EM DASH} "
+        "a scene rehearsal of this part has reached you." in facts
+    ), "o ensaio da cena aberta chegou neste turno e a voz ainda lia a Internalização dela"

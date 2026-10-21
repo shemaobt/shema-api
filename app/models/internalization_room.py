@@ -1089,6 +1089,8 @@ class KeptRehearsal(BaseModel):
     turn_number: int
     words: str
     from_other_session: bool
+    scope: str
+    audio_url: str
 
 
 class MotherTongueTakesResponse(BaseModel):
