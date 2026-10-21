@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -35,16 +34,9 @@ from tests.room_harness import (
     the_room_speaks,
 )
 from tests.sentence_harness import rehearsed_in_wav, spoken
-from tests.turn_harness import the_room_agent_is
+from tests.turn_harness import the_speaker_answers
 
 SAID = "Vocês contaram bem."
-
-
-class Speaker:
-    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return SAID
 
 
 @pytest.fixture()
@@ -67,7 +59,7 @@ async def test_a_verdict_the_merge_stores_unchecked_after_a_lay_in_answers_unche
 ) -> None:
     the_analyst_is_scripted(monkeypatch)
     the_room_speaks(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=Speaker())
+    the_speaker_answers(monkeypatch, SAID)
     session, _, ((frase, _other),) = await rehearsed_in_wav(
         db_session, store, [[(0, 1000), (1000, 2000)]]
     )
@@ -109,7 +101,7 @@ async def test_a_verdict_the_merge_stores_unchecked_after_a_restart_answers_unch
 ) -> None:
     the_analyst_is_scripted(monkeypatch)
     the_room_speaks(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=Speaker())
+    the_speaker_answers(monkeypatch, SAID)
     project, credential = await a_claimed_device(db_session)
     client.headers.update(team_headers(credential))
     session, _ = await rehearsed_in_parts(db_session, 2, project_id=project.id)
@@ -145,7 +137,7 @@ async def test_a_verdict_the_merge_stores_unchecked_after_a_stretch_was_told_ans
 ) -> None:
     the_analyst_is_scripted(monkeypatch)
     the_room_speaks(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=Speaker())
+    the_speaker_answers(monkeypatch, SAID)
     project, credential = await a_claimed_device(db_session)
     client.headers.update(team_headers(credential))
     session, (part, _other) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
@@ -193,7 +185,7 @@ async def test_a_finding_the_voice_said_is_still_answered_when_a_fresh_check_sta
     analyst = the_analyst_is_scripted(monkeypatch)
     analyst.readings = [{"findings": [{"kind": "missing", "note": "Orfa não apareceu."}]}]
     the_room_speaks(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=Speaker())
+    the_speaker_answers(monkeypatch, SAID)
     project, credential = await a_claimed_device(db_session)
     client.headers.update(team_headers(credential))
     session, _ = await rehearsed_in_parts(db_session, 2, project_id=project.id)
