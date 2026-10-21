@@ -289,3 +289,31 @@ async def test_a_number_past_the_end_of_the_reading_the_analyst_was_shown_is_ser
     assert await _findings_of_the_read(client, session.id) == [
         {"kind": "unclear", "frase": 4, "segment_id": told[3].id}
     ], "o registro da leitura era mais curto que o número do achado e a leitura da sessão caía"
+
+
+async def test_a_part_recorded_again_while_the_analyst_reads_is_numbered_off_what_stands(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ScriptedAnalyst,
+    room: Room,
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 4)
+    told = await final_segments(db_session, session.id)
+    analyst.readings = [{"findings": [{"kind": "addition", "note": "Rute foi junto", "chunk": 4}]}]
+
+    async def _the_team_records_part_1_again() -> None:
+        await record_the_part_again(db_session, session, parts[0], sha256="f" * 64)
+
+    analyst.on_reading = _the_team_records_part_1_again
+
+    answered = await press_terminei(
+        client, session.id, report=played_every_part([part.id for part in parts])
+    )
+
+    assert answered.status_code == 200, answered.text
+    expected = [{"kind": "addition", "frase": 3, "segment_id": told[3].id}]
+    assert answered.json()["findings"] == expected, (
+        "a resposta numerava pela leitura com que a conferência abriu, e a primeira parte"
+        " gravada de novo durante a leitura já não contava"
+    )
+    assert await _findings_of_the_read(client, session.id) == expected

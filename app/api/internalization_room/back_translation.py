@@ -522,6 +522,7 @@ async def _finished(
         )
 
     shown = await _without_the_whole_set_aside(db, session, state, takes)
+    standing = await room.final_segments(db, session.id)
     return BackTranslationVerdictResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
@@ -530,7 +531,9 @@ async def _finished(
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
         findings=finding_views(
-            shown.findings, shown.analysed_segment_ids, room.frase_numbers(told)
+            shown.findings,
+            shown.analysed_segment_ids,
+            room.frase_numbers(room.told_back(standing)),
         ),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
