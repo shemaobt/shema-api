@@ -2479,6 +2479,25 @@ class TestOuter:
             derived.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_THE_CONFTESTS_FIXTURE_THAT_REQUESTS_THE_CLASS_CACHE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    @pytest.fixture
+    def other(self, derived):
+        return derived
+
+    def test_a_case(self, other) -> None:
+        other.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -3574,6 +3593,12 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
             [13],
             [],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_THE_CONFTESTS_FIXTURE_THAT_REQUESTS_THE_CLASS_CACHE,
+            [16],
+            [],
+        ),
     ],
     ids=[
         "a class fixture that requests the conftest's fixture of its own name",
@@ -3584,6 +3609,7 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
         "a method of another class that asks the conftest's fixture a class fixture requests",
         "a method of a subclass that asks the conftest's fixture its base class fixture requests",
         "a method of a nested class that asks the conftest's fixture the class around it defines",
+        "a class fixture that requests the conftest's fixture that requests another of the class",
     ],
 )
 def test_a_fixture_defined_in_a_class_takes_what_it_requests_from_the_conftest(
