@@ -6,7 +6,9 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.internalization_room import MomentView
 from app.services import internalization_room as room_service
+from app.services.internalization_room.moment import moment_view
 from tests.golden_rehearsal_harness import (
     a_golden_client,
     a_sent_rehearsal,
@@ -67,4 +69,25 @@ async def test_a_golden_turn_carrying_scene_2_as_rehearsed_lets_her_closing_open
     step = await _the_last_step(db_session, session_id)
     assert step["after"] == {"at": "internalization", "part": 3}, (
         "o roteiro dizia que a cena 2 tinha voltado e o fechamento não abriu a cena 3"
+    )
+
+
+async def test_a_marked_rehearsal_of_the_open_scene_moves_the_screens_label_to_its_articulation(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client, "P02")
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 2})
+    the_models_answer(monkeypatch, "Obrigado. Vamos ver essa cena juntos.")
+
+    sent = await a_sent_rehearsal(client, session_id, "S2")
+
+    assert sent.status_code == 200, sent.text
+    step = await _the_last_step(db_session, session_id)
+    assert (step["after"], step["by"]) == (
+        {"at": "articulation", "part": 2, "fenced": False},
+        ["scene_rehearsal"],
+    ), "o ensaio marcado da cena aberta chegou e a resposta neutra deixou a sala na Internalização"
+    stored = await room_service.get_session(db_session, session_id)
+    assert moment_view(stored) == MomentView(at="articulation", part=2, parts=3), (
+        "a tela continuava na Internalização da cena que a equipe acabou de ensaiar"
     )

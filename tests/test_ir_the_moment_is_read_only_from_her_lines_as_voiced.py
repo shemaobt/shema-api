@@ -716,14 +716,12 @@ def test_a_scene_told_ahead_is_kept_before_what_the_reply_declined() -> None:
         (SCENE_TWO_FENCED, "S1"),
         (SCENE_TWO_FENCED, "S2"),
         (SCENE_TWO_OPEN, "S1"),
-        (SCENE_TWO_OPEN, "S2"),
     ],
     ids=[
         "after the send-off",
         "an earlier scene",
         "the scene being practised",
         "an earlier scene from an internalization",
-        "the open scene",
     ],
 )
 def test_a_marked_rehearsal_of_this_scene_or_an_earlier_one_moves_nothing_and_notes_nothing(
@@ -739,4 +737,38 @@ def test_a_marked_rehearsal_of_this_scene_or_an_earlier_one_moves_nothing_and_no
     assert step is not None
     assert (step.after.as_json(), step.by, step.ignored) == (moment, [], []), (
         "um ensaio que não estava adiantado mexeu no momento ou entrou na lista de ignoradas"
+    )
+
+
+def test_a_marked_rehearsal_of_the_open_scene_moves_its_internalization_to_articulation() -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_OPEN}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene="S2")
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert (step.after.as_json(), step.by, step.ignored) == (
+        SCENE_TWO_PRACTISED,
+        ["scene_rehearsal"],
+        [],
+    ), "o ensaio marcado da cena aberta chegou e a sala continuou na Internalização dela"
+
+
+def test_a_rehearsal_of_the_open_scene_kept_on_an_earlier_turn_does_not_move_a_later_one() -> None:
+    heard = [
+        {
+            "role": "guide",
+            "text": "",
+            "scene_rehearsal": {"scene": "S2"},
+            "moment": {"after": SCENE_TWO_OPEN},
+        }
+    ]
+
+    step = moment_step(heard, "Vamos ver essa cena juntos.", fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert (step.after.as_json(), step.by, step.ignored) == (SCENE_TWO_OPEN, [], []), (
+        "um ensaio guardado num turno anterior puxou de novo a sala pra Articulação"
     )

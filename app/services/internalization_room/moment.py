@@ -307,6 +307,8 @@ def _arrived(moment: Moment, part: int) -> tuple[Moment, str | None]:
         return moment, f"told ahead, in the Familiarization{kept}"
     if part > _scene(moment):
         return moment, f"told ahead of part {moment.part}{kept}"
+    if moment.at == "internalization" and part == moment.part:
+        return Moment(at="articulation", part=part), None
     return moment, None
 
 
