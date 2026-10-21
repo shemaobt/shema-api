@@ -507,7 +507,6 @@ async def test_an_opening_that_fails_after_it_was_written_leaves_the_claim_free(
 ) -> None:
     """The holder's own transaction already holds the row when the failure comes after the
     opening was written and before it was committed; freeing the claim must not wait on it."""
-    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
     session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide(lines=(OPENING, OPENING)))
     guide.answer.set()
@@ -522,6 +521,11 @@ async def test_an_opening_that_fails_after_it_was_written_leaves_the_claim_free(
                 ask_for_the_opening(tablet, session.id, "abre"), timeout=20
             )
     assert failed.status_code == 502, failed.text[:300]
+    async with rival_factory() as fresh:
+        claim = await fresh.scalar(
+            select(IRSession.opening_claim_turn_id).where(IRSession.id == session.id)
+        )
+    assert claim is None, "a abertura que falhou depois de escrita deixou a reivindicacao presa"
 
     async with rival_factory() as two, room_client(two, monkeypatch) as tablet:
         again = await asyncio.wait_for(
