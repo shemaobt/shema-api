@@ -24,13 +24,17 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
   scene rehearsal's «terminei». Asking for the last line again takes none. The claim is
   taken under the turn id the answer will be stored by, minted for a tablet that sent none,
   so every claimed answer is stored under the claim's id.
-- The team's words are heard before the claim is taken, so a claim is never held through a
-  transcription and never blocks another tablet behind a recording that may fail to be heard.
-  The cost: a waiter adds its own transcription to its wait instead of overlapping them.
+- Turns are answered in the order they arrived. The claim is taken on arrival, while the
+  team's words are still being heard, so a long recording sent first is answered before a
+  short one sent after it, and the second reply reads the first. The ticket's acceptance asks
+  for exactly that. A claim is therefore held through its own transcription, and a waiter
+  hears its words during the wait. (The Orchestrator first had the words heard before the
+  claim; send-back 1 withdrew it, because the shorter recording then went first.)
 - The request that wins reads the session again before the Guide, so it runs on the
   conversation with every reply that landed before it. Then it looks for an answer already
   stored under its own turn id. A run of the same turn on another instance may have landed
-  between the door's own look and the claim, and the stored answer is then the reply.
+  between the door's own look and the claim, and the stored answer is then the reply. No test
+  can stop a request inside that window, so this look has no witness of its own.
 - A claim whose answer is already stored under its turn id is no claim, as one older than the
   turn bound plus 30 s is not. That is what ends a claim on success: the answer is stored in
   the turn's own commit, so a waiter sees the reply and the free claim in the same instant.
@@ -45,9 +49,12 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
     first claim it saw plus 90 s (`internalization_room_opening_wait_ms`, her
     `KICKOFF_WAIT_MS`), however many holders follow one another. Past that it is refused
     `TURN_COLLISION`, 409, with nothing stored and nothing voiced: the server cannot place it.
-    A turn waiting on the opening of a session still empty keeps ADR 0053's rule instead and
-    runs on the conversation as it stands (the Definer, 2026-10-21). An empty session read
-    again at the bound is how the holder is known to be the opening, with no new column.
+    A turn waiting on the opening keeps ADR 0053's rule instead and runs on the conversation
+    as it stands (the Definer, 2026-10-21). It takes the claim from the opening first, so the
+    turns after it wait on a turn of the team, never on the late opening, which is then
+    dropped from the record. Which holder is the opening is decided by the claim, with no new
+    column: a holder first seen on a session still empty claimed it for the opening, because
+    no turn of the team writes a message without first taking the claim.
 - A request that waited gets its whole turn bound from the moment it wins (ADR 0053, Q14).
 - When the waited-on turn fails, its claim is released and the waiter runs on the
   conversation as it stands. A claim that dies while it is waited on is claimed again.
@@ -60,9 +67,9 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
 - No statement of the app waits on Postgres for ever. Every transaction of the app's engine
   sets `lock_timeout` to 30 s and `statement_timeout` to 1 min. 30 s is inside the 90 s
   wait and past a back-translation frase uploaded on a slow link, which holds the session's
-  row through two uploads to the bucket (the Orchestrator, 2026-10-21); 1 min is above the
-  longest statement the app means to run, which was not measured in production. Production reaches Neon through its
-  pooler, which hands the server connection to another client between transactions and
+  row through two uploads to the bucket (the Orchestrator, 2026-10-21). 1 min is a starting
+  value: the longest statement in production was not measured. Production reaches Neon
+  through its pooler, which hands the server connection to another client between transactions and
   keeps nothing a connection was started with, so the two are set per transaction with
   `set_config(…, true)`, in one `SELECT` when the transaction begins (Henok, 2026-10-21). On
   a local Postgres that round trip measured 0.05 to 0.07 ms a transaction, the medians of
@@ -85,15 +92,15 @@ Rejected:
 - Clearing the claim in the turn's own commit. It covers no claim an older instance left, and
   it reaches every draft of the turn door and the scene door for what one more condition on
   the claim's update does.
-- Hearing the team during the wait. It saves a waiter its transcription time, but a claim
-  taken before the words are heard is held through a transcription, and the look for a stored
-  answer after winning would guard a window no test can stop in.
+- Hearing the team before claiming. A claim is then never held through a transcription,
+  but the turn that is heard first goes first, and a short recording sent second is answered
+  before a long one sent first.
 
 Consequences:
 
 - A team turn behind another team turn on a session still empty is taken for one behind the
-  opening, and runs at the bound instead of being refused. A tablet asks for the opening first,
-  so that session is rare.
+  opening, and at the bound takes the claim and runs instead of being refused. A tablet asks
+  for the opening first, so that session is rare.
 - A turn running past 90 s has the other tablets' turns refused until it lands, fails or dies.
   A turn legitimately runs to about 56 s. A holder killed with its instance is such a turn:
   its claim stands until it is dead, 330 s after it was taken, and every other turn that
@@ -103,8 +110,8 @@ Consequences:
 - A turn sent without a turn id now leaves an `ir_turns` row under the minted id.
 - After a turn, the claim's columns still name it. Only the claim reads them.
 - Probes that must go red: team turns skipping the claim (the turn and scene cases); the bound
-  counted from arrival; running instead of refusing at the bound; no re-read after winning; no
-  look for the stored answer after winning; without the stored-answer condition on the claim,
+  counted from arrival; running instead of refusing at the bound; no re-read after winning;
+  hearing before claiming; without the stored-answer condition on the claim,
   the case of two turns at nearly the same moment; the release on the turn id only; no dead
   check while waiting; a resend treated as another tablet's turn; the refusal's handler
   unregistered; the per-transaction waits unregistered (the migrations job's check).
