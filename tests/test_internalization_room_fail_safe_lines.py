@@ -39,9 +39,15 @@ def test_the_room_keeps_no_fail_safe_draft_for_a_language_it_does_not_speak() ->
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_no_fail_safe_line_names_a_draft_a_rejection_or_a_count(spoken: str) -> None:
+def test_no_fail_safe_line_names_a_draft_a_rejection_the_validator_a_numbered_count_or_an_ordinal(
+    spoken: str,
+) -> None:
     mechanics = re.compile(
-        r"rascunho|draft|tentativa|attempt|rejeit|reject|validador|validator", re.I
+        r"rascunho|draft|tentativa|attempt|rejeit|reject|validador|validator"
+        r"|\b\d+\s*(vez(es)?|times)\b"
+        r"|\b(primeira|segunda|terceira|quarta|quinta)s?\b"
+        r"|\b(first|second|third|fourth|fifth)\s+(time|try|attempt)\b|\b(third|fourth|fifth)\b",
+        re.I,
     )
     for kind in FailSafe:
         for line in localized(kind, spoken):
