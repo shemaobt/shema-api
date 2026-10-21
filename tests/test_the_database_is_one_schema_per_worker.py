@@ -51,7 +51,7 @@ async def a_row_committed_before_the_sweep(test_engine) -> None:
 
 
 async def test_the_production_path_commits_on_its_own_connection(db_session) -> None:
-    """24 sites in `app/` open their own session and commit; this is one of them."""
+    """One of the sites in `app/` that open their own session and commit."""
     from app.db.models.auth import App
 
     async with AsyncSessionLocal() as session:
