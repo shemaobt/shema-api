@@ -26,23 +26,23 @@ Decided (ENG-1258):
   is. `clipKey` keeps the take id.
 - **Nuances sit in the check block only, outside the hash.** Each is `{kind: "nuance", idx, clipKey,
   frase?, index?, scene?, voiced?}`: the standing list of the telling-back in its order, with
-  `voiced` from the last check round's copy of the same nuance (same stretch, same quote), `now` or
-  `before`. A last round that carried no reading (a fail-safe) erases nothing: a nuance an earlier
-  heard round said reads `before`. A `now` the team never heard, followed by a fail-safe round,
-  reads absent, as the retroverification file's `said` reads it. Otherwise `voiced` is absent. Never
-  the quote, the story or the note (the Definer); the retroverification file keeps those.
+  `voiced` from the last check round's copy of the same nuance (same stretch, same quote): `now`
+  only when the team heard that round's verdict, `before`. One notion of said, the retroverification
+  file's `said`: a `now` the team never heard is not said. Then, as after a round that carried no
+  reading (a fail-safe), a nuance an earlier heard round said reads `before`, and otherwise `voiced`
+  is absent. Never the quote, the story or the note (the Definer); the retroverification file keeps
+  those.
 - `scene` and `key` sit in hashed lists, so `schema_version` is v0.9. The check block's new keys
   need none (ADR 0020).
 - **An approval compares the draft, not the published hash** (the Definer's option B, amending ADR
   0020). Whether a stored release is the draft composed now is read the same way off both packets,
   on the spot: the takes by fingerprint and order, the stretches, the telling with its findings and
   history, the questions, the nuances and whether every part was heard (`heardComplete`, as
-  `back_translation.checked` is compared); never `schema_version`, the canon pin, the
-  listening's own numbers (`played_by_take`, whose lengths are derived) nor what is read off the
-  content (`key`, `scene`,
-  `index`, `frase`, `duration_ms`, `voiced`, a take's other fields). Nuances are compared only where
-  the stored packet recorded them. `package_sha256` stays the published hash of the whole packet, so
-  Refine's check of it does not change; no column or key is added.
+  `back_translation.checked` is compared); never `schema_version`, the canon pin, the listening's
+  own numbers (`played_by_take`, whose lengths are derived) nor what is read off the content (`key`,
+  `scene`, `index`, `frase`, `duration_ms`, `voiced`, a take's other fields). Nuances are compared
+  only where the stored packet recorded them. `package_sha256` stays the published hash of the whole
+  packet, so Refine's check of it does not change; no column or key is added.
 
 Rejected: **a stored stable integer per stretch**, because no column holds one and the Definer
 made `index` the frase number; **`clipKey` as the scene key**, her meaning, because it would
@@ -68,6 +68,5 @@ which is a different draft (measured on the commits since v0.7, not on a replaye
 take, a reordered take, a stretch told, a finding, a question or a recorded nuance still
 un-approves, and so does a draft heard whole after a force: it is the team's own v2, as ADR 0019's
 compare-first rule has it. Releases stored before keep their packets, and a reader treats a missing
-`nuances`, `key` or `scene` as not recorded. A `voiced: now` says the verdict named the nuance;
-the retroverification file's `said` counts it only once the team heard that verdict, so the two
-differ for a round not played to its end, each answering its own reader.
+`nuances`, `key` or `scene` as not recorded. A `voiced` counts a verdict as the retroverification
+file's `said` does: only once the team heard it.

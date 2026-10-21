@@ -374,8 +374,9 @@ def _check_block(
     across versions — a division renumbers — and ``idx`` is the key that is.
 
     ``nuances`` are the ones standing at this reading, in her shape: a finding's keys and
-    ``voiced``, which the last check round says (``now`` when its verdict named it, ``before``
-    when an earlier one had) and which is absent when no verdict said it. They sit here and
+    ``voiced``, which the last check round says (``now`` when its verdict named it and the team
+    heard it, ``before`` when an earlier heard one had) and which is absent when no heard verdict
+    said it: one notion of said, the retroverification file's. They sit here and
     not in the hashed ``back_translation`` because ``voiced`` moves with no content moving: a
     later round turns a ``now`` into ``before``, and inside the hash that would un-approve an
     unchanged draft (ADR 0078).
@@ -394,8 +395,13 @@ def _check_block(
             entry["frase"] = entry["index"] = frase_of[segment_id]
         return {**entry, **_scene(keys, take_id)}
 
-    last_round_nuances = telling_back.checks[-1].nuances if telling_back.checks else []
-    voiced = {(one.segment_id, one.quote): one.voiced for one in last_round_nuances if one.voiced}
+    last_round = telling_back.checks[-1] if telling_back.checks else None
+    heard = last_round is not None and last_round.heard_at is not None
+    voiced = {
+        (one.segment_id, one.quote): one.voiced
+        for one in (last_round.nuances if last_round else [])
+        if one.voiced == "before" or (one.voiced == "now" and heard)
+    }
     said_earlier = {(one.segment_id, one.quote) for one in nuances_said(telling_back.checks)}
     nuances = []
     for nuance in telling_back.nuances:

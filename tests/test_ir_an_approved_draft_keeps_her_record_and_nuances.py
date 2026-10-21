@@ -378,6 +378,7 @@ async def test_a_check_with_only_a_nuance_is_conferida_and_its_approval_carries_
     pressed = await press_terminei(
         client, session.id, report=await heard_every_part(db_session, session.id)
     )
+    await heard_to_its_end(client, session, pressed)
     body = await approved(client, credential, session)
 
     assert pressed.json()["checked"] is True, pressed.text
@@ -433,6 +434,24 @@ async def test_a_nuance_the_voice_never_said_carries_no_voiced(
     assert "voiced" not in nuance
 
 
+async def test_a_nuance_a_verdict_named_but_the_team_never_heard_is_not_said(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await approved(client, credential, session)
+
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    [nuance] = check["nuances"]
+    assert nuance["frase"] == 2
+    assert "voiced" not in nuance
+
+
 async def test_a_nuance_said_in_an_earlier_check_reads_before(
     client, analyst, speaker, db_session, room_app
 ):
@@ -445,7 +464,8 @@ async def test_a_nuance_said_in_an_earlier_check_reads_before(
     first = await press_terminei(client, session.id, report=report)
     await heard_to_its_end(client, session, first)
     speaker.line = NAMES_FRASE_3
-    await press_terminei(client, session.id, report=report)
+    second = await press_terminei(client, session.id, report=report)
+    await heard_to_its_end(client, session, second)
 
     await approved(client, credential, session)
 
@@ -464,7 +484,10 @@ async def test_two_nuances_in_the_same_words_on_one_frase_both_read_said_now(
     client.headers.update(team_headers(credential))
     analyst.readings = [{"findings": [ON_FRASE_2, {**ON_FRASE_2, "note": "Outro olhar."}]}]
     speaker.line = NAMES_FRASE_2
-    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await heard_to_its_end(client, session, pressed)
 
     await approved(client, credential, session)
 
