@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.segments import current_segments, divide_segment
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
@@ -28,6 +29,7 @@ from tests.room_harness import (
     the_room_speaks,
     upload_a_part,
 )
+from tests.sentence_harness import rehearsed_in_wav, spoken
 
 NEW_AUDIO = b"a equipe gravou esta parte outra vez"
 RETELLING = b"a equipe contou a parte regravada"
@@ -40,10 +42,13 @@ def voice(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
-    from app.api.internalization_room import segments as segments_api
+def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    return the_bucket_is_in_memory(monkeypatch)
 
-    the_bucket_is_in_memory(monkeypatch)
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, store: MemoryStore):
+    from app.api.internalization_room import segments as segments_api
 
     async def _heard(*_: Any, **__: Any) -> str:
         return "a parte contada de novo"
@@ -227,4 +232,77 @@ async def test_a_stale_stretch_of_a_whole_that_stepped_aside_is_not_told_again(
 
     assert refused.status_code == 400, (
         "o ensaio inteiro já era história e aceitou ser contado de novo sobre uma cena"
+    )
+
+
+async def test_dividing_a_stretch_answers_with_the_stale_ones_to_a_tablet_that_asks(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, two, three) = await rehearsed_in_parts(db_session, 3)
+    by_part = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    divided = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{by_part[one.id]}/divide",
+        headers={"X-Room-Device": TABLET},
+        params={"include_stale": "true"},
+        json={"at_ms": PART_MS // 2},
+    )
+
+    assert divided.status_code == 200, divided.text
+    answered = divided.json()["segments"]
+    assert [(row["take_id"], row["stale"]) for row in answered] == [
+        (one.id, False),
+        (one.id, False),
+        (three.id, False),
+        (two.id, True),
+    ], "a divisão respondia sem a parte regravada e a tablet a apagava da lista"
+
+
+async def test_telling_a_stretch_again_answers_with_the_stale_ones_to_a_tablet_that_asks(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, two, three) = await rehearsed_in_parts(db_session, 3)
+    by_part = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    told = await _tell_again(
+        client,
+        session.id,
+        by_part[one.id],
+        take_id=one.id,
+        params={"include_stale": "true"},
+    )
+
+    assert told.status_code == 200, told.text
+    assert [(row["take_id"], row["stale"]) for row in told.json()["segments"]] == [
+        (one.id, False),
+        (three.id, False),
+        (two.id, True),
+    ], "a nova contagem respondia sem a parte regravada e a tablet a apagava da lista"
+
+
+async def test_laying_a_sentence_in_answers_with_the_stale_ones_to_a_tablet_that_asks(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _takes, (part_one, part_two) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)], [(0, 2000)]]
+    )
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    laid = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{part_one[1].id}/sentence",
+        params={"include_stale": "true"},
+        data={"sentence_id": "sentence-0001"},
+        files={"file": ("frase.wav", spoken(1.0), "audio/wav")},
+    )
+
+    assert laid.status_code == 200, laid.text
+    answered = laid.json()["segments"]
+    assert [row["stale"] for row in answered] == [False, False, False, True]
+    assert answered[-1]["segment_id"] == part_two[0].id, (
+        "a frase gravada de novo respondia sem a parte regravada e a tablet a apagava da lista"
     )
