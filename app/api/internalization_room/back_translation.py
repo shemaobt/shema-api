@@ -191,7 +191,6 @@ async def add_chunk(
     numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(
         session_id=session.id,
-        chunks=len(told) if retold is not None else len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,

@@ -762,7 +762,6 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     again = await _tell(client, session_id, take_id, 1, again=True, saying="o primeiro de novo")
 
     assert again.status_code == 200, again.text
-    assert again.json()["chunks"] == 2, "contar de novo não acrescenta um trecho à passagem"
     standing = await _current(db_session, session_id)
     assert len(standing) == 2
     current = standing[0]

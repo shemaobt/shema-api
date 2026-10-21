@@ -42,8 +42,8 @@ Consequences:
 - Every number the session read and the check's answer serve is true of the reading as it
   stands now. The text seam, the packet and the retroverification file still carry a finding's
   `chunk` as the check made it.
-- The `chunks` count of the telling answer is still every stretch that counts, told or not, so
-  it can differ from the highest `frase`.
+- The telling answer carries no count of stretches (see the amendment below), so the one number
+  it gives about where the stretch sits is its `frase`.
 - The tablet and the Desk parse the session by named keys and ignore the rest, so the new key
   breaks neither.
 
@@ -54,3 +54,13 @@ Rejected:
 - A number stored on the stretch's row: every cut, replacement and part recorded again would
   have to renumber the rows after it, and the packet already freezes the number per **Version**
   for the reason that a stored one moves.
+
+**Amended on 20 October 2026 (ENG-1682): the telling answer no longer counts stretches.** The
+answer carried a `chunks` number documented as how many stretches the passage has, and it was
+every stretch that counts, told or not: with an untold piece standing it differed from the
+highest `frase`, and a stretch told again left it where it was. Nothing read it. The tablet
+parsed it into a field no code looks at, the Desk and the golden runners never touch the route,
+and the number is not one the voice speaks, so there was no reading of it worth keeping true.
+The field is gone from the answer and from the API reference. The tablet reads
+`json['chunks'] as int? ?? 0`, so an answer without it and a replayed answer that still has it
+(the room replays a stored answer byte for byte for a day) are both read.
