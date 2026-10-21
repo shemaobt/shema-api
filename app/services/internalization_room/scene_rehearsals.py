@@ -58,7 +58,7 @@ from app.services.internalization_room.opening_claim import (
     answer_around_the_opening,
     oldest_live_claim,
 )
-from app.services.internalization_room.segments import SHORTEST_FRASE_MS
+from app.services.internalization_room.segments import refuse_a_frase_under_the_floor
 from app.services.internalization_room.takes import (
     TakeStore,
     checked_recording,
@@ -464,12 +464,12 @@ def _refuse_a_pause_that_cannot_move(
             "The pause moves only on the last frase of the scene rehearsal",
             ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
         )
-    if starts_ms != named.starts_ms or ends_ms < starts_ms + SHORTEST_FRASE_MS:
+    if starts_ms != named.starts_ms:
         raise PauseCannotMove(
-            f"A moved pause keeps its frase from {named.starts_ms} ms and at least "
-            f"{SHORTEST_FRASE_MS} ms long, not from {starts_ms} ms to {ends_ms} ms",
+            f"A moved pause keeps its frase from {named.starts_ms} ms, not from {starts_ms} ms",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
         )
+    refuse_a_frase_under_the_floor(starts_ms, ends_ms)
     if rehearsal.duration_ms is not None and ends_ms > rehearsal.duration_ms:
         raise PauseCannotMove(
             f"A pause at {ends_ms} ms falls past the end of a recording of "

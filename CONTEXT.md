@@ -471,7 +471,7 @@ One piece of a **Scene rehearsal** told in the bridge language, with its place i
 _Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
 
 **Moved pause**:
-A **Scene frase** that replaces the last frase of its attempt from the same start to a new end. It is refused when the frase it names is not that last frase, when its new end passes the scene recording, or when the frase was replaced since the tablet read it. A frase over the place of the newest version of the frase it names is that frase translated again, never a moved pause.
+A **Scene frase** that replaces the last frase of its attempt from the same start to a new end. It is refused when the frase it names is not that last frase, when it starts elsewhere or would be shorter than 0.2 s, when its new end passes the scene recording, or when the frase was replaced since the tablet read it. A frase over the place of the newest version of the frase it names is that frase translated again, never a moved pause.
 _Avoid_: move-end, cut, split, resize
 
 **Restart** (`ir_scene_restarts`; «recomeçar a tradução»):
