@@ -422,6 +422,22 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
     return reach
 
 
+def _as_seen_from(
+    tree: ast.Module, fixtures: Iterable[ast.FunctionDef | ast.AsyncFunctionDef]
+) -> ast.Module:
+    return ast.Module(
+        body=[
+            *tree.body,
+            *(
+                fixture
+                for fixture in fixtures
+                if fixture.name not in {parameter.arg for parameter in _parameters_of(fixture)}
+            ),
+        ],
+        type_ignores=[],
+    )
+
+
 def _as_resolved(names: set[str]) -> list[ast.expr]:
     return [ast.Name(id=name) for name in sorted(names)]
 
@@ -762,6 +778,16 @@ def _clears_in_tree(
         outside,
         behind,
     )
+    methods_seeing: dict[tuple[ast.AST, ...], list[ast.AST]] = {}
+    for method, fixtures in _fixtures_in_reach(tree).items() if names_a_cache else ():
+        methods_seeing.setdefault(tuple(fixtures.values()), []).append(method)
+    for fixtures, methods in methods_seeing.items():
+        seen = _as_seen_from(tree, fixtures)
+        outside_seen, behind_seen = _fixtures_of_the_conftest(module, seen, canon_caches, root)
+        fed_seen, _, _ = _fed_by_what_functions_return(
+            seen, imports, given, at_the_top, canon_caches, True, outside_seen, behind_seen
+        )
+        arguments |= {method: fed_seen[method] for method in methods}
     scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
     passed: set[tuple[ast.AST, str, str]] = set()
     while names_a_cache and (new := _handed_down(handed, imports, scopes, canon_caches) - passed):
@@ -2305,6 +2331,21 @@ class TestACase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -3356,10 +3397,17 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
             [16],
             [12],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS,
+            [12],
+            [],
+        ),
     ],
     ids=[
         "a class fixture that requests the conftest's fixture of its own name",
         "a class fixture that shadows the conftest's fixture of its name",
+        "a class fixture that is what a conftest fixture requests",
     ],
 )
 def test_a_fixture_defined_in_a_class_takes_what_it_requests_from_the_conftest(
