@@ -425,6 +425,72 @@ async def test_a_team_turn_that_ran_past_a_slow_opening_is_the_one_the_next_turn
     ]
 
 
+async def test_two_team_turns_that_pass_the_same_slow_opening_never_both_run_on_it(
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first to pass the opening holds a team turn's claim; the other waits on it as on
+    any team turn, and is past its bound already, counted from the opening's claim."""
+    _the_wait_is(monkeypatch, 300)
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
+    guide = the_guide_is(monkeypatch, Guide(lines=(OPENING, REPLY_A, REPLY_B)))
+    guide.reply_takes = 1.0
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        rival_factory() as three,
+        room_client(one, monkeypatch) as opening_tablet,
+        room_client(two, monkeypatch) as tablet_a,
+        room_client(three, monkeypatch) as tablet_b,
+    ):
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        try:
+            answered = await asyncio.wait_for(
+                asyncio.gather(
+                    speak(tablet_a, session.id, "t1"), speak(tablet_b, session.id, "t2")
+                ),
+                timeout=10,
+            )
+        finally:
+            guide.answer.set()
+        await asyncio.wait_for(opening, timeout=10)
+
+    assert sorted((r.status_code, r.json().get("code")) for r in answered) == [
+        (200, None),
+        (409, "TURN_COLLISION"),
+    ]
+    assert await conversation(rival_factory, session.id) == [("team", SAID), ("guide", REPLY_A)]
+
+
+async def test_an_opening_that_answers_after_a_team_turn_took_its_claim_is_not_written(
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_wait_is(monkeypatch, 300)
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
+    guide = the_guide_is(monkeypatch, Guide(lines=(OPENING, REPLY_A)))
+    guide.reply_takes = 1.0
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        room_client(one, monkeypatch) as opening_tablet,
+        room_client(two, monkeypatch) as speaking_tablet,
+    ):
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        team = asyncio.create_task(speak(speaking_tablet, session.id, "t"))
+        try:
+            await _until(lambda: guide.asked == 2)
+        finally:
+            guide.answer.set()
+        await asyncio.wait_for(opening, timeout=10)
+        spoken = await asyncio.wait_for(team, timeout=10)
+
+    assert spoken.status_code == 200, spoken.text[:300]
+    assert await conversation(rival_factory, session.id) == [("team", SAID), ("guide", REPLY_A)]
+
+
 async def test_a_claim_naming_a_turn_but_no_time_never_holds_a_turn_up(
     db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:

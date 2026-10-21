@@ -55,6 +55,14 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
     dropped from the record. Which holder is the opening is decided by the claim, with no new
     column: a holder first seen on a session still empty claimed it for the opening, because
     no turn of the team writes a message without first taking the claim.
+  - A claim taken from the opening is a team turn's claim. A holder that replaced a claim
+    while it was live and unanswered took it over, and a waiter never judges it the opening
+    again: it waits on it as on any team turn, and is refused past its own bound. Two team
+    turns passing one slow opening therefore never both run on the empty conversation.
+  - The late opening writes only while it still holds its claim, guarded on the claim's turn
+    id and time as the release is, inside its own write. Once a team turn took the claim,
+    nothing of the opening is written, the tablet that asked for it still hears it, and the
+    team turn lands.
 - A request that waited gets its whole turn bound from the moment it wins (ADR 0053, Q14).
 - When the waited-on turn fails, its claim is released and the waiter runs on the
   conversation as it stands. A claim that dies while it is waited on is claimed again.
@@ -111,7 +119,8 @@ Consequences:
 - After a turn, the claim's columns still name it. Only the claim reads them.
 - Probes that must go red: team turns skipping the claim (the turn and scene cases); the bound
   counted from arrival; running instead of refusing at the bound; no re-read after winning;
-  hearing before claiming; without the stored-answer condition on the claim,
+  hearing before claiming; a taken-over claim judged the opening again; the late opening
+  written anyway; without the stored-answer condition on the claim,
   the case of two turns at nearly the same moment; the release on the turn id only; no dead
   check while waiting; a resend treated as another tablet's turn; the refusal's handler
   unregistered; the per-transaction waits unregistered (the migrations job's check).

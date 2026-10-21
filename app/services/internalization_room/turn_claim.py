@@ -49,7 +49,7 @@ class Draft(Protocol):
     """The turn's own work: the Guide, the voice and the landing, under the bound it is given."""
 
     def __call__(
-        self, *, speech_heard: HeardSpeech, turn_id: str | None, deadline: float
+        self, *, speech_heard: HeardSpeech, turn_id: str | None, deadline: float, claim: TurnClaim
     ) -> Awaitable[TurnResponse]: ...
 
 
@@ -134,7 +134,9 @@ async def answer_under_the_turn_claim(
         if won.waited:
             deadline = asyncio.get_running_loop().time() + bound_s
         with reading_the_canon_of(session.canon_pin):
-            return await draft(speech_heard=speech_heard, turn_id=claimed_as, deadline=deadline)
+            return await draft(
+                speech_heard=speech_heard, turn_id=claimed_as, deadline=deadline, claim=won.claim
+            )
     except BaseException:
         await _stop(hearing)
         await db.rollback()
@@ -175,6 +177,7 @@ async def _claimed_or_answered(
     waited, ends = False, None
     judged: TurnClaim | None = None
     held_by_the_opening = False
+    taken_over: set[TurnClaim] = set()
     while True:
         claimed_at = await _claim(db, session.id, claimed_as, bound_s)
         if claimed_at is not None:
@@ -206,9 +209,12 @@ async def _claimed_or_answered(
         if ends is None:
             ends = loop.time() + _wait_left(holder)
         if holder != judged:
-            judged, held_by_the_opening = holder, await _still_empty(db, session)
+            judged = holder
+            held_by_the_opening = holder not in taken_over and await _still_empty(db, session)
         with stage("turn_wait"):
             look = await _looked_after(session.id, holder, project_id, until=ends, bound_s=bound_s)
+        if (taker := _taker(look, holder, bound_s)) is not None:
+            taken_over.add(taker)
         if not _still_held(look.standing, holder, bound_s):
             continue
         if look.stored is not None:
@@ -219,6 +225,18 @@ async def _claimed_or_answered(
         taken_at = await _taken_over(db, session.id, holder, claimed_as)
         if taken_at is not None:
             return _Won(TurnClaim(claimed_as, taken_at), waited)
+        taker = await _holder(session.id)
+        if taker is not None and taker != holder:
+            taken_over.add(taker)
+
+
+def _taker(look: _Look, holder: TurnClaim, bound_s: float) -> TurnClaim | None:
+    """The claim that replaced `holder` while it was live and unanswered, which only a turn
+    taking it over writes; None otherwise."""
+    taker = look.standing
+    if look.stored is None and taker is not None and taker != holder and _live(holder, bound_s):
+        return taker
+    return None
 
 
 async def _stop(hearing: asyncio.Task[HeardSpeech] | None) -> None:
@@ -337,6 +355,25 @@ async def _taken_over(
     )
     await db.commit()
     return at if taken.rowcount == 1 else None
+
+
+async def still_holds(db: AsyncSession, claim: TurnClaim, session_id: str) -> bool:
+    """Whether the turn writing under `claim` still holds it, asked inside its own write.
+
+    Guarded as the release is, on the claim's turn id and time. Writing the claim its own
+    values takes the session's row, so a turn taking the claim over waits for this write to
+    commit, and a write behind a takeover finds the claim gone.
+    """
+    held = await db.execute(
+        _set_claim(
+            IRSession.id == session_id,
+            IRSession.opening_claim_turn_id == claim.turn_id,
+            IRSession.opening_claimed_at == claim.claimed_at,
+            turn_id=claim.turn_id,
+            at=claim.claimed_at,
+        )
+    )
+    return bool(held.rowcount == 1)
 
 
 async def _holder(session_id: str) -> TurnClaim | None:

@@ -853,6 +853,7 @@ async def draft_the_turn(
     halted: bool,
     speech_heard: HeardSpeech,
     deadline: float,
+    claim: turn_claim.TurnClaim,
     bound_s: float,
     take: HeardTake | None = None,
 ) -> TurnResponse:
@@ -865,6 +866,7 @@ async def draft_the_turn(
         halted=halted,
         speech_heard=speech_heard,
         deadline=deadline,
+        claim=claim,
         bound_s=bound_s,
         take=take,
     )
@@ -893,6 +895,7 @@ async def draft_the_turn_as_text(
     halted: bool,
     speech_heard: HeardSpeech,
     deadline: float,
+    claim: turn_claim.TurnClaim,
     bound_s: float,
     scene_rehearsals: list[str] | None = None,
 ) -> TurnResponse:
@@ -905,6 +908,7 @@ async def draft_the_turn_as_text(
         halted=halted,
         speech_heard=speech_heard,
         deadline=deadline,
+        claim=claim,
         bound_s=bound_s,
         scene_rehearsals=scene_rehearsals,
     )
@@ -921,6 +925,7 @@ async def _keep_the_turn(
     halted: bool,
     speech_heard: HeardSpeech,
     deadline: float,
+    claim: turn_claim.TurnClaim,
     bound_s: float,
     scene_rehearsals: list[str] | None = None,
     take: HeardTake | None = None,
@@ -948,9 +953,10 @@ async def _keep_the_turn(
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        await db.commit()
+        language = session.language
+        await _keep_unless_the_opening_was_passed(db, claim, session.id)
         nudge(team_id, "sessions")
-        return reply, None, session.language
+        return reply, None, language
 
     if opening:
         with stage("db_let_go"):
@@ -1032,13 +1038,29 @@ async def _keep_the_turn(
         moment=moment_view(session),
     )
     lifted = halted and session.status is not IRSessionStatus.NEEDS_PERSON
+    language = session.language
     with stage("db_write"):
         if turn_id:
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        await db.commit()
+        if opening:
+            await _keep_unless_the_opening_was_passed(db, claim, session.id)
+        else:
+            await db.commit()
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-    return reply, outcome, session.language
+    return reply, outcome, language
+
+
+async def _keep_unless_the_opening_was_passed(
+    db: AsyncSession, claim: turn_claim.TurnClaim, session_id: str
+) -> None:
+    """Commit the opening, or drop it whole when a team turn took its claim meanwhile: the
+    team's turn is the session's first line then, and the late opening is heard but never
+    kept (ADR 0053, ADR 0079)."""
+    if await turn_claim.still_holds(db, claim, session_id):
+        await db.commit()
+    else:
+        await db.rollback()
