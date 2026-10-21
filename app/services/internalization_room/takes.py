@@ -458,9 +458,7 @@ async def refuse_a_take_that_is_no_longer_a_part(
     db: AsyncSession, session_id: str, take: IRTake
 ) -> None:
     if take.id not in {part.id for part in current_parts(await takes_of(db, session_id))}:
-        raise StretchNoLongerCounts(
-            "This recording is no longer the part it was: the part was recorded again"
-        )
+        raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
 READING_ORDER = (
