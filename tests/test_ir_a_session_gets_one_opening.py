@@ -317,7 +317,6 @@ async def test_a_team_turns_own_bound_starts_after_its_wait_for_the_opening(
 async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_request_drafts_the_opening(  # noqa: E501
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
     session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide(lines=(OPENING, OPENING)))
     guide.opening_fails = True
@@ -397,7 +396,6 @@ async def test_an_opening_claimed_by_a_request_on_another_instance_is_waited_for
 async def test_a_claim_left_by_a_holder_that_died_is_taken_over(
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
     session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
     guide.answer.set()
