@@ -137,8 +137,9 @@ one to be told again, and a restart followed by a re-recording would bring its s
 and no entry carries the key, because a tablet that predates the mark lists every entry of that
 list as a stretch to show. A stale stretch is told again through the replace door, by its id,
 over the recording its part stands on now and at any slice that does not fall over a standing
-frase: the stretch it replaces stops being stale, and the new one is a root stretch at the next
-position, a first telling. A whole that stepped aside serves nothing, and a translation started
+frase: the stretch it replaces stops being stale and stays an Abandoned row naming no successor, so
+the file and the hard-stretch marks read it as they did, and the new one is a root stretch at the
+next position, a first telling of a chain of its own. A whole that stepped aside serves nothing, and a translation started
 over clears every mark.
 
 Rejected: serving them from `final_segments`, which is the one rule every count reads and would

@@ -15,16 +15,28 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.auth import App
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import Finding, FindingKind
+from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import current_segments, divide_segment
 from app.services.internalization_room.sessions import (
+    RETELLS_BEFORE_A_WARNING,
     back_translation_of,
     get_session,
     save_back_translation,
 )
+from tests.baker import make_app, make_role
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import PREFIX, TABLET
+from tests.release_harness import (
+    APP_KEY,
+    PREFIX,
+    TABLET,
+    a_claimed_device,
+    at_the_desk,
+    desk_retro,
+    team_headers,
+)
 from tests.room_harness import (
     PART_MS,
     a_piece_still_to_be_told,
@@ -209,8 +221,8 @@ async def test_telling_a_stale_stretch_again_replaces_it_and_the_marker_goes(
             .execution_options(populate_existing=True)
         )
     ).scalar_one()
-    assert old.superseded_by_id == standing[1]["segment_id"], (
-        "a linha antiga não dizia o que tomou o seu lugar"
+    assert old.stale is False and old.superseded_by_id is None, (
+        "a linha regravada continuava marcada, ou ganhou um sucessor que nunca teve"
     )
 
 
@@ -533,3 +545,103 @@ async def test_two_stale_stretches_of_one_part_are_not_both_told_over_the_same_s
         if (row["take_id"], row["starts_ms"], row["ends_ms"]) == (over, 0, PART_MS)
     ]
     assert len(at_that_slice) == 1, "dois trechos ficaram de pé no mesmo lugar da mesma gravação"
+
+
+@pytest.fixture()
+async def room_app(db_session: AsyncSession) -> App:
+    app = await make_app(db_session, app_key=APP_KEY, name="Internalization Room")
+    await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
+    return app
+
+
+async def test_telling_a_stale_stretch_again_leaves_the_file_as_it_was(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app: App
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
+    session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    stale = {row.take_id: row.id for row in await current_segments(db_session, session.id)}[two.id]
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    told = await _tell_again(client, session.id, stale, take_id=again.json()["take_id"])
+
+    assert told.status_code == 200, told.text
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    filed = await client.get(desk_retro(session.id), headers=desk)
+    assert filed.status_code == 200, filed.text
+    file = filed.json()
+    assert stale in [row["segment_id"] for row in file["abandoned"]], (
+        "a linha regravada saiu das abandonadas quando a equipe a contou de novo"
+    )
+    fresh = next(row for row in file["stretches"] if row["take_id"] == again.json()["take_id"])
+    assert fresh["history"] == [], "a contagem nova herdou as contagens da gravação anterior"
+
+
+async def test_a_hard_stretch_marked_before_the_part_was_recorded_again_can_be_marked_anew(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3)
+    marked = {row.take_id: row for row in await current_segments(db_session, session.id)}[two.id]
+    marked.tellings = RETELLS_BEFORE_A_WARNING
+    await db_session.commit()
+    assert await note_a_hard_stretch(db_session, session, marked) is True
+    stale = marked.id
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    over = again.json()["take_id"]
+    first = await _tell_again(client, session.id, stale, take_id=over)
+    assert first.status_code == 200, first.text
+    fresh = next(
+        row["segment_id"]
+        for row in (await client.get(f"{PREFIX}/sessions/{session.id}")).json()["back_translation"][
+            "segments"
+        ]
+        if row["take_id"] == over
+    )
+
+    for index in range(RETELLS_BEFORE_A_WARNING - 1):
+        retold = await _tell_again(
+            client, session.id, fresh, take_id=over, audio=RETELLING + bytes([index])
+        )
+        assert retold.status_code == 200, retold.text
+        fresh = next(
+            row["segment_id"]
+            for row in (await client.get(f"{PREFIX}/sessions/{session.id}")).json()[
+                "back_translation"
+            ]["segments"]
+            if row["take_id"] == over
+        )
+
+    assert retold.json()["needs_person"] is True, (
+        "a contagem nova da parte regravada nunca chamou ninguém por já haver uma marca antiga"
+    )
+
+
+async def test_a_divided_stretch_whose_pieces_were_both_told_again_is_not_served(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3)
+    parent = {row.take_id: row for row in await current_segments(db_session, session.id)}[two.id]
+    head, tail = await divide_segment(db_session, session, parent, at_ms=PART_MS // 2)
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    over = again.json()["take_id"]
+
+    first = await _tell_again(
+        client, session.id, head.id, take_id=over, starts_ms=0, ends_ms=PART_MS // 2
+    )
+    second = await _tell_again(
+        client,
+        session.id,
+        tail.id,
+        take_id=over,
+        starts_ms=PART_MS // 2,
+        ends_ms=PART_MS,
+        audio=RETELLING + b"2",
+    )
+
+    assert first.status_code == second.status_code == 200, (first.text, second.text)
+    assert [
+        row for row in await _read_asking_for_stale(client, session.id) if row["stale"]
+    ] == [], "o trecho cortado voltou inteiro depois de as suas duas partes serem contadas de novo"

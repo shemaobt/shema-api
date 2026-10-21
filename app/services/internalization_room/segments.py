@@ -310,10 +310,11 @@ async def capture_segment(
             bridge_take.ordinal = ordinal
 
     segment_id = str(uuid.uuid4())
-    if replaces is not None:
-        if not replaces.stale:
-            replaces.superseded_at = datetime.now(UTC)
+    if replaces is not None and replaces.stale:
         replaces.stale = False
+        await db.flush()
+    elif replaces is not None:
+        replaces.superseded_at = datetime.now(UTC)
         replaces.superseded_by_id = segment_id
         await db.flush()
 
@@ -564,10 +565,26 @@ async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
 
 
 async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
-    """The stretches of a part recorded again that nobody has told again, oldest first."""
+    """The stretches of a part recorded again that nobody has told again, in reading order."""
     rows = await _in_reading_order(db, session_id, IRSegment.stale.is_(True))
     set_aside = await set_aside_segment_ids(db, session_id)
-    return [row for row, divided in _read_in_order(rows) if not divided and row.id not in set_aside]
+    cut = set(
+        (
+            await db.execute(
+                select(IRSegment.parent_id).where(
+                    IRSegment.session_id == session_id,
+                    IRSegment.parent_id.in_([row.id for row in rows]),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        row
+        for row, divided in _read_in_order(rows)
+        if not divided and row.id not in set_aside and row.id not in cut
+    ]
 
 
 async def segment_by_id(db: AsyncSession, segment_id: str) -> IRSegment:
