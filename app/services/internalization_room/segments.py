@@ -95,6 +95,8 @@ async def refuse_a_slice_a_version_cannot_take(
     starts_ms: int,
     ends_ms: int,
 ) -> None:
+    if segment.stale:
+        return
     if segment.take_id != take_id or segment.starts_ms != starts_ms:
         refuse_a_slice_the_stretch_does_not_sit_on(segment, take_id, starts_ms, ends_ms)
     if segment.ends_ms == ends_ms:
@@ -249,9 +251,17 @@ async def capture_segment(
         )
         refuse_a_version_that_tells_nothing(transcript)
         await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
-        parent_id = replaces.parent_id
-        ordinal = replaces.ordinal
-        tellings = replaces.tellings + 1
+        if replaces.stale:
+            refuse_a_telling_over_part_of_a_frase(
+                await final_segments(db, session.id), take_id, starts_ms, ends_ms
+            )
+            parent_id = None
+            ordinal = await _next_ordinal(db, session.id, None)
+            tellings = 1
+        else:
+            parent_id = replaces.parent_id
+            ordinal = replaces.ordinal
+            tellings = replaces.tellings + 1
     elif parent is not None:
         parent_id = parent.id
         ordinal = await _next_ordinal(db, session.id, parent_id)
@@ -274,7 +284,9 @@ async def capture_segment(
 
     segment_id = str(uuid.uuid4())
     if replaces is not None:
-        replaces.superseded_at = datetime.now(UTC)
+        if not replaces.stale:
+            replaces.superseded_at = datetime.now(UTC)
+        replaces.stale = False
         replaces.superseded_by_id = segment_id
         await db.flush()
 
@@ -526,9 +538,7 @@ async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
 
 async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     """The stretches of a part recorded again that nobody has told again, oldest first."""
-    rows = await _in_reading_order(
-        db, session_id, IRSegment.stale.is_(True), IRSegment.superseded_by_id.is_(None)
-    )
+    rows = await _in_reading_order(db, session_id, IRSegment.stale.is_(True))
     set_aside = await set_aside_segment_ids(db, session_id)
     return [row for row, divided in _read_in_order(rows) if not divided and row.id not in set_aside]
 
@@ -759,7 +769,7 @@ async def refuse_a_stretch_that_is_not_a_unit(
     and could mark a divided parent nothing can ever replace.
     """
     await db.refresh(segment, with_for_update=True)
-    if segment.superseded_at is not None:
+    if segment.superseded_at is not None and not segment.stale:
         raise StretchNoLongerCounts(
             "This stretch no longer counts: it was already replaced, or the part of the "
             "rehearsal it is a slice of was recorded again"

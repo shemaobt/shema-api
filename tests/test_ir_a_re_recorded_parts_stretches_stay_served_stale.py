@@ -8,29 +8,66 @@ standing stretches and nothing else — and serves them on top, only when the ta
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.segments import current_segments, divide_segment
-from tests.release_harness import PREFIX
+from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
     room_client,
     the_bucket_is_in_memory,
+    the_room_speaks,
     upload_a_part,
 )
 
 NEW_AUDIO = b"a equipe gravou esta parte outra vez"
+RETELLING = b"a equipe contou a parte regravada"
+
+
+@pytest.fixture(autouse=True)
+def voice(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_room_speaks(monkeypatch)
 
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from app.api.internalization_room import segments as segments_api
+
     the_bucket_is_in_memory(monkeypatch)
+
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a parte contada de novo"
+
+    monkeypatch.setattr(segments_api, "heard", _heard)
     async with room_client(db_session, monkeypatch) as door:
         yield door
+
+
+async def _tell_again(
+    client: httpx.AsyncClient,
+    session_id: str,
+    segment_id: str,
+    *,
+    take_id: str,
+    starts_ms: int = 0,
+    ends_ms: int = PART_MS,
+    params: dict[str, str] | None = None,
+) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",
+        headers={"X-Room-Device": TABLET},
+        params=params,
+        data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
+        files={"file": ("de-novo.m4a", RETELLING, "audio/mp4")},
+    )
 
 
 async def _read_asking_for_stale(client: httpx.AsyncClient, session_id: str) -> list[dict]:
@@ -124,4 +161,33 @@ async def test_a_translation_started_over_leaves_no_stale_stretch_to_serve(
 
     assert await _read_asking_for_stale(client, session.id) == [], (
         "a tradução recomeçada continuava listando a parte regravada antes do recomeço"
+    )
+
+
+async def test_telling_a_stale_stretch_again_replaces_it_and_the_marker_goes(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, two, three) = await rehearsed_in_parts(db_session, 3)
+    by_part = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    told = await _tell_again(client, session.id, by_part[two.id], take_id=again.json()["take_id"])
+
+    assert told.status_code == 200, told.text
+    standing = await _read_asking_for_stale(client, session.id)
+    assert [(row["take_id"], row["stale"], row["frase"]) for row in standing] == [
+        (one.id, False, 1),
+        (again.json()["take_id"], False, 2),
+        (three.id, False, 3),
+    ], "a parte contada de novo continuava marcada como regravada, ou não ocupava o seu lugar"
+    old = (
+        await db_session.execute(
+            select(IRSegment)
+            .where(IRSegment.id == by_part[two.id])
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    assert old.superseded_by_id == standing[1]["segment_id"], (
+        "a linha antiga não dizia o que tomou o seu lugar"
     )
