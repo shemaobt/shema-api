@@ -8,9 +8,10 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import get_settings
 from app.core.db_url import async_database_url, ssl_connect_args
 
-#: How long a statement of the app waits on a lock before Postgres refuses it: well inside the
-#: 90 s a turn waits on another turn of its session (ADR 0079).
-LOCK_TIMEOUT: Final = "10s"
+#: How long a statement of the app waits on a lock before Postgres refuses it: inside the 90 s
+#: a turn waits on another turn of its session, and past a frase uploaded on a slow link while
+#: it holds the session's row (ADR 0079).
+LOCK_TIMEOUT: Final = "30s"
 #: How long one statement of the app may run: above the longest the app means to run.
 STATEMENT_TIMEOUT: Final = "1min"
 

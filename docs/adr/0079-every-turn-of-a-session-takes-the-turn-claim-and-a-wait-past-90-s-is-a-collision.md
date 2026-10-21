@@ -58,14 +58,16 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
   for them and for an older instance during a deploy.
 - The columns and the setting keep the opening's names.
 - No statement of the app waits on Postgres for ever. Every transaction of the app's engine
-  sets `lock_timeout` to 10 s, well inside the 90 s wait, and `statement_timeout` to 1 min,
-  above the longest statement the app means to run. Production reaches Neon through its
+  sets `lock_timeout` to 30 s and `statement_timeout` to 1 min. 30 s is inside the 90 s
+  wait and past a back-translation frase uploaded on a slow link, which holds the session's
+  row through two uploads to the bucket (the Orchestrator, 2026-10-21); 1 min is above the
+  longest statement the app means to run, which was not measured in production. Production reaches Neon through its
   pooler, which hands the server connection to another client between transactions and
   keeps nothing a connection was started with, so the two are set per transaction with
   `set_config(…, true)`, in one `SELECT` when the transaction begins (Henok, 2026-10-21). On
-  a local Postgres that round trip measured 0.07 ms a transaction, the median of three
-  runs of 500 (0.45 ms against 0.38 ms); on Neon it is one more network round trip a
-  transaction. A row lock held elsewhere refused the app's `UPDATE` at 10.0 s. SQLite runs
+  a local Postgres that round trip measured 0.05 to 0.07 ms a transaction, the medians of
+  two sets of three runs of 500; on Neon it is one more network round trip a
+  transaction. A row lock held elsewhere refused the app's `UPDATE` at 30.0 s. SQLite runs
   none of it, and Alembic's own engine is untouched: a migration may legitimately run long.
   The migrations job checks it against its own Postgres.
 
@@ -93,7 +95,11 @@ Consequences:
   opening, and runs at the bound instead of being refused. A tablet asks for the opening first,
   so that session is rare.
 - A turn running past 90 s has the other tablets' turns refused until it lands, fails or dies.
-  A turn legitimately runs to about 56 s.
+  A turn legitimately runs to about 56 s. A holder killed with its instance is such a turn:
+  its claim stands until it is dead, 330 s after it was taken, and every other turn that
+  arrives more than 90 s after it is refused at once.
+- A release that is itself refused, a lock held past 30 s, replaces the turn's own error and
+  leaves the claim standing until it is dead, with the same effect.
 - A turn sent without a turn id now leaves an `ir_turns` row under the minted id.
 - After a turn, the claim's columns still name it. Only the claim reads them.
 - Probes that must go red: team turns skipping the claim (the turn and scene cases); the bound

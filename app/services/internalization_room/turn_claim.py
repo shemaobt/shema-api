@@ -112,25 +112,27 @@ async def answer_under_the_turn_claim(
         if holder is None or not _live(holder, bound_s):
             continue
         waited = True
-        if opening or holder.turn_id == claimed_as:
+        if opening:
             with stage("turn_wait"):
-                joined = await (
-                    _joined(
-                        db,
-                        session_id,
-                        holder,
-                        turn_id=turn_id,
-                        project_id=project_id,
-                        until=deadline,
-                        bound_s=bound_s,
-                    )
-                    if opening
-                    else _rejoined(
-                        session_id, holder, project_id=project_id, until=deadline, bound_s=bound_s
-                    )
+                joined = await _joined(
+                    db,
+                    session_id,
+                    holder,
+                    turn_id=turn_id,
+                    project_id=project_id,
+                    until=deadline,
+                    bound_s=bound_s,
                 )
             if joined is not None:
                 return joined
+            continue
+        if holder.turn_id == claimed_as:
+            with stage("turn_wait"):
+                rejoined = await _rejoined(
+                    session_id, holder, project_id=project_id, until=deadline, bound_s=bound_s
+                )
+            if rejoined is not None:
+                return rejoined
             continue
         if ends is None:
             ends = loop.time() + _wait_left(holder)
@@ -139,7 +141,7 @@ async def answer_under_the_turn_claim(
                 session_id, holder, project_id, until=ends, bound_s=bound_s
             )
         if stored is None and _still_held(now, holder, bound_s):
-            return await _past_the_wait(db, session, speech_heard, turn_id, bound_s, draft)
+            return await _past_the_wait(db, session, speech_heard, claimed_as, bound_s, draft)
 
     claim = TurnClaim(claimed_as, claimed_at)
     try:
@@ -327,7 +329,7 @@ async def _past_the_wait(
     db: AsyncSession,
     session: IRSession,
     speech_heard: HeardSpeech,
-    turn_id: str | None,
+    turn_id: str,
     bound_s: float,
     draft: Draft,
 ) -> TurnResponse:
