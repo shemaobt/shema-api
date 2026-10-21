@@ -89,6 +89,10 @@ async def test_a_stretch_told_during_the_first_check_leaves_the_passage_unchecke
 
     pressed = await press_terminei(client, session.id, report=report)
     assert pressed.status_code == 200, pressed.text
+    assert pressed.json()["checked"] is False, (
+        "a tablet que apertou terminei ouvia que a passagem estava conferida, quando a "
+        "conferência que ela tinha acabado de fazer já tinha sido desfeita"
+    )
 
     async with rival_factory() as fresh_db:
         landed = await get_session(fresh_db, session.id)
