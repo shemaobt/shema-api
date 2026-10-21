@@ -206,7 +206,7 @@ async def play_a_round(
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
         await db.commit()
-        if state.the_verdict_to_serve(told) is not None:
+        if state.checks and state.the_verdict_to_serve(told) is not None:
             return TextRoundResponse(
                 sessionId=session.id,
                 findings=_reported(room.current_findings(state), state),

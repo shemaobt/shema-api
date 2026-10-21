@@ -389,3 +389,23 @@ async def test_a_round_a_restart_lands_in_answers_without_the_nuance_the_restart
     assert [one["kind"] for one in result["findings"]] == [], (
         "a rodada em que o recomeço caiu devolvia a nuance que o recomeço já tinha apagado"
     )
+
+
+async def test_a_press_on_a_verdict_stored_before_rounds_were_kept_is_read_again_not_served(
+    client,
+    analyst,
+    speaker,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    first = await _a_round(client, TELLING)
+    async with rival_factory() as legacy_db:
+        legacy = await get_session(legacy_db, first["sessionId"])
+        legacy.back_translation = {**legacy.back_translation, "checks": []}
+        await legacy_db.commit()
+    speaker.line = "outra coisa"
+
+    again = await _a_round(client, [], session_id=first["sessionId"])
+
+    assert (len(speaker.drafts), again["spoken"]) == (2, "outra coisa"), (
+        "o veredito guardado sem rodada nenhuma derrubava a costura em vez de ser lido de novo"
+    )
