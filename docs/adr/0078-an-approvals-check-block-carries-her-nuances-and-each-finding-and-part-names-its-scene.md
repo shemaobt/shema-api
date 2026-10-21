@@ -20,7 +20,7 @@ Decided (ENG-1258):
 - **Two spellings.** A pinned take in `audio.rehearsal_takes` carries it as `key` (the ticket's
   list and ENG-1283's wire word); a frase in `back_translation.segments`, and a finding or nuance
   in the **Check block**, carry the key of the part they stand on as `scene` (the Definer's
-  Definition). Both are absent where the stretch is not in the reading.
+  Definition). `scene` is absent where the stretch is not in the reading.
 - **`index` is the frase number.** Present exactly when `frase` is and equal to it (the
   Definer). It is not stable across versions, since a division renumbers; `idx`, the stretch id,
   is the key that is. `clipKey` keeps the take id.
@@ -38,11 +38,14 @@ silently change a key Refine already reads as the take id (ADR 0020); **nuances 
 hashed telling-back**, because `voiced` moves with no content moving: a later round turns `now`
 into `before`, which inside the hash would un-approve an unchanged draft and mint a version for
 nothing; **the scene read off the map, with no key past the last scene**, because the packet and
-the file names would then disagree about the same part.
+the file names would then disagree about the same part; **the scene from a joined part's
+`origin` or a scene rehearsal's label**, because the position is the house rule (the voice's
+part number reads it) and a part laid in keeps its number.
 
 Consequences: v0.9 moves every packet's hash once, so every draft approved before the deploy
 reads un-approved (ADR 0071) until approved again, which mints v+1; merged in the window of
-v0.8 the teams see one move. Releases stored before keep their packets, and a reader treats a
+v0.8 the teams see one move. Until then a resend of an approval made before the deploy no longer
+matches its stored hash, so it meets the gate again: a forced passage needs the force again. Releases stored before keep their packets, and a reader treats a
 missing `nuances`, `key` or `scene` as not recorded. A `voiced: now` says the verdict named the
 nuance; the retroverification file's `said` counts it only once the team heard that verdict, so
 the two differ for a round not played to its end, each answering its own reader. A fail-safe

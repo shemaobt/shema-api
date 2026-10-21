@@ -29,6 +29,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     FindingKind,
+    Nuance,
 )
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.release import build_internalization_release
@@ -45,6 +46,7 @@ from tests.release_harness import (
     at_the_desk,
     desk_release,
     desk_release_at,
+    ensaio_take,
     ready_session,
     reported_playback,
     team_headers,
@@ -59,6 +61,7 @@ from tests.room_harness import (
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    tell_back_about,
     the_analyst_is_scripted,
     the_bucket_is_in_memory,
     the_room_speaks,
@@ -448,6 +451,63 @@ async def test_a_nuance_said_in_an_earlier_check_reads_before(
         (2, "before"),
         (3, "now"),
     ]
+
+
+async def test_two_nuances_in_the_same_words_on_one_frase_both_read_said_now(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2, {**ON_FRASE_2, "note": "Outro olhar."}]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    await approved(client, credential, session)
+
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    assert [(one["frase"], one.get("voiced")) for one in check["nuances"]] == [
+        (2, "now"),
+        (2, "now"),
+    ]
+
+
+async def test_a_nuance_on_a_whole_recording_set_aside_by_parts_leaves_the_record(
+    client, db_session, room_app
+):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_session(db_session, project_id=project.id)
+    whole = (await final_segments(db_session, session.id))[0]
+    nuance = Nuance(
+        note="O jeito de contar mudou.",
+        chunk=1,
+        segment_id=whole.id,
+        quote="Noemi voltou",
+        story="a história conta de outro jeito",
+        take_id=whole.take_id,
+        starts_ms=whole.starts_ms,
+        ends_ms=whole.ends_ms,
+    )
+    state = BackTranslationState(
+        scope=P,
+        findings=[],
+        nuances=[nuance],
+        checked=True,
+        analysed_segment_ids=[whole.id],
+    )
+    await reported_playback(db_session, session, state)
+    part = ensaio_take(
+        session.id, scope="parte-1", ordinal=1, sha256="b" * 64, project_id=project.id
+    )
+    db_session.add(part)
+    await db_session.commit()
+    await tell_back_about(db_session, session, part, bridge_take_id="retro-parte-1")
+
+    await forced(client, db_session, room_app, project, session)
+
+    packet = await stored_packet(client, db_session, room_app, project, session)
+    assert keys_of_the_takes(packet) == ["S1"]
+    assert packet["check"]["nuances"] == []
 
 
 async def test_the_approval_record_never_carries_a_nuances_quote_story_or_note(

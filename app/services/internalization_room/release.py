@@ -321,17 +321,14 @@ def _check_block(
     take_of = {stretch.id: stretch.take_id for stretch in told}
 
     def addressed(kind: str, segment_id: str | None) -> dict[str, Any]:
-        entry: dict[str, Any] = {
-            "kind": kind,
-            "idx": segment_id,
-            "clipKey": take_of.get(segment_id) if segment_id else None,
-        }
+        take_id = take_of.get(segment_id) if segment_id else None
+        entry: dict[str, Any] = {"kind": kind, "idx": segment_id, "clipKey": take_id}
         if segment_id in frase_of:
             entry["frase"] = entry["index"] = frase_of[segment_id]
-        return {**entry, **_scene(keys, take_of.get(segment_id))}
+        return {**entry, **_scene(keys, take_id)}
 
-    last_round = telling_back.checks[-1].nuances if telling_back.checks else []
-    voiced = {(one.segment_id, one.quote): one.voiced for one in last_round}
+    last_round_nuances = telling_back.checks[-1].nuances if telling_back.checks else []
+    voiced = {(one.segment_id, one.quote): one.voiced for one in last_round_nuances if one.voiced}
     nuances = []
     for nuance in telling_back.nuances:
         entry = addressed("nuance", nuance.segment_id)
@@ -477,12 +474,18 @@ async def compose_internalization_release(
         return await _composed(db, session)
 
 
-async def _standing_findings(
+async def _standing(
     db: AsyncSession, session: IRSession, takes: list[IRTake]
-) -> list[Finding]:
-    """The state's findings but those on a whole that stepped aside, which are only stored."""
+) -> BackTranslationState:
+    """The state but its findings and nuances on a whole that stepped aside, only stored."""
     aside = await set_aside_segment_ids(db, session.id, takes)
-    return [f for f in back_translation_of(session).findings if f.segment_id not in aside]
+    state = back_translation_of(session)
+    return state.model_copy(
+        update={
+            "findings": [f for f in state.findings if f.segment_id not in aside],
+            "nuances": [n for n in state.nuances if n.segment_id not in aside],
+        }
+    )
 
 
 async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
@@ -493,10 +496,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     takes = await takes_of(db, session.id)
-    telling_back = back_translation_of(session)
-    telling_back = telling_back.model_copy(
-        update={"findings": await _standing_findings(db, session, takes)}
-    )
+    telling_back = await _standing(db, session, takes)
     stretches = await final_segments(db, session.id, takes)
     told = told_back(stretches)
     frases = frase_numbers(told)
@@ -850,7 +850,9 @@ async def approve_release(
         forced_open_findings=(
             [
                 finding.model_dump(mode="json")
-                for finding in await _standing_findings(db, session, await takes_of(db, session.id))
+                for finding in (
+                    await _standing(db, session, await takes_of(db, session.id))
+                ).findings
             ]
             if forced_by
             else None
