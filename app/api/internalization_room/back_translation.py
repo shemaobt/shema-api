@@ -41,6 +41,7 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.takes import (
     current_parts,
+    refuse_a_take_that_is_no_longer_a_part,
     rehearsal_take_of,
     store_take,
     takes_of,
@@ -57,9 +58,15 @@ UNTRANSLATED_LINE = "N2"
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def finding_views(findings: list[Finding]) -> list[FindingView]:
+def finding_views(
+    findings: list[Finding], analysed_segment_ids: list[str] | None, numbers: dict[str, int]
+) -> list[FindingView]:
     return [
-        FindingView(kind=one.kind.value, frase=one.chunk, segment_id=one.segment_id)
+        FindingView(
+            kind=one.kind.value,
+            frase=room.finding_frase(one, analysed_segment_ids, numbers),
+            segment_id=one.segment_id,
+        )
         for one in findings
     ]
 
@@ -124,6 +131,7 @@ async def add_chunk(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
+    await refuse_a_take_that_is_no_longer_a_part(db, session.id, rehearsal)
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -466,7 +474,9 @@ async def _finished(
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
-            findings=finding_views(state.findings),
+            findings=finding_views(
+                state.findings, state.analysed_segment_ids, room.frase_numbers(told)
+            ),
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=stored.used_fail_safe,
             check_at=state.checks[-1].at if state.checks else None,
@@ -513,14 +523,19 @@ async def _finished(
         )
 
     shown = await _without_the_whole_set_aside(db, session, state, takes)
+    standing = await room.final_segments(db, session.id)
     return BackTranslationVerdictResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=verdict.outcome.fixed_line,
-        checked=verdict.checked,
+        checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
-        findings=finding_views(shown.findings),
+        findings=finding_views(
+            shown.findings,
+            shown.analysed_segment_ids,
+            room.frase_numbers(room.told_back(standing)),
+        ),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
         check_at=state.checks[-1].at if state.checks else None,
