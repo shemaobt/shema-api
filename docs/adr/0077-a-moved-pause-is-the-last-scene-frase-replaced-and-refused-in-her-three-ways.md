@@ -53,6 +53,11 @@ Consequences:
 - An offline tablet's second move against a frase already replaced is refused, where it used to
   land at the chain's head, and so is a translation over the place a move left. No client sent
   either before this change.
+- Measuring against the newest version holds while a request is heard, too: a plain
+  translation of the last frase over its own place, heard while another tablet's move of that
+  frase lands, is answered `PAUSE_CANNOT_STAND_THERE` under the lock, and that team hears «a
+  pausa não pode ficar aí — a frase foi atualizada». That is right: its frase was moved under
+  it, and keeping it would put the old pause back.
 - A frase another tablet appends after a move landed, from the old end, is a new frase, so this
   rule does not see it; it overlaps the moved frase and the overlap refusal answers it, and that
   tablet reads the list again.
