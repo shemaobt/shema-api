@@ -52,6 +52,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     frase_numbers,
     listening_to_the_parts,
+    nuances_said,
     rehearsed_parts,
     unheard_parts,
 )
@@ -159,6 +160,67 @@ def release_name(language: str | None, pericope: str, version: int) -> str:
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+#: What a packet says beside the draft rather than about it: its name and number, when it was
+#: read, the check stamped on it, whose it is and the schema it was written under.
+_BESIDE_THE_DRAFT = frozenset(
+    {
+        "schema_version",
+        "package_sha256",
+        "release_id",
+        "version",
+        "created_at",
+        "check",
+        "language",
+        "session_language",
+        "audio_format",
+    }
+)
+
+#: Read off the draft rather than part of it, so a schema can add or reshape them freely.
+_DERIVED = frozenset({"key", "scene", "index", "frase", "voiced", "duration_ms"})
+
+
+def _without_derived(entry: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in entry.items() if k not in _DERIVED}
+
+
+def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
+    audio = packet.get("audio") or {}
+    told = packet.get("back_translation") or {}
+    content = {
+        k: v
+        for k, v in packet.items()
+        if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
+    }
+    content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
+    content["back_translation"] = {
+        **{k: v for k, v in told.items() if k not in ("segments", "retro_takes")},
+        "segments": [_without_derived(frase) for frase in told.get("segments", [])],
+        "retro_takes": [take.get("sha256") for take in told.get("retro_takes", [])],
+    }
+    if nuances:
+        content["nuances"] = [_without_derived(one) for one in packet["check"]["nuances"]]
+    return content
+
+
+def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
+    """Whether a stored release and a composed packet are one draft, whatever schema each is in.
+
+    The draft is its own content: the takes by fingerprint and order, the stretches, the
+    telling with its findings and history, the questions, and the nuances. Never the schema
+    version or what is read off the content, so a deploy that adds or reshapes those never
+    un-approves a draft nobody changed. Both sides are read the same way on the spot, from the
+    stored packet and the composed one, never through the stored ``package_sha256``, which is
+    the published hash of a whole packet and moves with the schema (ADR 0078, amending 0020).
+
+    Nuances are compared only where the stored packet recorded them: one approved before they
+    reached the record says nothing about them, and a nuance moves only with a new reading,
+    which only new content brings.
+    """
+    recorded = "nuances" in (stored.get("check") or {})
+    return _content(stored, nuances=recorded) == _content(composed, nuances=recorded)
 
 
 #: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like
@@ -328,11 +390,16 @@ def _check_block(
         return {**entry, **_scene(keys, take_id)}
 
     last_round_nuances = telling_back.checks[-1].nuances if telling_back.checks else []
+    read_last = {(one.segment_id, one.quote) for one in last_round_nuances}
     voiced = {(one.segment_id, one.quote): one.voiced for one in last_round_nuances if one.voiced}
+    said_earlier = {(one.segment_id, one.quote) for one in nuances_said(telling_back.checks)}
     nuances = []
     for nuance in telling_back.nuances:
         entry = addressed("nuance", nuance.segment_id)
-        said = voiced.get((nuance.segment_id, nuance.quote))
+        key = (nuance.segment_id, nuance.quote)
+        said = voiced.get(key) or (
+            "before" if key not in read_last and key in said_earlier else None
+        )
         nuances.append({**entry, "voiced": said} if said else entry)
     return {
         "version": version,
@@ -580,11 +647,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         + findings_remaining(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
-    approved = await _release_of(db, session, artifact["package_sha256"])
-    artifact["release_id"] = approved.packet["release_id"] if approved else None
-    artifact["version"] = approved.version if approved else None
-    artifact["created_at"] = datetime.now(UTC).isoformat()
-    artifact["check"] = _check_block(
+    check = _check_block(
         telling_back,
         told,
         session.id,
@@ -593,6 +656,11 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         version=None,
         forced=False,
     )
+    approved = await _release_of(db, session, {**artifact, "check": check})
+    artifact["release_id"] = approved.packet["release_id"] if approved else None
+    artifact["version"] = approved.version if approved else None
+    artifact["created_at"] = datetime.now(UTC).isoformat()
+    artifact["check"] = check
     artifact["language"] = await _mother_tongue(db, session)
     artifact["session_language"] = session.language
     artifact["audio_format"] = (
@@ -639,15 +707,15 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
 
 async def _release_of(
-    db: AsyncSession, session: IRSession, package_sha256: str
+    db: AsyncSession, session: IRSession, packet: dict[str, Any]
 ) -> IRRelease | None:
     """The release this content *is*, if this content is the approved draft of the passage.
 
     Literally the question the approval asks, over the same row: the last release of this
-    pericope and project, kept only when its hash is the fresh one. Scoping it to the session
-    instead would let the composer and the approval disagree — after another conversation
-    about the same passage approved a v2, a read of the first session would still name its
-    v1 while approving it would mint a v3, and the packet would name a draft that is no
+    pericope and project, kept only when it is the same draft (``same_draft``). Scoping it to
+    the session instead would let the composer and the approval disagree — after another
+    conversation about the same passage approved a v2, a read of the first session would still
+    name its v1 while approving it would mint a v3, and the packet would name a draft that is no
     longer the one the passage is on.
 
     A session that names no project has no release to be: the number is per project.
@@ -655,7 +723,7 @@ async def _release_of(
     if session.project_id is None:
         return None
     latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is None or latest.package_sha256 != package_sha256:
+    if latest is None or not same_draft(latest.packet, packet):
         return None
     return latest
 
@@ -822,7 +890,7 @@ async def approve_release(
 
     packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+    if latest is not None and same_draft(latest.packet, packet):
         await refuse_if_archived(db, session)
         return latest
 

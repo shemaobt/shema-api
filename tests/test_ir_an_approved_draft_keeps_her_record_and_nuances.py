@@ -12,6 +12,8 @@ packet the Desk reads back by version, which is the record as it was stored.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import uuid
 from typing import Any
@@ -48,6 +50,7 @@ from tests.release_harness import (
     desk_release_at,
     ensaio_take,
     ready_session,
+    releases_of,
     reported_playback,
     team_headers,
     team_release,
@@ -586,3 +589,164 @@ async def test_a_release_stored_before_this_ticket_keeps_its_packet(client, db_s
     served = await stored_packet(client, db_session, room_app, project, session)
 
     assert served == packet
+
+
+#: The keys the published hash leaves out (ADR 0020, ADR 0048): a v0.8 packet's own
+#: ``package_sha256`` is the hash of the rest, as that schema stored it.
+OUTSIDE_THE_PUBLISHED_HASH = (
+    "package_sha256",
+    "release_id",
+    "version",
+    "created_at",
+    "check",
+    "language",
+    "session_language",
+    "audio_format",
+)
+
+
+def published_hash(packet: dict) -> str:
+    hashed = {k: v for k, v in packet.items() if k not in OUTSIDE_THE_PUBLISHED_HASH}
+    canonical = json.dumps(hashed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def stored_under_v08(db: AsyncSession, session: IRSession) -> None:
+    """Rewrite this session's one release as the v0.8 deploy stored it: no part keys, scenes,
+    indexes or nuances, and the published hash that schema gave it."""
+    [row] = await releases_of(db, session.id)
+    packet = copy.deepcopy(row.packet)
+    packet["schema_version"] = "tripod.internalization-release.v0.8"
+    for take in packet["audio"]["rehearsal_takes"]:
+        take.pop("key")
+    for frase in packet["back_translation"]["segments"]:
+        frase.pop("scene", None)
+    packet["check"].pop("nuances")
+    for finding in packet["check"]["findings"]:
+        finding.pop("index", None)
+        finding.pop("scene", None)
+    packet["package_sha256"] = published_hash(packet)
+    row.packet = packet
+    row.package_sha256 = packet["package_sha256"]
+    await db.commit()
+
+
+async def approved_on_the_tablet(client, credential: str, session: IRSession) -> Any:
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", headers=team_headers(credential))
+    assert read.status_code == 200, read.text[:300]
+    return read.json()["approved"]
+
+
+async def a_clean_draft_approved(client, db: AsyncSession, project, credential: str) -> IRSession:
+    session, _parts = await rehearsed_in_parts(db, 3, project_id=project.id)
+    await read_with(db, session, [])
+    await approved(client, credential, session)
+    return session
+
+
+async def test_one_draft_under_two_schema_versions_is_one_approved_draft(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_clean_draft_approved(client, db_session, project, credential)
+    await stored_under_v08(db_session, session)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    composed = (await client.get(desk_release(session.id), headers=desk)).json()
+    [row] = await releases_of(db_session, session.id)
+    assert composed["package_sha256"] != row.package_sha256, "the control: the hashes differ"
+
+    again = await approved(client, credential, session)
+
+    assert again["version"] == 1
+    assert len(await releases_of(db_session, session.id)) == 1
+
+
+async def test_a_draft_approved_under_v08_reads_approved_under_v09(client, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_clean_draft_approved(client, db_session, project, credential)
+
+    await stored_under_v08(db_session, session)
+
+    read = await approved_on_the_tablet(client, credential, session)
+    assert read["version"] == 1
+
+
+async def test_a_forced_v08_approval_stays_forced_and_approved(client, db_session, room_app):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_session(
+        db_session, project_id=project.id, tell=told_back_with_an_open_finding
+    )
+    await forced(client, db_session, room_app, project, session)
+
+    await stored_under_v08(db_session, session)
+
+    read = await approved_on_the_tablet(client, credential, session)
+    assert (read["version"], read["forced"]) == (1, True)
+    again = await approved(client, credential, session)
+    assert (again["version"], again["blockers"]) == (1, [])
+
+
+async def test_a_new_take_still_unapproves_a_draft_approved_under_v08(client, db_session):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_clean_draft_approved(client, db_session, project, credential)
+    await stored_under_v08(db_session, session)
+
+    again = await upload_a_part(
+        client,
+        session.id,
+        part=2,
+        audio=b"a segunda parte, gravada de novo",
+        headers=team_headers(credential),
+    )
+
+    assert again.status_code == 200, again.text
+    assert await approved_on_the_tablet(client, credential, session) is None
+
+
+async def test_a_v08_approval_with_a_nuance_standing_today_reads_approved(
+    client, analyst, speaker, db_session
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await approved(client, credential, session)
+
+    await stored_under_v08(db_session, session)
+
+    assert (await approved_on_the_tablet(client, credential, session))["version"] == 1
+    assert (await approved(client, credential, session))["version"] == 1
+
+
+async def test_a_nuance_said_before_a_fail_safe_round_reads_before_on_a_forced_approval(
+    client, analyst, speaker, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    client.headers.update(team_headers(credential))
+    analyst.readings = [{"findings": [ON_FRASE_2]}, {"findings": "ilegível"}]
+    speaker.line = NAMES_FRASE_2
+    first = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await heard_to_its_end(client, session, first)
+    await capture_segment(
+        db_session,
+        await get_session(db_session, session.id),
+        take_id=parts[2].id,
+        starts_ms=CLIP_MS,
+        ends_ms=CLIP_MS + 1000,
+        bridge_take_id="retro-nova",
+        transcript="uma frase nova, contada de volta",
+    )
+    longer = await heard_every_part(db_session, session.id, duration_ms=CLIP_MS + 1000)
+    await press_terminei(client, session.id, report=longer)
+    last = (await stored_telling_back(db_session, session)).checks[-1]
+    assert last.outcome == "fail_safe", "the control: the last round read nothing"
+
+    await forced(client, db_session, room_app, project, session)
+
+    check = (await stored_packet(client, db_session, room_app, project, session))["check"]
+    assert [(one["frase"], one.get("voiced")) for one in check["nuances"]] == [(2, "before")]
