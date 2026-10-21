@@ -36,8 +36,10 @@ Decided (ENG-1258):
 - **An approval compares the draft, not the published hash** (the Definer's option B, amending ADR
   0020). Whether a stored release is the draft composed now is read the same way off both packets,
   on the spot: the takes by fingerprint and order, the stretches, the telling with its findings and
-  history, the questions and the nuances; never `schema_version`, the canon pin, the listening
-  (`played_by_take`, whose lengths are derived) nor what is read off the content (`key`, `scene`,
+  history, the questions, the nuances and whether every part was heard (`heardComplete`, as
+  `back_translation.checked` is compared); never `schema_version`, the canon pin, the
+  listening's own numbers (`played_by_take`, whose lengths are derived) nor what is read off the
+  content (`key`, `scene`,
   `index`, `frase`, `duration_ms`, `voiced`, a take's other fields). Nuances are compared only where
   the stored packet recorded them. `package_sha256` stays the published hash of the whole packet, so
   Refine's check of it does not change; no column or key is added.
@@ -64,7 +66,8 @@ again answers its version. One approved under v0.7 does too, unless it held a wh
 beside numbered parts: since 20 October the whole steps aside with its stretches and findings,
 which is a different draft (measured on the commits since v0.7, not on a replayed packet). A new
 take, a reordered take, a stretch told, a finding, a question or a recorded nuance still
-un-approves. Releases stored before keep their packets, and a reader treats a missing
+un-approves, and so does a draft heard whole after a force: it is the team's own v2, as ADR 0019's
+compare-first rule has it. Releases stored before keep their packets, and a reader treats a missing
 `nuances`, `key` or `scene` as not recorded. A `voiced: now` says the verdict named the nuance;
 the retroverification file's `said` counts it only once the team heard that verdict, so the two
 differ for a round not played to its end, each answering its own reader.

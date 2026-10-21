@@ -197,6 +197,7 @@ def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
         if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
     }
     content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
+    content["heard_complete"] = (packet.get("check") or {}).get("heardComplete")
     content["back_translation"] = {
         **{k: v for k, v in told.items() if k not in ("segments", "retro_takes", "played_by_take")},
         "segments": [_without_derived(frase) for frase in told.get("segments", [])],
@@ -211,8 +212,9 @@ def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
     """Whether a stored release and a composed packet are one draft, whatever schema each is in.
 
     The draft is its own content: the takes by fingerprint and order, the stretches, the
-    telling with its findings and history, the questions, and the nuances. Never the schema
-    version, the canon pin, the listening, or what is read off the content, so a deploy that
+    telling with its findings and history, the questions, the nuances, and whether every part
+    was heard. Never the schema version, the canon pin, the listening's own numbers, or what is
+    read off the content, so a deploy that
     adds or reshapes those, a canon re-vendored or a listen that fills a tolerated gap never
     un-approves a draft nobody changed. Both sides are read the same way on the spot, from the
     stored packet and the composed one, never through the stored ``package_sha256``, which is
