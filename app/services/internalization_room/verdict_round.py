@@ -252,7 +252,9 @@ async def save_the_spoken_verdict(
             *findings_on_stretches_that_count(read.findings, (one.id for one in standing)),
             *(f for f in base.findings if f.segment_id in aside),
         ]
-        if not read.already_analysed(stretches_told_back(standing)):
+        if len(read.sentences) > len(base.sentences) or not read.already_analysed(
+            stretches_told_back(standing)
+        ):
             read.checked = False
             read.verdict = None
         if len(read.superseded) > len(base.superseded):

@@ -1231,9 +1231,16 @@ def _added_up(stored: list[PlayedTake], reported: list[PlayedTake]) -> list[Play
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
-    for name in vars(wanted).keys() - {"findings", "nuances", "checks", "played_by_take"}:
+    for name in vars(wanted).keys() - {
+        "findings",
+        "nuances",
+        "checks",
+        "played_by_take",
+        "pauses_moved",
+    }:
         if getattr(wanted, name) != getattr(read, name):
             setattr(fresh, name, getattr(wanted, name))
+    fresh.pauses_moved += wanted.pauses_moved - read.pauses_moved
     fresh.played_by_take = _played_forward(
         read.played_by_take, wanted.played_by_take, fresh.played_by_take
     )
@@ -1253,7 +1260,8 @@ async def save_back_translation(
 ) -> IRSession:
     """Write the telling-back state, merged onto what is stored if another write landed first.
 
-    ``rule`` is what the caller decided on the state it read, applied again to the merged one.
+    ``rule`` is what the caller decided on the state it read, applied again to the state about to
+    be stored: the merged one when another write landed first, the one as written when none did.
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
@@ -1263,7 +1271,11 @@ async def save_back_translation(
 
     async def onto(read: dict[str, Any] | None) -> dict[str, Any]:
         if read == session.back_translation:
-            return written
+            if rule is None:
+                return written
+            as_written = BackTranslationState.model_validate(written)
+            await rule(as_written)
+            return as_written.model_dump(mode="json")
         merged = _merged_forward(base, state, BackTranslationState.model_validate(read or {}))
         if rule is not None:
             await rule(merged)

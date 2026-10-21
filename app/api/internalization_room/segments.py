@@ -9,7 +9,12 @@ rules about where a cut may land are the service's, and neither is decided here.
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
+from app.api.internalization_room._deps import (
+    device_dep,
+    device_project_dep,
+    include_stale_dep,
+    linked_tablet_dep,
+)
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
@@ -41,6 +46,7 @@ from app.services.internalization_room.sentences import (
 )
 from app.services.internalization_room.takes import (
     TakeStore,
+    refuse_a_take_that_is_no_longer_a_part,
     rehearsal_take_of,
     store_take,
     take_store,
@@ -51,8 +57,11 @@ router = APIRouter()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def segment_views(stretches: list[IRSegment]) -> list[SegmentView]:
+def segment_views(
+    stretches: list[IRSegment], stale: list[IRSegment] | None = None
+) -> list[SegmentView]:
     numbers = room.frase_numbers(room.told_back(stretches))
+    asked = stale is not None
     return [
         SegmentView(
             segment_id=segment.id,
@@ -63,19 +72,25 @@ def segment_views(stretches: list[IRSegment]) -> list[SegmentView]:
             told=segment.transcript is not None,
             bridge_take_id=segment.bridge_take_id,
             frase=numbers.get(segment.id),
+            stale=segment.stale if asked else None,
         )
-        for segment in stretches
+        for segment in [*stretches, *(stale or [])]
     ]
 
 
-async def _units(db: AsyncSession, session_id: str) -> list[SegmentView]:
+async def _units(
+    db: AsyncSession, session_id: str, *, include_stale: bool = False
+) -> list[SegmentView]:
     """Every stretch that counts, after the change — which is what the tablet redraws.
 
     Answering with the whole list rather than with what was just written: dividing renumbers
     nothing, but a client that patched its own list from a two-element answer would be keeping
     a second copy of a rule that lives in `final_segments`.
     """
-    return segment_views(await room.final_segments(db, session_id))
+    return segment_views(
+        await room.final_segments(db, session_id),
+        await room.stale_segments(db, session_id) if include_stale else None,
+    )
 
 
 @router.post(
@@ -87,6 +102,7 @@ async def divide(
     session_id: str,
     segment_id: str,
     payload: DivideSegmentRequest,
+    asking_for_stale: bool = include_stale_dep,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
@@ -108,7 +124,10 @@ async def divide(
     )
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
     nudge(session.project_id, "stretches")
-    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+    return SegmentsResponse(
+        session_id=session.id,
+        segments=await _units(db, session.id, include_stale=asking_for_stale),
+    )
 
 
 @router.post(
@@ -137,6 +156,7 @@ async def replace(
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
     file: UploadFile = File(...),
+    asking_for_stale: bool = include_stale_dep,
     device_id: str = device_dep,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
@@ -190,6 +210,7 @@ async def replace(
     await refuse_a_slice_a_version_cannot_take(
         db, session, segment, rehearsal.id, starts_ms, ends_ms
     )
+    await refuse_a_take_that_is_no_longer_a_part(db, session.id, rehearsal)
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -240,7 +261,7 @@ async def replace(
     background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(
         session_id=session.id,
-        segments=await _units(db, session.id),
+        segments=await _units(db, session.id, include_stale=asking_for_stale),
         needs_person=crossed,
     )
 
@@ -277,6 +298,7 @@ async def re_record_the_sentence(
     segment_id: str,
     sentence_id: str = Form(..., pattern=r"^[A-Za-z0-9_-]{8,64}$"),
     file: UploadFile = File(...),
+    asking_for_stale: bool = include_stale_dep,
     device_id: str = device_dep,
     project_id: str = device_project_dep,
     store: TakeStore = Depends(take_store),
@@ -320,4 +342,7 @@ async def re_record_the_sentence(
         device_id=device_id,
         store=store,
     )
-    return SentenceLaidInResponse(session_id=session.id, segments=await _units(db, session.id))
+    return SentenceLaidInResponse(
+        session_id=session.id,
+        segments=await _units(db, session.id, include_stale=asking_for_stale),
+    )
