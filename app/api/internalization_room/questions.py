@@ -211,6 +211,7 @@ async def question_inbox(
             _card(question, named[pins.get(question.session_id)]) for question in page.questions
         ],
         open_total=page.open_total,
+        answered_total=page.answered_total,
         next_cursor=page.next_cursor,
     )
 
