@@ -25,9 +25,15 @@ from tests.baker import (
     open_ir_session,
 )
 from tests.release_harness import ensaio_take
+from tests.signer_harness import Signer, the_bucket_signs
 
 IR = "/api/internalization-room"
 P = "P01"
+
+
+@pytest.fixture(autouse=True)
+def signer(monkeypatch: pytest.MonkeyPatch) -> Signer:
+    return the_bucket_signs(monkeypatch)
 
 
 @pytest.fixture()
@@ -124,7 +130,13 @@ async def test_a_kept_retelling_is_listed_with_its_turn_and_the_words_the_team_s
     body = await _read(client, consultant, session.id)
 
     assert body["kept_rehearsals"] == [
-        {"turn_number": 1, "words": "Noemi voltou com Rute", "from_other_session": False}
+        {
+            "turn_number": 1,
+            "words": "Noemi voltou com Rute",
+            "from_other_session": False,
+            "scope": "S1",
+            "audio_url": "https://signed.example/balde-de-teste/k/1?grant=1",
+        }
     ]
 
 
@@ -150,6 +162,56 @@ async def test_two_scopes_kept_are_both_listed_each_with_its_own_words(
         (1, "Noemi voltou com Rute"),
         (2, "Boaz viu Rute no campo"),
     ]
+
+
+async def test_a_kept_rehearsal_names_its_scene_or_the_whole_passage(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    await _told(
+        db_session,
+        session,
+        [
+            ("Boaz viu Rute no campo", "2026-10-19T10:01:00+00:00"),
+            ("Noemi voltou com Rute", "2026-10-19T10:02:00+00:00"),
+        ],
+        {"1": _kept("S2", "k/1"), "2": _kept("whole", "k/2")},
+    )
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["turn_number"], row["scope"]) for row in body["kept_rehearsals"]] == [
+        (1, "S2"),
+        (2, "whole"),
+    ]
+
+
+async def test_a_kept_rehearsal_carries_a_link_to_its_audio_signed_when_it_is_read(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+    signer: Signer,
+) -> None:
+    await _told(
+        db_session,
+        session,
+        [("Noemi voltou com Rute", "2026-10-19T10:01:00+00:00")],
+        {"1": _kept("S1", "k/1")},
+    )
+
+    first = await _read(client, consultant, session.id)
+    second = await _read(client, consultant, session.id)
+
+    assert [row["audio_url"] for row in first["kept_rehearsals"]] == [
+        "https://signed.example/balde-de-teste/k/1?grant=1"
+    ]
+    assert [row["audio_url"] for row in second["kept_rehearsals"]] == [
+        "https://signed.example/balde-de-teste/k/1?grant=2"
+    ]
+    assert signer.calls == [("k/1", 15, "audio/mp4"), ("k/1", 15, "audio/mp4")]
 
 
 async def test_a_scope_approved_twice_is_listed_in_its_latest_telling_not_its_first(
@@ -231,9 +293,54 @@ async def test_a_rehearsal_kept_in_another_session_of_the_team_is_listed_marked_
     body = await _read(client, consultant, session.id)
 
     assert body["kept_rehearsals"] == [
-        {"turn_number": 3, "words": "Boaz viu Rute no campo", "from_other_session": True},
-        {"turn_number": 1, "words": "Noemi voltou com Rute", "from_other_session": False},
+        {
+            "turn_number": 3,
+            "words": "Boaz viu Rute no campo",
+            "from_other_session": True,
+            "scope": "S2",
+            "audio_url": "https://signed.example/balde-de-teste/k/earlier?grant=1",
+        },
+        {
+            "turn_number": 1,
+            "words": "Noemi voltou com Rute",
+            "from_other_session": False,
+            "scope": "S1",
+            "audio_url": "https://signed.example/balde-de-teste/k/1?grant=2",
+        },
     ]
+
+
+async def test_a_sibling_sessions_rehearsal_is_signed_from_its_own_recording_and_nothing_is_stored(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    sibling = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    await _told(
+        db_session,
+        sibling,
+        [("Boaz viu Rute no campo", "2026-10-18T09:01:00+00:00")],
+        {"1": _kept("S2", "k/sibling")},
+    )
+    await _told(
+        db_session,
+        session,
+        [("Noemi voltou com Rute", "2026-10-19T10:01:00+00:00")],
+        {"1": _kept("S1", "k/1")},
+    )
+
+    body = await _read(client, consultant, session.id)
+    await db_session.refresh(sibling)
+    await db_session.refresh(session)
+
+    assert [(row["from_other_session"], row["audio_url"]) for row in body["kept_rehearsals"]] == [
+        (True, "https://signed.example/balde-de-teste/k/sibling?grant=1"),
+        (False, "https://signed.example/balde-de-teste/k/1?grant=2"),
+    ]
+    assert sibling.retellings == {"1": _kept("S2", "k/sibling")}
+    assert session.retellings == {"1": _kept("S1", "k/1")}
 
 
 async def test_a_scope_kept_in_two_sessions_is_listed_once_in_the_later_telling(
@@ -271,10 +378,50 @@ async def test_a_scope_kept_in_two_sessions_is_listed_once_in_the_later_telling(
     from_the_earliest = await _read(client, consultant, earliest.id)
 
     assert from_the_latest["kept_rehearsals"] == [
-        {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": False}
+        {
+            "turn_number": 2,
+            "words": "Noemi voltou com Rute a Belém",
+            "from_other_session": False,
+            "scope": "S1",
+            "audio_url": "https://signed.example/balde-de-teste/k/latest?grant=1",
+        }
     ]
     assert from_the_earliest["kept_rehearsals"] == [
-        {"turn_number": 2, "words": "Noemi voltou com Rute a Belém", "from_other_session": True}
+        {
+            "turn_number": 2,
+            "words": "Noemi voltou com Rute a Belém",
+            "from_other_session": True,
+            "scope": "S1",
+            "audio_url": "https://signed.example/balde-de-teste/k/latest?grant=2",
+        }
+    ]
+
+
+async def test_a_scope_told_again_in_a_later_session_links_the_later_audio(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    later = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    await _told(
+        db_session,
+        session,
+        [("Noemi voltou", "2026-10-18T09:01:00+00:00")],
+        {"1": _kept("S1", "k/first")},
+    )
+    await _told(
+        db_session,
+        later,
+        [("Noemi voltou com Rute", "2026-10-19T10:01:00+00:00")],
+        {"1": _kept("S1", "k/second")},
+    )
+
+    body = await _read(client, consultant, session.id)
+
+    assert [(row["words"], row["audio_url"]) for row in body["kept_rehearsals"]] == [
+        ("Noemi voltou com Rute", "https://signed.example/balde-de-teste/k/second?grant=1")
     ]
 
 
@@ -311,7 +458,13 @@ async def test_another_team_language_passage_or_zerar_adds_nothing_to_the_list(
     body = await _read(client, consultant, session.id)
 
     assert body["kept_rehearsals"] == [
-        {"turn_number": 1, "words": "Noemi voltou com Rute", "from_other_session": False}
+        {
+            "turn_number": 1,
+            "words": "Noemi voltou com Rute",
+            "from_other_session": False,
+            "scope": "S1",
+            "audio_url": "https://signed.example/balde-de-teste/k/1?grant=1",
+        }
     ]
 
 

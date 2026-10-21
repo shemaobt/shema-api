@@ -93,6 +93,16 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
     return True
 
 
+async def a_hard_stretch_stands(db: AsyncSession, stretch: IRSegment) -> bool:
+    first = await first_telling_of(db, stretch)
+    mark = await db.scalar(
+        select(IRHardStretch.id).where(
+            IRHardStretch.session_id == stretch.session_id, IRHardStretch.segment_id == first.id
+        )
+    )
+    return mark is not None
+
+
 async def _a_capture_after_a_check_unchecks(standing: BackTranslationState) -> None:
     if not standing.never_analysed:
         standing.checked = False
@@ -150,7 +160,10 @@ async def capture_and_note_a_hard_stretch(
         await db.refresh(session, ["back_translation"])
         standing = back_translation_of(session)
     await _a_capture_after_a_check_unchecks(standing)
-    if state is not None or not standing.never_analysed:
+    moved = replaces is not None and replaces.ends_ms != ends_ms
+    if moved:
+        standing.pauses_moved += 1
+    if state is not None or moved or not standing.never_analysed:
         standing.scope = standing.scope or session.pericope
         await save_back_translation(
             db, session, standing, commit=False, rule=_a_capture_after_a_check_unchecks

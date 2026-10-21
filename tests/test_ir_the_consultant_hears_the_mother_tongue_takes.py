@@ -15,7 +15,6 @@ from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
@@ -32,28 +31,15 @@ from tests.baker import (
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import ensaio_take, retro_take
 from tests.room_harness import the_bucket_is_in_memory
+from tests.signer_harness import Signer, the_bucket_signs
 
 IR = "/api/internalization-room"
 P = "P01"
 
 
-class Signer:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, int]] = []
-
-    async def __call__(
-        self, bucket: str, key: str, *, expiry_minutes: int, response_content_type: str | None
-    ) -> str:
-        self.calls.append((key, expiry_minutes))
-        return f"https://signed.example/{bucket}/{key}?grant={len(self.calls)}"
-
-
 @pytest.fixture(autouse=True)
 def signer(monkeypatch: pytest.MonkeyPatch) -> Signer:
-    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
-    signing = Signer()
-    monkeypatch.setattr(takes_service, "generate_signed_download_url", signing)
-    return signing
+    return the_bucket_signs(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -288,7 +274,7 @@ async def test_each_take_carries_a_link_of_fifteen_minutes_and_a_second_read_min
     ]
     assert [url.split("?")[0] for url in second] == [url.split("?")[0] for url in first]
     assert set(first).isdisjoint(second)
-    assert {minutes for _key, minutes in signer.calls} == {15}
+    assert {minutes for _key, minutes, _type in signer.calls} == {15}
 
 
 async def test_a_take_the_bucket_does_not_hold_is_unread_and_the_others_still_answer(
@@ -311,7 +297,7 @@ async def test_a_take_the_bucket_does_not_hold_is_unread_and_the_others_still_an
         (2, True, True),
         (3, False, False),
     ]
-    assert [key for key, _minutes in signer.calls] == [
+    assert [key for key, _minutes, _type in signer.calls] == [
         f"takes/{session.id}/ensaio/{sha * 64}" for sha in "ac"
     ]
 

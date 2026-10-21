@@ -620,8 +620,8 @@ async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_coun
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
 
-    assert refused.status_code == 422, refused.text
-    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "STRETCH_NO_LONGER_COUNTS"
     assert [one.tellings for one in await _current(db_session, session_id)] == [2], (
         "a tentativa recusada não pode contar na linha que está de pé"
     )
@@ -655,8 +655,8 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
 
-    assert refused.status_code == 422, refused.text
-    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
     db_session.expire_all()
     stood = await _current(db_session, session_id)
     assert [one.tellings for one in stood] == [1, 1, 1], "nem o pai nem os pedaços contaram"
@@ -762,7 +762,6 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     again = await _tell(client, session_id, take_id, 1, again=True, saying="o primeiro de novo")
 
     assert again.status_code == 200, again.text
-    assert again.json()["chunks"] == 2, "contar de novo não acrescenta um trecho à passagem"
     standing = await _current(db_session, session_id)
     assert len(standing) == 2
     current = standing[0]

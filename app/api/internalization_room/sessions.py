@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import (
     device_project_dep,
+    include_stale_dep,
     linked_tablet_dep,
 )
 from app.api.internalization_room.back_translation import finding_views
@@ -326,7 +327,9 @@ def _settle_later(
     return True
 
 
-async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
+async def _state(
+    db: AsyncSession, session: IRSession, *, include_stale: bool = False
+) -> SessionStateResponse:
     approved = await approved_draft(db, session)
     return SessionStateResponse(
         session_id=session.id,
@@ -334,7 +337,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         status=str(session.status),
         coverage=coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
-        back_translation=await _progress(db, session),
+        back_translation=await _progress(db, session, include_stale=include_stale),
         language=session.language,
         halt=halt.standing(session),
         opened=was_opened(session),
@@ -344,7 +347,9 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
     )
 
 
-async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProgress:
+async def _progress(
+    db: AsyncSession, session: IRSession, *, include_stale: bool = False
+) -> BackTranslationProgress:
     """What a tablet needs to pick a telling-back back up where it stopped.
 
     All of it was already on the session and none of it had a way out, so an app that
@@ -361,11 +366,15 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     awaiting = await the_sentence_awaiting(db, session)
     return BackTranslationProgress(
         scope=state.scope,
-        segments=segment_views(stretches),
+        segments=segment_views(
+            stretches, await room.stale_segments(db, session.id) if include_stale else None
+        ),
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
-        findings=finding_views(findings),
+        findings=finding_views(
+            findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
+        ),
         superseded_attempts=len(state.superseded),
         awaiting_segment_id=awaiting.segment_id if awaiting else None,
         rerecorded_sentences=[
@@ -447,11 +456,12 @@ async def create_session(
 )
 async def read_session(
     session_id: str,
+    asking_for_stale: bool = include_stale_dep,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
-    return await _state(db, session)
+    return await _state(db, session, include_stale=asking_for_stale)
 
 
 @router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)

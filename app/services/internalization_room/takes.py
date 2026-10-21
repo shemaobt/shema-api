@@ -21,6 +21,7 @@ from app.core.exceptions import (
     ERROR_CODE_TAKE_TOO_LONG,
     NotFoundError,
     RecordingRefused,
+    StretchNoLongerCounts,
     UnknownReferenceError,
     ValidationError,
 )
@@ -313,6 +314,12 @@ async def store_take(
     return take
 
 
+async def the_take_already_kept(
+    db: AsyncSession, session_id: str, kind: IRTakeKind, audio: bytes
+) -> IRTake | None:
+    return await _the_same_take(db, session_id, kind, recording_digest(audio))
+
+
 async def _the_same_take(
     db: AsyncSession, session_id: str, kind: IRTakeKind, sha256: str
 ) -> IRTake | None:
@@ -445,6 +452,13 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     if take is None:
         raise UnknownReferenceError(f"Internalization room rehearsal take {take_id} not found")
     return take
+
+
+async def refuse_a_take_that_is_no_longer_a_part(
+    db: AsyncSession, session_id: str, take: IRTake
+) -> None:
+    if take.id not in {part.id for part in current_parts(await takes_of(db, session_id))}:
+        raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
 READING_ORDER = (
