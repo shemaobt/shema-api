@@ -35,6 +35,7 @@ from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
+    refuse_a_frase_under_the_floor,
     refuse_a_slice_that_is_not_one,
     refuse_a_telling_over_part_of_a_frase,
 )
@@ -143,6 +144,8 @@ async def add_chunk(
     retold = await room.current_stretch_at(
         db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
     )
+    if retold is None:
+        refuse_a_frase_under_the_floor(starts_ms, ends_ms)
     pass_number = pass_of_a_telling(state)
 
     # The bytes are kept before anything is asked of them. Transcribing first put the one
