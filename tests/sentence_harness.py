@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import wave
 from array import array
 from datetime import timedelta
+from typing import Any
 
 import httpx
 from sqlalchemy import select
@@ -18,13 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.segments import capture_segment
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, P, create_session, ensaio_take
-from tests.room_harness import REHEARSED_AT
+from tests.room_harness import REHEARSED_AT, played_every_part, press_terminei
 
 RATE = 16000
+PART = [(0, 1000), (1000, 2000), (2000, 3000)]
 WAV = "audio/wav"
 
 
@@ -119,3 +123,75 @@ async def take_named(db: AsyncSession, take_id: str) -> IRTake:
         select(IRTake).where(IRTake.id == take_id).execution_options(populate_existing=True)
     )
     return found.scalar_one()
+
+
+def nuance_of_frase(frase: int, quote: str = "") -> dict[str, Any]:
+    return {
+        "kind": "nuance",
+        "note": "O jeito de contar mudou.",
+        "frase": frase,
+        "quote": quote or f"frase {frase}",
+        "story": "a história conta de outro jeito",
+    }
+
+
+def names_the_nuance_on(frase: int) -> str:
+    return f"Só um detalhe, na frase {frase}: vocês traduziram «frase {frase}»."
+
+
+class Speaker:
+    def __init__(self) -> None:
+        self.line = "Vocês contaram bem."
+        self.briefs: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.briefs.append(system_prompt.replace(CACHE_BREAK, ""))
+        return self.line
+
+    def handed(self) -> list[dict[str, Any]]:
+        return list(
+            json.loads(self.briefs[-1].split("## The findings for the whole passage\n\n")[1])
+        )
+
+
+async def named_and_heard(
+    client: httpx.AsyncClient,
+    analyst: Any,
+    speaker: Speaker,
+    session_id: str,
+    part_id: str,
+    nuance: dict[str, Any],
+) -> None:
+    analyst.readings = [{"findings": [nuance]}]
+    speaker.line = names_the_nuance_on(nuance["frase"])
+    pressed = await press_terminei(
+        client,
+        session_id,
+        report=played_every_part([part_id], duration_ms=3000),
+    )
+    assert pressed.status_code == 200, pressed.text
+    heard = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/heard",
+        json={"at": pressed.json()["check_at"]},
+    )
+    assert heard.status_code == 200, heard.text
+
+
+async def laid_in_and_told_again(
+    client: httpx.AsyncClient, session_id: str, segment_id: str, position: int
+) -> str:
+    laid = (await re_record(client, session_id, segment_id, spoken(1.0))).json()["segments"]
+    new = laid[position]
+    told = await client.post(
+        f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",
+        data={
+            "take_id": new["take_id"],
+            "starts_ms": str(new["starts_ms"]),
+            "ends_ms": str(new["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text
+    return str(new["take_id"])

@@ -412,7 +412,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     second = await _tell(client, session_id, take_id, 9000, 21000, b"segundo")
 
     assert first.json()["captured"] is True
-    assert second.json()["chunks"] == 2
+    assert second.json()["captured"] is True
 
     async def analyst(*, system_prompt: str, user_content: str, **_: Any) -> str:
         return (
