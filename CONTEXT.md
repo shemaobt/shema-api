@@ -371,7 +371,7 @@ Why the room asked for a person, in one of five families the tablet names when i
 _Avoid_: cause, error, message, detail, Motivo da parada
 
 **Warning**:
-The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
+The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only a Visit does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
 _Avoid_: needs a person, notice, alert, Aviso
 
 **Visit** (`attended_at`):

@@ -968,6 +968,12 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
 
     ``halts_raised`` counts blocking halts only: it is how a landing turn tells the halt it
     began in from one raised while the Guide was answering, and a warning is neither.
+
+    **A new ask is an unattended ask**, so the update that raises the halt also clears the
+    visit that answered the previous one, and the room is back on the queue. It clears it in
+    the same statement so a visit that landed after ``session`` was read is cleared too. A
+    warning that visit ended stays ended: once the stamps go the visit can no longer be
+    undone, so what it ended is final.
     """
     halted = await db.execute(
         update(IRSession)
@@ -986,7 +992,7 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     _a_new_ask(session, kind=HaltKind.BLOCKING)
     if await is_the_demo_team(db, session.project_id):
         await db.flush()
-        await db.refresh(session, ["status", "halts_raised"])
+        await db.refresh(session, ["status", "halts_raised", "warned_at", "attended_at"])
         return await attend(db, session, by=None)
     return await _written(db, session, commit=True)
 
@@ -998,10 +1004,13 @@ async def raise_a_warning(
 
     **The status is not written** (ENG-1163). A warning refuses nothing, so the session stays
     where it was — in progress, or done — and the warning stands beside it until a facilitator
-    attends the session (``halt.standing``).
+    attends the session (``halt.standing``). A new warning is an unattended one, so the visit
+    that answered the previous halt is cleared here.
     """
     _a_new_ask(session, kind=HaltKind.WARNING)
     session.warned_at = datetime.now(UTC)
+    session.attended_at = None
+    session.attended_by = None
     if await is_the_demo_team(db, session.project_id):
         _visited(session, by=None)
     return await _written(db, session, commit=commit)
@@ -1010,20 +1019,10 @@ async def raise_a_warning(
 def _a_new_ask(session: IRSession, *, kind: HaltKind) -> None:
     """What every halt writes, whichever its kind.
 
-    The kind is written on every halt and cleared by none — see ``halt.last``.
-
-    **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
-    cleared here, and the room is back on the queue for this one.
-
-    **A warning that visit ended stays ended.** A warning stands while nobody is marked as
-    having gone, so clearing the stamps alone would bring it back for a room somebody already
-    walked to. Once the stamps go the visit can no longer be undone, so what it ended is final.
+    The kind is written on every halt and cleared by none — see ``halt.last``. The visit is
+    cleared by each kind's own write: ``mark_needs_person``'s update and ``raise_a_warning``.
     """
-    if session.attended_at is not None:
-        session.warned_at = None
     session.halt_kind = kind.value
-    session.attended_at = None
-    session.attended_by = None
     session.person_arrived_at = None
 
 

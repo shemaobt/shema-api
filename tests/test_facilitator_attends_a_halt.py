@@ -557,6 +557,31 @@ async def test_a_halt_asked_while_a_visit_was_landing_is_still_listed(
     assert asking_now["attended_at"] is None
 
 
+async def test_a_warning_a_visit_ended_while_a_halt_was_asked_stays_ended(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    rival_factory,
+) -> None:
+    """The halt clears a visit that landed after it read the room, and keeps what it ended."""
+    async with rival_factory() as warning:
+        await room.raise_a_warning(warning, await room.get_session(warning, waiting_room.id))
+    async with rival_factory() as asking, rival_factory() as visiting:
+        read_before_the_visit = await room.get_session(asking, waiting_room.id)
+        await room.attend(
+            visiting, await room.get_session(visiting, waiting_room.id), by=facilitator_a.id
+        )
+
+        await room.mark_needs_person(asking, read_before_the_visit)
+    db_session.expire_all()
+
+    returned = await the_team_opens_the_session(client)
+
+    assert returned["status"] == "in_progress"
+    assert returned["halt"] is None, "a parada nova trouxe de volta o aviso que a visita encerrou"
+
+
 async def test_undoing_a_visit_after_the_team_came_back_does_not_stop_them_again(
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,

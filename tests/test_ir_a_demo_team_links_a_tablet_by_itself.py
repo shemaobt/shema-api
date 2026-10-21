@@ -417,6 +417,21 @@ async def test_a_demo_teams_halt_is_stamped_by_the_server_and_never_reaches_the_
     assert state["status"] == "in_progress"
 
 
+async def test_a_demo_teams_second_halt_is_stamped_too(
+    client, configured: Team, db_session: AsyncSession
+) -> None:
+    tablet = await a_tablet_linked_through_the_page(client)
+    session_id = await a_session_with_one_turn(client, db_session, tablet)
+    await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+
+    asked = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+
+    assert asked.status_code == 200, asked.text[:300]
+    assert session_id not in await queued_session_ids(client, configured), (
+        "a segunda parada da equipe demo chegou à fila"
+    )
+
+
 async def test_a_demo_teams_hard_stretch_keeps_its_warning_attended_and_calls_nobody(
     client, configured: Team, db_session: AsyncSession
 ) -> None:
