@@ -87,6 +87,14 @@ def refuse_a_slice_the_stretch_does_not_sit_on(
         )
 
 
+def refuse_a_frase_under_the_floor(starts_ms: int, ends_ms: int) -> None:
+    if ends_ms < starts_ms + SHORTEST_FRASE_MS:
+        raise PauseCannotMove(
+            f"A frase from {starts_ms} ms to {ends_ms} ms is shorter than {SHORTEST_FRASE_MS} ms",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+
+
 async def refuse_a_slice_a_version_cannot_take(
     db: AsyncSession,
     session: IRSession,
@@ -124,11 +132,7 @@ async def refuse_a_slice_a_version_cannot_take(
             "The pause moves only on the last frase of its part",
             ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
         )
-    if ends_ms < starts_ms + SHORTEST_FRASE_MS:
-        raise PauseCannotMove(
-            f"A frase from {starts_ms} ms to {ends_ms} ms is shorter than {SHORTEST_FRASE_MS} ms",
-            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
-        )
+    refuse_a_frase_under_the_floor(starts_ms, ends_ms)
     length = part_length(take, state.played_by_take, part)
     if length and ends_ms > length + END_SLACK_MS:
         raise PauseCannotMove(
@@ -257,6 +261,7 @@ async def capture_segment(
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = parent.tellings
     else:
+        refuse_a_frase_under_the_floor(starts_ms, ends_ms)
         refuse_a_telling_over_part_of_a_frase(
             await final_segments(db, session.id), take_id, starts_ms, ends_ms
         )
