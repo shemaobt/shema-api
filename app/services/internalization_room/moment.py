@@ -200,6 +200,33 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
     return None if step is None else Moment.of(step["after"])
 
 
+class TurnStart(NamedTuple):
+    moment: Moment
+    by: list[Cause]
+    ignored: list[str]
+
+
+def turn_start(
+    messages: list[dict[str, Any]], scenes: list[str], arriving: SentSceneRehearsal | None
+) -> TurnStart | None:
+    """Her `momentAtTurnStart` (`src/turn/moment.ts`, app 18fa7c4): the moment the MOMENT fact
+    tells the Guide, which is where the last turn left the room after the scene rehearsal
+    arriving as this turn, her room event, has moved it (MOMENTOS-FIA-SPEC §4.5 steps 2-3)."""
+    moment = moment_at_turn_start(messages)
+    if moment is None:
+        return None
+    marked = arriving.scene if arriving is not None else None
+    if marked is None or marked not in scenes:
+        return TurnStart(moment, [], [])
+    part = scenes.index(marked) + 1
+    arrived, told = _arrived(moment, part)
+    return TurnStart(
+        arrived,
+        ["scene_rehearsal"] if arrived != moment else [],
+        [f"scene_rehearsal {part}: {told}"] if told else [],
+    )
+
+
 @dataclass(frozen=True)
 class MomentStep:
     """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
@@ -406,13 +433,19 @@ def _moved(moment: Moment, line: _Line) -> Moment:
     return Moment(at="familiarization", closed=True)
 
 
-def moment_fact(messages: list[dict[str, Any]], pericope_num: str, reached: list[str]) -> str:
+def moment_fact(
+    messages: list[dict[str, Any]],
+    pericope_num: str,
+    reached: list[str],
+    arriving: SentSceneRehearsal | None,
+) -> str:
     """Her MOMENT fact (`src/turn/moment.ts` renderMoment, app 18fa7c4): where the room is,
     read from the lines the team heard — information for the Guide, never an instruction."""
-    moment = moment_at_turn_start(messages)
-    if moment is None:
-        return ""
     scenes = scene_ids_for(pericope_num)
+    start = turn_start(messages, scenes, arriving)
+    if start is None:
+        return ""
+    moment = start.moment
     parts = len(scenes)
     if moment.part is not None and not 1 <= moment.part <= parts:
         return ""
