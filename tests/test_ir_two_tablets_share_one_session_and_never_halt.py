@@ -60,6 +60,8 @@ from tests.turn_claim_harness import (
 
 REPLY_A = "Vamos ficar nesta cena. O que voces contariam?"
 REPLY_B = "E depois, o que Rute respondeu a Noemi?"
+SAID_BY_A = "Noemi voltou para Belem com Rute, e as duas choraram no caminho"
+SAID_BY_B = "Rute ficou"
 
 
 @pytest.fixture()
@@ -342,6 +344,98 @@ async def test_a_claim_an_older_instance_left_with_its_answer_stored_is_no_claim
 
     async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
         spoken = await asyncio.wait_for(speak(tablet, session_id, "fala"), timeout=3)
+
+    assert spoken.status_code == 200, spoken.text[:300]
+    assert await conversation(rival_factory, session_id) == [
+        *OPENED,
+        ("team", SAID),
+        ("guide", REPLY_A),
+    ]
+
+
+async def test_a_turn_sent_first_is_answered_first_however_long_its_hearing_takes(
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A's long recording takes 3 s to hear and B's short one none, B sent 1 s after A."""
+    session_id = await _an_opened_session(db_session)
+    guide = the_guide_is(monkeypatch, Guide(lines=(REPLY_A, REPLY_B)))
+    guide.answer.set()
+    heard_by: list[str] = []
+
+    async def heard(*_: Any, **__: Any) -> HeardSpeech:
+        heard_by.append("a" if not heard_by else "b")
+        if len(heard_by) == 1:
+            await asyncio.sleep(3.0)
+            return HeardSpeech(text=SAID_BY_A)
+        return HeardSpeech(text=SAID_BY_B)
+
+    monkeypatch.setattr(sessions_api, "heard_speech", heard)
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        room_client(one, monkeypatch) as tablet_a,
+        room_client(two, monkeypatch) as tablet_b,
+    ):
+        a = asyncio.create_task(speak(tablet_a, session_id, "a"))
+        await asyncio.sleep(1.0)
+        b = asyncio.create_task(speak(tablet_b, session_id, "b"))
+        first, second = await asyncio.wait_for(asyncio.gather(a, b), timeout=20)
+
+    assert first.status_code == 200, first.text[:300]
+    assert second.status_code == 200, second.text[:300]
+    assert await conversation(rival_factory, session_id) == [
+        *OPENED,
+        ("team", SAID_BY_A),
+        ("guide", REPLY_A),
+        ("team", SAID_BY_B),
+        ("guide", REPLY_B),
+    ]
+
+
+async def test_a_team_turn_that_ran_past_a_slow_opening_is_the_one_the_next_turn_waits_on(
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_wait_is(monkeypatch, 300)
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
+    guide = the_guide_is(monkeypatch, Guide(lines=(OPENING, REPLY_A, REPLY_B)))
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        room_client(one, monkeypatch) as opening_tablet,
+        room_client(two, monkeypatch) as speaking_tablet,
+    ):
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        try:
+            ran_past = await asyncio.wait_for(speak(speaking_tablet, session.id, "t"), timeout=5)
+            next_turn = await asyncio.wait_for(speak(speaking_tablet, session.id, "u"), timeout=5)
+        finally:
+            guide.answer.set()
+        await asyncio.wait_for(opening, timeout=10)
+
+    assert ran_past.status_code == 200, ran_past.text[:300]
+    assert next_turn.status_code == 200, next_turn.text[:300]
+    assert await conversation(rival_factory, session.id) == [
+        ("team", SAID),
+        ("guide", REPLY_A),
+        ("team", SAID),
+        ("guide", REPLY_B),
+    ]
+
+
+async def test_a_claim_naming_a_turn_but_no_time_never_holds_a_turn_up(
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hand-edited row; the room itself never writes one."""
+    session_id = await _an_opened_session(db_session)
+    guide = the_guide_is(monkeypatch, Guide(lines=(REPLY_A,)))
+    guide.answer.set()
+    await claim_on_the_row(rival_factory, session_id, "sem-hora", None)
+
+    async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
+        spoken = await asyncio.wait_for(speak(tablet, session_id, "fala"), timeout=5)
 
     assert spoken.status_code == 200, spoken.text[:300]
     assert await conversation(rival_factory, session_id) == [

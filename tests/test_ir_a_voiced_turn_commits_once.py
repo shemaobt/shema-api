@@ -148,6 +148,7 @@ def _in_a_transaction_while_thinking(
         return any(each.in_transaction() for each in (db, *of_their_own))
 
     async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
+        await asyncio.sleep(0.2)
         held["stt"] = in_a_transaction()
         return await _heard(audio, **kwargs)
 

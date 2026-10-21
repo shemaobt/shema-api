@@ -127,7 +127,9 @@ async def conversation(rival_factory, session_id: str) -> list[tuple[str, str]]:
     return [(message["role"], message["text"]) for message in reread.messages or []]
 
 
-async def claim_on_the_row(rival_factory, session_id: str, turn_id: str, at: datetime) -> None:
+async def claim_on_the_row(
+    rival_factory, session_id: str, turn_id: str, at: datetime | None
+) -> None:
     async with rival_factory() as other_instance:
         await other_instance.execute(
             update(IRSession)
