@@ -242,7 +242,7 @@ async def play_a_round(
         findings=_reported(verdict.current, state),
         spoken=verdict.said,
         outcome=room.outcome_tag(verdict.outcome),
-        conferida=verdict.checked,
+        conferida=verdict.checked and state.checked,
         findingsRemaining=verdict.findings_remaining,
         missingWithoutFrase=sum(
             1
