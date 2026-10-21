@@ -93,7 +93,7 @@ def _reported(current: list[Finding], state: BackTranslationState) -> list[Round
             frase=one.chunk,
             stretchId=one.segment_id,
         )
-        for one in state.checks[-1].nuances
+        for one in (state.checks[-1].nuances if state.checks else [])
         if one.voiced != "before"
     ]
 
@@ -206,7 +206,7 @@ async def play_a_round(
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
         await db.commit()
-        if state.the_verdict_to_serve(told) is not None:
+        if state.checks and state.the_verdict_to_serve(told) is not None:
             return TextRoundResponse(
                 sessionId=session.id,
                 findings=_reported(room.current_findings(state), state),
@@ -239,11 +239,11 @@ async def play_a_round(
 
     return TextRoundResponse(
         sessionId=session.id,
-        findings=_reported(verdict.current, state),
+        findings=_reported([one for one in verdict.current if one in state.findings], state),
         spoken=verdict.said,
         outcome=room.outcome_tag(verdict.outcome),
         conferida=verdict.checked and state.checked,
-        findingsRemaining=verdict.findings_remaining,
+        findingsRemaining=min(verdict.findings_remaining, room.findings_remaining(state.findings)),
         missingWithoutFrase=sum(
             1
             for finding in verdict.read_this_round
