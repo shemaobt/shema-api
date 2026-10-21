@@ -16,7 +16,6 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
 )
 from app.services.internalization_room.release import (
-    FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
@@ -45,6 +44,10 @@ from tests.release_harness import (
     the_one_part_of,
     told_back_with_an_open_finding,
 )
+
+#: Marcia's gate, the two blockers that are a dispute rather than missing material: a case
+#: asserting that only these stand is asserting that the packet below is about a whole session.
+HER_GATE = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
 
 
 async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) -> None:
@@ -524,7 +527,7 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
 
     artifact, blockers = await compose_internalization_release(db_session, session)
 
-    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+    assert set(blockers) <= HER_GATE, (
         "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
         "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
     )
@@ -570,7 +573,7 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
 
     artifact, blockers = await compose_internalization_release(db_session, session)
 
-    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+    assert set(blockers) <= HER_GATE, (
         "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
         "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
     )
@@ -593,7 +596,7 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
 
     artifact, blockers = await compose_internalization_release(db_session, session)
 
-    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+    assert set(blockers) <= HER_GATE, (
         "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
         "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
     )
@@ -625,7 +628,7 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
 
     artifact, blockers = await compose_internalization_release(db_session, session)
 
-    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+    assert set(blockers) <= HER_GATE, (
         "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
         "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
     )
@@ -665,7 +668,7 @@ async def test_the_open_finding_counts_in_the_headline(
 
     artifact, blockers = await compose_internalization_release(db_session, session)
 
-    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+    assert set(blockers) <= HER_GATE, (
         "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
         "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
     )
