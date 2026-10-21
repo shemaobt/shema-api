@@ -2381,6 +2381,32 @@ class TestACase:
         derived.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+@pytest.fixture
+def derived(cached):
+    return cached
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return get_settings
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -3394,6 +3420,11 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         (THE_CASE_WHOSE_SUBCLASS_DEFINES_THE_FIXTURE_OF_ITS_BASE_CLASS_AGAIN, [24], [19]),
         (THE_CASE_WHOSE_SUBCLASS_FIXTURE_EXTENDS_THE_ONE_OF_ITS_BASE_CLASS, [18], []),
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS, [17], []),
+        (
+            THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS,
+            [],
+            [23],
+        ),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
@@ -3409,6 +3440,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a subclass that defines the fixture of its base class again",
         "a subclass fixture that requests the fixture of its base class of its own name",
         "a class fixture that is what a fixture of the module requests",
+        "a class fixture of another cache that is what a fixture of the module requests",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
