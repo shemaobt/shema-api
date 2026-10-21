@@ -109,3 +109,19 @@ async def test_the_stale_stretches_of_a_whole_recording_leave_when_the_team_reco
     assert [
         row for row in await _read_asking_for_stale(client, session.id) if row["stale"]
     ] == [], "o ensaio inteiro já era história quando a equipe passou a gravar por cena"
+
+
+async def test_a_translation_started_over_leaves_no_stale_stretch_to_serve(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    assert [row for row in await _read_asking_for_stale(client, session.id) if row["stale"]]
+
+    restarted = await client.post(f"{PREFIX}/sessions/{session.id}/back-translation/restart")
+    assert restarted.status_code == 200, restarted.text
+
+    assert await _read_asking_for_stale(client, session.id) == [], (
+        "a tradução recomeçada continuava listando a parte regravada antes do recomeço"
+    )

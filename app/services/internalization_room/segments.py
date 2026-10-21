@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import TypeGuard
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -568,6 +568,11 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
     went, so the whole reading goes with it.
     """
     _stop_counting(await current_segments(db, session_id))
+    await db.execute(
+        update(IRSegment)
+        .where(IRSegment.session_id == session_id, IRSegment.stale.is_(True))
+        .values(stale=False)
+    )
     await db.flush()
 
 
