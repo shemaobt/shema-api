@@ -1,4 +1,4 @@
-"""ENG-1219 — a session keeps the canon it opened with until its passage is approved.
+"""ENG-1219 — a session keeps the canon it opened with while it is live.
 
 Her ruling of 1 October: «It keeps the map it was opened with until it is approved.» A new
 canon is published here the way a re-pin publishes one: the canon served until then is kept

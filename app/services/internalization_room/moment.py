@@ -200,13 +200,40 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
     return None if step is None else Moment.of(step["after"])
 
 
+class TurnStart(NamedTuple):
+    moment: Moment
+    by: list[Cause]
+    ignored: list[str]
+
+
+def turn_start(
+    messages: list[dict[str, Any]], scenes: list[str], arriving: SentSceneRehearsal | None
+) -> TurnStart | None:
+    """Her `momentAtTurnStart` (`src/turn/moment.ts`, app 18fa7c4): the moment the MOMENT fact
+    tells the Guide, which is where the last turn left the room after the scene rehearsal
+    arriving as this turn, her room event, has moved it (MOMENTOS-FIA-SPEC §4.5 steps 2-3)."""
+    moment = moment_at_turn_start(messages)
+    if moment is None:
+        return None
+    marked = arriving.scene if arriving is not None else None
+    if marked is None or marked not in scenes:
+        return TurnStart(moment, [], [])
+    part = scenes.index(marked) + 1
+    arrived, told = _arrived(moment, part)
+    return TurnStart(
+        arrived,
+        ["scene_rehearsal"] if arrived != moment else [],
+        [f"scene_rehearsal {part}: {told}"] if told else [],
+    )
+
+
 @dataclass(frozen=True)
 class MomentStep:
-    """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
-    reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
-    (`types.ts:73`): every line her `step()` declines, in her words, filled where hers fills it
-    (`moment.ts:149-189`, and a scene told ahead at :212-214) and stored only when there is
-    one."""
+    """Her `MomentStep` (`src/session/types.ts`): the moment the MOMENT fact told the Guide on
+    this turn, the one its reply left the room in, and the lines that moved it. `ignored` is her
+    `ignored?: string[]` (`types.ts:73`): every line her `step()` declines, in her words, filled
+    where hers fills it (`moment.ts:149-189`, and a scene told ahead at :212-214) and stored
+    only when there is one."""
 
     before: Moment
     after: Moment
@@ -233,11 +260,12 @@ def moment_step(
     arriving: SentSceneRehearsal | None = None,
     reached: list[str] | None = None,
 ) -> MomentStep | None:
-    """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
-    A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
-    before = moment_at_turn_start(messages)
-    if before is None:
+    """Her MomentStep: where the lines this reply voiced leave the moment the Guide was told
+    this turn. A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
+    start = turn_start(messages, scenes, arriving)
+    if start is None:
         return None
+    before = start.moment
     parts = len(scenes)
     marked = arriving.scene if arriving is not None else None
     if reached is None:
@@ -245,15 +273,8 @@ def moment_step(
     back = {scenes.index(scene) + 1 for scene in reached if scene in scenes}
     unmarked = arriving is not None and marked not in scenes
     after = before
-    by: list[Cause] = []
-    ignored: list[str] = []
-    if marked is not None and marked in scenes:
-        part = scenes.index(marked) + 1
-        after, told = _arrived(before, part)
-        if after != before:
-            by.append("scene_rehearsal")
-        if told:
-            ignored.append(f"scene_rehearsal {part}: {told}")
+    by = list(start.by)
+    ignored = list(start.ignored)
     earlier = False
     anchored = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
@@ -307,6 +328,8 @@ def _arrived(moment: Moment, part: int) -> tuple[Moment, str | None]:
         return moment, f"told ahead, in the Familiarization{kept}"
     if part > _scene(moment):
         return moment, f"told ahead of part {moment.part}{kept}"
+    if moment.at == "internalization" and part == moment.part:
+        return Moment(at="articulation", part=part), None
     return moment, None
 
 
@@ -404,13 +427,19 @@ def _moved(moment: Moment, line: _Line) -> Moment:
     return Moment(at="familiarization", closed=True)
 
 
-def moment_fact(messages: list[dict[str, Any]], pericope_num: str, reached: list[str]) -> str:
+def moment_fact(
+    messages: list[dict[str, Any]],
+    pericope_num: str,
+    reached: list[str],
+    arriving: SentSceneRehearsal | None,
+) -> str:
     """Her MOMENT fact (`src/turn/moment.ts` renderMoment, app 18fa7c4): where the room is,
     read from the lines the team heard — information for the Guide, never an instruction."""
-    moment = moment_at_turn_start(messages)
-    if moment is None:
-        return ""
     scenes = scene_ids_for(pericope_num)
+    start = turn_start(messages, scenes, arriving)
+    if start is None:
+        return ""
+    moment = start.moment
     parts = len(scenes)
     if moment.part is not None and not 1 <= moment.part <= parts:
         return ""

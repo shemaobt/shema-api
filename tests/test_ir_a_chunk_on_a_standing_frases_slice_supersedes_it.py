@@ -96,7 +96,6 @@ async def test_a_telling_on_a_standing_frases_slice_under_a_new_key_is_that_fras
     assert again.json()["frase"] == 2, (
         "a frase contada de novo ganhava o número seguinte em vez de ficar com o seu"
     )
-    assert again.json()["chunks"] == 2, "a recontagem entrava na conta como mais uma frase"
     assert [
         (one.starts_ms, one.ends_ms, one.tellings) for one in await current(db_session, session_id)
     ] == [
@@ -204,7 +203,7 @@ async def test_a_telling_on_another_slice_is_a_new_frase_beside_the_one_standing
     next_one = await tell(client, session_id, take_id, 2, saying="o trecho 2")
 
     assert next_one.status_code == 200, next_one.text
-    assert (next_one.json()["frase"], next_one.json()["chunks"]) == (2, 2)
+    assert next_one.json()["frase"] == 2
     assert [
         (one.starts_ms, one.ends_ms, one.tellings) for one in await current(db_session, session_id)
     ] == [(0, 9000, 1), (9000, 18000, 1)], (

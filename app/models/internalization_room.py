@@ -350,6 +350,22 @@ class SegmentView(BaseModel):
             "the translation is started over."
         ),
     )
+    stale: bool | None = Field(
+        default=None,
+        description=(
+            "Only served to a tablet that asks with `include_stale=true`, and then on every "
+            "stretch: true on one whose part was recorded again and that nobody has told again, "
+            "which stays out of the check, the release gate and the findings; false on the "
+            "stretches that count. Absent when the tablet did not ask."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _a_mark_nobody_asked_for_is_absent(self, handler: Any):  # type: ignore[no-untyped-def]
+        served: dict[str, Any] = handler(self)
+        if self.stale is None:
+            served.pop("stale", None)
+        return served
 
 
 class DivideSegmentRequest(BaseModel):
@@ -396,9 +412,11 @@ class FindingView(BaseModel):
     frase: int | None = Field(
         default=None,
         description=(
-            "The frase the check named, in the number the voice spoke it. A missing element "
-            "placed after frase N says N while `segment_id` points at the stretch after it. "
-            "Null when the analyst named no readable frase."
+            "The frase the check named, in the number the voice speaks it, followed to where "
+            "that stretch stands now: a cut, a telling or a part recorded again moves it. A "
+            "missing element placed after frase N says N while `segment_id` points at the "
+            "stretch after it. Null when the analyst named no readable frase, and when the "
+            "stretch it named is no longer among the told ones."
         ),
     )
     segment_id: str | None = None
@@ -461,6 +479,13 @@ class KeptTakeView(BaseModel):
     audio_url: str
 
 
+class ApprovedDraftView(BaseModel):
+    version: int
+    release_id: str
+    approved_at: str
+    forced: bool
+
+
 class SessionStateResponse(BaseModel):
     session_id: str
     pericope: str
@@ -486,6 +511,10 @@ class SessionStateResponse(BaseModel):
     opened: bool = False
     moment: MomentView | None = None
     kept_takes: list[KeptTakeView] = Field(default_factory=list)
+    #: The approval this session's draft stands under, while the passage's latest release
+    #: carries the hash of the packet the session composes now (ADR 0071); null otherwise, and
+    #: always null on a panorama. Derived on every read, never stored.
+    approved: ApprovedDraftView | None = None
 
 
 class TurnResponse(BaseModel):
@@ -538,10 +567,6 @@ class FixedLineView(BaseModel):
 
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
-    #: How many stretches the passage has after this call, not how many recordings the team
-    #: sent. A retelling replaces the stretch it retells, so it adds none — the number moves
-    #: only when the team tells a stretch nobody had told yet.
-    chunks: int
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
@@ -1093,6 +1118,8 @@ class KeptRehearsal(BaseModel):
     turn_number: int
     words: str
     from_other_session: bool
+    scope: str
+    audio_url: str
 
 
 class MotherTongueTakesResponse(BaseModel):
