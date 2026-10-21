@@ -20,6 +20,7 @@ from app.services.internalization_room.segments import current_segments, divide_
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
+    nothing_is_read_ahead,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
     room_client,
@@ -35,6 +36,7 @@ RETELLING = b"a equipe contou a parte regravada"
 @pytest.fixture(autouse=True)
 def voice(monkeypatch: pytest.MonkeyPatch) -> None:
     the_room_speaks(monkeypatch)
+    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture()
@@ -190,4 +192,39 @@ async def test_telling_a_stale_stretch_again_replaces_it_and_the_marker_goes(
     ).scalar_one()
     assert old.superseded_by_id == standing[1]["segment_id"], (
         "a linha antiga não dizia o que tomou o seu lugar"
+    )
+
+
+async def test_a_stale_stretch_is_told_again_only_over_the_recording_its_part_stands_on(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (one, two, _three) = await rehearsed_in_parts(db_session, 3)
+    by_part = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    for elsewhere in (two.id, one.id):
+        refused = await _tell_again(client, session.id, by_part[two.id], take_id=elsewhere)
+
+        assert refused.status_code == 400, (
+            "a parte regravada aceitou ser contada de novo sobre uma gravação que não é a dela"
+        )
+
+    stale = [row for row in await _read_asking_for_stale(client, session.id) if row["stale"]]
+    assert [row["segment_id"] for row in stale] == [by_part[two.id]]
+
+
+async def test_a_stale_stretch_of_a_whole_that_stepped_aside_is_not_told_again(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts_of(db_session, [1], told_whole=True)
+    told = (await current_segments(db_session, session.id))[0]
+    again = await upload_a_part(client, session.id, part=None, audio=NEW_AUDIO)
+    scene = await upload_a_part(client, session.id, part=1, audio=NEW_AUDIO + b"1")
+    assert again.status_code == scene.status_code == 200
+
+    refused = await _tell_again(client, session.id, told.id, take_id=scene.json()["take_id"])
+
+    assert refused.status_code == 400, (
+        "o ensaio inteiro já era história e aceitou ser contado de novo sobre uma cena"
     )

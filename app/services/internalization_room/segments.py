@@ -96,6 +96,16 @@ async def refuse_a_slice_a_version_cannot_take(
     ends_ms: int,
 ) -> None:
     if segment.stale:
+        takes = await takes_of(db, session.id)
+        replaced = next(take for take in takes if take.id == segment.take_id)
+        standing = next(
+            (part for part in current_parts(takes) if part.ordinal == replaced.ordinal), None
+        )
+        if standing is None or standing.id != take_id:
+            raise ValidationError(
+                f"The stretch from {segment.starts_ms} ms of {segment.take_id} is told again over "
+                f"the recording its part stands on now, and {take_id} is not it"
+            )
         return
     if segment.take_id != take_id or segment.starts_ms != starts_ms:
         refuse_a_slice_the_stretch_does_not_sit_on(segment, take_id, starts_ms, ends_ms)
