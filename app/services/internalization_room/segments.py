@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import TypeGuard
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -526,16 +526,10 @@ async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
 
 async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     """The stretches of a part recorded again that nobody has told again, oldest first."""
-    result = await db.execute(
-        select(IRSegment)
-        .where(
-            IRSegment.session_id == session_id,
-            IRSegment.stale.is_(True),
-            IRSegment.superseded_by_id.is_(None),
-        )
-        .order_by(IRSegment.superseded_at, IRSegment.created_at)
+    rows = await _in_reading_order(
+        db, session_id, IRSegment.stale.is_(True), IRSegment.superseded_by_id.is_(None)
     )
-    return list(result.scalars().all())
+    return [row for row, divided in _read_in_order(rows) if not divided]
 
 
 async def segment_by_id(db: AsyncSession, segment_id: str) -> IRSegment:
@@ -642,10 +636,16 @@ async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     the engine, for the reason `takes_of` says it: SQLite sorts a NULL first and PostgreSQL
     last, and the whole recording — the part with no number — reads before the numbered ones.
     """
+    return await _in_reading_order(db, session_id, IRSegment.superseded_at.is_(None))
+
+
+async def _in_reading_order(
+    db: AsyncSession, session_id: str, *conditions: ColumnElement[bool]
+) -> list[IRSegment]:
     result = await db.execute(
         select(IRSegment)
         .outerjoin(IRTake, IRSegment.take_id == IRTake.id)
-        .where(IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None))
+        .where(IRSegment.session_id == session_id, *conditions)
         .order_by(
             IRTake.ordinal.asc().nulls_first(),
             IRSegment.starts_ms,
