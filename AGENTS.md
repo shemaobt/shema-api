@@ -20,6 +20,7 @@ DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-
 JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -m fresh_interpreter
 
 env -u DATABASE_URL JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -n 4 --dist loadfile -m migration
+DATABASE_URL=postgresql://<a Postgres you own> JWT_SECRET_KEY=test-secret-for-ci-only uv run python scripts/postgres_waits_are_bounded.py
 PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
@@ -30,7 +31,9 @@ three files that each open a clean interpreter to prove something the suite's ow
 cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in
 place the fifteen migration-walking files would run against that Postgres instead of the
-SQLite file each builds for itself. The three selections partition the whole suite, pinned in
+SQLite file each builds for itself. The line after it is that job's step against its own
+Postgres: the app sets `lock_timeout` and `statement_timeout` in every transaction, and only a
+real Postgres can show it (ADR 0079). The three selections partition the whole suite, pinned in
 `tests/test_ci_gates.py`.
 
 The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is one file per process, in the system temporary directory and named by the xdist worker or, in a serial run, by the pid, so two runs in one checkout and four workers in one run do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that one file and leaves it behind — so a run that names its own database runs serially, without `-n`. The schema is created once per process and each test is given a clean database by a sweep, not by recreating it.
