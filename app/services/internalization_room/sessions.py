@@ -1253,7 +1253,8 @@ async def save_back_translation(
 ) -> IRSession:
     """Write the telling-back state, merged onto what is stored if another write landed first.
 
-    ``rule`` is what the caller decided on the state it read, applied again to the merged one.
+    ``rule`` is what the caller decided on the state it read, applied again to the state about to
+    be stored: the merged one when another write landed first, the one as written when none did.
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
