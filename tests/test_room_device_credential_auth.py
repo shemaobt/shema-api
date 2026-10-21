@@ -23,7 +23,7 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room_sessions
-from tests.baker import a_language, make_project, make_project_user_access, make_user
+from tests.baker import a_language, an_email, make_project, make_project_user_access, make_user
 from tests.device_harness import RETIRED_ROOM_KEY_HEADER, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
@@ -61,7 +61,8 @@ class Tablet:
     credential: str
 
 
-async def a_claimed_device(db: AsyncSession, *, email="fac@example.com") -> Tablet:
+async def a_claimed_device(db: AsyncSession, *, email: str | None = None) -> Tablet:
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -167,3 +168,18 @@ async def test_one_devices_credential_never_resolves_another_devices_project(cli
 
     session = await room_sessions.get_session(db_session, opened.json()["session_id"])
     assert session.project_id == theirs.project.id
+
+
+async def test_a_claimed_device_built_twice_with_defaults_gets_two_users_with_two_emails(
+    db_session,
+):
+    first = await a_claimed_device(db_session)
+    second = await a_claimed_device(db_session)
+
+    assert first.user.email != second.user.email
+
+
+async def test_a_helper_called_with_an_email_keeps_it(db_session):
+    device = await a_claimed_device(db_session, email="x@example.com")
+
+    assert device.user.email == "x@example.com"
