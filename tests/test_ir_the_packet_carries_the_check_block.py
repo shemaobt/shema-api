@@ -77,18 +77,23 @@ from tests.turn_harness import the_room_agent_is
 
 #: Her names for the block and for one entry of its list, written out rather than imported.
 #: A case that read them off the module under test would agree with any rename, and the whole
-#: point of this slice is that these eight words are hers.
+#: point of this slice is that these words are hers. The three about the force beside
+#: ``forced`` are ours: who forced it, when, and the blockers it passed (ADR 0075).
 THE_BLOCKS_NAMES = {
     "version",
     "status",
     "conferida",
     "forced",
+    "forcedBy",
+    "forcedAt",
+    "forcedBlockers",
     "heardComplete",
     "lastCheckAt",
     "findings",
+    "nuances",
     "retroUrl",
 }
-AN_ENTRYS_NAMES = {"kind", "frase", "idx", "clipKey"}
+AN_ENTRYS_NAMES = {"kind", "frase", "index", "idx", "clipKey", "scene"}
 
 #: A note no other string in the packet contains, so a case can ask where it did and did not
 #: travel without matching anything else by accident.
@@ -254,7 +259,14 @@ async def test_a_forced_release_reads_forcada_as_stored(
     assert check["conferida"] is False
     assert check["version"] == 1
     assert check["findings"] == [
-        {"kind": "addition", "frase": 1, "idx": told.id, "clipKey": told.take_id}
+        {
+            "kind": "addition",
+            "frase": 1,
+            "index": 1,
+            "idx": told.id,
+            "clipKey": told.take_id,
+            "scene": "whole",
+        }
     ]
     (row,) = await releases_of(db_session, session.id)
     assert row.packet["check"] == check, "o bloco servido é o guardado, e não um recomposto"
@@ -338,7 +350,7 @@ async def test_the_analysts_note_is_nowhere_in_the_packet(db_session: AsyncSessi
 
     assert '"note"' not in json.dumps(packet["back_translation"])
     assert THE_ANALYSTS_NOTE not in json.dumps(packet)
-    assert packet["schema_version"] == "tripod.internalization-release.v0.8"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.9"
     assert set(packet["back_translation"]["findings"][0]) == {
         "kind",
         "segment_id",

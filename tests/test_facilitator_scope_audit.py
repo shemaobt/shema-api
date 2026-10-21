@@ -341,6 +341,15 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (owner.project.id, absent),
         },
         {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/release", FORCE),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/release", FORCE),
+            "ids": (owner.project.id, absent),
+            #: The owner's passage holds no rehearsal take, so the force refuses it naming
+            #: `no_rehearsal_audio`. A stranger is 404, which is the whole question here.
+            "owner_expects": 409,
+        },
+        {
             "method": "GET",
             "owned": (f"{IR}/facilitator/questions", {"params": {"team_id": owner.project.id}}),
             "absent": (f"{IR}/facilitator/questions", {"params": {"team_id": absent}}),
@@ -497,10 +506,8 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
             "ids": (force_id, absent),
-            #: The owner is refused by the gate, for the reason the read above is: a force
-            #: sets aside two blockers and a session this far from finished stands on the
-            #: others. A stranger is still 404, which is the whole question here.
-            "owner_expects": 409,
+            #: The owner's session holds a rehearsal take, so the force passes every other
+            #: blocker and mints the release (ADR 0075). A stranger is still 404.
         },
     ]
 

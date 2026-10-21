@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser, ReaderUser
@@ -16,6 +16,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.passage_force import force_passage
 from app.services.internalization_room.release import (
     GROUNDED_BLOCKERS,
     InternalizationReleaseBlocked,
@@ -27,6 +28,17 @@ from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
+
+
+def forced_answer(release: IRRelease) -> ForcedReleaseResponse:
+    return ForcedReleaseResponse(
+        release_id=release.packet["release_id"],
+        session_id=release.session_id,
+        version=release.version,
+        package_sha256=release.package_sha256,
+        approved_at=as_utc(release.approved_at).isoformat(),
+        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
+    )
 
 
 def approval_of(release: IRRelease) -> ApprovedDraftView:
@@ -99,7 +111,7 @@ async def force_internalization_release(
     user: FacilitatorUser,
     db: AsyncSession = Depends(get_db),
 ) -> ForcedReleaseResponse:
-    """A facilitator mints this release past an open finding or an unheard part.
+    """A facilitator mints this release past every blocker but a missing recording.
 
     The road for a team that disagrees with a finding is the raised hand, and it ends here:
     a person answered it, agreed with the team, and this is that person's code. So it is a
@@ -110,9 +122,10 @@ async def force_internalization_release(
     whose only purpose is to overrule the gate has nothing to say to a caller who did not ask
     it to, and answering about the session would mean deciding what that caller meant.
 
-    Only the two codes of ``FORCEABLE_BLOCKERS`` are set aside; the rest refuse the force with
-    the same 409 naming them the Desk's own routes always answer a refusal with. The team's own
-    route answers those with a 200 now (ENG-954); this one is a person's, and stays a 409.
+    Every blocker but ``no_rehearsal_audio`` is set aside (ADR 0075); that one refuses the
+    force with the same 409 naming it the Desk's own routes always answer a refusal with. The
+    team's own route answers its refusals with a 200 now (ENG-954); this one is a person's, and
+    stays a 409.
     """
     if not payload.force:
         raise NothingToForce(
@@ -121,14 +134,34 @@ async def force_internalization_release(
     session = await room.get_session_for_facilitator(db, user, session_id)
     release = await approve_release(db, session, forced_by=user.id)
     nudge(session.project_id, "release")
-    return ForcedReleaseResponse(
-        release_id=release.packet["release_id"],
-        session_id=release.session_id,
-        version=release.version,
-        package_sha256=release.package_sha256,
-        approved_at=as_utc(release.approved_at).isoformat(),
-        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
-    )
+    return forced_answer(release)
+
+
+@router.post(
+    "/facilitator/projects/{project_id}/passages/{pericope}/release",
+    response_model=ForcedReleaseResponse,
+)
+async def force_passage_release(
+    project_id: str,
+    payload: ForceReleaseRequest,
+    user: FacilitatorUser,
+    pericope: str = Path(max_length=120),
+    db: AsyncSession = Depends(get_db),
+) -> ForcedReleaseResponse:
+    """«Aprovar mesmo assim (forçar)», addressed to the passage like the Zerar (ADR 0075).
+
+    The room picks the passage's live session that holds rehearsal takes, so the Desk names
+    the team and the pericope and never a session. A team the caller does not facilitate is
+    refused as one that does not exist; a body that does not ask for a force is refused as on
+    the route above.
+    """
+    if not payload.force:
+        raise NothingToForce(
+            "this route only mints a release past the gate, and nothing asked it to"
+        )
+    release = await force_passage(db, user, project_id=project_id, pericope=pericope)
+    nudge(project_id, "release")
+    return forced_answer(release)
 
 
 async def _team_release_blocked(

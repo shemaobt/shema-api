@@ -9,14 +9,12 @@ The release fails closed. A blocker means the session is not ready to travel —
 partial artifact — because a package missing the rehearsal audio, the telling-back, the
 analyst's reading of it or a stretch nobody told back would look downstream exactly like a
 finished one; so would one composed for a panorama, which is not a draft of a passage at all.
-Those are missing material, and nothing overrules them: there is nothing in a rehearsal nobody
-recorded for anybody to overrule.
 
-The other two are Marcia's gate — an open finding the telling-back still carries, and a part
-of the rehearsal the team never heard through — and they are a dispute rather than a hole.
-A person can look at either and disagree, and only a facilitator's own code opens that door
-(ADR 0019). The output is always labeled ``first_team_rehearsal`` / ``ready_for_refine``:
-the system never claims to have understood or approved the mother-tongue recording itself.
+Only a facilitator's force moves the gate, and it passes every blocker but a rehearsal nobody
+recorded, naming on the release the blockers it passed (ADR 0075): there is nothing in a
+rehearsal nobody recorded to send. The output is always labeled ``first_team_rehearsal`` /
+``ready_for_refine``: the system never claims to have understood or approved the mother-tongue
+recording itself.
 """
 
 from __future__ import annotations
@@ -52,6 +50,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     frase_numbers,
     listening_to_the_parts,
+    nuances_said,
     rehearsed_parts,
     unheard_parts,
 )
@@ -71,7 +70,7 @@ from app.services.internalization_room.sessions import (
     is_panorama,
     refuse_if_archived,
 )
-from app.services.internalization_room.takes import current_parts, is_wav, takes_of
+from app.services.internalization_room.takes import current_parts, is_wav, part_keys, takes_of
 from app.utils.stored_time import as_utc
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
@@ -87,14 +86,13 @@ from app.utils.stored_time import as_utc
 #: consumer diffing the two versions finds one key gone from every finding and nothing renamed.
 #: And to v0.7 with the ``comprehension`` block gone, and its open points with it from
 #: ``open_questions``: the room no longer reads practice or probes (ADR 0056). And to v0.8 with
-#: ``duration_ms`` on every take, and ``recorded_at`` its **Recording time** (ADR 0072).
-SCHEMA_VERSION = "tripod.internalization-release.v0.8"
+#: ``duration_ms`` on every take, and ``recorded_at`` its **Recording time** (ADR 0072). And to
+#: v0.9 with ``key`` on every rehearsal take and ``scene`` on every frase (ADR 0078).
+SCHEMA_VERSION = "tripod.internalization-release.v0.9"
 
-#: The whole of what a facilitator's code can set aside, and the one place that says so. They
-#: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
-#: two a person can disagree about after looking at them. Every other blocker is missing
-#: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
-FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
+#: What a facilitator's force never passes, and the one place that says so: every other blocker
+#: yields to it, but there is nothing to send of a passage nobody recorded (ADR 0075).
+UNFORCEABLE_BLOCKERS = frozenset({"no_rehearsal_audio"})
 
 #: The two the tablet has a door for and the team's own route names ground on: an unheard part
 #: by its take and an untold stretch by its own id (ADR 0028). One name for the set so the
@@ -158,6 +156,72 @@ def release_name(language: str | None, pericope: str, version: int) -> str:
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+#: What a packet says beside the draft rather than about it: its name and number, when it was
+#: read, the check stamped on it, whose it is, the canon it was read against and the schema it
+#: was written under.
+_BESIDE_THE_DRAFT = frozenset(
+    {
+        "schema_version",
+        "canon_vendor_pin",
+        "package_sha256",
+        "release_id",
+        "version",
+        "created_at",
+        "check",
+        "language",
+        "session_language",
+        "audio_format",
+    }
+)
+
+#: Read off the draft rather than part of it, so a schema can add or reshape them freely.
+_DERIVED = frozenset({"key", "scene", "index", "frase", "voiced", "duration_ms"})
+
+
+def _without_derived(entry: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in entry.items() if k not in _DERIVED}
+
+
+def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
+    audio = packet.get("audio") or {}
+    told = packet.get("back_translation") or {}
+    content = {
+        k: v
+        for k, v in packet.items()
+        if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
+    }
+    content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
+    content["heard_complete"] = (packet.get("check") or {}).get("heardComplete")
+    content["back_translation"] = {
+        **{k: v for k, v in told.items() if k not in ("segments", "retro_takes", "played_by_take")},
+        "segments": [_without_derived(frase) for frase in told.get("segments", [])],
+        "retro_takes": [take.get("sha256") for take in told.get("retro_takes", [])],
+    }
+    if nuances:
+        content["nuances"] = [_without_derived(one) for one in packet["check"]["nuances"]]
+    return content
+
+
+def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
+    """Whether a stored release and a composed packet are one draft, whatever schema each is in.
+
+    The draft is its own content: the takes by fingerprint and order, the stretches, the
+    telling with its findings and history, the questions, the nuances, and whether every part
+    was heard. Never the schema version, the canon pin, the listening's own numbers, or what is
+    read off the content, so a deploy that
+    adds or reshapes those, a canon re-vendored or a listen that fills a tolerated gap never
+    un-approves a draft nobody changed. Both sides are read the same way on the spot, from the
+    stored packet and the composed one, never through the stored ``package_sha256``, which is
+    the published hash of a whole packet and moves with the schema (ADR 0078, amending 0020).
+
+    Nuances are compared only where the stored packet recorded them: one approved before they
+    reached the record says nothing about them, and a nuance moves only with a new reading,
+    which only new content brings.
+    """
+    recorded = "nuances" in (stored.get("check") or {})
+    return _content(stored, nuances=recorded) == _content(composed, nuances=recorded)
 
 
 #: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like
@@ -268,11 +332,16 @@ def _check_status(conferida: bool, forced: bool) -> CheckStatus:
     return "forcada" if forced else "sem_conferencia"
 
 
+def _scene(keys: dict[str, str], take_id: str | None) -> dict[str, str]:
+    return {"scene": keys[take_id]} if take_id in keys else {}
+
+
 def _check_block(
     telling_back: BackTranslationState,
     told: list[IRSegment],
     session_id: str,
     *,
+    keys: dict[str, str],
     heard_complete: bool,
     version: int | None,
     forced: bool,
@@ -281,7 +350,8 @@ def _check_block(
 
     ``version`` and ``forced`` are facts of the release row, which is written after the packet
     is built, so they are the caller's to hand in: null and false on the live read, the row's
-    own on the approval (ADR 0020).
+    own on the approval (ADR 0020). So are who forced it, when and the blockers it passed:
+    null here, stamped by the approval.
 
     ``heardComplete`` is handed in rather than asked again: the composer asks the listening
     once and both the refusal and this read the one answer, so they cannot disagree about it.
@@ -296,29 +366,60 @@ def _check_block(
     is in ``divided_segments`` or ``superseded_segments`` with its recording named, so nothing
     is lost by not repeating it here.
 
-    The note never enters. What is open is a kind and an address; why it is open is the
-    consultant's material and travels in the retroverification file.
+    ``index`` is her whole-number name for the same frase and travels exactly where ``frase``
+    does; ``scene`` is the **Part key** of the part the stretch is a slice of. Neither is stable
+    across versions — a division renumbers — and ``idx`` is the key that is.
+
+    ``nuances`` are the ones standing at this reading, in her shape: a finding's keys and
+    ``voiced``, which the last check round says (``now`` when its verdict named it and the team
+    heard it, ``before`` when an earlier heard one had) and which is absent when no heard verdict
+    said it: one notion of said, the retroverification file's. They sit here and
+    not in the hashed ``back_translation`` because ``voiced`` moves with no content moving: a
+    later round turns a ``now`` into ``before``, and inside the hash that would un-approve an
+    unchanged draft (ADR 0078).
+
+    The note never enters, nor a nuance's quote or story. What is open is a kind and an
+    address; why it is open is the consultant's material and travels in the retroverification
+    file.
     """
     frase_of = frase_numbers(told)
     take_of = {stretch.id: stretch.take_id for stretch in told}
-    findings: list[dict[str, Any]] = []
-    for finding in telling_back.findings:
-        entry: dict[str, Any] = {
-            "kind": finding.kind.value,
-            "idx": finding.segment_id,
-            "clipKey": take_of.get(finding.segment_id) if finding.segment_id else None,
-        }
-        if finding.segment_id in frase_of:
-            entry["frase"] = frase_of[finding.segment_id]
-        findings.append(entry)
+
+    def addressed(kind: str, segment_id: str | None) -> dict[str, Any]:
+        take_id = take_of.get(segment_id) if segment_id else None
+        entry: dict[str, Any] = {"kind": kind, "idx": segment_id, "clipKey": take_id}
+        if segment_id in frase_of:
+            entry["frase"] = entry["index"] = frase_of[segment_id]
+        return {**entry, **_scene(keys, take_id)}
+
+    last_round = telling_back.checks[-1] if telling_back.checks else None
+    heard = last_round is not None and last_round.heard_at is not None
+    voiced = {
+        (one.segment_id, one.quote): one.voiced
+        for one in (last_round.nuances if last_round else [])
+        if one.voiced == "before" or (one.voiced == "now" and heard)
+    }
+    said_earlier = {(one.segment_id, one.quote) for one in nuances_said(telling_back.checks)}
+    nuances = []
+    for nuance in telling_back.nuances:
+        entry = addressed("nuance", nuance.segment_id)
+        key = (nuance.segment_id, nuance.quote)
+        said = voiced.get(key) or ("before" if key in said_earlier else None)
+        nuances.append({**entry, "voiced": said} if said else entry)
     return {
         "version": version,
         "status": _check_status(telling_back.checked, forced),
         "conferida": telling_back.checked,
         "forced": forced,
         "heardComplete": heard_complete,
+        "forcedBy": None,
+        "forcedAt": None,
+        "forcedBlockers": None,
         "lastCheckAt": telling_back.checked_at.isoformat() if telling_back.checked_at else None,
-        "findings": findings,
+        "findings": [
+            addressed(finding.kind.value, finding.segment_id) for finding in telling_back.findings
+        ],
+        "nuances": nuances,
         "retroUrl": RETRO_ROUTE.format(session_id=session_id),
     }
 
@@ -448,12 +549,18 @@ async def compose_internalization_release(
         return await _composed(db, session)
 
 
-async def _standing_findings(
+async def _standing(
     db: AsyncSession, session: IRSession, takes: list[IRTake]
-) -> list[Finding]:
-    """The state's findings but those on a whole that stepped aside, which are only stored."""
+) -> BackTranslationState:
+    """The state but its findings and nuances on a whole that stepped aside, only stored."""
     aside = await set_aside_segment_ids(db, session.id, takes)
-    return [f for f in back_translation_of(session).findings if f.segment_id not in aside]
+    state = back_translation_of(session)
+    return state.model_copy(
+        update={
+            "findings": [f for f in state.findings if f.segment_id not in aside],
+            "nuances": [n for n in state.nuances if n.segment_id not in aside],
+        }
+    )
 
 
 async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
@@ -464,10 +571,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         raise InternalizationReleaseBlocked(["demo_team_never_releases"])
 
     takes = await takes_of(db, session.id)
-    telling_back = back_translation_of(session)
-    telling_back = telling_back.model_copy(
-        update={"findings": await _standing_findings(db, session, takes)}
-    )
+    telling_back = await _standing(db, session, takes)
     stretches = await final_segments(db, session.id, takes)
     told = told_back(stretches)
     frases = frase_numbers(told)
@@ -476,6 +580,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
     parts = current_parts(takes)
+    keys = part_keys(parts)
 
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
@@ -515,13 +620,18 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         "canon_vendor_pin": vendor_pin(),
         "audio": {
             "recording_grain": _recording_grain(parts),
-            "rehearsal_takes": [_take_view(take) for take in parts],
+            "rehearsal_takes": [{**_take_view(take), "key": keys[take.id]} for take in parts],
         },
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
             "segments": [
-                {**_segment_view(segment), "frase": frases[segment.id]} for segment in told
+                {
+                    **_segment_view(segment),
+                    "frase": frases[segment.id],
+                    **_scene(keys, segment.take_id),
+                }
+                for segment in told
             ],
             "findings": [_finding_view(finding) for finding in telling_back.findings],
             "played_by_take": [
@@ -545,13 +655,20 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         + findings_remaining(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
-    approved = await _release_of(db, session, artifact["package_sha256"])
+    check = _check_block(
+        telling_back,
+        told,
+        session.id,
+        keys=keys,
+        heard_complete=not unheard,
+        version=None,
+        forced=False,
+    )
+    approved = await _release_of(db, session, {**artifact, "check": check})
     artifact["release_id"] = approved.packet["release_id"] if approved else None
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
-    artifact["check"] = _check_block(
-        telling_back, told, session.id, heard_complete=not unheard, version=None, forced=False
-    )
+    artifact["check"] = check
     artifact["language"] = await _mother_tongue(db, session)
     artifact["session_language"] = session.language
     artifact["audio_format"] = (
@@ -578,8 +695,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     The team that disagrees has a road, and it is older than this one: the raised hand, active
     the whole session, answered by a person. If that person agrees with the team, a facilitator
     forces the release with their own code, and the force is recorded on the row.
-    ``FORCEABLE_BLOCKERS`` is the whole of what a force sets aside, and ``approve_release`` is
-    where it is named, because that is where somebody decided it;
+    ``UNFORCEABLE_BLOCKERS`` is the whole of what a force never sets aside, and
+    ``approve_release`` is where it is applied, because that is where somebody decided it;
     ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
     is out of reach of any of it, because a panorama is not a draft of a passage at all.
 
@@ -598,15 +715,15 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
 
 async def _release_of(
-    db: AsyncSession, session: IRSession, package_sha256: str
+    db: AsyncSession, session: IRSession, packet: dict[str, Any]
 ) -> IRRelease | None:
     """The release this content *is*, if this content is the approved draft of the passage.
 
     Literally the question the approval asks, over the same row: the last release of this
-    pericope and project, kept only when its hash is the fresh one. Scoping it to the session
-    instead would let the composer and the approval disagree — after another conversation
-    about the same passage approved a v2, a read of the first session would still name its
-    v1 while approving it would mint a v3, and the packet would name a draft that is no
+    pericope and project, kept only when it is the same draft (``same_draft``). Scoping it to
+    the session instead would let the composer and the approval disagree — after another
+    conversation about the same passage approved a v2, a read of the first session would still
+    name its v1 while approving it would mint a v3, and the packet would name a draft that is no
     longer the one the passage is on.
 
     A session that names no project has no release to be: the number is per project.
@@ -614,7 +731,7 @@ async def _release_of(
     if session.project_id is None:
         return None
     latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is None or latest.package_sha256 != package_sha256:
+    if latest is None or not same_draft(latest.packet, packet):
         return None
     return latest
 
@@ -713,17 +830,17 @@ async def approve_release(
     The session names a project: the number is per project and per pericope, and both doors
     that reach here — the team's and the facilitator's force — refuse a session that names
     none as not found before calling. The blockers the packet raises are the gate, and
-    ``forced_by`` is the one thing that moves it: named, the two codes of
-    ``FORCEABLE_BLOCKERS`` are waived and the row records who forced it, when, and which
-    findings were open at that moment. Everything else still refuses, under a force exactly
-    as without one.
+    ``forced_by`` is the one thing that moves it: named, every blocker but
+    ``UNFORCEABLE_BLOCKERS`` is waived and the row and the packet's check block record who
+    forced it, when, which findings were open at that moment and which blockers it passed
+    (ADR 0075). ``no_rehearsal_audio`` still refuses, under a force exactly as without one.
 
     ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
     together: a force comes from the Desk, where there is a person and no device.
 
-    A force with nothing to waive is still a force and is still recorded as one, with an
-    empty list of findings. The act was the facilitator's, and a row that hid that would say
-    the team approved a draft the team did not approve.
+    A force with nothing to waive is still a force and is still recorded as one, with empty
+    lists of findings and of blockers passed. The act was the facilitator's, and a row that
+    hid that would say the team approved a draft the team did not approve.
 
     What is open at that moment is dumped from the state the packet was composed from and not
     copied out of the packet's own list, which is what lets the two differ by the analyst's
@@ -749,7 +866,7 @@ async def approve_release(
     finding somebody overruled. A stretch captured without words after the approval is the
     case that shows the reach: the packet carries only the stretches the team told back, so
     its hash does not move, and the team is answered with that release while
-    ``untold_stretch``, which no force waives, stands. That is the rule ADR 0014 wrote — the
+    ``untold_stretch``, which the team cannot waive, stands. That is the rule ADR 0014 wrote — the
     number says which content was approved, and this content was — and it is wider than the
     force it was reopened for.
 
@@ -760,10 +877,11 @@ async def approve_release(
 
     The check block is stamped here and nowhere else, from the row this call is writing: the
     composer could not know the version or the force, because neither exists until the number
-    is allocated. Only those two and the status they derive are rewritten — the rest of the
-    block is about the telling-back, which the compare-first read has already established is
-    the same telling-back. The early return above writes nothing, so a packet a facilitator
-    forced comes back saying so however many times the team asks again (ADR 0020).
+    is allocated. Only those two, the status they derive and the force's who, when and blockers
+    passed are rewritten — the rest of the block is about the telling-back, which the
+    compare-first read has already established is the same telling-back. The early return
+    above writes nothing, so a packet a facilitator forced comes back saying so however many
+    times the team asks again (ADR 0020).
 
     The house loop for this shape retries the allocation instead — ``tier_a_service`` and
     ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
@@ -781,20 +899,25 @@ async def approve_release(
 
     packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+    if latest is not None and same_draft(latest.packet, packet):
         await refuse_if_archived(db, session)
         return latest
 
-    _judge(blockers, FORCEABLE_BLOCKERS if forced_by else frozenset())
+    _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
+    passed = sorted(set(blockers)) if forced_by else None
 
     row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
     forced = forced_by is not None
+    forced_at = datetime.now(UTC) if forced else None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
+    packet["check"]["forcedBy"] = forced_by
+    packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
+    packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
         id=row_id,
         session_id=session.id,
@@ -805,11 +928,14 @@ async def approve_release(
         packet=packet,
         device_id=device_id,
         forced_by=forced_by,
-        forced_at=datetime.now(UTC) if forced_by else None,
+        forced_at=forced_at,
+        forced_blockers=passed,
         forced_open_findings=(
             [
                 finding.model_dump(mode="json")
-                for finding in await _standing_findings(db, session, await takes_of(db, session.id))
+                for finding in (
+                    await _standing(db, session, await takes_of(db, session.id))
+                ).findings
             ]
             if forced_by
             else None
