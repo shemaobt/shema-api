@@ -529,3 +529,61 @@ async def test_an_open_hand_has_no_moment_to_report(client, db_session) -> None:
     _user, headers = await a_facilitator(db_session, team)
 
     assert (await read(client, headers))["questions"][0]["heard_at"] is None
+
+
+async def test_two_open_one_answered_one_resolved_read_open_total_2_answered_total_2_on_every_page(
+    client, db_session
+):
+    team = await a_team(db_session, name="Equipe Terena")
+    await a_hand(db_session, team, ago=timedelta(hours=1))
+    await a_hand(db_session, team, ago=timedelta(hours=2))
+    await a_hand(db_session, team, ago=timedelta(hours=3), status=IRQuestionStatus.ANSWERED)
+    await a_hand(db_session, team, ago=timedelta(hours=4), status=IRQuestionStatus.RESOLVED)
+    _user, headers = await a_facilitator(db_session, team)
+
+    pages = [await read(client, headers, limit=1)]
+    while pages[-1]["next_cursor"] is not None:
+        pages.append(await read(client, headers, limit=1, cursor=pages[-1]["next_cursor"]))
+
+    assert len(pages) == 4
+    assert [(p["open_total"], p["answered_total"]) for p in pages] == [(2, 2)] * 4
+
+
+async def test_a_team_with_no_question_reads_both_totals_0(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    _user, headers = await a_facilitator(db_session, team)
+
+    payload = await read(client, headers)
+
+    assert (payload["open_total"], payload["answered_total"]) == (0, 0)
+
+
+async def test_two_teams_and_the_inbox_asked_for_one_count_that_teams_questions_only(
+    client, db_session
+):
+    asked = await a_team(db_session, name="Equipe Terena")
+    other = await a_team(db_session, name="Equipe Guarani")
+    await a_hand(db_session, asked)
+    await a_hand(db_session, asked, status=IRQuestionStatus.ANSWERED)
+    await a_hand(db_session, other)
+    await a_hand(db_session, other, status=IRQuestionStatus.ANSWERED)
+    await a_hand(db_session, other, status=IRQuestionStatus.RESOLVED)
+    _user, headers = await a_facilitator(db_session, asked, other)
+
+    payload = await read(client, headers, team_id=asked.id)
+
+    assert (payload["open_total"], payload["answered_total"]) == (1, 1)
+
+
+async def test_answered_total_ignores_the_status_filter(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    await a_hand(db_session, team)
+    await a_hand(db_session, team, status=IRQuestionStatus.ANSWERED)
+    await a_hand(db_session, team, status=IRQuestionStatus.RESOLVED)
+    _user, headers = await a_facilitator(db_session, team)
+
+    only_open = await read(client, headers, status="open")
+    only_answered = await read(client, headers, status="answered")
+
+    assert only_open["answered_total"] == 2
+    assert only_answered["answered_total"] == 2
