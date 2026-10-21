@@ -17,6 +17,7 @@ from tests.release_harness import PREFIX
 from tests.room_harness import (
     PART_MS,
     rehearsed_in_parts,
+    rehearsed_in_parts_of,
     room_client,
     the_bucket_is_in_memory,
     upload_a_part,
@@ -88,3 +89,23 @@ async def test_the_stale_stretches_follow_the_order_of_the_passage_not_the_order
     assert [row["segment_id"] for row in stale] == [by_part[two.id], by_part[three.id]], (
         "as regravadas voltavam na ordem em que foram regravadas, não na ordem da passagem"
     )
+
+
+async def test_the_stale_stretches_of_a_whole_recording_leave_when_the_team_records_by_scene(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, (_whole,) = await rehearsed_in_parts_of(db_session, [3], told_whole=True)
+    told = [row.id for row in await current_segments(db_session, session.id)]
+    again = await upload_a_part(client, session.id, part=None, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    asked = await _read_asking_for_stale(client, session.id)
+    assert [row["segment_id"] for row in asked if row["stale"]] == told, (
+        "o ensaio inteiro regravado devia continuar listado enquanto ainda é uma parte"
+    )
+
+    scene = await upload_a_part(client, session.id, part=1, audio=NEW_AUDIO + b"1")
+    assert scene.status_code == 200, scene.text
+
+    assert [
+        row for row in await _read_asking_for_stale(client, session.id) if row["stale"]
+    ] == [], "o ensaio inteiro já era história quando a equipe passou a gravar por cena"

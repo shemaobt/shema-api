@@ -529,7 +529,8 @@ async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     rows = await _in_reading_order(
         db, session_id, IRSegment.stale.is_(True), IRSegment.superseded_by_id.is_(None)
     )
-    return [row for row, divided in _read_in_order(rows) if not divided]
+    set_aside = await set_aside_segment_ids(db, session_id)
+    return [row for row, divided in _read_in_order(rows) if not divided and row.id not in set_aside]
 
 
 async def segment_by_id(db: AsyncSession, segment_id: str) -> IRSegment:
