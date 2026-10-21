@@ -20,9 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
+    ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+    ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+    ERROR_CODE_PAUSE_PAST_THE_END,
     ConflictError,
     FraseOutOfPlace,
     NotFoundError,
+    PauseCannotMove,
     RestartOutOfOrder,
     SceneRehearsalSending,
     SceneRehearsalSent,
@@ -54,6 +58,7 @@ from app.services.internalization_room.opening_claim import (
     answer_around_the_opening,
     oldest_live_claim,
 )
+from app.services.internalization_room.segments import refuse_a_frase_under_the_floor
 from app.services.internalization_room.takes import (
     TakeStore,
     checked_recording,
@@ -410,27 +415,67 @@ def _refuse_a_place_outside(rehearsal: IRSceneRehearsal, starts_ms: int, ends_ms
         )
 
 
-async def _current_of_the_chain(
-    db: AsyncSession, rehearsal: IRSceneRehearsal, replaces: str, attempt: str | None
-) -> str:
+def _current_of_the_chain(frases: Sequence[IRSceneFrase], replaces: str) -> IRSceneFrase:
     """The current frase of the chain `replaces` belongs to, whichever version it names.
 
     A team that records one frase again offline, and again, can only name the version it had.
     """
-    found = await db.scalars(
-        select(IRSceneFrase).where(
-            IRSceneFrase.rehearsal_id == rehearsal.id,
-            IRSceneFrase.attempt.is_not_distinct_from(attempt),
-        )
-    )
-    frases = list(found)
-    if replaces not in {frase.id for frase in frases}:
+    by_id = {frase.id: frase for frase in frases}
+    if replaces not in by_id:
         raise UnknownReferenceError(f"Scene frase {replaces} is not a frase of this attempt")
     replacing = replaced_by(frases)
     current = replaces
     while current in replacing:
         current = replacing[current]
-    return current
+    return by_id[current]
+
+
+def _refuse_a_pause_that_cannot_move(
+    rehearsal: IRSceneRehearsal,
+    frases: Sequence[IRSceneFrase],
+    *,
+    named: IRSceneFrase,
+    head: IRSceneFrase,
+    starts_ms: int,
+    ends_ms: int,
+) -> None:
+    """A **Moved pause** stands only on the last frase of its attempt, from that frase's start
+    to an end inside the recording; the first refusal that applies wins, in her order.
+
+    A frase over the place of its chain's newest version is that frase translated again, and
+    lands there. A move against a version replaced since, from another start, or shorter than
+    the shortest frase cannot stand there. The last frase is read among the attempt's `frases`,
+    in place order, set-aside ones counted, and on a tie at the end the later one is last, as
+    the Ensaio Final reads it; so a move held for its restart or overtaken by one is kept as
+    any frase of that attempt is.
+    """
+    if (starts_ms, ends_ms) == (head.starts_ms, head.ends_ms):
+        return
+    if head is not named:
+        raise PauseCannotMove(
+            f"Scene frase {named.id} was replaced by {head.id} since it was read",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    replacing = replaced_by(frases)
+    standing = [frase for frase in frases if frase.id not in replacing]
+    last = max(reversed(standing), key=lambda frase: frase.ends_ms, default=None)
+    if last is not named:
+        raise PauseCannotMove(
+            "The pause moves only on the last frase of the scene rehearsal",
+            ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+        )
+    if starts_ms != named.starts_ms:
+        raise PauseCannotMove(
+            f"A moved pause keeps its frase from {named.starts_ms} ms, not from {starts_ms} ms",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    refuse_a_frase_under_the_floor(starts_ms, ends_ms)
+    if rehearsal.duration_ms is not None and ends_ms > rehearsal.duration_ms:
+        raise PauseCannotMove(
+            f"A pause at {ends_ms} ms falls past the end of a recording of "
+            f"{rehearsal.duration_ms} ms",
+            ERROR_CODE_PAUSE_PAST_THE_END,
+        )
 
 
 async def _place_the_frase(
@@ -444,30 +489,42 @@ async def _place_the_frase(
 ) -> str | None:
     """The chain head the frase replaces, once its place is free.
 
-    A frase over a stretch a current frase of its attempt holds is out of place, unless it
-    replaces that frase. Frases that only touch at an edge do not overlap.
+    The attempt's frases are read once. A frase that names another is refused first as a
+    pause that cannot move. A frase over a stretch a current frase of its attempt holds is out
+    of place, unless it replaces that frase. Frases that only touch at an edge do not overlap.
     """
-    head = (
-        None if replaces is None else await _current_of_the_chain(db, rehearsal, replaces, attempt)
-    )
     found = await db.scalars(
-        select(IRSceneFrase).where(
+        select(IRSceneFrase)
+        .where(
             IRSceneFrase.rehearsal_id == rehearsal.id,
-            IRSceneFrase.restart_id.is_(None),
             IRSceneFrase.attempt.is_not_distinct_from(attempt),
         )
+        .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
     )
     frases = list(found)
-    superseded = replaced_by(frases)
-    for frase in frases:
-        if frase.id in superseded or frase.id == head:
+    head = None
+    if replaces is not None:
+        head = _current_of_the_chain(frases, replaces)
+        _refuse_a_pause_that_cannot_move(
+            rehearsal,
+            frases,
+            named=next(frase for frase in frases if frase.id == replaces),
+            head=head,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+        )
+    _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
+    current = [frase for frase in frases if frase.restart_id is None]
+    superseded = replaced_by(current)
+    for frase in current:
+        if frase.id in superseded or frase is head:
             continue
         if starts_ms < frase.ends_ms and frase.starts_ms < ends_ms:
             raise FraseOutOfPlace(
                 f"A frase from {starts_ms} ms to {ends_ms} ms overlaps the frase {frase.id}, "
                 f"from {frase.starts_ms} ms to {frase.ends_ms} ms"
             )
-    return head
+    return None if head is None else head.id
 
 
 async def _refuse_another_rehearsals_attempt(
@@ -519,16 +576,17 @@ async def keep_a_frase(
     is refused as `WordlessTelling`, becoming no frase. Hearing takes seconds, so what it lands
     on is read again under the rehearsal's lock, which a restart takes too: the same frase
     resent meanwhile is answered with the first, a rehearsal sent meanwhile refuses the frase,
-    one archived meanwhile stamps it, one restarted meanwhile sets it aside, and a frase replaced
-    meanwhile is replaced at its newest. A frase that lands over a stretch a current frase holds
-    is out of place, so two frases posted at once over one stretch keep only one.
+    one archived meanwhile stamps it, one restarted meanwhile sets it aside, a **Moved pause**
+    whose frase stopped being the last of its attempt meanwhile is refused, and a frase
+    translated again over its chain's newest place is replaced there. A frase that lands over a
+    stretch a current frase holds is out of place, so two frases posted at once over one stretch
+    keep only one.
     """
     sha256 = recording_digest(audio)
     already = await _the_same_frase(db, rehearsal.id, sha256)
     if already is not None:
         return already
     await _refuse_a_standing_claim(db, rehearsal)
-    _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
     if after_restart is not None:
         await _refuse_another_rehearsals_attempt(db, rehearsal, after_restart)
     await _place_the_frase(

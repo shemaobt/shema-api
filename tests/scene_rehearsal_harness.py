@@ -175,6 +175,7 @@ async def translate(
     *,
     replaces: str | None = None,
     after_restart: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     starts, ends = place
     data = {
@@ -191,6 +192,7 @@ async def translate(
         f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
         data=data,
         files={"file": ("frase.wav", audio, "audio/wav")},
+        headers=headers,
     )
 
 
@@ -219,6 +221,10 @@ async def read_by_b(room: Room, session_id: str) -> list[dict[str, Any]]:
 async def frases_read_by_b(room: Room, session_id: str) -> list[dict[str, Any]]:
     (rehearsal,) = await read_by_b(room, session_id)
     return list(rehearsal["frases"])
+
+
+def current(frases: list[dict[str, Any]]) -> list[tuple[int, int]]:
+    return [(f["starts_ms"], f["ends_ms"]) for f in frases if f["replaced_by"] is None]
 
 
 async def count(db: AsyncSession, table: str, column: str, value: str) -> int:

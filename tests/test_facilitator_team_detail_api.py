@@ -36,6 +36,7 @@ from app.services.internalization_room.canon.elements import element_keys, eleme
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    an_email,
     grant_facilitator_app_role,
     having_finished_the_passage,
     make_language,
@@ -86,7 +87,8 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-async def a_facilitator(db: AsyncSession, *, email: str, tongue: str = "Terena"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None, tongue: str = "Terena"):
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await make_language(db, name=tongue, code=f"d{next(_codes):02d}")
     project = await make_project(db, language.id, name=f"Equipe {email.split('@')[0]}")
@@ -418,3 +420,10 @@ async def test_the_answer_does_not_pay_per_bead_or_per_team(
 
     assert len(against_events) <= 2, f"mais de duas leituras dos eventos: {against_events}"
     assert len(seen) <= 5, f"a resposta custou {len(seen)} statements: {seen}"
+
+
+async def test_two_default_facilitators_get_two_different_project_names(db_session):
+    _first, first_team, _ = await a_facilitator(db_session)
+    _second, second_team, _ = await a_facilitator(db_session)
+
+    assert first_team.name != second_team.name

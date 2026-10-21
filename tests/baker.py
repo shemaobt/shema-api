@@ -115,14 +115,14 @@ SAMPLE_MM_DATA: dict = {
 async def make_user(
     db: AsyncSession,
     *,
-    email: str = "user@example.com",
+    email: str | None = None,
     password: str = "password123",
     display_name: str | None = "Test User",
     is_active: bool = True,
     is_platform_admin: bool = False,
 ) -> User:
     user = User(
-        email=email.lower(),
+        email=(email or an_email()).lower(),
         password_hash=hash_password(password),
         display_name=display_name,
         is_active=is_active,
@@ -246,6 +246,13 @@ _language_codes = itertools.count()
 
 def _next_language_code() -> str:
     return f"{next(_language_codes) % 1000:03d}"
+
+
+_emails = itertools.count()
+
+
+def an_email() -> str:
+    return f"user{next(_emails)}@example.com"
 
 
 async def a_language(
