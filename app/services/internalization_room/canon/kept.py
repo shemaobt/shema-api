@@ -1,4 +1,4 @@
-"""The canon a session opened with, kept under its pin until its passage is approved."""
+"""The canon a session opened with, kept under its pin while its session is live."""
 
 from __future__ import annotations
 

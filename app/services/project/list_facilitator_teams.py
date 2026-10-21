@@ -51,6 +51,7 @@ from app.models.team import (
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import active_passages
 from app.services.internalization_room.team_sessions import canon_pins_of
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
@@ -72,17 +73,21 @@ def _last_activity_subquery(scope: Select | None) -> Subquery:
     internalization-room repository). It is not a room of the team, so it must not move
     them up a facilitator's queue; `entered()` excludes it from this leg alone; the question
     and take legs read every row they always did.
+
+    **A zeroed passage's work is left out (ADR 0047).** The session leg and the take leg ask
+    `live()` of the session, because a take written after its session's Zerar is not stamped.
+    The question leg keeps every hand: hands are never stamped and stay the field's signal.
     """
     moments = union_all(
         select(IRSession.project_id.label("project_id"), IRSession.updated_at.label("at")).where(
-            _within(IRSession.project_id, scope), entered()
+            _within(IRSession.project_id, scope), entered(), live()
         ),
         select(IRQuestion.project_id.label("project_id"), IRQuestion.created_at.label("at")).where(
             _within(IRQuestion.project_id, scope)
         ),
-        select(IRTake.project_id.label("project_id"), IRTake.created_at.label("at")).where(
-            _within(IRTake.project_id, scope)
-        ),
+        select(IRTake.project_id.label("project_id"), IRTake.created_at.label("at"))
+        .outerjoin(IRSession, IRSession.id == IRTake.session_id)
+        .where(_within(IRTake.project_id, scope), live()),
     ).subquery()
     return (
         select(moments.c.project_id, func.max(moments.c.at).label("last_activity_at"))

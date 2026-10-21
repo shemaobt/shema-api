@@ -479,6 +479,13 @@ class KeptTakeView(BaseModel):
     audio_url: str
 
 
+class ApprovedDraftView(BaseModel):
+    version: int
+    release_id: str
+    approved_at: str
+    forced: bool
+
+
 class SessionStateResponse(BaseModel):
     session_id: str
     pericope: str
@@ -504,6 +511,10 @@ class SessionStateResponse(BaseModel):
     opened: bool = False
     moment: MomentView | None = None
     kept_takes: list[KeptTakeView] = Field(default_factory=list)
+    #: The approval this session's draft stands under, while the passage's latest release
+    #: carries the hash of the packet the session composes now (ADR 0071); null otherwise, and
+    #: always null on a panorama. Derived on every read, never stored.
+    approved: ApprovedDraftView | None = None
 
 
 class TurnResponse(BaseModel):
