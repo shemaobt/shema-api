@@ -40,6 +40,7 @@ from tests.release_harness import (
     desk_release,
     desk_retro,
     ensaio_take,
+    ready_session,
     rehearsed_session,
     releases_of,
     reported_playback,
@@ -352,7 +353,8 @@ async def test_a_release_forced_before_forced_blockers_existed_still_reads_as_fo
     forced = await room.post(desk_release(session.id), headers=desk, json=FORCE)
     assert forced.status_code == 200, forced.text
     (row,) = await releases_of_team(db_session, team.id)
-    check = {key: value for key, value in row.packet["check"].items() if key != "forcedBlockers"}
+    added_since = {"forcedBy", "forcedAt", "forcedBlockers"}
+    check = {key: value for key, value in row.packet["check"].items() if key not in added_since}
     packet = {**row.packet, "check": check}
     await db_session.execute(
         update(IRRelease).where(IRRelease.id == row.id).values(forced_blockers=None, packet=packet)
@@ -427,3 +429,23 @@ async def test_after_a_zerar_the_passage_force_releases_the_live_session_and_not
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["session_id"] == live_one.id
+
+
+async def test_forcing_a_passage_whose_content_the_team_already_released_returns_the_teams_release(
+    room, db_session, room_app
+):
+    team, tablet = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=team.id)
+    approved = await room.post(team_release(session.id), headers=team_headers(tablet))
+    assert approved.status_code == 200, approved.text
+    desk, _facilitator = await at_the_desk(db_session, room_app, team)
+
+    forced = await room.post(desk_passage_release(team.id, P), headers=desk, json=FORCE)
+
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["release_id"] == approved.json()["release_id"]
+    assert forced.json()["version"] == 1
+    assert forced.json()["forced_at"] is None
+    (row,) = await releases_of_team(db_session, team.id)
+    assert row.forced_by is None
+    assert row.forced_blockers is None
