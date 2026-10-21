@@ -51,8 +51,11 @@ router = APIRouter()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def segment_views(stretches: list[IRSegment]) -> list[SegmentView]:
+def segment_views(
+    stretches: list[IRSegment], stale: list[IRSegment] | None = None
+) -> list[SegmentView]:
     numbers = room.frase_numbers(room.told_back(stretches))
+    asked = stale is not None
     return [
         SegmentView(
             segment_id=segment.id,
@@ -63,8 +66,9 @@ def segment_views(stretches: list[IRSegment]) -> list[SegmentView]:
             told=segment.transcript is not None,
             bridge_take_id=segment.bridge_take_id,
             frase=numbers.get(segment.id),
+            stale=segment.stale if asked else None,
         )
-        for segment in stretches
+        for segment in [*stretches, *(stale or [])]
     ]
 
 

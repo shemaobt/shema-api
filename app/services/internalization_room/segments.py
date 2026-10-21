@@ -524,6 +524,20 @@ async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     return list(result.scalars().all())
 
 
+async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
+    """The stretches of a part recorded again that nobody has told again, oldest first."""
+    result = await db.execute(
+        select(IRSegment)
+        .where(
+            IRSegment.session_id == session_id,
+            IRSegment.stale.is_(True),
+            IRSegment.superseded_by_id.is_(None),
+        )
+        .order_by(IRSegment.superseded_at, IRSegment.created_at)
+    )
+    return list(result.scalars().all())
+
+
 async def segment_by_id(db: AsyncSession, segment_id: str) -> IRSegment:
     """One stretch by its own address, whether it still counts or not."""
     result = await db.execute(select(IRSegment).where(IRSegment.id == segment_id))
@@ -603,6 +617,8 @@ async def retire_the_segments_of(
     if not going:
         return going
     _stop_counting(going)
+    for row in going:
+        row.stale = True
     await db.flush()
     return going
 

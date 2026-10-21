@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -68,3 +68,19 @@ async def device_project(caller: Device = linked_tablet_dep) -> str:
 
 
 device_project_dep = Depends(device_project)
+
+
+async def include_stale(
+    include_stale: bool = Query(
+        default=False,
+        description=(
+            "Ask for the stretches of a part the team recorded again, kept marked `stale` "
+            "beside the ones that count (ADR 0023). Without it the stretch list is exactly "
+            "the stretches that count, and no stretch carries a `stale` key."
+        ),
+    ),
+) -> bool:
+    return include_stale
+
+
+include_stale_dep = Depends(include_stale)

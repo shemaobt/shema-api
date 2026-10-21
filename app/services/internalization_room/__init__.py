@@ -40,6 +40,7 @@ from app.services.internalization_room.segments import (
     segment_by_id,
     segment_for_session,
     set_aside_segment_ids,
+    stale_segments,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -139,6 +140,7 @@ __all__ = [
     "session_is_done",
     "sessions_waiting_on_a_person",
     "set_aside_segment_ids",
+    "stale_segments",
     "start_the_translation_over",
     "stored_as_done",
     "synthesize_facilitator_speech",
