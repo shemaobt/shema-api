@@ -517,7 +517,7 @@ async def _finished(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=verdict.outcome.fixed_line,
-        checked=verdict.checked,
+        checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
         findings=finding_views(shown.findings),
