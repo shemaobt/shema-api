@@ -175,6 +175,7 @@ async def translate(
     *,
     replaces: str | None = None,
     after_restart: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     starts, ends = place
     data = {
@@ -191,6 +192,7 @@ async def translate(
         f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
         data=data,
         files={"file": ("frase.wav", audio, "audio/wav")},
+        headers=headers,
     )
 
 

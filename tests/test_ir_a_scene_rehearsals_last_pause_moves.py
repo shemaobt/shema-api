@@ -51,15 +51,8 @@ async def kept_by_b(
     *,
     replaces: str | None = None,
 ) -> None:
-    starts, ends_ms = place
-    data = {"starts_ms": str(starts), "ends_ms": str(ends_ms)}
-    if replaces is not None:
-        data["replaces"] = replaces
-    kept = await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
-        data=data,
-        files={"file": ("frase.wav", audio, "audio/wav")},
-        headers=room.tablet_b,
+    kept = await translate(
+        room, session_id, rehearsal_id, place, audio, replaces=replaces, headers=room.tablet_b
     )
     assert kept.status_code == 200, kept.text
 
@@ -97,6 +90,28 @@ async def test_the_last_frases_pause_moves_later_and_the_frase_takes_the_new_spa
     assert current(frases) == [(0, 5000), (5000, 11000), (11000, 18500)]
     replacing = next(f["frase_id"] for f in frases if f["ends_ms"] == 18500)
     assert {f["frase_id"]: f["replaced_by"] for f in frases}[third] == replacing
+
+
+async def test_the_last_frases_pause_moves_again_after_it_moved_earlier(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    *_, third = await translated(room, session_id, rehearsal_id, THREE)
+    moved = await translate(
+        room, session_id, rehearsal_id, (11000, 15000), recording(1, 900), replaces=third
+    )
+    assert moved.status_code == 200, moved.text
+    (moved_third,) = [f["frase_id"] for f in moved.json()["frases"] if f["ends_ms"] == 15000]
+
+    again = await translate(
+        room, session_id, rehearsal_id, (11000, 16000), recording(1, 901), replaces=moved_third
+    )
+
+    assert again.status_code == 200, again.text
+    frases = await frases_read_by_b(room, session_id)
+    assert current(frases) == [(0, 5000), (5000, 11000), (11000, 16000)]
+    assert next(f for f in frases if f["ends_ms"] == 16000)["replaces"] == moved_third
 
 
 async def test_the_last_frases_pause_moves_earlier(room: Room, db_session: AsyncSession) -> None:
@@ -340,6 +355,50 @@ async def test_a_move_that_leaves_the_frase_shorter_than_two_tenths_of_a_second_
     assert current(await frases_read_by_b(room, session_id)) == THREE
 
 
+@pytest.mark.parametrize(
+    ("ends_ms", "code"),
+    [
+        pytest.param(11200, None, id="200 ms stands"),
+        pytest.param(11199, "PAUSE_CANNOT_STAND_THERE", id="199 ms cannot stand"),
+    ],
+)
+async def test_a_moved_pause_leaves_its_frase_at_least_two_tenths_of_a_second(
+    room: Room, db_session: AsyncSession, ends_ms: int, code: str | None
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    *_, third = await translated(room, session_id, rehearsal_id, THREE)
+
+    answered = await translate(
+        room, session_id, rehearsal_id, (11000, ends_ms), recording(1, 900), replaces=third
+    )
+
+    assert answered.status_code == (200 if code is None else 400), answered.text
+    assert answered.json().get("code") == code
+
+
+@pytest.mark.parametrize(
+    ("ends_ms", "code"),
+    [
+        pytest.param(40000, None, id="at the end stands"),
+        pytest.param(40001, "PAUSE_PAST_THE_END", id="past the end"),
+    ],
+)
+async def test_a_moved_pause_may_reach_the_end_of_the_recording_and_no_further(
+    room: Room, db_session: AsyncSession, ends_ms: int, code: str | None
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    *_, third = await translated(room, session_id, rehearsal_id, THREE)
+
+    answered = await translate(
+        room, session_id, rehearsal_id, (11000, ends_ms), recording(1, 900), replaces=third
+    )
+
+    assert answered.status_code == (200 if code is None else 400), answered.text
+    assert answered.json().get("code") == code
+
+
 async def test_an_earlier_frase_translated_again_over_its_own_place_is_accepted(
     room: Room, db_session: AsyncSession
 ) -> None:
@@ -355,6 +414,56 @@ async def test_an_earlier_frase_translated_again_over_its_own_place_is_accepted(
     frases = await frases_read_by_b(room, session_id)
     assert current(frases) == THREE
     assert {f["frase_id"]: f["replaced_by"] for f in frases}[second] is not None
+
+
+async def test_two_translations_again_over_one_place_at_once_both_stay_chained(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    *_, third = await translated(room, session_id, rehearsal_id, THREE)
+
+    async def b_translates_again() -> None:
+        await kept_by_b(
+            room, session_id, rehearsal_id, (11000, 17000), recording(1, 800), replaces=third
+        )
+
+    room.while_hearing.append(b_translates_again)
+    again = await translate(
+        room, session_id, rehearsal_id, (11000, 17000), recording(1, 900), replaces=third
+    )
+
+    assert again.status_code == 200, again.text
+    frases = await frases_read_by_b(room, session_id)
+    assert current(frases) == THREE
+    of_the_place = [f for f in frases if f["starts_ms"] == 11000]
+    assert len(of_the_place) == 3
+    (newest,) = [f for f in of_the_place if f["replaced_by"] is None]
+    (b_s,) = [f for f in of_the_place if f["replaces"] == third]
+    assert newest["replaces"] == b_s["frase_id"]
+
+
+async def test_on_a_tie_at_the_end_the_later_frase_is_the_last_one(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+    landed = await restart(room, session_id, rehearsal_id)
+    assert landed.status_code == 200, landed.text
+    for place, tone in (((11000, 17000), 800), ((12000, 17000), 801)):
+        late = await translate(room, session_id, rehearsal_id, place, recording(1, tone))
+        assert late.status_code == 200, late.text
+    ((later,),) = [
+        [f["frase_id"] for f in kept["frases"] if f["starts_ms"] == 12000]
+        for kept in (await read_by_the_desk(room, session_id))["restarts"]
+    ]
+
+    moved = await translate(
+        room, session_id, rehearsal_id, (12000, 18000), recording(1, 900), replaces=later
+    )
+
+    assert moved.status_code == 200, moved.text
 
 
 async def test_after_a_restart_the_old_frases_stay_for_the_consultant(

@@ -180,27 +180,6 @@ async def test_a_frase_of_an_attempt_whose_restart_has_not_landed_is_kept_over_t
     assert await current_places(room, session_id) == [(0, 4000)]
 
 
-async def test_a_frase_replacing_a_chain_by_the_version_it_had_is_kept_over_the_replaced_ones(
-    room: Room, db_session: AsyncSession
-) -> None:
-    session_id = await a_session(db_session)
-    rehearsal_id = await recorded(room, session_id)
-    (first,) = await translated(room, session_id, rehearsal_id, [(0, 4000)])
-    again = await translate(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 900), replaces=first
-    )
-    assert again.status_code == 200, again.text
-
-    once_more = await translate(
-        room, session_id, rehearsal_id, (0, 4000), recording(1, 901), replaces=first
-    )
-
-    assert once_more.status_code == 200, once_more.text
-    assert await current_places(room, session_id) == [(0, 4000)]
-    (standing,) = [f for f in once_more.json()["frases"] if f["replaced_by"] is None]
-    assert standing["frase_id"] not in {first, *(f["frase_id"] for f in again.json()["frases"])}
-
-
 async def test_a_late_frase_of_an_attempt_a_restart_closed_is_kept_set_aside_over_the_frase_it_set_aside(  # noqa: E501
     room: Room, db_session: AsyncSession
 ) -> None:
