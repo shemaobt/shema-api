@@ -28,6 +28,13 @@ the passage, like the Zerar: the server picks the passage's live session that ho
 the most recently active if there are several. The team's own route still refuses every blocker:
 approval stays the team's act and forcing the facilitator's (ADR 0019's second half holds).
 
+The packet records the force as the row does. Who forced it, when and the blockers it passed
+travel in the **Check block** beside `forced`, as `forcedBy`, `forcedAt` and `forcedBlockers`:
+our names, not Marcia's, in the one block ADR 0020 otherwise keeps in hers. They are outside
+the hash, so forcing unchanged content still returns the release that exists, and null when
+nobody forced. `forcedBy` is the Desk user's id. They are added keys, so the schema version
+does not move (ADR 0020).
+
 Consequence: a release with untold or unanalysed frases can reach Refine, marked forced and naming
 what it passed. That is the facilitator's responsibility, taken in person, which is the whole point
 of her force; a passage that cannot be forced stays stuck for good, which was the defect.

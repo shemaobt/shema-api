@@ -9,14 +9,12 @@ The release fails closed. A blocker means the session is not ready to travel —
 partial artifact — because a package missing the rehearsal audio, the telling-back, the
 analyst's reading of it or a stretch nobody told back would look downstream exactly like a
 finished one; so would one composed for a panorama, which is not a draft of a passage at all.
-Those are missing material, and nothing overrules them: there is nothing in a rehearsal nobody
-recorded for anybody to overrule.
 
-The other two are Marcia's gate — an open finding the telling-back still carries, and a part
-of the rehearsal the team never heard through — and they are a dispute rather than a hole.
-A person can look at either and disagree, and only a facilitator's own code opens that door
-(ADR 0019). The output is always labeled ``first_team_rehearsal`` / ``ready_for_refine``:
-the system never claims to have understood or approved the mother-tongue recording itself.
+Only a facilitator's force moves the gate, and it passes every blocker but a rehearsal nobody
+recorded, naming on the release the blockers it passed (ADR 0075): there is nothing in a
+rehearsal nobody recorded to send. The output is always labeled ``first_team_rehearsal`` /
+``ready_for_refine``: the system never claims to have understood or approved the mother-tongue
+recording itself.
 """
 
 from __future__ import annotations
@@ -92,11 +90,9 @@ from app.utils.stored_time import as_utc
 #: v0.9 with ``key`` on every rehearsal take and ``scene`` on every frase (ADR 0078).
 SCHEMA_VERSION = "tripod.internalization-release.v0.9"
 
-#: The whole of what a facilitator's code can set aside, and the one place that says so. They
-#: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
-#: two a person can disagree about after looking at them. Every other blocker is missing
-#: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
-FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
+#: What a facilitator's force never passes, and the one place that says so: every other blocker
+#: yields to it, but there is nothing to send of a passage nobody recorded (ADR 0075).
+UNFORCEABLE_BLOCKERS = frozenset({"no_rehearsal_audio"})
 
 #: The two the tablet has a door for and the team's own route names ground on: an unheard part
 #: by its take and an untold stretch by its own id (ADR 0028). One name for the set so the
@@ -354,7 +350,8 @@ def _check_block(
 
     ``version`` and ``forced`` are facts of the release row, which is written after the packet
     is built, so they are the caller's to hand in: null and false on the live read, the row's
-    own on the approval (ADR 0020).
+    own on the approval (ADR 0020). So are who forced it, when and the blockers it passed:
+    null here, stamped by the approval.
 
     ``heardComplete`` is handed in rather than asked again: the composer asks the listening
     once and both the refusal and this read the one answer, so they cannot disagree about it.
@@ -415,6 +412,9 @@ def _check_block(
         "conferida": telling_back.checked,
         "forced": forced,
         "heardComplete": heard_complete,
+        "forcedBy": None,
+        "forcedAt": None,
+        "forcedBlockers": None,
         "lastCheckAt": telling_back.checked_at.isoformat() if telling_back.checked_at else None,
         "findings": [
             addressed(finding.kind.value, finding.segment_id) for finding in telling_back.findings
@@ -695,8 +695,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     The team that disagrees has a road, and it is older than this one: the raised hand, active
     the whole session, answered by a person. If that person agrees with the team, a facilitator
     forces the release with their own code, and the force is recorded on the row.
-    ``FORCEABLE_BLOCKERS`` is the whole of what a force sets aside, and ``approve_release`` is
-    where it is named, because that is where somebody decided it;
+    ``UNFORCEABLE_BLOCKERS`` is the whole of what a force never sets aside, and
+    ``approve_release`` is where it is applied, because that is where somebody decided it;
     ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
     is out of reach of any of it, because a panorama is not a draft of a passage at all.
 
@@ -830,17 +830,17 @@ async def approve_release(
     The session names a project: the number is per project and per pericope, and both doors
     that reach here — the team's and the facilitator's force — refuse a session that names
     none as not found before calling. The blockers the packet raises are the gate, and
-    ``forced_by`` is the one thing that moves it: named, the two codes of
-    ``FORCEABLE_BLOCKERS`` are waived and the row records who forced it, when, and which
-    findings were open at that moment. Everything else still refuses, under a force exactly
-    as without one.
+    ``forced_by`` is the one thing that moves it: named, every blocker but
+    ``UNFORCEABLE_BLOCKERS`` is waived and the row and the packet's check block record who
+    forced it, when, which findings were open at that moment and which blockers it passed
+    (ADR 0075). ``no_rehearsal_audio`` still refuses, under a force exactly as without one.
 
     ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
     together: a force comes from the Desk, where there is a person and no device.
 
-    A force with nothing to waive is still a force and is still recorded as one, with an
-    empty list of findings. The act was the facilitator's, and a row that hid that would say
-    the team approved a draft the team did not approve.
+    A force with nothing to waive is still a force and is still recorded as one, with empty
+    lists of findings and of blockers passed. The act was the facilitator's, and a row that
+    hid that would say the team approved a draft the team did not approve.
 
     What is open at that moment is dumped from the state the packet was composed from and not
     copied out of the packet's own list, which is what lets the two differ by the analyst's
@@ -866,7 +866,7 @@ async def approve_release(
     finding somebody overruled. A stretch captured without words after the approval is the
     case that shows the reach: the packet carries only the stretches the team told back, so
     its hash does not move, and the team is answered with that release while
-    ``untold_stretch``, which no force waives, stands. That is the rule ADR 0014 wrote — the
+    ``untold_stretch``, which the team cannot waive, stands. That is the rule ADR 0014 wrote — the
     number says which content was approved, and this content was — and it is wider than the
     force it was reopened for.
 
@@ -877,10 +877,11 @@ async def approve_release(
 
     The check block is stamped here and nowhere else, from the row this call is writing: the
     composer could not know the version or the force, because neither exists until the number
-    is allocated. Only those two and the status they derive are rewritten — the rest of the
-    block is about the telling-back, which the compare-first read has already established is
-    the same telling-back. The early return above writes nothing, so a packet a facilitator
-    forced comes back saying so however many times the team asks again (ADR 0020).
+    is allocated. Only those two, the status they derive and the force's who, when and blockers
+    passed are rewritten — the rest of the block is about the telling-back, which the
+    compare-first read has already established is the same telling-back. The early return
+    above writes nothing, so a packet a facilitator forced comes back saying so however many
+    times the team asks again (ADR 0020).
 
     The house loop for this shape retries the allocation instead — ``tier_a_service`` and
     ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
@@ -902,16 +903,21 @@ async def approve_release(
         await refuse_if_archived(db, session)
         return latest
 
-    _judge(blockers, FORCEABLE_BLOCKERS if forced_by else frozenset())
+    _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
+    passed = sorted(set(blockers)) if forced_by else None
 
     row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
     forced = forced_by is not None
+    forced_at = datetime.now(UTC) if forced else None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
+    packet["check"]["forcedBy"] = forced_by
+    packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
+    packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
         id=row_id,
         session_id=session.id,
@@ -922,7 +928,8 @@ async def approve_release(
         packet=packet,
         device_id=device_id,
         forced_by=forced_by,
-        forced_at=datetime.now(UTC) if forced_by else None,
+        forced_at=forced_at,
+        forced_blockers=passed,
         forced_open_findings=(
             [
                 finding.model_dump(mode="json")

@@ -401,7 +401,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. The team's approval is refused while any **Blocker** stands, an open finding or an unheard part among them, and records the device that approved; a facilitator's **Forced release** passes them.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
@@ -421,7 +421,7 @@ A **Release** a facilitator minted past the gate, addressed to the passage: ever
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):
-The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Never the analyst's note.
+The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Beside `forced`, and in our names rather than hers, a **Forced release** says who forced it (`forcedBy`), when (`forcedAt`) and the blockers it passed (`forcedBlockers`), each null when nobody forced. Never the analyst's note.
 _Avoid_: check state, manifest check, conferência
 
 **Retroverification file** (`retroverificacao`):

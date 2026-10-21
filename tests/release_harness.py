@@ -483,6 +483,10 @@ def desk_release(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/release"
 
 
+def desk_passage_release(project_id: str, pericope: str) -> str:
+    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{pericope}/release"
+
+
 def desk_release_at(session_id: str, version: int) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}"
 

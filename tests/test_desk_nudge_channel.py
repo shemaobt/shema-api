@@ -613,6 +613,21 @@ async def test_a_release_the_teams_or_the_forced_one_nudges_release(
         assert await nudges_heard(desk) == ["release"]
 
 
+async def test_a_passage_forced_at_the_desk_nudges_release(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    forced_passage = await ready_session(db_session, project_id=team.team_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        forced = await client.post(
+            f"{IR}/facilitator/projects/{team.team_id}/passages/{forced_passage.pericope}/release",
+            headers=team.desk,
+            json={"force": True},
+        )
+        assert forced.status_code == 200, forced.text
+        assert await nudges_heard(desk) == ["release"]
+
+
 async def test_a_turn_that_lifts_a_halt_nudges_sessions_and_halts(
     desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:

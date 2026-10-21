@@ -734,7 +734,7 @@ class IRRelease(Base):
     #: team write leaving no attribution at all. Null on a release no tablet wrote: the ones
     #: from before this column, and every forced one, which is the Desk's act and not a room's.
     device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    #: The facilitator who minted this past an open finding or an unheard part, by user id the
+    #: The facilitator who minted this past the gate (ADR 0075), by user id the
     #: way ``IRSession.attended_by`` keeps one. Null on a release nobody forced, which is what
     #: separates the two and what the Desk reads to say that this draft was forced.
     forced_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -743,6 +743,9 @@ class IRRelease(Base):
     #: rather than counted or pointed at: the session goes on changing afterwards, and nothing
     #: else could answer later what this facilitator actually overruled.
     forced_open_findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    #: The blockers the force passed, sorted, and empty when it passed none. Null on a release
+    #: nobody forced and on the ones forced before this column (ADR 0075).
+    forced_blockers: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 

@@ -104,6 +104,7 @@ MIGRATION_FILES = {
     "test_ir_take_origin_migration.py",
     "test_ir_take_recording_time_migration.py",
     "test_ir_a_stretch_marks_that_its_part_was_recorded_again_migration.py",
+    "test_ir_a_forced_release_records_its_blockers_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {
