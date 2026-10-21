@@ -32,6 +32,7 @@ from tests.scene_rehearsal_harness import (
     Room,
     a_room,
     count,
+    current,
     frases_read_by_b,
     key_of,
     read_by_b,
@@ -50,10 +51,6 @@ from tests.scene_rehearsal_harness import (
 async def room(db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch):
     async with a_room(db_session, rival_factory, monkeypatch) as built:
         yield built
-
-
-def current(frases: list[dict[str, Any]]) -> list[tuple[int, int]]:
-    return [(f["starts_ms"], f["ends_ms"]) for f in frases if f["replaced_by"] is None]
 
 
 async def zerar(room: Room) -> str:
@@ -363,27 +360,28 @@ async def test_a_frase_may_not_replace_another_rehearsals_frase(
     assert await read_by_b(room, session_id) == before
 
 
-async def test_a_frase_sent_offline_against_an_earlier_version_replaces_the_current_one(
+async def test_a_frase_translated_again_offline_twice_over_its_own_place_lands_at_the_newest(
     room: Room, db_session: AsyncSession
 ) -> None:
     session_id = await a_session(db_session)
     rehearsal_id = await recorded(room, session_id)
     (first,) = await translated(room, session_id, rehearsal_id, [(0, 5000)], tone=300)
     again = await translate(
-        room, session_id, rehearsal_id, (0, 6000), recording(1, 900), replaces=first
+        room, session_id, rehearsal_id, (0, 5000), recording(1, 900), replaces=first
     )
     assert again.status_code == 200, again.text
+    second = next(f["frase_id"] for f in again.json()["frases"] if f["replaced_by"] is None)
 
     third = await translate(
-        room, session_id, rehearsal_id, (0, 7000), recording(1, 901), replaces=first
+        room, session_id, rehearsal_id, (0, 5000), recording(1, 901), replaces=first
     )
 
     assert third.status_code == 200, third.text
     frases = await frases_read_by_b(room, session_id)
-    assert current(frases) == [(0, 7000)]
-    by_end = {f["ends_ms"]: f for f in frases}
-    assert by_end[6000]["replaced_by"] == by_end[7000]["frase_id"]
-    assert by_end[7000]["replaces"] == by_end[6000]["frase_id"]
+    assert current(frases) == [(0, 5000)]
+    newest = next(f for f in frases if f["replaced_by"] is None)
+    assert newest["replaces"] == second
+    assert {f["frase_id"]: f["replaced_by"] for f in frases}[second] == newest["frase_id"]
 
 
 async def test_a_panorama_session_keeps_no_scene_rehearsal(
