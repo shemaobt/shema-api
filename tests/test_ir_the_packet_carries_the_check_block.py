@@ -77,12 +77,16 @@ from tests.turn_harness import the_room_agent_is
 
 #: Her names for the block and for one entry of its list, written out rather than imported.
 #: A case that read them off the module under test would agree with any rename, and the whole
-#: point of this slice is that these eight words are hers.
+#: point of this slice is that these eight words are hers. The three about the force beside
+#: ``forced`` are ours: who forced it, when, and the blockers it passed (ADR 0075).
 THE_BLOCKS_NAMES = {
     "version",
     "status",
     "conferida",
     "forced",
+    "forcedBy",
+    "forcedAt",
+    "forcedBlockers",
     "heardComplete",
     "lastCheckAt",
     "findings",

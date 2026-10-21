@@ -146,6 +146,8 @@ async def test_a_passage_with_two_takes_an_unchecked_telling_back_and_an_untold_
     assert forced.json()["forced_at"] is not None
     assert row.session_id == session.id
     assert row.forced_by == facilitator.id
+    assert row.packet["check"]["forcedBy"] == facilitator.id
+    assert row.packet["check"]["forcedAt"] == forced.json()["forced_at"]
     assert row.packet["check"]["status"] == "forcada"
     assert row.packet["check"]["forced"] is True
     assert row.forced_blockers == ["telling_back_not_checked", "untold_stretch"]
@@ -236,6 +238,25 @@ async def test_two_live_sessions_of_the_passage_only_one_with_takes_releases_tha
     assert forced.json()["session_id"] == with_takes.id
     (row,) = await releases_of_team(db_session, team.id)
     assert row.session_id == with_takes.id
+
+
+@pytest.mark.parametrize("most_recently_active", ["first", "second"])
+async def test_two_live_sessions_of_the_passage_both_with_takes_release_the_most_recently_active(
+    room, db_session, room_app, most_recently_active
+):
+    team, _tablet = await a_claimed_device(db_session)
+    first = await a_disputed_passage(db_session, team.id)
+    second = await a_disputed_passage(db_session, team.id)
+    newer, older = (first, second) if most_recently_active == "first" else (second, first)
+    now = datetime.now(UTC)
+    await last_active_at(db_session, older, now - timedelta(hours=1))
+    await last_active_at(db_session, newer, now)
+    desk, _facilitator = await at_the_desk(db_session, room_app, team)
+
+    forced = await room.post(desk_passage_release(team.id, P), headers=desk, json=FORCE)
+
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["session_id"] == newer.id
 
 
 async def test_the_teams_own_approval_on_the_passage_of_case_1_is_still_refused_with_both_blockers(

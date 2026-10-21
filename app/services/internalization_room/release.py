@@ -277,7 +277,8 @@ def _check_block(
 
     ``version`` and ``forced`` are facts of the release row, which is written after the packet
     is built, so they are the caller's to hand in: null and false on the live read, the row's
-    own on the approval (ADR 0020).
+    own on the approval (ADR 0020). So are who forced it, when and the blockers it passed:
+    null here, stamped by the approval.
 
     ``heardComplete`` is handed in rather than asked again: the composer asks the listening
     once and both the refusal and this read the one answer, so they cannot disagree about it.
@@ -313,6 +314,8 @@ def _check_block(
         "conferida": telling_back.checked,
         "forced": forced,
         "heardComplete": heard_complete,
+        "forcedBy": None,
+        "forcedAt": None,
         "forcedBlockers": None,
         "lastCheckAt": telling_back.checked_at.isoformat() if telling_back.checked_at else None,
         "findings": findings,
@@ -757,10 +760,11 @@ async def approve_release(
 
     The check block is stamped here and nowhere else, from the row this call is writing: the
     composer could not know the version or the force, because neither exists until the number
-    is allocated. Only those two and the status they derive are rewritten — the rest of the
-    block is about the telling-back, which the compare-first read has already established is
-    the same telling-back. The early return above writes nothing, so a packet a facilitator
-    forced comes back saying so however many times the team asks again (ADR 0020).
+    is allocated. Only those two, the status they derive and the force's who, when and blockers
+    passed are rewritten — the rest of the block is about the telling-back, which the
+    compare-first read has already established is the same telling-back. The early return
+    above writes nothing, so a packet a facilitator forced comes back saying so however many
+    times the team asks again (ADR 0020).
 
     The house loop for this shape retries the allocation instead — ``tier_a_service`` and
     ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
@@ -782,17 +786,20 @@ async def approve_release(
         await refuse_if_archived(db, session)
         return latest
 
-    passed = sorted(set(blockers) - UNFORCEABLE_BLOCKERS) if forced_by else None
-    _judge(blockers, frozenset(passed or ()))
+    _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
+    passed = sorted(set(blockers)) if forced_by else None
 
     row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
     forced = forced_by is not None
+    forced_at = datetime.now(UTC) if forced else None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
+    packet["check"]["forcedBy"] = forced_by
+    packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
     packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
         id=row_id,
@@ -804,7 +811,7 @@ async def approve_release(
         packet=packet,
         device_id=device_id,
         forced_by=forced_by,
-        forced_at=datetime.now(UTC) if forced_by else None,
+        forced_at=forced_at,
         forced_blockers=passed,
         forced_open_findings=(
             [
