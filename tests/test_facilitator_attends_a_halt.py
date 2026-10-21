@@ -557,6 +557,30 @@ async def test_a_halt_asked_while_a_visit_was_landing_is_still_listed(
     assert asking_now["attended_at"] is None
 
 
+async def test_a_warning_raised_while_a_visit_was_landing_is_still_listed(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    rival_factory,
+) -> None:
+    """The visit a new warning clears may have landed after the warning read the room."""
+    session_id = waiting_room.id
+    async with rival_factory() as warning, rival_factory() as visiting:
+        read_before_the_visit = await room.get_session(warning, session_id)
+        await room.attend(
+            visiting, await room.get_session(visiting, session_id), by=facilitator_a.id
+        )
+
+        await room.raise_a_warning(warning, read_before_the_visit)
+    db_session.expire_all()
+
+    warned = await queued(client, facilitator_a, session_id)
+    assert warned is not None, "o aviso novo herdou a visita anterior e sumiu da fila"
+    assert warned["halt"] == WARNING
+    assert warned["attended_at"] is None
+
+
 async def test_a_warning_a_visit_ended_while_a_halt_was_asked_stays_ended(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

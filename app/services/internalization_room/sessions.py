@@ -1004,13 +1004,18 @@ async def raise_a_warning(
 
     **The status is not written** (ENG-1163). A warning refuses nothing, so the session stays
     where it was — in progress, or done — and the warning stands beside it until a facilitator
-    attends the session (``halt.standing``). A new warning is an unattended one, so the visit
-    that answered the previous halt is cleared here.
+    attends the session (``halt.standing``). A new warning is an unattended one, so the update
+    that raises it also clears the visit that answered the previous halt, in the same
+    statement so a visit that landed after ``session`` was read is cleared too.
     """
+    await db.execute(
+        update(IRSession)
+        .where(IRSession.id == session.id)
+        .values(warned_at=datetime.now(UTC), attended_at=None, attended_by=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.refresh(session, ["warned_at", "attended_at", "attended_by"])
     _a_new_ask(session, kind=HaltKind.WARNING)
-    session.warned_at = datetime.now(UTC)
-    session.attended_at = None
-    session.attended_by = None
     if await is_the_demo_team(db, session.project_id):
         _visited(session, by=None)
     return await _written(db, session, commit=commit)
@@ -1020,7 +1025,7 @@ def _a_new_ask(session: IRSession, *, kind: HaltKind) -> None:
     """What every halt writes, whichever its kind.
 
     The kind is written on every halt and cleared by none — see ``halt.last``. The visit is
-    cleared by each kind's own write: ``mark_needs_person``'s update and ``raise_a_warning``.
+    cleared by each kind's own update, in ``mark_needs_person`` and ``raise_a_warning``.
     """
     session.halt_kind = kind.value
     session.person_arrived_at = None
