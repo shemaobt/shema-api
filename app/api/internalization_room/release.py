@@ -7,8 +7,9 @@ from app.api.facilitator._deps import FacilitatorUser, ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import NothingToForce
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.models.internalization_room import (
+    ApprovedDraftView,
     ForcedReleaseResponse,
     ForceReleaseRequest,
     TeamReleaseResponse,
@@ -26,6 +27,15 @@ from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
+
+
+def approval_of(release: IRRelease) -> ApprovedDraftView:
+    return ApprovedDraftView(
+        version=release.version,
+        release_id=release.packet["release_id"],
+        approved_at=as_utc(release.approved_at).isoformat(),
+        forced=release.forced_by is not None,
+    )
 
 
 @router.get("/facilitator/sessions/{session_id}/release")
@@ -198,11 +208,12 @@ async def approve_internalization_release(
     except InternalizationReleaseBlocked as exc:
         return await _team_release_blocked(db, session, exc.blockers)
     nudge(session.project_id, "release")
+    approval = approval_of(release)
     return TeamReleaseResponse(
         session_id=session_id,
-        release_id=release.packet["release_id"],
-        version=release.version,
+        release_id=approval.release_id,
+        version=approval.version,
         package_sha256=release.package_sha256,
-        approved_at=as_utc(release.approved_at).isoformat(),
+        approved_at=approval.approved_at,
         blockers=[],
     )

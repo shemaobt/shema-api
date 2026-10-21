@@ -17,6 +17,7 @@ from app.api.internalization_room._deps import (
     linked_tablet_dep,
 )
 from app.api.internalization_room.back_translation import finding_views
+from app.api.internalization_room.release import approval_of
 from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -67,6 +68,7 @@ from app.services.internalization_room.prepare_opening import (
     take_prepared,
 )
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.session_takes import kept_takes_of
@@ -328,6 +330,7 @@ def _settle_later(
 async def _state(
     db: AsyncSession, session: IRSession, *, include_stale: bool = False
 ) -> SessionStateResponse:
+    approved = await approved_draft(db, session)
     return SessionStateResponse(
         session_id=session.id,
         pericope=session.pericope,
@@ -340,6 +343,7 @@ async def _state(
         opened=was_opened(session),
         moment=moment_view(session),
         kept_takes=await kept_takes_of(session),
+        approved=approval_of(approved) if approved else None,
     )
 
 

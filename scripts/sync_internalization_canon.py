@@ -21,7 +21,7 @@ a re-pin cannot delete them without a word.
 
 Before it overwrites, `--sync` keeps the canon it replaces: `vendor/` as it stands, with its
 pin and manifest, and the element labels beside it, are copied to `canon/kept/<old pin>/`. A
-session keeps the canon it was opened with until its passage is approved, and that copy is
+session keeps the canon it was opened with while its session is live, and that copy is
 the only place its canon still exists once the pin moves. Then it drops every kept tree whose
 pin it is not told to keep, the one it just made included: which pins an open session names
 needs a production read, and while production carries only tests the sync takes none.
