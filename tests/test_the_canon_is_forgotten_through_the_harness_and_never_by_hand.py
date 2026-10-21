@@ -422,6 +422,22 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
     return reach
 
 
+def _as_seen_from(
+    tree: ast.Module, fixtures: Iterable[ast.FunctionDef | ast.AsyncFunctionDef]
+) -> ast.Module:
+    return ast.Module(
+        body=[
+            *tree.body,
+            *(
+                fixture
+                for fixture in fixtures
+                if fixture.name not in {parameter.arg for parameter in _parameters_of(fixture)}
+            ),
+        ],
+        type_ignores=[],
+    )
+
+
 def _as_resolved(names: set[str]) -> list[ast.expr]:
     return [ast.Name(id=name) for name in sorted(names)]
 
@@ -762,6 +778,16 @@ def _clears_in_tree(
         outside,
         behind,
     )
+    methods_seeing: dict[tuple[ast.AST, ...], list[ast.AST]] = {}
+    for method, fixtures in _fixtures_in_reach(tree).items() if names_a_cache else ():
+        methods_seeing.setdefault(tuple(fixtures.values()), []).append(method)
+    for fixtures, methods in methods_seeing.items():
+        seen = _as_seen_from(tree, fixtures)
+        outside_seen, behind_seen = _fixtures_of_the_conftest(module, seen, canon_caches, root)
+        fed_seen, _, _ = _fed_by_what_functions_return(
+            seen, imports, given, at_the_top, canon_caches, True, outside_seen, behind_seen
+        )
+        arguments |= {method: fed_seen[method] for method in methods}
     scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
     passed: set[tuple[ast.AST, str, str]] = set()
     while names_a_cache and (new := _handed_down(handed, imports, scopes, canon_caches) - passed):
@@ -2305,6 +2331,173 @@ class TestACase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.core.config import get_settings
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return get_settings
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def derived(cached):
+    return cached
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+@pytest.fixture
+def derived(cached):
+    return cached
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return get_settings
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_IS_NOT_WHAT_A_TEST_OF_THE_MODULE_ASKS_THE_CONFTESTS_FIXTURE_FOR = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+
+
+def test_another_case(derived) -> None:
+    derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_IS_NOT_WHAT_A_SIBLING_CLASS_ASKS_THE_CONFTESTS_FIXTURE_FOR = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+
+
+class TestAnotherCase:
+    def test_another_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_BASE_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class Base:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+
+class TestACase(Base):
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_ENCLOSING_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestOuter:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    class TestInner:
+        def test_a_case(self, derived) -> None:
+            derived.cache_clear()
+"""
+
+THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_THE_CONFTESTS_FIXTURE_THAT_REQUESTS_THE_CLASS_CACHE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    @pytest.fixture
+    def other(self, derived):
+        return derived
+
+    def test_a_case(self, other) -> None:
+        other.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -3317,6 +3510,12 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         (THE_CASE_WHOSE_METHOD_HANDS_THE_CLASS_FIXTURE_TO_A_HELPER, [7], []),
         (THE_CASE_WHOSE_SUBCLASS_DEFINES_THE_FIXTURE_OF_ITS_BASE_CLASS_AGAIN, [24], [19]),
         (THE_CASE_WHOSE_SUBCLASS_FIXTURE_EXTENDS_THE_ONE_OF_ITS_BASE_CLASS, [18], []),
+        (THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS, [17], []),
+        (
+            THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_MODULES_FIXTURE_REQUESTS,
+            [],
+            [23],
+        ),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
@@ -3331,6 +3530,8 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a method that hands the class's fixture to a helper",
         "a subclass that defines the fixture of its base class again",
         "a subclass fixture that requests the fixture of its base class of its own name",
+        "a class fixture that is what a fixture of the module requests",
+        "a class fixture of another cache that is what a fixture of the module requests",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
@@ -3356,10 +3557,59 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
             [16],
             [12],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS,
+            [12],
+            [],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURES_ARE_THE_CACHE_AND_WHAT_REQUESTS_IT,
+            THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS,
+            [],
+            [12],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_IS_NOT_WHAT_A_TEST_OF_THE_MODULE_ASKS_THE_CONFTESTS_FIXTURE_FOR,
+            [12],
+            [16],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_IS_NOT_WHAT_A_SIBLING_CLASS_ASKS_THE_CONFTESTS_FIXTURE_FOR,
+            [12],
+            [17],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_BASE_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS,
+            [14],
+            [],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_ENCLOSING_CLASS_FIXTURE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS,
+            [13],
+            [],
+        ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURE_REQUESTS_A_FIXTURE_IT_DOES_NOT_DEFINE,
+            THE_CASE_WHOSE_CLASS_FIXTURE_REQUESTS_THE_CONFTESTS_FIXTURE_THAT_REQUESTS_THE_CLASS_CACHE,
+            [16],
+            [],
+        ),
     ],
     ids=[
         "a class fixture that requests the conftest's fixture of its own name",
         "a class fixture that shadows the conftest's fixture of its name",
+        "a class fixture that is what a conftest fixture requests",
+        "a class fixture of another cache that is what a conftest fixture requests",
+        "a test of the module that asks the conftest's fixture a class fixture is what requests",
+        "a method of another class that asks the conftest's fixture a class fixture requests",
+        "a method of a subclass that asks the conftest's fixture its base class fixture requests",
+        "a method of a nested class that asks the conftest's fixture the class around it defines",
+        "a class fixture that requests the conftest's fixture that requests another of the class",
     ],
 )
 def test_a_fixture_defined_in_a_class_takes_what_it_requests_from_the_conftest(
