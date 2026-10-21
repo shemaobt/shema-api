@@ -1263,7 +1263,11 @@ async def save_back_translation(
 
     async def onto(read: dict[str, Any] | None) -> dict[str, Any]:
         if read == session.back_translation:
-            return written
+            if rule is None:
+                return written
+            as_written = BackTranslationState.model_validate(written)
+            await rule(as_written)
+            return as_written.model_dump(mode="json")
         merged = _merged_forward(base, state, BackTranslationState.model_validate(read or {}))
         if rule is not None:
             await rule(merged)
