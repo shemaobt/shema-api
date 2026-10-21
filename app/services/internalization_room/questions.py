@@ -438,19 +438,14 @@ async def inbox_page(
     more = len(found) > limit
     questions = found[:limit]
 
-    open_total = (
+    open_total, answered_total = (
         await db.execute(
-            select(func.count())
-            .select_from(IRQuestion)
-            .where(restriction, IRQuestion.status == IRQuestionStatus.OPEN)
+            select(
+                func.count(case((~_IN_THE_RECORD, 1))),
+                func.count(case((_IN_THE_RECORD, 1))),
+            ).where(restriction)
         )
-    ).scalar_one()
-
-    answered_total = (
-        await db.execute(
-            select(func.count()).select_from(IRQuestion).where(restriction, _IN_THE_RECORD)
-        )
-    ).scalar_one()
+    ).one()
 
     return InboxPage(
         questions=questions,

@@ -289,7 +289,8 @@ async def test_a_reply_moves_one_from_open_total_to_answered_total_on_the_next_r
     inbox = f"{IR}/facilitator/questions"
 
     before = (await client.get(inbox, headers=headers)).json()
-    await client.post(reply_url(question.id), headers=headers, **REPLY_FILE)
+    replied = await client.post(reply_url(question.id), headers=headers, **REPLY_FILE)
+    assert replied.status_code == 200
     after = (await client.get(inbox, headers=headers)).json()
 
     assert (before["open_total"], before["answered_total"]) == (1, 0)
