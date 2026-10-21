@@ -53,11 +53,6 @@ from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal, heard
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.live import live
-from app.services.internalization_room.opening_claim import (
-    Draft,
-    answer_around_the_opening,
-    oldest_live_claim,
-)
 from app.services.internalization_room.segments import refuse_a_frase_under_the_floor
 from app.services.internalization_room.takes import (
     TakeStore,
@@ -65,6 +60,11 @@ from app.services.internalization_room.takes import (
     extension,
     recording_digest,
     store_recording,
+)
+from app.services.internalization_room.turn_claim import (
+    Draft,
+    answer_under_the_turn_claim,
+    oldest_live_claim,
 )
 
 NUMBERING_TRIES = 50
@@ -738,7 +738,7 @@ async def send_the_scene_rehearsal(
         db, session, rehearsal, turn_id=turn_id, closes=closes
     )
     try:
-        return await answer_around_the_opening(
+        return await answer_under_the_turn_claim(
             db,
             session,
             opening=False,
@@ -822,7 +822,7 @@ async def _claim_the_send(
 async def _release_the_send(rehearsal_id: str, turn_id: str, claimed_at: datetime) -> None:
     """Unsend a rehearsal whose turn under `turn_id` never landed, so it can be sent again.
 
-    On a session of its own, as an opening claim is released (ADR 0053), and only the claim this
+    On a session of its own, as a turn claim is released (ADR 0079), and only the claim this
     request made: a resend that renewed it holds it now. A turn stored under that id landed,
     whichever request failed after it, and keeps the rehearsal sent.
     """

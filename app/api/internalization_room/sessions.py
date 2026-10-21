@@ -40,7 +40,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
-from app.services.internalization_room import halt, opening_claim
+from app.services.internalization_room import halt, turn_claim
 from app.services.internalization_room.back_translation import findings_on_stretches_that_count
 from app.services.internalization_room.background import (
     HeardTake,
@@ -821,7 +821,7 @@ async def _answer_the_turn(
         return await _say_it_again(session, turn_id=turn_id)
     take = None if file is None else HeardTake(audio_bytes, file.content_type or AUDIO_MIME)
 
-    return await opening_claim.answer_around_the_opening(
+    return await turn_claim.answer_under_the_turn_claim(
         db,
         session,
         opening=opening,
