@@ -178,3 +178,68 @@ async def test_a_verdict_that_starts_after_the_last_pause_moved_still_confers(
     assert (stored.checked, stored.verdict is not None) == (True, True), (
         "uma pausa movida antes de a rodada começar deixava a passagem sem conferir"
     )
+
+
+async def test_a_move_that_read_before_another_move_does_not_take_the_count_back_under_a_verdict(
+    client,
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    store: MemoryStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    the_analyst_is_scripted(monkeypatch)
+    the_room_speaks(monkeypatch)
+    the_room_agent_is(monkeypatch, turn=Speaker())
+
+    async def said(*_: Any, **__: Any) -> str:
+        return RETOLD
+
+    monkeypatch.setattr(segments_api, "heard", said)
+    session, _, ((_a, last_of_one), (_b, last_of_two)) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000)], [(0, 1000), (1000, 2000)]]
+    )
+    async with rival_factory() as moving_db:
+        read_before_any_move = await get_session(moving_db, session.id)
+        first = await client.post(
+            f"{PREFIX}/sessions/{session.id}/segments/{last_of_one.id}/replace",
+            data={
+                "take_id": last_of_one.take_id,
+                "starts_ms": str(last_of_one.starts_ms),
+                "ends_ms": "1800",
+            },
+            files={"file": ("frase.wav", b"a frase dita de novo", "audio/wav")},
+        )
+        assert first.status_code == 200, first.text
+        report = await heard_every_part(db_session, session.id, duration_ms=2000)
+        written = verdict_round.append_exchange
+
+        async def written_after_a_move_that_read_before_the_first(*args: Any, **kwargs: Any) -> Any:
+            await capture_and_note_a_hard_stretch(
+                moving_db,
+                read_before_any_move,
+                take_id=last_of_two.take_id,
+                starts_ms=last_of_two.starts_ms,
+                ends_ms=1800,
+                bridge_take_id="retro-movida",
+                transcript=RETOLD,
+                replaces=await moving_db.get(IRSegment, last_of_two.id),
+                state=back_translation_of(read_before_any_move),
+            )
+            return await written(*args, **kwargs)
+
+        monkeypatch.setattr(
+            verdict_round, "append_exchange", written_after_a_move_that_read_before_the_first
+        )
+
+        pressed = await press_terminei(client, session.id, report=report)
+        assert pressed.status_code == 200, pressed.text
+
+    async with rival_factory() as reading_db:
+        stored = back_translation_of(await get_session(reading_db, session.id))
+    assert stored.pauses_moved == 2, (
+        "a segunda pausa movida, que leu o estado antes da primeira, gravava 1 por cima de 1"
+    )
+    assert (stored.checked, stored.verdict) == (False, None), (
+        "o veredito que leu a primeira pausa movida conferia a passagem quando a segunda, "
+        "que tinha lido antes dela, devolvia a contagem ao que ele já tinha lido"
+    )

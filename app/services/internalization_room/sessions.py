@@ -1231,9 +1231,16 @@ def _added_up(stored: list[PlayedTake], reported: list[PlayedTake]) -> list[Play
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
-    for name in vars(wanted).keys() - {"findings", "nuances", "checks", "played_by_take"}:
+    for name in vars(wanted).keys() - {
+        "findings",
+        "nuances",
+        "checks",
+        "played_by_take",
+        "pauses_moved",
+    }:
         if getattr(wanted, name) != getattr(read, name):
             setattr(fresh, name, getattr(wanted, name))
+    fresh.pauses_moved += wanted.pauses_moved - read.pauses_moved
     fresh.played_by_take = _played_forward(
         read.played_by_take, wanted.played_by_take, fresh.played_by_take
     )
