@@ -568,7 +568,7 @@ def test_a_marked_rehearsal_of_the_scene_a_numberless_opening_opened_moves_to_it
     assert step.after.as_json() == practised, (
         "a cena aberta sem número foi ensaiada e a sala não foi pra Articulação dela"
     )
-    assert (step.before.as_json(), step.by) == (opened, ["scene_rehearsal"])
+    assert (step.before.as_json(), step.by) == (practised, ["scene_rehearsal"])
 
 
 SCENE_TWO_OPENED_WITH_NO_NUMBER = {

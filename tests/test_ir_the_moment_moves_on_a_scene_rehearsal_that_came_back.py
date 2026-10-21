@@ -12,6 +12,7 @@ from app.services.internalization_room.moment import moment_view
 from tests.golden_rehearsal_harness import (
     a_golden_client,
     a_sent_rehearsal,
+    after_the_break,
     an_open_session,
     the_room_stands_in,
 )
@@ -91,3 +92,23 @@ async def test_a_marked_rehearsal_of_the_open_scene_moves_the_screens_label_to_i
     assert moment_view(stored) == MomentView(at="articulation", part=2, parts=3), (
         "a tela continuava na Internalização da cena que a equipe acabou de ensaiar"
     )
+
+
+async def test_the_step_begins_in_the_moment_the_guide_was_told_after_the_rehearsal_arrived(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    session_id = await an_open_session(client, "P02")
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 2})
+    agent = the_models_answer(monkeypatch, "Obrigado. Vamos ver essa cena juntos.")
+
+    sent = await a_sent_rehearsal(client, session_id, "S2")
+
+    assert sent.status_code == 200, sent.text
+    told = after_the_break(agent.guide_systems[-1])
+    assert "MOMENT: Articulation of part 2 of 3" in told, "a voz não leu o momento depois do ensaio"
+    step = await _the_last_step(db_session, session_id)
+    assert (step["before"], step["after"], step["by"]) == (
+        {"at": "articulation", "part": 2, "fenced": False},
+        {"at": "articulation", "part": 2, "fenced": False},
+        ["scene_rehearsal"],
+    ), "o passo guardou como início do turno um momento que não era o que a voz leu"

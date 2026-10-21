@@ -229,11 +229,11 @@ def turn_start(
 
 @dataclass(frozen=True)
 class MomentStep:
-    """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
-    reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
-    (`types.ts:73`): every line her `step()` declines, in her words, filled where hers fills it
-    (`moment.ts:149-189`, and a scene told ahead at :212-214) and stored only when there is
-    one."""
+    """Her `MomentStep` (`src/session/types.ts`): the moment the MOMENT fact told the Guide on
+    this turn, the one its reply left the room in, and the lines that moved it. `ignored` is her
+    `ignored?: string[]` (`types.ts:73`): every line her `step()` declines, in her words, filled
+    where hers fills it (`moment.ts:149-189`, and a scene told ahead at :212-214) and stored
+    only when there is one."""
 
     before: Moment
     after: Moment
@@ -260,11 +260,12 @@ def moment_step(
     arriving: SentSceneRehearsal | None = None,
     reached: list[str] | None = None,
 ) -> MomentStep | None:
-    """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
-    A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
-    before = moment_at_turn_start(messages)
-    if before is None:
+    """Her MomentStep: where the lines this reply voiced leave the moment the Guide was told
+    this turn. A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
+    start = turn_start(messages, scenes, arriving)
+    if start is None:
         return None
+    before = start.moment
     parts = len(scenes)
     marked = arriving.scene if arriving is not None else None
     if reached is None:
@@ -272,15 +273,8 @@ def moment_step(
     back = {scenes.index(scene) + 1 for scene in reached if scene in scenes}
     unmarked = arriving is not None and marked not in scenes
     after = before
-    by: list[Cause] = []
-    ignored: list[str] = []
-    if marked is not None and marked in scenes:
-        part = scenes.index(marked) + 1
-        after, told = _arrived(before, part)
-        if after != before:
-            by.append("scene_rehearsal")
-        if told:
-            ignored.append(f"scene_rehearsal {part}: {told}")
+    by = list(start.by)
+    ignored = list(start.ignored)
     earlier = False
     anchored = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
