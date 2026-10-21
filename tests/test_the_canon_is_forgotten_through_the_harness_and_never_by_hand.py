@@ -2346,6 +2346,21 @@ class TestACase:
         derived.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS = """\
+import pytest
+
+from app.core.config import get_settings
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return get_settings
+
+    def test_a_case(self, derived) -> None:
+        derived.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -3403,11 +3418,18 @@ def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
             [12],
             [],
         ),
+        (
+            THE_CONFTEST_WHOSE_FIXTURES_ARE_THE_CACHE_AND_WHAT_REQUESTS_IT,
+            THE_CASE_WHOSE_CLASS_FIXTURE_OF_ANOTHER_CACHE_IS_WHAT_THE_CONFTESTS_FIXTURE_REQUESTS,
+            [],
+            [12],
+        ),
     ],
     ids=[
         "a class fixture that requests the conftest's fixture of its own name",
         "a class fixture that shadows the conftest's fixture of its name",
         "a class fixture that is what a conftest fixture requests",
+        "a class fixture of another cache that is what a conftest fixture requests",
     ],
 )
 def test_a_fixture_defined_in_a_class_takes_what_it_requests_from_the_conftest(
