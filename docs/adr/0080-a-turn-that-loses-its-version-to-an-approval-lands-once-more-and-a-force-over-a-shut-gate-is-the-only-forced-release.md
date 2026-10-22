@@ -51,8 +51,13 @@ Consequences:
 - A turn lands after an approval that was minted from the conversation before it. The packet
   reads nothing from the conversation, so the approved draft stays approved and asking again
   returns the same release.
-- Any other write that leaves the conversation as it was, not only an approval, is landed over
-  once in the same way; the turn writes only its conversation and the team's return, so it
-  carries over nothing that write changed.
+- Every write of the conversation takes the second landing, the opening and the telling-back
+  verdict included. A verdict that lands after a release now keeps its check, which the
+  packet does read: the draft has moved, and the next approval is a new version, as when the
+  team tells the passage back again. Before, that verdict was refused and its check lost.
+- The rule reads the conversation, not who moved the version. Today only an approval's claim
+  and a Zerar move it without touching the conversation, and a Zerar is answered as gone; a
+  writer added later that moves the version and leaves the conversation is landed over once in
+  the same way.
 - A clean force no longer records who pressed it. The Desk already draws a null `forced_at` as a
   release nobody forced.

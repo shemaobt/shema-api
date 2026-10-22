@@ -501,10 +501,10 @@ async def _land(
     live and lands after the Zerar finds nothing to land on, and is answered as the session
     gone, with the unknown session's words, rather than as another turn's conflict (ADR 0052).
 
-    ``again_if_unmoved`` is a team turn's: when what moved the version left the conversation as
-    this ``session`` read it, it was an approval's claim and not another turn, and the turn lands
-    once more on the version stored now. A turn that lost to another turn is still refused
-    (ADR 0080).
+    ``again_if_unmoved`` is for a write of the conversation: when what moved the version left the
+    session live and the conversation as this ``session`` read it, it was an approval's claim and
+    not another turn, and the write lands once more on the version stored now. One that lost to
+    another turn is still refused (ADR 0080).
     """
     await db.flush()
     landed = await _write_at_the_version_read(db, session, values)
