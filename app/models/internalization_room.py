@@ -1734,3 +1734,7 @@ class SessionCoverageResponse(BaseModel):
     panorama: bool
     no_elements: bool
     ledger: str | None
+
+
+class CanonPinsResponse(BaseModel):
+    pins: list[str]
