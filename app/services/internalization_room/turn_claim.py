@@ -56,10 +56,11 @@ class Draft(Protocol):
 @dataclass(frozen=True)
 class TurnClaim:
     """One request answering a turn of the session: the turn id its answer will be stored
-    under, and when it claimed."""
+    under, when it claimed, and whether it claimed for the session's opening."""
 
     turn_id: str
     claimed_at: datetime
+    for_the_opening: bool
 
 
 async def answer_under_the_turn_claim(
@@ -93,9 +94,10 @@ async def answer_under_the_turn_claim(
       turn's stored answer, or a turn that did not answer when `deadline` passes.
     - Any other turn waits for the holder's reply, then claims again. Its wait ends at the
       first claim it found plus the opening wait (`internalization_room_opening_wait_ms`).
-      A holder that claimed a session still empty is the opening: the turn takes the claim
-      from it and runs on the conversation as it stands. Any other holder is a turn of the
-      team, and the turn is refused `TurnCollision`, with nothing stored and nothing voiced.
+      A holder that claimed for the opening, as the row says, has the claim taken from it,
+      and the turn runs on the conversation as it stands, holding a team turn's claim. Any
+      other holder is a turn of the team, and the turn is refused `TurnCollision`, with
+      nothing stored and nothing voiced.
 
     A claim that dies while it is waited on is claimed again. A request that waited gets its
     whole bound (`bound_s`) from the moment it wins, as `deadline`; the same bound dates a
@@ -175,13 +177,10 @@ async def _claimed_or_answered(
     """The claim this request won, or the answer it took from the request that held it."""
     loop = asyncio.get_running_loop()
     waited, ends = False, None
-    judged: TurnClaim | None = None
-    held_by_the_opening = False
-    taken_over: set[TurnClaim] = set()
     while True:
-        claimed_at = await _claim(db, session.id, claimed_as, bound_s)
-        if claimed_at is not None:
-            return _Won(TurnClaim(claimed_as, claimed_at), waited)
+        claim = await _claim(db, session.id, claimed_as, bound_s, for_the_opening=opening)
+        if claim is not None:
+            return _Won(claim, waited)
         holder = await _holder(session.id)
         if holder is None or not _live(holder, bound_s):
             await _pause(until=deadline)
@@ -208,35 +207,15 @@ async def _claimed_or_answered(
             continue
         if ends is None:
             ends = loop.time() + _wait_left(holder)
-        if holder != judged:
-            judged = holder
-            held_by_the_opening = holder not in taken_over and await _still_empty(db, session)
         with stage("turn_wait"):
             look = await _looked_after(session.id, holder, project_id, until=ends, bound_s=bound_s)
-        if (taker := _taker(look, holder, bound_s)) is not None:
-            taken_over.add(taker)
-        if not _still_held(look.standing, holder, bound_s):
+        if look.stored is not None or not _still_held(look.standing, holder, bound_s):
             continue
-        if look.stored is not None:
-            await _pause(until=deadline)
-            continue
-        if not held_by_the_opening:
+        if not holder.for_the_opening:
             raise TurnCollision(f"Another turn of session {session.id} is still being answered")
-        taken_at = await _taken_over(db, session.id, holder, claimed_as)
-        if taken_at is not None:
-            return _Won(TurnClaim(claimed_as, taken_at), waited)
-        taker = await _holder(session.id)
-        if taker is not None and taker != holder:
-            taken_over.add(taker)
-
-
-def _taker(look: _Look, holder: TurnClaim, bound_s: float) -> TurnClaim | None:
-    """The claim that replaced `holder` while it was live and unanswered, which only a turn
-    taking it over writes; None otherwise."""
-    taker = look.standing
-    if look.stored is None and taker is not None and taker != holder and _live(holder, bound_s):
-        return taker
-    return None
+        taken = await _taken_over(db, session.id, holder, claimed_as)
+        if taken is not None:
+            return _Won(taken, waited)
 
 
 async def _stop(hearing: asyncio.Task[HeardSpeech] | None) -> None:
@@ -252,14 +231,6 @@ async def _pause(*, until: float) -> None:
     await asyncio.sleep(min(_LOOK_EVERY_S, left))
 
 
-async def _still_empty(db: AsyncSession, session: IRSession) -> bool:
-    """Whether the session holds no message yet, read again and let go."""
-    await db.refresh(session)
-    empty = not session.messages
-    await db.commit()
-    return empty
-
-
 def oldest_live_claim(bound_s: float) -> datetime:
     """The claim time before which a claim belongs to a request that can no longer be running."""
     return datetime.now(UTC) - timedelta(seconds=bound_s) - _OUTLIVES_THE_BOUND
@@ -273,8 +244,9 @@ def _still_held(standing: TurnClaim | None, holder: TurnClaim, bound_s: float) -
     return standing == holder and _live(holder, bound_s)
 
 
-def _set_claim(*where: ColumnElement[bool], turn_id: str | None, at: datetime | None) -> Update:
-    """The one write of the claim's two columns, which never counts as the team's activity.
+def _set_claim(*where: ColumnElement[bool], claim: TurnClaim | None) -> Update:
+    """The one write of the claim's columns, `claim` or none, which never counts as the team's
+    activity.
 
     `updated_at` is written its own value and `version` is left alone: the Desk reads the one,
     and `_land` guards the conversation with the other.
@@ -283,18 +255,30 @@ def _set_claim(*where: ColumnElement[bool], turn_id: str | None, at: datetime | 
         update(IRSession)
         .where(*where)
         .values(
-            opening_claim_turn_id=turn_id, opening_claimed_at=at, updated_at=IRSession.updated_at
+            opening_claim_turn_id=None if claim is None else claim.turn_id,
+            opening_claimed_at=None if claim is None else claim.claimed_at,
+            claimed_for_the_opening=claim is not None and claim.for_the_opening,
+            updated_at=IRSession.updated_at,
         )
         .execution_options(synchronize_session=False)
     )
 
 
+def _held_by(claim: TurnClaim) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+    """The row holding `claim`, by its turn id and claim time, as a release and a takeover
+    find it."""
+    return (
+        IRSession.opening_claim_turn_id == claim.turn_id,
+        IRSession.opening_claimed_at == claim.claimed_at,
+    )
+
+
 async def _claim(
-    db: AsyncSession, session_id: str, turn_id: str, bound_s: float
-) -> datetime | None:
-    """Claim the session's turn under `turn_id`, committed alone; when it was claimed, or None
-    while another claim stands."""
-    at = datetime.now(UTC)
+    db: AsyncSession, session_id: str, turn_id: str, bound_s: float, *, for_the_opening: bool
+) -> TurnClaim | None:
+    """Claim the session's turn under `turn_id`, committed alone; the claim, or None while
+    another claim stands."""
+    claim = TurnClaim(turn_id, datetime.now(UTC), for_the_opening)
     claimed = await db.execute(
         _set_claim(
             IRSession.id == session_id,
@@ -307,12 +291,11 @@ async def _claim(
                     IRTurn.turn_id == IRSession.opening_claim_turn_id,
                 ),
             ),
-            turn_id=turn_id,
-            at=at,
+            claim=claim,
         )
     )
     await db.commit()
-    return at if claimed.rowcount == 1 else None
+    return claim if claimed.rowcount == 1 else None
 
 
 async def _release(session_id: str, claim: TurnClaim) -> None:
@@ -326,35 +309,19 @@ async def _release(session_id: str, claim: TurnClaim) -> None:
     wait on it for good.
     """
     async with AsyncSessionLocal() as own:
-        await own.execute(
-            _set_claim(
-                IRSession.id == session_id,
-                IRSession.opening_claim_turn_id == claim.turn_id,
-                IRSession.opening_claimed_at == claim.claimed_at,
-                turn_id=None,
-                at=None,
-            )
-        )
+        await own.execute(_set_claim(IRSession.id == session_id, *_held_by(claim), claim=None))
         await own.commit()
 
 
 async def _taken_over(
     db: AsyncSession, session_id: str, holder: TurnClaim, turn_id: str
-) -> datetime | None:
-    """The claim taken from `holder` under `turn_id`, committed alone; when it was taken, or
-    None when `holder` no longer holds it."""
-    at = datetime.now(UTC)
-    taken = await db.execute(
-        _set_claim(
-            IRSession.id == session_id,
-            IRSession.opening_claim_turn_id == holder.turn_id,
-            IRSession.opening_claimed_at == holder.claimed_at,
-            turn_id=turn_id,
-            at=at,
-        )
-    )
+) -> TurnClaim | None:
+    """The claim taken from `holder` under `turn_id`, committed alone: a team turn's claim,
+    whoever held it. None when `holder` no longer holds it."""
+    claim = TurnClaim(turn_id, datetime.now(UTC), for_the_opening=False)
+    taken = await db.execute(_set_claim(IRSession.id == session_id, *_held_by(holder), claim=claim))
     await db.commit()
-    return at if taken.rowcount == 1 else None
+    return claim if taken.rowcount == 1 else None
 
 
 async def still_holds(db: AsyncSession, claim: TurnClaim, session_id: str) -> bool:
@@ -364,29 +331,25 @@ async def still_holds(db: AsyncSession, claim: TurnClaim, session_id: str) -> bo
     values takes the session's row, so a turn taking the claim over waits for this write to
     commit, and a write behind a takeover finds the claim gone.
     """
-    held = await db.execute(
-        _set_claim(
-            IRSession.id == session_id,
-            IRSession.opening_claim_turn_id == claim.turn_id,
-            IRSession.opening_claimed_at == claim.claimed_at,
-            turn_id=claim.turn_id,
-            at=claim.claimed_at,
-        )
-    )
+    held = await db.execute(_set_claim(IRSession.id == session_id, *_held_by(claim), claim=claim))
     return bool(held.rowcount == 1)
 
 
 async def _holder(session_id: str) -> TurnClaim | None:
     """The claim standing on the session's row now, live or not, read on a session of its own."""
     async with AsyncSessionLocal() as db:
-        turn_id, claimed_at = (
+        turn_id, claimed_at, for_the_opening = (
             await db.execute(
-                select(IRSession.opening_claim_turn_id, IRSession.opening_claimed_at).where(
-                    IRSession.id == session_id
-                )
+                select(
+                    IRSession.opening_claim_turn_id,
+                    IRSession.opening_claimed_at,
+                    IRSession.claimed_for_the_opening,
+                ).where(IRSession.id == session_id)
             )
         ).one()
-    return None if turn_id is None or claimed_at is None else TurnClaim(turn_id, claimed_at)
+    if turn_id is None or claimed_at is None:
+        return None
+    return TurnClaim(turn_id, claimed_at, for_the_opening)
 
 
 def _wait_left(holder: TurnClaim) -> float:

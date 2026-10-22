@@ -463,6 +463,72 @@ async def test_two_team_turns_that_pass_the_same_slow_opening_never_both_run_on_
     assert await conversation(rival_factory, session.id) == [("team", SAID), ("guide", REPLY_A)]
 
 
+async def test_a_turn_that_arrives_after_a_team_turn_took_the_openings_claim_waits_on_it_as_a_team_turn(  # noqa: E501
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T1 holds the claim it took from the opening for longer than T3's wait: T3 is refused,
+    where taking T1 for the opening would run it on the empty conversation beside T1."""
+    _the_wait_is(monkeypatch, 300)
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
+    guide = the_guide_is(monkeypatch, Guide(lines=(OPENING, REPLY_A, REPLY_B)))
+    guide.reply_takes = 1.5
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        rival_factory() as three,
+        room_client(one, monkeypatch) as opening_tablet,
+        room_client(two, monkeypatch) as tablet_1,
+        room_client(three, monkeypatch) as tablet_3,
+    ):
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        try:
+            first = asyncio.create_task(speak(tablet_1, session.id, "t1"))
+            await _until(lambda: guide.asked == 2)
+            later = await asyncio.wait_for(speak(tablet_3, session.id, "t3"), timeout=5)
+            ran = await asyncio.wait_for(first, timeout=10)
+        finally:
+            guide.answer.set()
+        await asyncio.wait_for(opening, timeout=10)
+
+    assert ran.status_code == 200, ran.text[:300]
+    assert later.status_code == 409, later.text[:300]
+    assert later.json()["code"] == "TURN_COLLISION"
+    assert await conversation(rival_factory, session.id) == [("team", SAID), ("guide", REPLY_A)]
+
+
+async def test_a_waiting_turn_runs_less_than_one_look_after_the_answer_it_waited_for(
+    db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A is answered between two of B's looks, a second apart: B sees it on the next look and
+    claims at once, so it lands under a second after A, where another look's sleep would put it
+    past one."""
+    session_id = await _an_opened_session(db_session)
+    guide = the_guide_is(monkeypatch, Guide(lines=(REPLY_A, REPLY_B)))
+    loop = asyncio.get_running_loop()
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        room_client(one, monkeypatch) as tablet_a,
+        room_client(two, monkeypatch) as tablet_b,
+    ):
+        a = asyncio.create_task(speak(tablet_a, session_id, "a"))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        b = asyncio.create_task(speak(tablet_b, session_id, "b"))
+        await asyncio.sleep(0.3)
+        guide.answer.set()
+        first = await asyncio.wait_for(a, timeout=10)
+        a_landed = loop.time()
+        second = await asyncio.wait_for(b, timeout=10)
+        gap = loop.time() - a_landed
+
+    assert first.status_code == 200, first.text[:300]
+    assert second.status_code == 200, second.text[:300]
+    assert gap < 1.3, f"o segundo turno pousou {gap:.2f} s depois do primeiro"
+
+
 async def test_an_opening_that_answers_after_a_team_turn_took_its_claim_is_not_written(
     db_session: AsyncSession, rival_factory, voice: Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:

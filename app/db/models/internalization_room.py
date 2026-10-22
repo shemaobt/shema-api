@@ -178,6 +178,12 @@ class IRSession(Base):
     opening_claimed_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
     )
+    #: Whether the turn claim was taken for the session's **Opening**: true only for the
+    #: request drafting it, false for a team turn's claim and for one taken over from the
+    #: opening, so every waiter reads from the row which of the two it waits on (ADR 0079).
+    claimed_for_the_opening: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
