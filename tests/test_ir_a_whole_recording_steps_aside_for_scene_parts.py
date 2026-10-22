@@ -223,13 +223,24 @@ async def _with_a_finding_on_the_whole(
 async def test_a_forced_release_does_not_record_a_finding_on_a_whole_that_stepped_aside(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session, _over_whole, _parts = await _with_a_finding_on_the_whole(client, db_session)
+    session, _over_whole, parts = await _with_a_finding_on_the_whole(client, db_session)
+    [over_part, *_] = [
+        s for s in await _stored_stretches(db_session, session) if s.take_id == parts[0].id
+    ]
+    state = await stored_telling_back(db_session, session)
+    state.checked = False
+    state.findings = [
+        *state.findings,
+        Finding(kind=FindingKind.MISSING, note="faltou Rute", segment_id=over_part.id, chunk=1),
+    ]
+    await save_back_translation(db_session, await get_session(db_session, session.id), state)
 
     release = await approve_release(
         db_session, await get_session(db_session, session.id), forced_by="a-facilitadora"
     )
 
-    assert release.forced_open_findings == []
+    assert release.forced_by == "a-facilitadora", "a força não passou por cima de nada"
+    assert [f["segment_id"] for f in release.forced_open_findings or []] == [over_part.id]
 
 
 async def test_terminei_is_not_refused_by_a_stored_verdict_whose_finding_is_on_the_whole(
