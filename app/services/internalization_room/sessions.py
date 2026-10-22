@@ -1107,12 +1107,16 @@ async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
     """Withdraw the mark: nobody went. The stamps clear and the status is not written.
 
     A halted room is back on the queue, and a warning the visit ended stands again: it stands
-    while ``warned_at`` is set and nobody is marked as having gone.
+    while ``warned_at`` is set and nobody is marked as having gone. A demo team's halt is
+    stamped again by the server at once, because it never calls a person (ADR 0064); a visit
+    to a demo room that never halted clears like any other.
     """
     if session.attended_at is None:
         return session
     session.attended_at = None
     session.attended_by = None
+    if halt.standing(session) is not None and await is_the_demo_team(db, session.project_id):
+        _visited(session, by=None)
     await db.commit()
     await db.refresh(session)
     return session
