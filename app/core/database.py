@@ -9,8 +9,8 @@ from app.core.config import get_settings
 from app.core.db_url import async_database_url, ssl_connect_args
 
 #: How long a statement of the app waits on a lock before Postgres refuses it: inside the 90 s
-#: a turn waits on another turn of its session, and past a frase uploaded on a slow link while
-#: it holds the session's row (ADR 0079).
+#: a turn waits on another turn of its session (ADR 0079). No door holds the session's row
+#: across the bucket (ADR 0089).
 LOCK_TIMEOUT: Final = "30s"
 #: A backstop that stops a runaway statement, well above any statement the app means to run;
 #: the longest one in production was not measured. The waits on a row lock are the

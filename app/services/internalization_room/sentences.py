@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     ERROR_CODE_ANOTHER_SENTENCE_AWAITS,
+    ERROR_CODE_PART_CHANGED,
     ERROR_CODE_PART_NOT_WAV,
     ERROR_CODE_SENTENCE_FORMAT_DIFFERS,
     ERROR_CODE_SENTENCE_ID_REUSED,
@@ -76,7 +77,6 @@ async def _part_to_splice(
     sentence_id: str,
     audio: bytes,
 ) -> IRTake | None:
-    await db.execute(select(IRSession.id).where(IRSession.id == session.id).with_for_update())
     await db.refresh(session)
     await db.execute(
         select(IRSegment)
@@ -114,18 +114,10 @@ async def _part_to_splice(
     return part
 
 
-@dataclass(frozen=True)
-class _Splice:
-    part_id: str
-    starts_ms: int
-    ends_ms: int
-    spliced: Spliced
-
-
 async def _splice_of(
     part: IRTake, starts_ms: int, ends_ms: int, audio: bytes, store: TakeStore
-) -> _Splice:
-    spliced = await asyncio.to_thread(
+) -> Spliced:
+    return await asyncio.to_thread(
         _spliced_bytes,
         part.id,
         await store.get(part.storage_key) or b"",
@@ -133,7 +125,6 @@ async def _splice_of(
         starts_ms,
         ends_ms,
     )
-    return _Splice(part.id, starts_ms, ends_ms, spliced)
 
 
 def _spliced_bytes(
@@ -169,20 +160,12 @@ async def lay_in_a_sentence(
     device_id: str,
     store: TakeStore,
 ) -> None:
-    made: _Splice | None = None
-    while True:
-        part = await _part_to_splice(db, session, segment, sentence_id=sentence_id, audio=audio)
-        if part is None:
-            return
-        if made is not None and (made.part_id, made.starts_ms, made.ends_ms) == (
-            part.id,
-            segment.starts_ms,
-            segment.ends_ms,
-        ):
-            break
-        await db.commit()
-        made = await _splice_of(part, segment.starts_ms, segment.ends_ms, audio, store)
-    spliced = made.spliced
+    part = await _part_to_splice(db, session, segment, sentence_id=sentence_id, audio=audio)
+    if part is None:
+        return
+    spliced_at = (part.id, segment.starts_ms, segment.ends_ms)
+    await db.commit()
+    spliced = await _splice_of(part, segment.starts_ms, segment.ends_ms, audio, store)
     recorded = hashlib.sha256(audio).hexdigest()
     raw = await store_recording(
         audio,
@@ -199,6 +182,17 @@ async def lay_in_a_sentence(
         content_type=WAV,
         store=store,
     )
+    duration_ms = await measure_ms_bounded(spliced.audio)
+    await db.execute(select(IRSession.id).where(IRSession.id == session.id).with_for_update())
+    part = await _part_to_splice(db, session, segment, sentence_id=sentence_id, audio=audio)
+    if part is None:
+        return
+    if (part.id, segment.starts_ms, segment.ends_ms) != spliced_at:
+        raise SentenceRefused(
+            409,
+            ERROR_CODE_PART_CHANGED,
+            f"The part of frase {segment.id} changed while its sentence was laid in; send it again",
+        )
     now = datetime.now(UTC)
     take = IRTake(
         id=str(uuid.uuid4()),
@@ -219,7 +213,7 @@ async def lay_in_a_sentence(
         origin=part.origin,
         created_at=now,
         recorded_at=now,
-        duration_ms=await measure_ms_bounded(spliced.audio),
+        duration_ms=duration_ms,
     )
     db.add(take)
     state = back_translation_of(session)
