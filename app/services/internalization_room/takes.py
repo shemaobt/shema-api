@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -251,7 +251,8 @@ async def store_take(
     is checked before anything is stored.
 
     The **Recording time** is the tablet's when it sent one for a take recorded on it, and the
-    server's for a joined part, whose tablet time only measures the **Clock offset**. Two
+    server's for a joined part, whose tablet time only measures the **Clock offset**. A take sent
+    with no time has none of its own, and is marked so: its arrival only stands in for one. Two
     uploads of the same bytes at once both pass the first look: the unique index refuses the
     second row, and its upload answers with the first. The insert sits in a savepoint, so the
     refusal undoes it alone and leaves the caller's objects as they were.
@@ -299,6 +300,7 @@ async def store_take(
         origin=origin,
         created_at=arrived,
         recorded_at=recording_time(None if origin is not None else sent_recorded_at, arrived),
+        recorded_at_known=origin is not None or sent_recorded_at is not None,
         duration_ms=checked.duration_ms,
         device_clock_offset_ms=offset,
     )
@@ -463,6 +465,7 @@ async def refuse_a_take_that_is_no_longer_a_part(
 
 READING_ORDER = (
     IRTake.ordinal.asc().nulls_first(),
+    case((IRTake.recorded_at_known, IRTake.recorded_at), else_=None).asc().nulls_first(),
     IRTake.pass_number.asc().nulls_first(),
     IRTake.created_at,
 )
@@ -474,10 +477,16 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
 
-    Both columns are nullable and the placement is named rather than left to the engine:
+    Under one ordinal the take recorded last reads last, by its **Recording time**, and the
+    pass then the arrival break a tie. A take with no Recording time of its own — sent with
+    none, or stored before ENG-1273 and neither joined nor spliced — reads before every take
+    that has one, and among its kind by the pass, which is the order it was read in before.
+
+    Every key is nullable and the placement is named rather than left to the engine:
     a take with no ordinal belongs to no stretch — the undivided passage, or a recording
-    that captured none — and a take with no pass predates the room sending one, so either
-    is the earliest thing in its own group. Unnamed, SQLite
+    that captured none — a take with no pass predates the room sending one, and a take with
+    no Recording time of its own has nothing to be compared by, so each is the earliest thing
+    in its own group. Unnamed, SQLite
     read that the same way and PostgreSQL read it upside down, which put the oldest
     recording of a session at the bottom of the packet on the only database that serves
     a real team.
@@ -502,11 +511,12 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     history, kept with its stretches and findings and no longer a part anybody is asked for.
 
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
-    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
-    alone it would be wrong, and this module says why two functions up: that stamp is when the
-    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
-    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
-    its own recordings and does not move with the link.
+    the one recorded last by its **Recording time**, with the pass breaking a tie. Keyed on the
+    arrival it would be wrong: the outbox drains whenever the link comes back, so the rehearsal
+    that arrives last is sometimes the one the team abandoned, and the Recording time does not
+    move with the link. Keyed on the pass it would be wrong too: a reinstalled tablet, or a
+    second one, counts its passes from 1 again, so its newer take would read below an older
+    pass 2. A take with no Recording time of its own keeps the pass order and reads first.
 
     So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
     parts come back in the reading order and no caller sorts them again.

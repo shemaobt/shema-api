@@ -434,6 +434,11 @@ class IRTake(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: Whether `recorded_at` is the take's own **Recording time** — the tablet's, or the server's
+    #: for a joined or spliced part — and not an arrival standing in for one.
+    recorded_at_known: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     #: How long the sound runs, as the tablet sent it when it matched the bytes, or as measured.
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The **Clock offset** of the tablet that sent this joined part, kept only at five minutes
