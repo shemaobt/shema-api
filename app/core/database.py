@@ -12,8 +12,10 @@ from app.core.db_url import async_database_url, ssl_connect_args
 #: a turn waits on another turn of its session, and past a frase uploaded on a slow link while
 #: it holds the session's row (ADR 0079).
 LOCK_TIMEOUT: Final = "30s"
-#: How long one statement of the app may run: above the longest the app means to run.
-STATEMENT_TIMEOUT: Final = "1min"
+#: A backstop that stops a runaway statement, well above any statement the app means to run;
+#: the longest one in production was not measured. The waits on a row lock are the
+#: lock timeout's to bound (ADR 0079).
+STATEMENT_TIMEOUT: Final = "5min"
 
 
 class Base(DeclarativeBase):

@@ -52,13 +52,13 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
     A turn waiting on the opening keeps ADR 0053's rule instead and runs on the conversation
     as it stands (the Definer, 2026-10-21). It takes the claim from the opening first, so the
     turns after it wait on a turn of the team, never on the late opening, which is then
-    dropped from the record. Which holder is the opening is decided by the claim, with no new
-    column: a holder first seen on a session still empty claimed it for the opening, because
-    no turn of the team writes a message without first taking the claim.
-  - A claim taken from the opening is a team turn's claim. A holder that replaced a claim
-    while it was live and unanswered took it over, and a waiter never judges it the opening
-    again: it waits on it as on any team turn, and is refused past its own bound. Two team
-    turns passing one slow opening therefore never both run on the empty conversation.
+    dropped from the record. Which holder is the opening is read off the row: the claim
+    carries `claimed_for_the_opening`, true only when the request for the opening claimed,
+    false for every other claim and every takeover, and cleared with the claim. Any waiter,
+    whenever it arrives, reads it the same way.
+  - A claim taken from the opening is a team turn's claim. A waiter waits on it as on any
+    team turn, and is refused past its own bound. Two team turns passing one slow opening, or
+    one passing it and another arriving later, never both run on the empty conversation.
   - The late opening writes only while it still holds its claim, guarded on the claim's turn
     id and time as the release is, inside its own write. Once a team turn took the claim,
     nothing of the opening is written, the tablet that asked for it still hears it, and the
@@ -71,12 +71,19 @@ Decided by the Definer with Henok on 2026-10-19 and 2026-10-21, and with the Orc
   a claim a resend took over under the same id.
 - The verdict round and the release take no claim. `_land`'s version guard stays the backstop
   for them and for an older instance during a deploy.
-- The columns and the setting keep the opening's names.
+- The first two columns and the setting keep the opening's names. The third,
+  `claimed_for_the_opening`, is one additive migration: not null, false by default, no
+  backfill, dropped on downgrade.
+- A waiter that sees the answer stored claims again at once; only a claim still standing
+  with nothing stored, or none at all, makes it sleep a look.
 - No statement of the app waits on Postgres for ever. Every transaction of the app's engine
-  sets `lock_timeout` to 30 s and `statement_timeout` to 1 min. 30 s is inside the 90 s
+  sets `lock_timeout` to 30 s and `statement_timeout` to 5 min. 30 s is inside the 90 s
   wait and past a back-translation frase uploaded on a slow link, which holds the session's
-  row through two uploads to the bucket (the Orchestrator, 2026-10-21). 1 min is a starting
-  value: the longest statement in production was not measured. Production reaches Neon
+  row through two uploads to the bucket (the Orchestrator, 2026-10-21); it is what bounds
+  the waits this decision is about. 5 min is only a backstop against a runaway statement,
+  well above any statement the app means to run. The longest statement in production was
+  not measured; the heaviest the code holds are a scan of the interviews still in progress
+  in a backfill script and the delete of one session's ticks. Production reaches Neon
   through its pooler, which hands the server connection to another client between transactions and
   keeps nothing a connection was started with, so the two are set per transaction with
   `set_config(…, true)`, in one `SELECT` when the transaction begins (Henok, 2026-10-21). On
@@ -100,15 +107,18 @@ Rejected:
 - Clearing the claim in the turn's own commit. It covers no claim an older instance left, and
   it reaches every draft of the turn door and the scene door for what one more condition on
   the claim's update does.
+- Telling the opening's claim apart by the session being still empty. A turn that arrives
+  after another took the opening's claim sees the same empty session, takes that team turn
+  for the opening, and both run on the empty conversation.
 - Hearing the team before claiming. A claim is then never held through a transcription,
   but the turn that is heard first goes first, and a short recording sent second is answered
   before a long one sent first.
 
 Consequences:
 
-- A team turn behind another team turn on a session still empty is taken for one behind the
-  opening, and at the bound takes the claim and runs instead of being refused. A tablet asks
-  for the opening first, so that session is rare.
+- While the deploy runs, an older instance claims an opening without
+  `claimed_for_the_opening`, which reads false: a team turn on a new instance behind that
+  opening is refused `TURN_COLLISION` at the bound instead of running.
 - A turn running past 90 s has the other tablets' turns refused until it lands, fails or dies.
   A turn legitimately runs to about 56 s. A holder killed with its instance is such a turn:
   its claim stands until it is dead, 330 s after it was taken, and every other turn that
@@ -119,9 +129,9 @@ Consequences:
 - After a turn, the claim's columns still name it. Only the claim reads them.
 - Probes that must go red: team turns skipping the claim (the turn and scene cases); the bound
   counted from arrival; running instead of refusing at the bound; no re-read after winning;
-  hearing before claiming; a taken-over claim judged the opening again; the late opening
-  written anyway; without the stored-answer condition on the claim,
+  hearing before claiming; a takeover written as the opening's claim; the late opening
+  written anyway; a sleep after the answer was seen stored; without the stored-answer condition on the claim,
   the case of two turns at nearly the same moment; the release on the turn id only; no dead
   check while waiting; a resend treated as another tablet's turn; the refusal's handler
   unregistered; the per-transaction waits unregistered (the migrations job's check).
-- Every user of the app's engine, scripts included, now has a statement cut at 1 min.
+- Every user of the app's engine, scripts included, now has a statement cut at 5 min.

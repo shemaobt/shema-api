@@ -330,7 +330,7 @@ _Avoid_: kickoff, abertura, first turn
 A session that holds a Guide line, its **Opening** at least. A room note or a team entry alone does not open it. The session state says so, and the tablet asks a session's Opening only while it is not opened. Not to be confused with **Opening a session**, the open door.
 _Avoid_: started, begun, aberta
 
-**Turn claim** (`opening_claim_turn_id`, `opening_claimed_at`; the columns keep the opening's names):
+**Turn claim** (`opening_claim_turn_id`, `opening_claimed_at`, `claimed_for_the_opening`; the first two keep the opening's names):
 The mark on a session that one request is answering a turn of it, naming the turn id its answer will be stored under. Every turn that writes the conversation takes it, whether the **Opening**, a **Team turn** or a scene rehearsal's «terminei»; asking for the last line again takes none. A team turn or a «terminei» that finds it held waits for that answer and runs after it. One still waiting 90 s after the claim is refused `TURN_COLLISION`, with nothing stored and nothing voiced, unless what it waits on is the **Opening**: then it runs on the conversation as it stands. Another request for the opening answers with the holder's, and the same turn id sent again joins the answer stored under it. A claim older than the turn bound plus thirty seconds, or whose answer is already stored, counts as none (ADR 0053, ADR 0079).
 _Avoid_: lease, lock, kickoff lease, opening claim
 
