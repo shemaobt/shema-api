@@ -264,9 +264,10 @@ def prune(live_pins: Path | None) -> int:
                 file=sys.stderr,
             )
             return 1
+    keep = {*live, deployed}
     if kept.is_dir():
-        for tree in sorted(kept.iterdir()):
-            if tree.name in live or tree.name == deployed:
+        for tree in sorted(path for path in kept.iterdir() if path.is_dir()):
+            if tree.name in keep:
                 print(f"  kept kept/{tree.name}")
             else:
                 shutil.rmtree(tree)

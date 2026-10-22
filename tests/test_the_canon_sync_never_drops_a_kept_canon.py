@@ -79,7 +79,7 @@ def test_a_sync_with_nothing_new_published_removes_no_kept_tree(
 
     assert capsys.readouterr().out.splitlines()[-1] == "UP_TO_DATE"
     assert _kept_trees(tmp_path) == [LIVE, STALE], (
-        "a sync that changed nothing dropped the canon open sessions read"
+        "um sync que não mudou nada apagou o canon que as sessões vivas leem"
     )
 
 
@@ -110,5 +110,5 @@ def test_a_refused_sync_removes_no_kept_tree(
     assert canon.sync(pin=NEXT) == 1
 
     assert _kept_trees(tmp_path) == [LIVE, STALE], (
-        "a refused sync dropped the canon open sessions read"
+        "um sync recusado apagou o canon que as sessões vivas leem"
     )

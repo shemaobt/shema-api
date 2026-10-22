@@ -172,6 +172,20 @@ def test_a_prune_told_the_deployed_pin_it_holds_no_kept_tree_for_still_prunes(
     )
 
 
+def test_a_prune_beside_a_stray_file_under_kept_still_prunes(
+    a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    (canon_dir / "kept" / ".DS_Store").write_bytes(b"finder")
+    live_pins = _the_read_answered(canon_dir, LIVE)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 0
+
+    assert [name for name in _kept_trees(canon_dir) if not name.startswith(".")] == sorted(
+        [LIVE, SHA]
+    ), "um arquivo do Finder em kept/ derrubava o prune"
+
+
 def test_a_prune_told_every_kept_pin_removes_nothing(
     a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -100,8 +100,8 @@ token, then prune with them and open a pull request with what it removed:
 
 ```sh
 curl -sf -H "Authorization: Bearer <token>" \
-  "$PRODUCTION_API/api/internalization-room/facilitator/canon-pins" -o pins.json
-uv run python scripts/sync_internalization_canon.py --prune --live-pins pins.json
+  "$PRODUCTION_API/api/internalization-room/facilitator/canon-pins" -o pins.json &&
+  uv run python scripts/sync_internalization_canon.py --prune --live-pins pins.json
 ```
 
 The prune keeps every pin in the file and the deployed pin. It refuses with no file, with a
