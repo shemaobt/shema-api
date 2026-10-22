@@ -34,7 +34,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     approve_release,
-    build_internalization_release,
     compose_internalization_release,
 )
 from app.services.internalization_room.segments import (
@@ -54,6 +53,7 @@ from tests.release_harness import (
     at_the_desk,
     desk_release,
     desk_release_at,
+    judged_packet,
     never_analysed_telling_back,
     one_stretch,
     ready_session,
@@ -142,7 +142,7 @@ async def _the_desk_reads(db: AsyncSession, session: IRSession) -> dict[str, Any
     For a session the gate lets through, which is the stronger question: read past the gate, a
     case about a clean session would go on passing after the session stopped being clean.
     """
-    return await build_internalization_release(db, await get_session(db, session.id))
+    return await judged_packet(db, await get_session(db, session.id))
 
 
 async def _three_stretches_told(db: AsyncSession, session: IRSession) -> BackTranslationState:
@@ -204,7 +204,7 @@ async def test_the_check_block_spells_marcias_names_verbatim(db_session: AsyncSe
     clean = await ready_session(db_session)
     disputed = await ready_session(db_session, tell=told_back_with_an_open_finding)
 
-    clean_packet = await build_internalization_release(db_session, clean)
+    clean_packet = await judged_packet(db_session, clean)
     open_finding = await _live_view(db_session, disputed)
 
     assert set(clean_packet["check"]) == THE_BLOCKS_NAMES
@@ -217,7 +217,7 @@ async def test_a_checked_session_reads_conferida(db_session: AsyncSession) -> No
     """A session the room checked clean, read live: the check happened and nothing was forced."""
     session = await ready_session(db_session)
 
-    check = (await build_internalization_release(db_session, session))["check"]
+    check = (await judged_packet(db_session, session))["check"]
 
     assert check["status"] == "conferida"
     assert check["conferida"] is True
@@ -376,7 +376,7 @@ async def test_conferida_and_heard_complete_never_disagree_with_the_gate(
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     with pytest.raises(InternalizationReleaseBlocked) as refused:
-        await build_internalization_release(db_session, await get_session(db_session, session.id))
+        await judged_packet(db_session, await get_session(db_session, session.id))
 
     assert "playback_did_not_cover_the_clip" in refused.value.blockers
     half_heard = (await _live_view(db_session, session))["check"]
@@ -393,7 +393,7 @@ async def test_conferida_and_heard_complete_never_disagree_with_the_gate(
     assert read.json()["check"]["heardComplete"] is False
 
     heard_whole = await ready_session(db_session)
-    whole = await build_internalization_release(db_session, heard_whole)
+    whole = await judged_packet(db_session, heard_whole)
     assert whole["check"]["heardComplete"] is True
 
 
@@ -482,7 +482,7 @@ async def test_the_verdict_stamps_when_the_check_ran(
     assert disputed_check["lastCheckAt"] == after_a_finding.checked_at.isoformat()
 
     before_this_deploy = await ready_session(db_session)
-    older = await build_internalization_release(db_session, before_this_deploy)
+    older = await judged_packet(db_session, before_this_deploy)
     assert older["check"]["lastCheckAt"] is None
     assert older["check"]["status"] == "conferida"
 

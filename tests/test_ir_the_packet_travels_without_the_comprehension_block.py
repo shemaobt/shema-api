@@ -12,8 +12,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room.release import build_internalization_release
-from tests.release_harness import ready_session
+from tests.release_harness import judged_packet, ready_session
 
 LEGACY = {
     "ledger": [
@@ -47,7 +46,7 @@ async def test_a_row_holding_the_old_practice_and_probe_releases_with_no_compreh
     session.comprehension = LEGACY
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     assert "comprehension" not in artifact, (
         "o pacote ainda levava a leitura de ensaio e sondas que a sala não faz mais"

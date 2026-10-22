@@ -34,7 +34,6 @@ from app.services.internalization_room.back_translation import (
     Nuance,
 )
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
-from app.services.internalization_room.release import build_internalization_release
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from tests.baker import make_app, make_role
@@ -49,6 +48,7 @@ from tests.release_harness import (
     desk_release,
     desk_release_at,
     ensaio_take,
+    judged_packet,
     ready_session,
     releases_of,
     reported_playback,
@@ -585,7 +585,7 @@ async def heard_to_its_end(client, session: IRSession, pressed) -> None:
 async def test_a_release_stored_before_this_ticket_keeps_its_packet(client, db_session, room_app):
     project, _credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_session(db_session, project_id=project.id)
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
     packet["schema_version"] = "tripod.internalization-release.v0.7"
     packet["check"].pop("nuances", None)
     for entry in packet["audio"]["rehearsal_takes"]:

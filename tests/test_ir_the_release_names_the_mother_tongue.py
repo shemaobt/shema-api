@@ -20,7 +20,6 @@ from app.db.models.auth import App
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.release import build_internalization_release
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session
 from tests.baker import (
@@ -37,6 +36,7 @@ from tests.release_harness import (
     at_the_desk,
     desk_release,
     desk_release_at,
+    judged_packet,
     ready_session,
     releases_of,
     reported_playback,
@@ -217,7 +217,7 @@ async def test_a_mother_tongue_whose_name_leaves_nothing_to_slug_is_named_lrl(
 async def test_a_session_that_names_no_team_composes_a_packet_whose_language_is_null(db_session):
     session = await ready_session(db_session, project_id=None)
 
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
 
     assert packet["language"] is None
 
@@ -274,7 +274,7 @@ async def test_a_release_stored_before_this_deploy_is_returned_unchanged_on_appr
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_in(db_session, project.id)
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
     legacy_id = str(uuid.uuid4())
     for key in ("language", "session_language", "audio_format"):
         packet.pop(key, None)
