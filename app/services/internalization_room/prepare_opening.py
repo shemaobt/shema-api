@@ -174,7 +174,7 @@ async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -
     and handing it the old one's line would frame the team's passage from a map the rest of the
     session never reads. The cost is the same one session writing its own opening.
 
-    A session the team has already spoken in is refused too. The open door returns the team's
+    A session the Guide has already spoken in is refused too. The open door returns the team's
     resumed session (ADR 0045), and a line parked there is never read: only an opening takes
     it, and that session has had its opening.
 
