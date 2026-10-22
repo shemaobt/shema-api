@@ -565,6 +565,42 @@ async def test_a_joined_part_carries_her_origin_and_never_the_clock_offset(
         assert clock not in carried
 
 
+async def test_a_joined_part_with_a_sentence_laid_in_keeps_the_time_it_was_joined(
+    client, db_session, room_app, store
+):
+    session, (joined, _second), (part_1, _part_2) = await rehearsed_in_wav(
+        db_session, store, [PART, PART]
+    )
+    rehearsal = IRSceneRehearsal(
+        session_id=session.id,
+        project_id=TABLET_TEAM,
+        pericope=P,
+        n=1,
+        device_id=TABLET,
+        storage_key=f"scene-rehearsals/{session.id}/1",
+        size_bytes=2048,
+        sha256="c" * 64,
+        crc32c="AAAAAAA=",
+        content_type="audio/wav",
+    )
+    db_session.add(rehearsal)
+    await db_session.commit()
+    joined.origin = rehearsal.id
+    await db_session.commit()
+    joined_at = joined.created_at
+    desk, _user = await at_the_desk(
+        db_session, room_app, await db_session.get(Project, TABLET_TEAM)
+    )
+
+    await laid_in_and_told_again(client, session.id, part_1[1].id, 1)
+    await forced(client, desk, session)
+    manifest = await manifest_of(client, desk, session)
+
+    [clip] = [clip for clip in manifest["clips"] if clip["key"] == "S1"]
+    assert clip["splices"] == 1
+    assert clip["origin"]["joinedAt"] == joined_at.astimezone(UTC).isoformat()
+
+
 async def test_a_part_with_a_sentence_laid_in_says_how_many_along_its_chain(
     client, db_session, room_app, store
 ):

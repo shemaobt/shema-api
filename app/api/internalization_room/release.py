@@ -72,8 +72,7 @@ async def internalization_release(
     arrived with. That is a defect this composition created rather than inherited: on
     ``main`` there was no per-team scoping to violate, and on this branch the route did not
     exist, so neither side was wrong and their intersection had no reviewer. Resolving the
-    session by id alone handed a facilitator of one team the handoff artifact of another —
-    every finding, every quote, the whole of what that team recorded.
+    session by id alone handed a facilitator of one team what another team recorded.
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await refine_manifest(db, session)

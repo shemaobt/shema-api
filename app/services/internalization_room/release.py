@@ -447,8 +447,8 @@ def _judge(blockers: list[str], waived: frozenset[str]) -> None:
     ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
     is out of reach of any of it, because a panorama is not a draft of a passage at all.
 
-    What a forced package says is unchanged: ``checked`` false and every open finding in
-    ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
+    What a forced packet says is unchanged: ``checked`` false and every open finding in
+    ``findings``. Judging the quality of a telling-back is not this packet's job — carrying
     it honestly is, and the decision that it may travel anyway was a person's and is recorded
     on the release rather than dressed up here.
 

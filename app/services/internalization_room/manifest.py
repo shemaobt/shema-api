@@ -76,15 +76,18 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
         raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
     packet = release.packet
     release_id = str(packet.get("release_id") or release.id)
-    parts = current_parts(await takes_of(db, session.id))
+    takes = await takes_of(db, session.id)
+    parts = current_parts(takes)
     keys = part_keys(parts)
     clips = [part for part in parts if not is_declared(part)]
     names = [f"{release_id}-{keys[part.id]}.{extension(part.content_type)}" for part in clips]
     links = await asyncio.gather(
         *(download_link(part, name) for part, name in zip(clips, names, strict=True))
     )
-    origins = await _origins(db, clips)
     laid = {sentence.take_id: sentence for sentence in back_translation_of(session).sentences}
+    chains = {part.id: _chain(part.id, laid) for part in clips}
+    by_id = {take.id: take for take in takes}
+    origins = await _origins(db, clips, {part.id: by_id[chains[part.id][-1]] for part in clips})
     with reading_the_canon_of(session.canon_pin):
         reference = load_map(session.pericope).reference
         meaning_map = meaning_map_ref(session.pericope)
@@ -111,7 +114,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
         "meaningMap": meaning_map,
         "grain": "scene" if _recording_grain(parts) == "parts" else "whole",
         "clips": [
-            _clip(part, keys[part.id], name, link, origins.get(part.id), _splices(part, laid))
+            _clip(part, keys[part.id], name, link, origins.get(part.id), len(chains[part.id]) - 1)
             for part, name, link in zip(clips, names, links, strict=True)
         ],
         "finalizedAt": as_utc(release.approved_at).isoformat(),
@@ -156,32 +159,40 @@ def _clip(
     return clip
 
 
-async def _origins(db: AsyncSession, clips: list[IRTake]) -> dict[str, dict[str, Any]]:
-    """Her five keys for each joined part whose scene rehearsal is found, by the part's id."""
-    joined = {part.origin: part for part in clips if part.origin}
+async def _origins(
+    db: AsyncSession, clips: list[IRTake], joined_as: dict[str, IRTake]
+) -> dict[str, dict[str, Any]]:
+    """Her five keys for each joined part whose scene rehearsal is found, by the part's id.
+
+    ``joinedAt`` is when the part was joined, which is the first take of its chain: a sentence
+    laid in later makes a new take that carries the origin forward and lands at its own time.
+    """
+    joined = [part for part in clips if part.origin]
     if not joined:
         return {}
-    found = await db.execute(select(IRSceneRehearsal).where(IRSceneRehearsal.id.in_(joined)))
+    found = await db.execute(
+        select(IRSceneRehearsal).where(IRSceneRehearsal.id.in_({part.origin for part in joined}))
+    )
+    rehearsals = {rehearsal.id: rehearsal for rehearsal in found.scalars()}
     return {
-        joined[rehearsal.id].id: {
+        part.id: {
             "kind": "scene-rehearsal",
             "sessionId": rehearsal.session_id,
             "n": rehearsal.n,
             "takeRecordedAt": as_utc(rehearsal.recorded_at).isoformat(),
-            "joinedAt": as_utc(joined[rehearsal.id].created_at).isoformat(),
+            "joinedAt": as_utc(joined_as[part.id].created_at).isoformat(),
         }
-        for rehearsal in found.scalars()
+        for part in joined
+        if (rehearsal := rehearsals.get(part.origin or "")) is not None
     }
 
 
-def _splices(part: IRTake, laid: dict[str, LaidInSentence]) -> int:
-    """How many sentences were laid into this part's chain, carried from take to take."""
-    count = 0
-    take_id = part.id
-    while take_id in laid:
-        count += 1
-        take_id = laid[take_id].previous_take_id
-    return count
+def _chain(take_id: str, laid: dict[str, LaidInSentence]) -> list[str]:
+    """This part's take and every take a laid-in sentence was spliced over, back to the first."""
+    chain = [take_id]
+    while chain[-1] in laid:
+        chain.append(laid[chain[-1]].previous_take_id)
+    return chain
 
 
 def _her_check(stored: dict[str, Any], session_id: str) -> dict[str, Any]:
