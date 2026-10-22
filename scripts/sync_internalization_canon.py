@@ -22,19 +22,22 @@ a re-pin cannot delete them without a word.
 Before it overwrites, `--sync` keeps the canon it replaces: `vendor/` as it stands, with its
 pin and manifest, and the element labels beside it, are copied to `canon/kept/<old pin>/`. A
 session keeps the canon it was opened with while its session is live, and that copy is
-the only place its canon still exists once the pin moves. Then it drops every kept tree whose
-pin it is not told to keep, the one it just made included: which pins an open session names
-needs a production read, and while production carries only tests the sync takes none.
+the only place its canon still exists once the pin moves. The sync removes no kept tree:
+which pins a live session holds needs a production read, and the sync takes none. A kept tree
+leaves only through `--prune --live-pins <file>`, the file being production's answer to
+`GET /api/internalization-room/facilitator/canon-pins`; the prune keeps every pin the file
+names and the deployed pin, and drops every other kept tree (ADR 0088).
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
-compiler's main line, when the pin leaves no consumable passage at all, when a names list's
-bytes differ from the sha256 her `_spec/pins.json` records for it, and when a pin given to
-`--keep` names neither a kept tree nor the pin this sync replaces.
+compiler's main line, when the pin leaves no consumable passage at all, and when a names
+list's bytes differ from the sha256 her `_spec/pins.json` records for it. `--prune` refuses,
+exits 1 and removes nothing when it is given no file, a file that is not that read's answer,
+or a live pin that names neither a kept tree nor the deployed pin.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
     uv run python scripts/sync_internalization_canon.py --sync --pin <sha>   # re-pin to <sha>
-    uv run python scripts/sync_internalization_canon.py --sync --keep <sha>  # keep kept/<sha>/
+    uv run python scripts/sync_internalization_canon.py --prune --live-pins pins.json  # prune kept/
 """
 
 from __future__ import annotations
@@ -167,7 +170,7 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def sync(pin: str | None = None, keep: tuple[str, ...] = ()) -> int:
+def sync(pin: str | None = None) -> int:
     if pin and not _on_main_line(pin):
         print(
             f"pin {pin} is not on the compiler's main line — "
@@ -196,17 +199,8 @@ def sync(pin: str | None = None, keep: tuple[str, ...] = ()) -> int:
             )
             return 1
     held = pinned_commit(PIN_FILE.read_text()) if PIN_FILE.exists() else sha
-    for kept in keep:
-        if not (kept == held != sha or (VENDOR.parent / "kept" / kept).is_dir()):
-            print(
-                f"--keep {kept} names no kept tree and not the pin this sync replaces — "
-                "refusing to drop the canon it was meant to keep",
-                file=sys.stderr,
-            )
-            return 1
     if held != sha:
         _keep(held)
-    _prune(keep)
     files = []
     for kind in KINDS:
         target = VENDOR / kind
@@ -240,15 +234,44 @@ def _keep(pin: str) -> None:
     shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
 
 
-def _prune(keep: tuple[str, ...]) -> None:
+def prune(live_pins: Path | None) -> int:
+    if live_pins is None:
+        print(
+            "--prune needs --live-pins <file>, the answer of "
+            "GET /api/internalization-room/facilitator/canon-pins from production",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        live = json.loads(live_pins.read_text())["pins"]
+    except (OSError, ValueError, KeyError, TypeError):
+        live = None
+    if not isinstance(live, list) or not all(
+        isinstance(pin, str) and SHA_RE.fullmatch(pin) for pin in live
+    ):
+        print(
+            f"{live_pins} is not the answer of the canon-pins read — refusing to prune",
+            file=sys.stderr,
+        )
+        return 1
+    deployed = pinned_commit(PIN_FILE.read_text())
     kept = VENDOR.parent / "kept"
+    for pin in live:
+        if pin != deployed and not (kept / pin).is_dir():
+            print(
+                f"live pin {pin} has no kept tree here and is not the deployed pin — "
+                "refusing to prune",
+                file=sys.stderr,
+            )
+            return 1
     if kept.is_dir():
         for tree in sorted(kept.iterdir()):
-            if tree.name in keep:
+            if tree.name in live or tree.name == deployed:
                 print(f"  kept kept/{tree.name}")
             else:
                 shutil.rmtree(tree)
                 print(f"  dropped kept/{tree.name}")
+    return 0
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:
@@ -349,18 +372,21 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
+    group.add_argument("--prune", action="store_true")
     parser.add_argument("--pin", metavar="<sha>")
-    parser.add_argument("--keep", metavar="<sha>", action="append", default=[])
+    parser.add_argument("--live-pins", metavar="<file>", type=Path)
     args = parser.parse_args()
     if args.pin and not args.sync:
         parser.error("--pin needs --sync")
-    if args.keep and not args.sync:
-        parser.error("--keep needs --sync")
+    if args.live_pins and not args.prune:
+        parser.error("--live-pins needs --prune")
     if args.pin and not SHA_RE.fullmatch(args.pin):
         parser.error("--pin needs a full 40-character sha, not a ref")
-    if not all(SHA_RE.fullmatch(keep) for keep in args.keep):
-        parser.error("--keep needs a full 40-character sha, the name of a kept tree")
-    return sync(pin=args.pin, keep=tuple(args.keep)) if args.sync else check()
+    if args.sync:
+        return sync(pin=args.pin)
+    if args.prune:
+        return prune(args.live_pins)
+    return check()
 
 
 if __name__ == "__main__":
