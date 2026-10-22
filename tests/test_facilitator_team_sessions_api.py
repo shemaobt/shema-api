@@ -324,8 +324,8 @@ async def test_a_session_halted_before_any_turn_landed_is_still_answered(client,
 
 async def test_a_halt_that_never_had_a_turn_outlives_being_attended(client, db_session):
     """`halt_kind` is written on every halt and cleared by none (`halt.last`'s own rule): a
-    room a facilitator has already gone to does not drop back out of the column just because
-    `attend` lifted its status — the halt it asked for is still a fact of its history.
+    room a facilitator has already gone to does not drop back out of the column — the halt it
+    asked for is still a fact of its history, and a visit lifts nothing (ADR 0076).
     """
     _user, project, headers = await a_facilitator(db_session)
     halted = await a_session(db_session, project_id=project.id, entered=False)
@@ -336,7 +336,7 @@ async def test_a_halt_that_never_had_a_turn_outlives_being_attended(client, db_s
     history = await read_history(client, project.id, headers)
 
     assert [card["session_id"] for card in history] == [halted.id]
-    assert history[0]["needs_person"] is False
+    assert history[0]["needs_person"] is True
 
 
 # Behaviour 2 — a team that is not the caller's refuses exactly as one that does not exist.

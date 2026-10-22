@@ -394,7 +394,7 @@ async def test_the_page_takes_ten_codes_a_minute_whoever_sends_them(
 # --- Halts --------------------------------------------------------------------------------
 
 
-async def test_a_demo_teams_room_that_halts_for_a_person_is_attended_at_once_and_calls_nobody(
+async def test_a_demo_teams_halt_is_stamped_by_the_server_and_never_reaches_the_queue(
     client, configured: Team, db_session: AsyncSession
 ) -> None:
     tablet = await a_tablet_linked_through_the_page(client)
@@ -403,15 +403,33 @@ async def test_a_demo_teams_room_that_halts_for_a_person_is_attended_at_once_and
     asked = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
 
     assert asked.status_code == 200, asked.text[:300]
-    assert asked.json()["needs_person"] is False
     state = (await client.get(f"{IR}/sessions/{session_id}", headers=tablet)).json()
-    assert state["status"] == "in_progress"
-    assert state["halt"] is None
+    assert state["status"] == "needs_person", "a visita do servidor levantou a parada do tablet"
+    assert state["halt"] == "blocking"
     assert session_id not in await queued_session_ids(client, configured)
     written = await session_row(db_session, session_id)
     assert written.attended_at is not None
     assert written.attended_by is None
     assert written.halts_raised == 1
+
+    assert await opens_p01(client, tablet) == session_id
+    state = (await client.get(f"{IR}/sessions/{session_id}", headers=tablet)).json()
+    assert state["status"] == "in_progress"
+
+
+async def test_a_demo_teams_second_halt_is_stamped_too(
+    client, configured: Team, db_session: AsyncSession
+) -> None:
+    tablet = await a_tablet_linked_through_the_page(client)
+    session_id = await a_session_with_one_turn(client, db_session, tablet)
+    await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+
+    asked = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+
+    assert asked.status_code == 200, asked.text[:300]
+    assert session_id not in await queued_session_ids(client, configured), (
+        "a segunda parada da equipe demo chegou à fila"
+    )
 
 
 async def test_a_demo_teams_hard_stretch_keeps_its_warning_attended_and_calls_nobody(
@@ -432,7 +450,7 @@ async def test_a_demo_teams_hard_stretch_keeps_its_warning_attended_and_calls_no
     assert written.attended_by is None
 
 
-async def test_a_warning_on_a_demo_room_already_halted_lifts_the_halt_with_it(
+async def test_a_warning_on_a_demo_room_already_halted_stamps_it_and_leaves_the_halt_standing(
     client, configured: Team, db_session: AsyncSession
 ) -> None:
     tablet = await a_tablet_linked_through_the_page(client)
@@ -443,12 +461,13 @@ async def test_a_warning_on_a_demo_room_already_halted_lifts_the_halt_with_it(
         f"{IR}/facilitator/sessions/{session_id}/attended", headers=configured.desk
     )
     assert undone.json()["status"] == "needs_person", undone.text[:300]
+    assert session_id in await queued_session_ids(client, configured)
 
     await one_stretch_told_until_it_is_hard(client, session_id, tablet, take_id)
 
     state = (await client.get(f"{IR}/sessions/{session_id}", headers=tablet)).json()
-    assert state["status"] == "in_progress"
-    assert state["halt"] is None
+    assert state["status"] == "needs_person"
+    assert state["halt"] == "blocking"
     assert session_id not in await queued_session_ids(client, configured)
 
 
@@ -497,7 +516,7 @@ async def test_after_the_window_closes_the_demo_teams_halts_are_still_attended(
         f"{IR}/devices/{tablet['X-Room-Device']}/needs-person", headers=tablet
     )
 
-    assert asked.json()["needs_person"] is False
+    assert asked.status_code == 200, asked.text[:300]
     assert halted.status_code == 200, halted.text[:300]
     assert session_id not in await queued_session_ids(client, configured)
     assert tablet["X-Room-Device"] not in await queued_device_ids(client, configured)

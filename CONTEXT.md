@@ -359,7 +359,7 @@ What Zerar leaves behind: one row per reset of a pericope, every language at onc
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):
-A blocking halt, not an end: it travels beside the status, never inside it.
+A blocking halt, not an end: it travels beside the status, never inside it. It is lifted only by the team's own return: a turn that lands, or a tablet opening the session.
 _Avoid_: error, failure, status, Precisa de pessoa
 
 **Halt**:
@@ -375,8 +375,12 @@ Why the room asked for a person, in one of five families the tablet names when i
 _Avoid_: cause, error, message, detail, Motivo da parada
 
 **Warning**:
-The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
+The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only a Visit does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
 _Avoid_: needs a person, notice, alert, Aviso
+
+**Visit** (`attended_at`):
+A facilitator's mark on the Desk that somebody went to a room. It is a record: it writes nothing on the session's status and lifts no blocking halt. A halted room with a visit leaves the queue, and undoing the visit puts it back. It is the only end of a Warning. A new halt clears it.
+_Avoid_: attend lifts, resolve, Atendido
 
 **Station**:
 The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. A session the team left keeps the station it stopped in.
@@ -494,7 +498,7 @@ The code the server mints for one tablet before it belongs to any team; a facili
 _Avoid_: código, pairing code, device code, credential
 
 **Demo team** (`is_demo_team`):
-The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server attends its halts at once) and never releases to Refine, with or without the configuration.
+The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server stamps a visit on its halts at once, so none reaches the queue) and never releases to Refine, with or without the configuration.
 _Avoid_: test team, sandbox, reviewer team, equipe demo
 
 **Device credential** (`X-Device-Credential`):
