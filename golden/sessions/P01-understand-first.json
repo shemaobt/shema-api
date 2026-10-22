@@ -2,27 +2,104 @@
   "name": "P01-understand-first",
   "pericopeId": "P01",
   "language": "Brazilian Portuguese",
-  "why": "The 2026-09-03 demo failure: the team asks to understand the passage before rehearsing. The guide must open the passage more fully from the map, never redirect, never repeat itself, never invite rehearsal before the team says it has grasped the part.",
+  "why": "The 2026-09-03 demo failure: the team asks to understand the passage before rehearsing. The guide must open the passage more fully from the map, never redirect, never repeat itself, never invite rehearsal before the team says it has grasped the scene. Since Marcia's rulings of 2026-09-24 (the three moments) the script walks the FIA path, and since her second round of the same evening it ENDS once scene 2 is whole, with NO send-off expectation (the three P01-ensaio-final-send-off-* scripts cover the send-off). Why: in the live runs of 2026-09-25 03:03Z the team told the later scenes on its own and the voice (rightly, by her ruling «(a), sim, pode seguir com as recomendações»: a scene told ahead is kept, «vocês já contaram parte disso» when it comes, and the voice goes one scene at a time, every scene through its Internalization and its Articulation) went scene by scene and never reached the send-off, so the old last-turn send-off keys failed (mechanical=3). Turns 1-3 are requests to understand, answered in the Familiarization: the whole passage told again, more fully (opens_more, no_rehearsal_invite), the family, and 'Entendi. E o que acontece com eles em Moabe?' — each a take-up there, ending with F4 (familiarization_tail), the app's moment F; turn 3 also keeps take_up_closing_if_open (Marcia's ruling (b) of 2026-09-23 evening: a word of understanding that comes with a question is not the team's word). Turn 4 ('Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar.'): scene 1 was heard only inside the whole passage, so this word opens it first — I1 cena 1, the scene, her closing (Marcia, 2026-09-23 evening, and 2026-09-24: the first scene opens on the team's word): part_entrance 1, part_opening_closing, moment I1, no fence. Turn 5 ('Entendemos essa cena. Vamos pro ensaio.') is the team's word with no question: A1 cena 1 right before the fence, the fenced block, the microphone (moment A1) — the live run of 2026-09-25 had the team tell scene 1 back before any fence and the voice move on to scene 2 with no Articulation of scene 1 (the judge's major incident), so the script now asks for the rehearsal in the FIA order. Turn 6 brings scene 1 back whole, told orally ('de passagem, como estrangeiro', 'Chegaram em Moabe e ficaram lá' included), and asks for the next scene in the same breath: nothing had opened scene 2 before, so the reply opens it — I1 cena 2, her closing (part_entrance 2, part_opening_closing, moment I2). Turn 7 (a divine cause offered as a question) is a silence the story keeps: no_divine_causation. Turn 8 ('Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?') is ruling (b) again, a question about scene 3 asked inside scene 2: no fence nor a call to rehearse, the tail whenever scene 2 is still open (take_up_closing_if_open), never the pairing, and the voice stays in scene 2 (moment I2, or A2 if it checked turn 7's words as a telling and gave the fence). Turn 9 is the team running ahead: it tells scenes 2, 3 and 4 on its own, orally, with two small details missing ('o marido de Noemi' in scene 2, 'uns dez anos' in scene 3). It is scene 2's first telling, so the small-gaps choice is not offered (2026-09-11): the voice names scene 2's gap (names_gap), keeps what they told of the later scenes and opens none of them, and sends scene 2 back to rehearse — its fenced block and the microphone (fenced_rehearsal, invites_microphone), after A1 cena 2 when it is scene 2's first fence (the live run of 2026-09-25 03:03Z said it; not keyed, since a fence already given at turn 8 would make this one a send-back) — so the app's moment is A2; it never asks for the whole passage. Keyed so because scene 2 with no fence here and scene 3 opened at turn 10 would skip scene 2's Articulation, which her ruling forbids. Turn 10 tells scene 2 again, whole, with the later scenes: scene 2 is whole, so the voice goes on one scene at a time — scene 3 opened (I3); never scene 4, never the send-off. The script ends there. Her words «vocês já contaram parte disso», due at that scene-3 opening (scene 3 was told ahead), are the voice's own words, not a fixed line (Marcia's 5.2 of 2026-09-25): no key, no judge incident. Every telling in this session is ORAL, so the app's SCENE REHEARSALS fact lists every scene under 'none' (the empty list, stated from turn 0 so both drivers play the same session). A reminder about a scene in those replies that names the microphone without sending anyone there is not an invitation to rehearse.",
   "turns": [
-    { "team": "Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?" },
-    { "team": "Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.",
-      "expect": { "no_fail_safe": true, "no_rehearsal_invite": true, "opens_more": true } },
-    { "team": "Tá, mas quem é essa família? De onde eles são e por que saem de lá?",
-      "expect": { "no_fail_safe": true } },
-    { "team": "Entendi. E o que acontece com eles em Moabe?",
-      "expect": { "no_fail_safe": true } },
-    { "team": "Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar." },
-    { "team": "Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar em Moabe com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá.",
-      "expect": { "no_fail_safe": true } },
-    { "team": "E depois? Conta a próxima parte pra gente.",
-      "expect": { "no_fail_safe": true } },
-    { "team": "Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?",
-      "expect": { "no_fail_safe": true, "no_divine_causation": true } },
-    { "team": "Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?",
-      "expect": { "no_fail_safe": true, "no_pairing": true } },
-    { "team": "Tá bom. A gente ensaiou tudo em Terena. Agora vou contar a passagem inteira em português: nos dias dos juízes teve fome. Elimeleque foi com Noemi e os filhos Malom e Quiliom pra Moabe. Elimeleque morreu. Os filhos casaram com moabitas, Orfa e Rute. Moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.",
-      "expect": { "no_fail_safe": true } },
-    { "team": "A gente está satisfeito. Pode encerrar.",
-      "expect": { "send_off_record": true } }
+    {
+      "team": "Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?",
+      "sceneRehearsals": []
+    },
+    {
+      "team": "Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "opens_more": true,
+        "familiarization_tail": true,
+        "moment_after": "F"
+      }
+    },
+    {
+      "team": "Tá, mas quem é essa família? De onde eles são e por que saem de lá?",
+      "expect": {
+        "no_fail_safe": true,
+        "familiarization_tail": true,
+        "moment_after": "F"
+      }
+    },
+    {
+      "team": "Entendi. E o que acontece com eles em Moabe?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing_if_open": true,
+        "familiarization_tail": true,
+        "moment_after": "F"
+      }
+    },
+    {
+      "team": "Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "moment_after": "I1"
+      }
+    },
+    {
+      "team": "Entendemos essa cena. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "articulation_entrance": 1,
+        "moment_after": "A1"
+      }
+    },
+    {
+      "team": "Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar de passagem em Moabe, como estrangeiro, com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá. Chegaram em Moabe e ficaram lá. E depois? Conta a próxima parte pra gente.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 2,
+        "part_opening_closing": true,
+        "moment_after": "I2"
+      }
+    },
+    {
+      "team": "Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_divine_causation": true
+      }
+    },
+    {
+      "team": "Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true,
+        "take_up_closing_if_open": true,
+        "moment_after": [
+          "I2",
+          "A2"
+        ]
+      }
+    },
+    {
+      "team": "Tá bom. A gente ensaiou as outras partes em Terena. Vou contar de volta em português: Elimeleque morreu, e Noemi ficou com os dois filhos. Os filhos casaram com moabitas, Orfa e Rute. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.",
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_whole_retelling_request": true,
+        "moment_after": "A2"
+      }
+    },
+    {
+      "team": "Tá bom, entendemos. Contando de novo essas partes: Elimeleque, o marido de Noemi, morreu, e Noemi ficou com os dois filhos. Os filhos casaram com moabitas, Orfa e Rute, e moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sem os dois filhos e sem o marido.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_whole_retelling_request": true,
+        "moment_after": "I3"
+      }
+    }
   ]
 }

@@ -18,9 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.hard_stretch_harness import a_new_recording
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 AUDIO = b"a equipe explicou este trecho em portugues"
 
@@ -31,12 +32,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _silence(*_: Any, **__: Any) -> str:
         return ""
@@ -76,7 +74,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.bucket = bucket  # type: ignore[attr-defined]
         yield c
 
@@ -84,13 +85,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 async def _rehearsed(client: httpx.AsyncClient) -> tuple[str, str]:
     """A session with one rehearsal recording in it — a stretch is a slice of a file, so
     there has to be a file before there can be a stretch."""
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "P01"})
     session_id = created.json()["session_id"]
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": "P01"},
         files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
     )
@@ -98,13 +97,18 @@ async def _rehearsed(client: httpx.AsyncClient) -> tuple[str, str]:
 
 
 async def _tell_back(
-    client: httpx.AsyncClient, session_id: str, take_id: str, **extra: str
+    client: httpx.AsyncClient,
+    session_id: str,
+    take_id: str,
+    *,
+    audio: bytes = AUDIO,
+    **extra: str,
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", **extra},
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
 
 
@@ -113,9 +117,9 @@ async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_i
 ) -> None:
     """The likelier outage: not an empty answer, but no answer at all.
 
-    `heard` only catches `ValidationError`, so a read timeout to the transcriber raised
-    past the store. On a weak link the tablet also gives up first, and the cancelled
-    request dies in the same place.
+    The recording is stored before the transcriber is asked, so a read timeout that raises
+    out of the hearing finds it kept. On a weak link the tablet also gives up first, and the
+    cancelled request dies in the same place.
     """
     from app.api.internalization_room import back_translation as bt_api
 
@@ -177,52 +181,47 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     An analyst asked to compare nothing against the map answers with no findings, and no
     findings is what `checked` is made of.
     """
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "P01"})
     session_id = created.json()["session_id"]
 
     answer = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": KEY},
     )
 
     assert answer.status_code == 200
     body = answer.json()
     assert body["checked"] is False
-    assert body["fixed_line"].startswith("D"), (
-        "a sala diz que não ouviu nada, que é a família escrita para isto"
-    )
+    assert body["refusal"] == "NOTHING_TRANSLATED"
 
 
-async def test_a_transcriber_outage_counts_nothing_and_is_a_server_failure(
+async def test_a_transcriber_outage_counts_nothing_and_is_a_wordless_refusal(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An outage is not a telling nobody could make out: it is a 502 the tablet sends again.
-
-    The empty answer used to be counted so that the room's route to a person stayed open while
-    the room was broken. A telling with no words is now refused and counts nothing, and a
-    transcriber that is down raises past `heard`: neither reaches the count.
-    """
+    """An outage reads as a telling nobody could make out: refused, and it counts nothing."""
     from app.api.internalization_room import back_translation as bt_api
     from app.core.exceptions import UpstreamServiceError
+    from app.services.internalization_room import hearing
 
     session_id, take_id = await _rehearsed(client)
 
-    async def _heard(*_: Any, **__: Any) -> str:
+    async def _transcribe(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho"
 
-    monkeypatch.setattr(bt_api, "heard", _heard)
+    monkeypatch.setattr(bt_api, "heard", hearing.heard)
+    monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
     told = await _tell_back(client, session_id, take_id)
     assert told.status_code == 200, told.text
 
     async def _down(*_: Any, **__: Any) -> str:
         raise UpstreamServiceError("a transcricao esta fora do ar")
 
-    monkeypatch.setattr(bt_api, "heard", _down)
-    outage = await _tell_back(client, session_id, take_id, retelling="true")
+    monkeypatch.setattr(hearing, "transcribe_audio", _down)
+    outage = await _tell_back(
+        client, session_id, take_id, audio=a_new_recording(), retelling="true"
+    )
 
-    assert outage.status_code == 502, outage.text
+    assert outage.status_code == 422, outage.text
+    assert outage.json()["code"] == "WORDLESS_TELLING"
     db_session.expire_all()
     standing = list(
         (
@@ -255,20 +254,21 @@ async def test_reaching_the_number_warns_and_still_takes_the_next_telling(
     session_id, take_id = await _rehearsed(client)
 
     asked = [
-        (await _tell_back(client, session_id, take_id, retelling="true")).json()["needs_person"]
+        (
+            await _tell_back(client, session_id, take_id, audio=a_new_recording(), retelling="true")
+        ).json()["needs_person"]
         for _ in range(RETELLS_BEFORE_A_WARNING)
     ]
     assert asked == [False] * (RETELLS_BEFORE_A_WARNING - 1) + [True]
 
-    accepted = await _tell_back(client, session_id, take_id, retelling="true")
+    accepted = await _tell_back(
+        client, session_id, take_id, audio=a_new_recording(), retelling="true"
+    )
 
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["captured"] is True
     assert accepted.json()["needs_person"] is False, (
         "o pedido é uma vez por trecho; passado dele nada é recusado"
-    )
-    assert accepted.json()["chunks"] == 1, (
-        "contar o mesmo trecho de novo o substitui: a passagem continua com um trecho"
     )
 
 
@@ -290,7 +290,7 @@ async def test_a_stretch_whose_slice_is_not_a_slice_is_refused(
 
     refused = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )

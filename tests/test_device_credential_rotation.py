@@ -20,11 +20,13 @@ avoid.
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.db.models.auth import User
 from app.services.device import claim_device_as_facilitator, create_device
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import a_language, an_email, make_project, make_project_user_access, make_user
 
 SELF_URL = "/api/devices/me"
 ROTATE_URL = "/api/devices/me/credential"
@@ -52,10 +54,11 @@ async def client(db_session: AsyncSession):
         yield c
 
 
-async def a_claimed_device(db: AsyncSession, *, email="fac@example.com") -> tuple[str, str]:
+async def a_claimed_device(db: AsyncSession, *, email: str | None = None) -> tuple[str, str]:
     """Returns (device_id, credential)."""
+    email = email or an_email()
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     minted = await create_device(db)
@@ -155,3 +158,13 @@ async def test_a_second_rotation_after_a_lost_answer_keeps_the_tablet_alive(clie
     )
     assert (await client.get(SELF_URL, headers=headers(arrived))).status_code == 200
     assert (await client.get(SELF_URL, headers=headers(lost))).status_code == 401
+
+
+async def test_a_claimed_device_built_twice_with_defaults_gets_two_users_with_two_emails(
+    db_session,
+):
+    await a_claimed_device(db_session)
+    await a_claimed_device(db_session)
+
+    emails = (await db_session.execute(select(User.email))).scalars().all()
+    assert len(emails) == len(set(emails)) == 2

@@ -1,6 +1,6 @@
-"""The second door of the text seam: her frases enter as text and the room judges them.
+"""The text seam's door: her frases enter as text and the room judges them.
 
-The first door (`/text-seam/turn`) opens the Guide's conversation. This one opens the
+The Golden doors (`/golden/turn`) open the Guide's conversation. This one opens the
 back-translation check: a runner declares a session over her clips, then plays a round of
 frases as text through the real path — the Correction check when a frase supersedes, the
 Analyst's reading, the Speaker's verdict, the Validator — and reads back the findings with
@@ -18,18 +18,18 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import router
 from app.core.config import get_settings
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services import internalization_room as room
 from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
 from tests.hard_stretch_harness import row
-from tests.room_harness import CORRECTION_MARK
 from tests.text_seam_harness import (
     RUNNER_KEY,
     THE_EXTRA_CAUSE,
@@ -248,6 +248,24 @@ async def test_the_door_refuses_a_wrong_key(client) -> None:
     assert (declared.status_code, played.status_code) == (401, 401), declared.text
 
 
+async def test_the_back_translation_seam_still_takes_the_runner_key_in_x_access_code(
+    client,
+) -> None:
+    declared = {"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS}
+
+    in_its_header = await client.post(f"{SEAM}/session", json=declared)
+    as_a_bearer = await client.post(
+        f"{SEAM}/session",
+        json=declared,
+        headers={"X-Access-Code": "", "Authorization": f"Bearer {RUNNER_KEY}"},
+    )
+
+    assert (in_its_header.status_code, as_a_bearer.status_code) == (200, 401), (
+        "a porta da retrotradução lê a chave do runner em X-Access-Code; só as portas "
+        "douradas a leem como Bearer"
+    )
+
+
 async def test_the_door_is_not_published_in_the_openapi_schema(db_session) -> None:
     mounted = sorted(
         route.path  # type: ignore[attr-defined]
@@ -286,7 +304,7 @@ async def test_a_declared_session_has_her_parts_heard(client, db_session) -> Non
     assert [take.kind for take in takes] == [IRTakeKind.ENSAIO] * 3
     state = room.back_translation_of(session)
     assert [entry.clip_duration_ms for entry in state.played_by_take] == [20000, 25000, 45000]
-    assert unheard_parts(state, [take.id for take in takes]) == [], (
+    assert unheard_parts(state, takes, []) == [], (
         "o roteiro dela marca cada clipe como ouvido por inteiro antes da primeira rodada; "
         "sem isso a passagem nunca fecha e a rodada dela mede outra coisa"
     )
@@ -307,27 +325,6 @@ async def test_the_causa_a_mais_round_carries_an_addition_on_frase_1_and_no_miss
     assert result["conferida"] is False
     assert result["findingsRemaining"] == 1
     assert result["missingWithoutFrase"] == 0
-
-
-async def test_a_superseding_frase_runs_the_correction_check_then_the_reading(
-    client, analyst, db_session
-) -> None:
-    analyst.readings = [{"findings": [{"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1}]}]
-    session_id = await _a_session(client)
-    await _a_round(client, session_id, CAUSA_A_MAIS)
-
-    result = await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
-
-    assert len(analyst.verifications) == 1, (
-        "uma frase que supera outra é uma correção: a sala verifica a correção contra o achado "
-        "que a pediu, e só depois lê a passagem inteira"
-    )
-    assert result["findings"] == []
-    assert result["conferida"] is True
-    told = room.told_back(await room.final_segments(db_session, session_id))
-    assert len(told) == len(CAUSA_A_MAIS), "a frase nova substitui a primeira, não se soma a ela"
-    assert told[0].pass_number == 2
-    assert told[0].transcript == FAITHFUL_FRASE_ONE["text"]
 
 
 async def test_the_warning_a_round_raises_for_a_hard_stretch_outlives_the_rounds_verdict(
@@ -360,7 +357,7 @@ async def test_a_visit_while_the_crossing_round_is_read_keeps_its_warning_ended(
     async def a_facilitator_goes_while_the_analyst_reads(
         *, system_prompt: str, user_content: str, **rest: Any
     ) -> str:
-        if visits and CORRECTION_MARK not in system_prompt and visits[-1] == "armed":
+        if visits and visits[-1] == "armed":
             factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
             async with factory() as rival:
                 await room.attend(rival, await room.get_session(rival, visits[0]), by="ana")
@@ -406,10 +403,6 @@ async def test_two_superseding_frases_in_one_round_both_replace_their_stretches(
 
     result = await _a_round(client, session_id, [FAITHFUL_FRASE_ONE, retold_third])
 
-    assert analyst.verifications == [], (
-        "duas posições mudadas não são uma correção; a sala cai na leitura inteira, que é a "
-        "resposta que nunca está errada"
-    )
     assert result["conferida"] is True
     told = room.told_back(await room.final_segments(db_session, session_id))
     assert [told[0].transcript, told[2].transcript] == [
@@ -533,13 +526,13 @@ async def test_a_missing_without_a_frase_is_counted_once_and_not_again_next_roun
                 {"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1},
                 {"kind": "missing", "note": "Falta a notícia do pão.", "where": "after"},
             ]
-        }
+        },
+        {"findings": [{"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1}]},
     ]
     session_id = await _a_session(client)
     first = await _a_round(client, session_id, CAUSA_A_MAIS)
     assert first["missingWithoutFrase"] == 1
 
-    analyst.resolves = False
     second = await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
 
     assert second["findings"], "o achado continua de pé: é o que torna a recontagem possível"
@@ -548,3 +541,136 @@ async def test_a_missing_without_a_frase_is_counted_once_and_not_again_next_roun
         "fica de pé, um achado sem frase da rodada 1 era recontado em cada rodada seguinte, e "
         "quem somasse o campo pelo roteiro media o mesmo fato várias vezes"
     )
+
+
+async def _stretches(db: AsyncSession, session_id: str) -> list[IRSegment]:
+    result = await db.execute(select(IRSegment).where(IRSegment.session_id == session_id))
+    return list(result.scalars().all())
+
+
+@pytest.mark.parametrize("wordless", ["", "   ", "[silêncio]"])
+async def test_a_round_of_frases_with_no_words_is_refused_before_any_model_runs(
+    client, analyst, db_session, wordless
+) -> None:
+    session_id = await _a_session(client)
+    frases = [{**frase, "text": wordless} for frase in CAUSA_A_MAIS]
+
+    refused = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": frases})
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert analyst.answered == [], (
+        "sete frases vazias chegavam ao analista como «1. » … «7. » e o modelo levantava "
+        "sete achados de frase que nunca foi contada"
+    )
+    assert await _stretches(db_session, session_id) == [], "uma frase sem palavras virava trecho"
+
+
+async def test_a_round_with_any_wordless_frase_is_refused_whole_and_names_it(
+    client, analyst, db_session
+) -> None:
+    session_id = await _a_session(client)
+    frases = [
+        {**frase, "text": "   " if number == 2 else "[silêncio]" if number == 5 else frase["text"]}
+        for number, frase in enumerate(CAUSA_A_MAIS, start=1)
+    ]
+
+    refused = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": frases})
+
+    assert refused.status_code == 422, (
+        "a frase sem palavras era pulada em silêncio: a rodada voltava 200 e o roteiro, com a "
+        "frase 3 virando «frase 2» no veredito"
+    )
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert refused.json()["detail"].endswith("frases 2, 5")
+    assert analyst.answered == [], "o analista leu uma rodada recusada"
+    assert await _stretches(db_session, session_id) == [], (
+        "as frases contadas antes da vazia ficavam guardadas numa rodada recusada"
+    )
+
+
+async def test_a_wordless_retelling_leaves_the_standing_stretch_and_counts_nothing(
+    client, db_session
+) -> None:
+    session_id = await _a_session(client)
+    await _a_round(client, session_id, CAUSA_A_MAIS)
+    await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
+    retold_third = {
+        "clipKey": "S2",
+        "coversFrom": 0,
+        "coversTo": 8,
+        "text": "No caminho, Noemi disse às duas noras que voltassem para a casa das suas mães.",
+        "supersedes": 2,
+    }
+
+    refused = await client.post(
+        f"{SEAM}/round",
+        json={
+            "sessionId": session_id,
+            "frases": [{**FAITHFUL_FRASE_ONE, "text": " "}, retold_third],
+        },
+    )
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+
+    told = room.told_back(await room.final_segments(db_session, session_id))
+    assert (told[0].transcript, told[0].tellings) == (FAITHFUL_FRASE_ONE["text"], 2), (
+        "uma recontagem vazia trocava a explicação boa da equipe por um trecho sem palavras e "
+        "ainda contava como a terceira vez do mesmo trecho"
+    )
+    assert (told[2].transcript, told[2].tellings) == (CAUSA_A_MAIS[2]["text"], 1), (
+        "a frase contada da rodada recusada era guardada junto com a vazia"
+    )
+    after = await row(db_session, session_id)
+    assert halt.standing(after) is None, "a recontagem vazia levantava o pedido de uma pessoa"
+
+
+async def test_a_wordless_round_is_refused_even_when_the_session_already_has_told_stretches(
+    client, analyst, db_session
+) -> None:
+    session_id = await _a_session(client)
+    await _a_round(client, session_id, CAUSA_A_MAIS)
+    standing = [stretch.id for stretch in await _stretches(db_session, session_id)]
+    readings = len(analyst.answered)
+
+    refused = await client.post(
+        f"{SEAM}/round",
+        json={"sessionId": session_id, "frases": [{**FAITHFUL_FRASE_ONE, "text": ""}]},
+    )
+
+    assert refused.status_code == 422, (
+        "a rodada de frases vazias passava porque a sessão já tinha trechos contados: a recusa "
+        "olhava o que está de pé na sessão e não o que a rodada trouxe"
+    )
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert [stretch.id for stretch in await _stretches(db_session, session_id)] == standing
+    assert len(analyst.answered) == readings, "o analista leu uma rodada que não trouxe palavras"
+
+
+async def test_a_frase_with_an_annotation_among_its_words_is_stored_and_read_without_it(
+    client, analyst, db_session, monkeypatch
+) -> None:
+    seen: list[str] = []
+
+    async def the_analyst_that_keeps_what_it_is_handed(
+        *, system_prompt: str, user_content: str, **rest: Any
+    ) -> str:
+        seen.append(f"{system_prompt}\n{user_content}")
+        return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
+
+    the_room_agent_is(monkeypatch, analyst=the_analyst_that_keeps_what_it_is_handed)
+    session_id = await _a_session(client)
+    annotated = {
+        **CAUSA_A_MAIS[2],
+        "text": "[silêncio] Noemi disse às duas noras…",
+    }
+
+    await _a_round(client, session_id, [annotated])
+
+    told = room.told_back(await room.final_segments(db_session, session_id))
+    assert [stretch.transcript for stretch in told] == ["Noemi disse às duas noras…"], (
+        "o trecho guardava a frase crua, com o colchete do transcritor como se fosse fala da equipe"
+    )
+    assert "[frase 1 — a parte 2 — Primeiro apelo e recusa] Noemi disse às duas noras…" in seen[0]
+    assert "[silêncio]" not in seen[0], "o analista recebia a anotação como palavras da equipe"

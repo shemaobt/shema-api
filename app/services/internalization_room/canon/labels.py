@@ -1,4 +1,4 @@
-"""What a facilitator reads on a bead, in the three languages the Desk offers.
+"""What a facilitator reads on a bead, in the two languages the Desk offers.
 
 The labels are **not** in the canon and must not be moved there. `canon/vendor/` is pinned to
 an upstream commit and is overwritten wholesale by `scripts/sync_internalization_canon.py
@@ -6,14 +6,14 @@ an upstream commit and is overwritten wholesale by `scripts/sync_internalization
 
 They are keyed by `(pericope_num, element_key)`, never by the key alone. Measured over the
 pilot's four pericopes: of the keys appearing in more than one, sixteen carry different text
-in each — `scene:N`, `absence:N` and `preserved:RN` are numbered within the passage, and
-`place:PL2` names a different phrasing in P01 and P05.
+in each — `scene:S1`, `absence:S1` and `preserved:R10` are numbered within the passage, and
+`place:S4:PL2` names a different phrasing in P01 and P05.
 
 A label is short new writing over the canon text, not a translation of it. `Element.label`
 stays as it is: it is what the classifier prompts read, and repurposing it for the screen
 would change what the model sees.
 
-One entry is provisional. `P02 / being:B2` is the three dead men collectively, but the canon
+One entry is provisional. `P02 / being:S2:B2` is the three dead men collectively, but the canon
 keys it as Elimelech because `elements._label()` splits on the first `]]` and drops the first
 of three links. Correcting that changes the key, and coverage is persisted under these keys —
 so it is a data migration and it is Henok's decision. Until then the label is written by
@@ -28,9 +28,12 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
+from app.core.served_books import TRANSLATED_BOOKS
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
-from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.canon.kept import canon_path, per_canon
+from app.services.internalization_room.canon.parse_map import load_map, served_maps
+from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
 
 LABELS_DIR = Path(__file__).parent / "element-labels"
@@ -39,7 +42,7 @@ LABELS_DIR = Path(__file__).parent / "element-labels"
 #: fallback language and no branch that reaches for one: a hole is refused, because the
 #: alternative is an ALL_CAPS identifier or an English sentence in front of a facilitator who
 #: does not read English.
-LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
+LANGUAGES: tuple[str, ...] = ("pt", "en")
 
 #: Coverage states named here before they exist in `CoverageStatus`. Empty, and that is the
 #: resting state: a name belongs here only while its label is written and its enum value is
@@ -65,15 +68,15 @@ class ElementLabelsBroken(Exception):
 
     Asking for a pericope nobody has translated stays a `ValidationError`: that one really
     is about what was asked for. ENG-449 decided what its route answers, and the decision was
-    **404** — the canon serves all fourteen of Ruth, so reaching P03 through the Desk's
-    selector is a well-formed request for a representation this deploy cannot produce, and
+    **404** — the canon serves every passage of the served books, so reaching one through the
+    Desk's selector is a well-formed request for a representation this deploy cannot produce, and
     400 would blame the caller for our gap. What this split guarantees is that a route can
     tell that apart from a catalogue of ours being holed, which stays a 500.
     """
 
 
 def labelled_elements(
-    pericope_num: str, *, book: str = "Ruth", catalogue_dir: Path = LABELS_DIR
+    pericope_num: str, *, catalogue_dir: Path = LABELS_DIR
 ) -> list[LabelledElement]:
     """The passage's beads in bead order, each named in every language.
 
@@ -97,10 +100,17 @@ def labelled_elements(
     the model is for. It is also evaluated first, which is why `_text` never meets an entry
     whose English is missing.
     """
-    elements = elements_for(pericope_num, book)
-    for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
+    elements = elements_for(pericope_num)
+    for_passage = _catalogue(canon_path(catalogue_dir), load_map(pericope_num).book).get(
+        pericope_num
+    )
     if for_passage is None:
-        return [_from_the_canon(element) for element in elements]
+        return [
+            _scene(pericope_num, element)
+            if element.kind is ElementKind.SCENE
+            else _from_the_canon(element)
+            for element in elements
+        ]
 
     served = {element.key for element in elements}
     orphans = sorted(set(for_passage) - served)
@@ -110,7 +120,9 @@ def labelled_elements(
         )
 
     return [
-        LabelledElement(
+        _scene(pericope_num, element)
+        if element.kind is ElementKind.SCENE
+        else LabelledElement(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
@@ -125,20 +137,30 @@ def labelled_elements(
     ]
 
 
+def _scene(pericope_num: str, element: Element) -> LabelledElement:
+    return LabelledElement(
+        key=element.key,
+        kind=element.kind,
+        scene=element.scene,
+        label_pt=scene_title(pericope_num, element.scene, element.label, "pt"),
+        label_en=element.label,
+    )
+
+
 def _from_the_canon(element: Element) -> LabelledElement:
     """A bead of a passage nobody has translated, named as well as it can honestly be.
 
-    Reached when the catalogue has no entry for this passage. English comes almost free from
-    the canon — §7 says so — so `Element.label` is the English, and Portuguese and Spanish are
-    **absent**. Filling them with the English would put a
-    sentence a facilitator does not read in front of them under the name of their own
-    language, which is the silent fallback this module exists to prevent; leaving them null
-    is the Desk's own `CoverageLabels` shape and draws as a missing translation.
+    Reached when the catalogue has no entry for this passage, for every bead but a scene, which
+    `_scene` names by her Portuguese title. English comes almost free from the canon — §7 says
+    so — so `Element.label` is the English, and Portuguese is **absent**.
+    Filling it with the English would put a sentence a facilitator does not read in front of
+    them under the name of their own language, which is the silent fallback this module exists
+    to prevent; leaving it null is the Desk's own `CoverageLabels` shape and draws as a missing
+    translation.
 
-    **No passage of Ruth reaches here any more.** The catalogue carries all fourteen, so for
-    this book the path below is unreachable in production and exists for a book nobody has
-    written a catalogue for at all. `test_a_passage_the_catalogue_does_not_have_still_falls_
-    back_to_the_canon` is what keeps it honest, against a catalogue with the passage removed.
+    **Every bead of Esther and Jonah comes here, and no passage of Ruth does.** Ruth's
+    catalogue carries all fourteen; the other two books are not among `TRANSLATED_BOOKS`,
+    which is a book nobody has translated (ADR 0066).
 
     **What it cost while it was reachable**, kept because it is the argument for ever writing
     a label: measured over the ten passages the catalogue did not have, 264 beads, six of the
@@ -154,7 +176,7 @@ def _from_the_canon(element: Element) -> LabelledElement:
     a different claim about a different thing.
 
     Refusing instead of falling back would take a whole session history down for one
-    conversation, which is why the path stays even with nothing in this book using it.
+    conversation.
     """
     return LabelledElement(
         key=element.key,
@@ -162,7 +184,6 @@ def _from_the_canon(element: Element) -> LabelledElement:
         scene=element.scene,
         label_pt=None,
         label_en=element.label,
-        label_es=None,
     )
 
 
@@ -183,7 +204,7 @@ def legend(*, catalogue_dir: Path = LABELS_DIR) -> CoverageLegend:
     return CoverageLegend(coverage_status=coverage_status, element_kind=element_kind)
 
 
-#: The language a bead cannot reach the screen without. The other two are translation work and
+#: The language a bead cannot reach the screen without. The other is translation work and
 #: may legitimately be missing — `LabelledElement` types them `str | None` for exactly that —
 #: so a catalogue entry written in English alone is an untranslated passage somebody finally
 #: named, and not a holed file.
@@ -199,11 +220,11 @@ def _translated_into(for_passage: dict, language: str) -> bool:
     """Whether this passage has been translated into a language at all.
 
     The permission is for a passage nobody has translated, and the loader cannot tell that
-    from a passage whose Spanish somebody deleted — unless it looks at the passage rather than
+    from a passage whose Portuguese somebody deleted — unless it looks at the passage rather than
     at the bead. Written the other way round, blanking one label on a translated passage would
     have gone through in silence, which is the guarantee this module exists for.
 
-    Today the data is exactly consistent: the pilot's four carry all three languages on every
+    Today the data is exactly consistent: the pilot's four carry both languages on every
     bead, and the ten carry English on every bead and nothing else on any. That is what makes
     a whole-passage rule the honest one — a passage is translated or it is not, and a bead is
     not a unit of translation.
@@ -233,7 +254,7 @@ def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str 
     being wrong — the difference between the two is the whole of the permission, and only one
     goes through.
 
-    An entry empty in all three is caught by the English refusal above and never reaches the
+    An entry empty in both is caught by the English refusal above and never reaches the
     rest of this function: `labelled_elements` evaluates `label_en` before it spreads the other
     languages, so by the time this is asked about Portuguese the English of the same entry is
     known to be there. A separate refusal for "nothing in any language" was written here and
@@ -281,18 +302,18 @@ def _named_group(
     return resolved
 
 
-@lru_cache(maxsize=8)
-def _known_pericopes(book: str) -> frozenset[str]:
-    """Which passages the canon has, asked once rather than by catching the refusal.
+@per_canon(maxsize=8)
+def _known_pericopes() -> frozenset[str]:
+    """Which passages the served canon has, asked once rather than by catching the refusal.
 
     `load_book` is `lru_cache`d and already parsed, so this costs a set comprehension over
     maps that are in memory either way.
     """
-    return frozenset(meaning_map.pericope_num for meaning_map in load_book(book))
+    return frozenset(meaning_map.pericope_num for meaning_map in served_maps())
 
 
 def label_index(
-    pericope_nums: Iterable[str], *, book: str = "Ruth", catalogue_dir: Path = LABELS_DIR
+    pericope_nums: Iterable[str], *, catalogue_dir: Path = LABELS_DIR
 ) -> dict[tuple[str, str], LabelledElement]:
     """Every bead of the named passages, keyed by `(pericope_num, key)`.
 
@@ -308,16 +329,20 @@ def label_index(
     ours that is holed still raises, through `labelled_elements` — that failure is ours and
     silence would bury it.
     """
-    known = _known_pericopes(book)
+    known = _known_pericopes()
     return {
         (pericope_num, element.key): element
         for pericope_num in {num for num in pericope_nums if num in known}
-        for element in labelled_elements(pericope_num, book=book, catalogue_dir=catalogue_dir)
+        for element in labelled_elements(pericope_num, catalogue_dir=catalogue_dir)
     }
 
 
 @lru_cache(maxsize=8)
 def _catalogue(catalogue_dir: Path, book: str) -> dict:
+    """A book nobody has translated answers no entry; a translated book's catalogue missing
+    is a file of ours gone, and is refused by `_read`."""
+    if book not in TRANSLATED_BOOKS:
+        return {}
     return _read(catalogue_dir / f"{book.lower()}.json")
 
 

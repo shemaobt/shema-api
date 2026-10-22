@@ -1,0 +1,112 @@
+{
+  "name": "P02-agentes-trocados",
+  "pericopeId": "P02",
+  "language": "Brazilian Portuguese",
+  "draft": {
+    "clips": [
+      {
+        "key": "S1",
+        "durationMs": 20000
+      },
+      {
+        "key": "S2",
+        "durationMs": 25000
+      },
+      {
+        "key": "S3",
+        "durationMs": 45000
+      }
+    ]
+  },
+  "why": "SWAPPED AGENTS with no cause involved (Marcia's decision D6, 2026-09-07; case C of her answer key, round 2). Map: _spec/canon/meaning-map/P02-Ruth-1-6-14.md, scene 3 (1:11–14, the second plea and the parting), propositions 13–14: Orpah kisses her mother-in-law and turns back; Ruth clings to Naomi — the contrast the map sets as the act that marks Ruth off from Orpah. Planted: frase 9 says RUTH kissed the mother-in-law and left, and ORPAH clung to Naomi; the other eight frases are the faithful telling of the 2026-09-07 experiment. Expected: an addition on frase 9 whose note names both women and the swapped act (Rute + Orfa + beijou/agarrou — the analyst's relation rule of D1); a missing element is NOT required (the addition+missing pair is an observation, not a rule); not conferida; the voice names frase 9, asks whether it entered in the translation, and never fills the map's marked silences (who told Naomi; God did not bring her home; what Orpah or Ruth felt is not probed by this regex — see the report). Round 2 supersedes frase 9 with the faithful line → conferida.",
+  "rounds": [
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi ouviu, nos campos de Moabe, que o Senhor tinha visitado o seu povo e dado pão a eles. Então ela se levantou com as duas noras para voltar dos campos de Moabe."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 10,
+          "coversTo": 20,
+          "text": "Ela saiu do lugar onde estava, com as duas noras, e as três foram andando pela estrada para voltar para a terra de Judá."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 0,
+          "coversTo": 8,
+          "text": "No caminho, Noemi disse para as duas noras: vão, voltem cada uma para a casa da sua mãe."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 8,
+          "coversTo": 17,
+          "text": "Que o Senhor trate vocês com bondade, como vocês trataram os que morreram e a mim. Que o Senhor dê a vocês descanso, cada uma na casa de um marido."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 17,
+          "coversTo": 25,
+          "text": "Ela beijou as duas, e elas choraram alto. E disseram: não, nós vamos voltar com a senhora para o seu povo."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi disse: voltem, minhas filhas. Por que vocês iriam comigo? Eu ainda tenho filhos dentro de mim para serem maridos de vocês?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 10,
+          "coversTo": 25,
+          "text": "Voltem, vão. Eu estou velha demais para ter marido. Mesmo se eu dissesse que tenho esperança, e tivesse marido esta noite e tivesse filhos, vocês iam esperar até eles crescerem? Iam ficar sem casar por causa deles?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 25,
+          "coversTo": 33,
+          "text": "Não, minhas filhas. Para mim é muito mais amargo do que para vocês, porque a mão do Senhor se voltou contra mim."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 33,
+          "coversTo": 45,
+          "text": "Elas choraram alto de novo. Rute beijou a sogra e foi embora, e Orfa se agarrou a Noemi."
+        }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [
+          {
+            "kind": "addition",
+            "note": "(?=[\\s\\S]*Rute)(?=[\\s\\S]*Orfa)(?=[\\s\\S]*(beij|agarr))",
+            "frase": 9
+          }
+        ],
+        "spoken_names_frase": 9,
+        "spoken_asks_audio_or_explanation": true,
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    },
+    {
+      "frases": [
+        {
+          "clipKey": "S3",
+          "coversFrom": 33,
+          "coversTo": 45,
+          "text": "Elas choraram alto de novo. Orfa beijou a sogra e voltou. Mas Rute se agarrou a Noemi.",
+          "supersedes": 8
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    }
+  ]
+}

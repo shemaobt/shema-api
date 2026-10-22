@@ -31,9 +31,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
@@ -43,7 +43,6 @@ from tests.room_harness import (
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
@@ -140,11 +139,8 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     said: list[str] = []
 
@@ -162,7 +158,10 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -170,7 +169,6 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 async def _open_session(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": PASSAGE, "language": LANGUAGE},
     )
     assert created.status_code == 200, created.text
@@ -180,7 +178,7 @@ async def _open_session(client: httpx.AsyncClient) -> str:
 async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
@@ -199,7 +197,7 @@ async def _tell_back(
 ) -> None:
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -309,13 +307,13 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
 
 
 async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
     """Case 3. The gate that was already right stays right.
 
     An address is a smaller move for the app, not permission to call the passage checked:
-    the analyst still never sees a subset, the team still hears the waiting line, and
-    `checked` — which is what the app strikes the passage off the wheel by — stays false.
+    the analyst still never sees a subset, and `checked` — which is what the app strikes the
+    passage off the wheel by — stays false.
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
@@ -331,10 +329,7 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
         "inferir um pela ausência do outro"
     )
     assert analyst.readings == 0, "o analista continua sem ver um subconjunto"
-    assert body["audio_url"], "a equipe continua tendo o que tocar"
-    assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE), (
-        "a linha falada continua sendo a da família H, palavra por palavra"
-    )
+    assert body["refusal"] == "FRASE_AWAITING"
 
 
 async def test_a_telling_back_with_every_stretch_told_names_no_stretch(

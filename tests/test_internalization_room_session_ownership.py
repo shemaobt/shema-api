@@ -1,10 +1,8 @@
 """ENG-1048: the rest of the room's routes refuse a session that is not the caller's project.
 
 ENG-1031 and ENG-1046 closed this for the turn route and for the retro's finish and chunk
-routes with `session_for_room_caller` — the session, when the caller names a project, only
-if that project is the session's own; by id, unchanged, for the shared key, whose real
-facilitator flow has always depended on reaching a session no device named it holds. Every
-other route that names a session id resolved it by id alone: a device from another project
+routes with `session_for_room_caller` — the session only if it is the caller's team's own.
+Every other route that names a session id resolved it by id alone: a device from another project
 reached another team's stretches, recordings and halts before this file existed to say it
 could not.
 
@@ -24,9 +22,7 @@ are exercised by hand below.
 
 ``POST .../turns``, ``POST .../release``, ``POST .../back-translation/chunks`` and ``POST
 .../back-translation/finish`` already resolve their session through the ownership rule —
-release through ``get_session_for_room_caller`` directly and unconditionally, a stricter rule
-of its own (a release is numbered to a project, so even the shared key is refused on a
-project-owned session) that predates this ticket and is not this ticket's to change.
+release through ``session_for_room_caller`` like every other team door.
 ``TESTED_ELSEWHERE`` names each one and where, so the completeness case still accounts for
 them without rebuilding their fixtures a second time.
 """
@@ -45,17 +41,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
 from app.services.internalization_room import questions as question_service
+from app.services.internalization_room.scene_rehearsals import (
+    frases_of,
+    keep_a_frase,
+    keep_scene_rehearsal,
+    restarts_of,
+    scene_rehearsals_of_the_passage,
+)
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import store_take, takes_of
 from app.services.internalization_room.voice_handles import to_handle
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
+from tests.release_harness import PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.room_route_audit_harness import room_app_routes
 
 TABLET = "tablet-da-sala"
-ROOM_KEY_HEADERS = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
 
 
 def room_caller_session_routes() -> list[tuple[str, str]]:
@@ -74,9 +76,10 @@ def room_caller_session_routes() -> list[tuple[str, str]]:
     return sorted(found)
 
 
-#: The nine routes this ticket fixes, behaviourally exercised below by `cases()` — held to
-#: exactly this set by `test_the_exercised_cases_are_exactly_the_covered_routes`, so a route
-#: added here is a route the refusal cases run against, not only a line in a table.
+#: The routes this ticket fixes, and the scene rehearsal's since, behaviourally exercised below
+#: by `cases()` — held to exactly this set by
+#: `test_the_exercised_cases_are_exactly_the_covered_routes`, so a route added here is a route
+#: the refusal cases run against, not only a line in a table.
 COVERED = {
     ("GET", f"{PREFIX}/sessions/{{session_id}}"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/needs-person"),
@@ -87,6 +90,18 @@ COVERED = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/takes"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/takes"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/takes/{{take_id}}/audio"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/audio"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/restart"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/send"),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/scenes"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/scene"),
+    (
+        "GET",
+        f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases/{{frase_id}}/audio",
+    ),
 }
 
 #: Routes that already resolve their session through the ownership rule, proved by a suite
@@ -97,6 +112,10 @@ TESTED_ELSEWHERE = {
         "POST",
         f"{PREFIX}/sessions/{{session_id}}/turns",
     ): "test_internalization_room_turn_ownership.py",
+    (
+        "GET",
+        f"{PREFIX}/sessions/{{session_id}}/turns/{{turn_id}}",
+    ): "test_ir_a_turn_can_be_looked_at_without_being_sent_again.py",
     ("POST", f"{PREFIX}/sessions/{{session_id}}/release"): (
         "release_harness.py's own release cases — a stricter, pre-existing rule"
     ),
@@ -105,6 +124,18 @@ TESTED_ELSEWHERE = {
     ),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/finish"): (
         "test_internalization_room_back_translation_ownership.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/heard"): (
+        "test_ir_the_tablet_says_when_a_nuance_was_heard.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/restart"): (
+        "test_ir_the_translation_starts_over.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/listened-whole"): (
+        "test_ir_a_joined_recording_is_checked_on_its_own.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/segments/{{segment_id}}/sentence"): (
+        "test_ir_a_team_re_records_one_whole_sentence.py"
     ),
 }
 
@@ -138,8 +169,10 @@ def test_every_room_caller_route_naming_a_session_is_accounted_for() -> None:
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from app.api.internalization_room import scene_rehearsals as scene_api
     from app.api.internalization_room import segments as segments_api
     from app.api.internalization_room import takes as takes_api
+    from app.services.internalization_room import hearing
     from app.services.internalization_room import questions as question_service
 
     bucket = the_bucket_is_in_memory(monkeypatch)
@@ -149,11 +182,13 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         return f"https://storage.example/{take.storage_key}"
 
     monkeypatch.setattr(takes_api, "listen_url", _signed)
+    monkeypatch.setattr(scene_api, "listen_url", _signed)
 
     async def _transcribe(*_: Any, **__: Any) -> str:
         return "explicando de novo"
 
     monkeypatch.setattr(segments_api, "heard", _transcribe)
+    monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
     async with room_client(db_session, monkeypatch) as c:
         yield c
@@ -161,13 +196,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
 class Owned:
     """The resources one project owns, for one case: a session, a rehearsal take and the one
-    stretch told back over it — the shape every case below needs at most of.
+    stretch told back over it, a scene rehearsal, and for the case that hears one, a frase of
+    it — the shape every case below needs at most of.
     """
 
-    def __init__(self, session: Any, take: Any, segment: Any) -> None:
+    def __init__(self, session: Any, take: Any, segment: Any, scene: Any, frase: Any) -> None:
         self.session = session
         self.take = take
         self.segment = segment
+        self.scene = scene
+        self.frase = frase
 
 
 async def _owned(db: AsyncSession, project_id: str, tag: str) -> Owned:
@@ -191,7 +229,30 @@ async def _owned(db: AsyncSession, project_id: str, tag: str) -> Owned:
         bridge_take_id=f"retro-{tag}",
         transcript=f"a equipe contou {tag}",
     )
-    return Owned(session, take, segment)
+    scene = await keep_scene_rehearsal(
+        db,
+        session,
+        device_id=f"tablet-{tag}",
+        audio=f"a equipe ensaiou a cena {tag}".encode(),
+        content_type="audio/mp4",
+        scene=None,
+    )
+    if tag != "scene-frase-audio":
+        return Owned(session, take, segment, scene, None)
+    frase = await keep_a_frase(
+        db,
+        session,
+        scene,
+        starts_ms=0,
+        ends_ms=1000,
+        replaces=None,
+        after_restart=None,
+        audio=f"a equipe traduziu a cena {tag}".encode(),
+        content_type="audio/mp4",
+        filename=None,
+        transcript=f"a equipe traduziu {tag}",
+    )
+    return Owned(session, take, segment, scene, frase)
 
 
 def _case(tag: str, *, method: str, path: str, expects: str = "get", **request: Any) -> dict:
@@ -204,9 +265,11 @@ def cases(owned: Owned) -> list[dict]:
     `expects` says how the owner's call is read: `"get"` for a plain 200, `"stream"` for an
     SSE response only ever checked by its status (consuming its body would hang the case,
     since the stream never ends on its own), `"redirect"` for the 307 the take-audio route
-    answers with instead of a body.
+    answers with instead of a body, `"untranslated"` for the 422 the send door answers a scene
+    rehearsal with no frase, which the owner reaches only past the ownership rule.
     """
-    s, t = owned.session.id, owned.take.id
+    s, t, r = owned.session.id, owned.take.id, owned.scene.id
+    f = owned.frase.id if owned.frase is not None else None
     return [
         _case("read", method="GET", path=f"/sessions/{s}"),
         _case("needs-person", method="POST", path=f"/sessions/{s}/needs-person"),
@@ -237,6 +300,52 @@ def cases(owned: Owned) -> list[dict]:
             "take-audio",
             method="GET",
             path=f"/sessions/{s}/takes/{t}/audio",
+            expects="redirect",
+        ),
+        _case(
+            "keep-scene",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals",
+            files={"file": ("cena.m4a", b"outra cena", "audio/mp4")},
+        ),
+        _case("list-scenes", method="GET", path=f"/sessions/{s}/scene-rehearsals"),
+        _case(
+            "scene-audio",
+            method="GET",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/audio",
+            expects="redirect",
+        ),
+        _case(
+            "scene-frase",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/frases",
+            data={"starts_ms": "0", "ends_ms": "1000"},
+            files={"file": ("frase.m4a", b"uma frase", "audio/mp4")},
+        ),
+        _case(
+            "scene-restart",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/restart",
+            data={"attempt": "0f0f0f0f-0000-4000-8000-000000000001"},
+        ),
+        _case(
+            "scene-send",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/send",
+            expects="untranslated",
+            data={"turn_id": "turno-da-cena"},
+        ),
+        _case("passage-scenes", method="GET", path=f"/sessions/{s}/scenes"),
+        _case(
+            "scene-label",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/scene",
+            data={"scene": "S2"},
+        ),
+        _case(
+            "scene-frase-audio",
+            method="GET",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/frases/{f}/audio",
             expects="redirect",
         ),
     ]
@@ -311,7 +420,7 @@ async def _send(
     return resp.status_code
 
 
-_EXPECTED_OWNER_STATUS = {"get": 200, "stream": 200, "redirect": 307}
+_EXPECTED_OWNER_STATUS = {"get": 200, "stream": 200, "redirect": 307, "untranslated": 422}
 
 #: The tags `cases()` builds, named once so the parametrization does not have to construct a
 #: throwaway `Owned` just to read them off.
@@ -325,6 +434,15 @@ TAGS = [
     "keep-take",
     "list-takes",
     "take-audio",
+    "keep-scene",
+    "list-scenes",
+    "scene-audio",
+    "scene-frase",
+    "scene-restart",
+    "scene-send",
+    "passage-scenes",
+    "scene-label",
+    "scene-frase-audio",
 ]
 
 
@@ -338,6 +456,8 @@ def test_the_exercised_cases_are_exactly_the_covered_routes() -> None:
         SimpleNamespace(id="{session_id}"),
         SimpleNamespace(id="{take_id}"),
         SimpleNamespace(id="{segment_id}"),
+        SimpleNamespace(id="{rehearsal_id}"),
+        SimpleNamespace(id="{frase_id}"),
     )
     built = cases(templates)
 
@@ -365,6 +485,21 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
     elif tag == "keep-take":
         takes = await takes_of(db, owned.session.id)
         assert len(takes) == 1, "um estranho gravou uma tomada numa sessão de outro projeto"
+    elif tag == "keep-scene":
+        rehearsals = await scene_rehearsals_of_the_passage(db, owned.session)
+        assert len(rehearsals) == 1, "um estranho gravou uma cena numa sessão de outro projeto"
+    elif tag == "scene-frase":
+        frases = await frases_of(db, await restarts_of(db, [owned.scene.id]))
+        assert frases[owned.scene.id] == [], "um estranho traduziu a cena de outro projeto"
+    elif tag == "scene-restart":
+        restarts = await restarts_of(db, [owned.scene.id])
+        assert restarts[owned.scene.id] == [], "um estranho recomeçou a cena de outro projeto"
+    elif tag == "scene-send":
+        await db.refresh(owned.scene)
+        assert owned.scene.sent_at is None, "um estranho enviou a cena de outro projeto"
+    elif tag == "scene-label":
+        await db.refresh(owned.scene)
+        assert owned.scene.scene is None, "um estranho rotulou a cena de outro projeto"
     elif tag == "needs-person":
         session = await get_session(db, owned.session.id)
         assert session.status is IRSessionStatus.IN_PROGRESS, (
@@ -397,25 +532,6 @@ async def test_a_device_of_another_project_is_refused_before_any_work(
 
     assert allowed == _EXPECTED_OWNER_STATUS[case["expects"]], (
         f"{tag}: o dono deixou de alcançar o próprio recurso, veio {allowed}"
-    )
-
-
-@pytest.mark.parametrize("tag", TAGS)
-async def test_a_room_key_caller_still_reaches_a_project_owned_session(
-    client: httpx.AsyncClient, db_session: AsyncSession, tag: str
-) -> None:
-    """The shared key names no device and so no project — `_deps.py`'s own "dated
-    compromise, not a design" — and every one of these routes kept working for it before
-    this ticket. `session_for_room_caller` preserves that by construction; this proves it.
-    """
-    owner, _credential = await a_claimed_device(db_session, email=f"key-owner-{tag}@example.com")
-    owned = await _owned(db_session, owner.id, f"key-{tag}")
-    case = next(c for c in cases(owned) if c["tag"] == tag)
-
-    allowed = await _send(client, db_session, case, ROOM_KEY_HEADERS)
-
-    assert allowed == _EXPECTED_OWNER_STATUS[case["expects"]], (
-        f"{tag}: a chave da sala deixou de alcançar uma sessão com dono, veio {allowed}"
     )
 
 
@@ -582,28 +698,3 @@ async def test_a_device_of_another_projects_question_audio_is_refused_before_any
 
     assert allowed.status_code == 200, allowed.text[:300]
     assert allowed.content == b"a equipe perguntou"
-
-
-async def test_a_room_key_caller_still_reaches_a_project_owned_questions_audio(
-    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The shared key names no device and so no project — `_deps.py`'s own "dated
-    compromise, not a design" — and this route kept answering it before this ticket.
-    """
-    store = _CountingStore()
-    monkeypatch.setattr(question_service, "_store", lambda *_, **__: store)
-    owner, _credential = await a_claimed_device(db_session, email="key-owner-qa@example.com")
-    question = await question_service.raise_question(
-        db_session,
-        device_id="tablet-sala",
-        session_id="sessao-qa-key",
-        pericope=P,
-        audio=b"a equipe perguntou pela chave",
-        project_id=owner.id,
-        store=store,
-    )
-
-    allowed = await client.get(_question_audio_url(question), headers=ROOM_KEY_HEADERS)
-
-    assert allowed.status_code == 200, allowed.text[:300]
-    assert allowed.content == b"a equipe perguntou pela chave"

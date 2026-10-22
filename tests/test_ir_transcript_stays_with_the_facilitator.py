@@ -11,7 +11,7 @@ each new schema is a promise the next route breaks. Everything below is derived 
 mounted application, so a route that would break it fails this file on the day it is written:
 
 * which routes the room app reaches — every mounted route whose dependency tree, or whose own
-  body, calls the tablet's gates (`require_room_caller`, `require_device`) — shared with the
+  body, calls the tablet's gates (`linked_tablet`, `require_device`) — shared with the
   credential audit as `room_route_audit_harness.room_app_routes` (ENG-1039), so a route gated
   by hand instead of by `Depends` cannot go unaudited in one file and not the other;
 * which of those can reach a question — the ones the room's question router mounts, read off
@@ -19,31 +19,28 @@ mounted application, so a route that would break it fails this file on the day i
 * what a route can put in a body — every model reachable from the return type FastAPI
   resolved, read recursively.
 
-**On the word "transcript" appearing elsewhere.** `TurnResponse.transcript` is the team's own
-utterance in a turn of the conversation with the guide, transcribed so the guide can answer
-it, and it long predates this slice. It is not the question's transcript and this file does
-not touch it — the audit below asks whether a response *identifies a question and carries its
-transcript*, which is the shape the leak this issue names would actually take. That other
-field is a finding for the room's own line, reported and not fixed here.
+**On the word "transcript" appearing elsewhere.** `TurnResponse.transcript`, the team's own
+utterance in a turn of the conversation with the guide, is gone from the tablet's answer
+(ENG-1335); `test_ir_the_tablet_never_receives_the_teams_words.py` holds that over every door.
+This file keeps asking the narrower question about a *question's* transcript.
 """
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession
 from app.models.internalization_room import InboxQuestionView
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.voice_handles import to_handle
-from tests.room_route_audit_harness import room_app_routes
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.room_route_audit_harness import models_in, named, room_app_routes
 
 #: How the facilitator's card spells the two fields that must never travel together to the
 #: room. Read off the card rather than typed here, so a rename that keeps the leak takes this
@@ -79,28 +76,6 @@ def question_routes_the_room_reaches() -> list:
     return [route for route in room_app_routes() if route.endpoint in mounted]
 
 
-def _models(annotation, seen: frozenset = frozenset()) -> set[type[BaseModel]]:
-    """Every model a body of this shape can carry, following nesting."""
-    if annotation in seen:
-        return set()
-    seen = seen | {annotation}
-
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        found = {annotation}
-        for field in annotation.model_fields.values():
-            found |= _models(field.annotation, seen)
-        return found
-
-    found = set()
-    for arg in typing.get_args(annotation):
-        found |= _models(arg, seen)
-    return found
-
-
-def _named(route) -> tuple[str, str]:
-    return sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path
-
-
 def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> None:
     """The structural half, over every route the tablet can call.
 
@@ -110,9 +85,9 @@ def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> 
     question the team asked.
     """
     leaking = {
-        _named(route): model.__name__
+        named(route): model.__name__
         for route in room_app_routes()
-        for model in _models(route.response_model)
+        for model in models_in(route.response_model)
         if {QUESTION_IDENTITY, TRANSCRIPT_FIELD} <= set(model.model_fields)
     }
 
@@ -124,7 +99,7 @@ def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> 
 
 def test_every_question_route_the_room_reaches_is_exercised() -> None:
     """Nothing escapes the sentinel by being added after this file was written."""
-    reachable = {_named(route) for route in question_routes_the_room_reaches()}
+    reachable = {named(route) for route in question_routes_the_room_reaches()}
 
     assert reachable == set(EXERCISED), (
         "as rotas de pergunta que a sala alcanca mudaram; a garantia so vale sobre as que "
@@ -170,13 +145,8 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
     raised through this client is one whose transcript would be visible if it could travel.
     """
     from app.api.internalization_room.questions import router as questions_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
-    )
 
     store = MemoryStore()
 
@@ -194,10 +164,11 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
         base_url="http://test",
-        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+        headers=tablet.headers | {"X-Room-Device": DEVICE},
     ) as client:
         yield client
 
@@ -208,7 +179,7 @@ async def a_question_the_room_could_read_back(db: AsyncSession, room_client) -> 
     Answered on purpose: an open question is invisible to `replies`, so a sentinel test run
     against one would pass without the route ever having had the chance to leak.
     """
-    db.add(IRSession(id=SESSION, pericope="P03"))
+    db.add(IRSession(id=SESSION, pericope="P03", project_id=TABLET_TEAM))
     await db.commit()
 
     raised = await room_client.post(

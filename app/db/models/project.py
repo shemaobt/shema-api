@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -24,6 +24,9 @@ class Project(Base):
         ForeignKey("journeys.id", ondelete="SET NULL"), nullable=True, index=True
     )
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: The demo team (ADR 0064): marked the first time the demo page serves it, and never
+    #: cleared, so its devices keep its rules after the setting is unset.
+    is_demo_team: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

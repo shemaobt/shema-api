@@ -50,8 +50,8 @@ _codes = itertools.count()
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND = CANON[0], CANON[1]
 
-#: The passages a team can actually finish. Closing all of `CANON` is a state no team can
-#: reach, because eight of Ruth's maps refuse to open a session at all.
+#: The passages a team can actually finish: those `unwalkable` leaves open. For Ruth today that
+#: is all of `CANON`; a map the room refuses drops out of this list and stays in `CANON`.
 WALKABLE = [
     meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
 ]
@@ -67,9 +67,9 @@ async def having_finished(db: AsyncSession, team, *pericopes: str) -> None:
 
     A passage is finished because the team recorded their rehearsal of it, so the fixture
     records. The coverage events are still written by `apply_coverage` and never inserted,
-    because they are what the necklace and the element list read. Since ENG-589 the room
-    refuses eight of the fourteen, so the session rows for those come from `open_ir_session` —
-    the end of the book is no longer a place the production path reaches.
+    because they are what the necklace and the element list read. The session rows come from
+    `open_ir_session`, which opens each passage through the room and writes the row itself only
+    for a passage the room refuses since ENG-589, so the fixture reaches wherever the canon does.
     """
     for pericope in pericopes:
         session = await open_ir_session(db, pericope=pericope, project_id=team.id)
@@ -163,10 +163,11 @@ async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_sam
 ) -> None:
     """The end of the book as a team actually meets it, which is where this broke.
 
-    Closing all fourteen is a state nobody can reach — eight of them refuse to open a session
-    at all — so the conflict above was only ever asserted against a fixture. What a real team
-    reaches is the sixth passage closed, and that resolved to the seventh: a passage whose own
-    refusal came back as a broken room, on that touch and on every touch after it.
+    Closing the whole book was a state nobody could reach while passages whose layer nobody
+    had written refused to open a session at all, so the conflict above was only ever asserted
+    against a fixture. What a real team reached was the sixth passage closed, and that resolved
+    to the seventh: a passage whose own refusal came back as a broken room, on that touch and
+    on every touch after it.
     """
     team = await a_team(db_session, name="Andou tudo que dava")
     await having_finished(db_session, team, *WALKABLE)
@@ -206,17 +207,40 @@ async def test_the_panorama_alias_still_names_the_book_the_room_serves(
     assert session.coverage_state == {}
 
 
-def test_a_ready_line_is_handed_to_the_session_it_was_written_for() -> None:
-    panorama = IRSession(id="ov", pericope=f"OV-{ROOM_BOOK}", prepared_pericope=SECOND)
-    panorama.prepared_speech = "a primeira fala"
-    panorama.prepared_audio_key = "tts/v/p02.mp3"
-    opening = IRSession(id="s1", pericope=SECOND)
+async def _stored(db: AsyncSession, **fields: object) -> IRSession:
+    fields.setdefault("language", "pt")
+    session = IRSession(
+        status=IRSessionStatus.IN_PROGRESS,
+        messages=[],
+        coverage_state={},
+        back_translation={},
+        **fields,
+    )
+    db.add(session)
+    await db.commit()
+    return session
 
-    assert hand_over(panorama, opening) is True
+
+async def test_a_ready_line_is_handed_to_the_session_it_was_written_for(
+    db_session: AsyncSession,
+) -> None:
+    panorama = await _stored(
+        db_session,
+        pericope=f"OV-{ROOM_BOOK}",
+        prepared_pericope=SECOND,
+        prepared_speech="a primeira fala",
+        prepared_audio_key="tts/v/p02.mp3",
+    )
+    opening = await _stored(db_session, pericope=SECOND)
+
+    assert await hand_over(db_session, panorama, opening) is True
+    await db_session.refresh(opening)
     assert opening.prepared_speech == "a primeira fala"
 
 
-def test_a_line_prepared_for_a_passage_the_team_has_since_left_is_not_handed_over() -> None:
+async def test_a_line_prepared_for_a_passage_the_team_has_since_left_is_not_handed_over(
+    db_session: AsyncSession,
+) -> None:
     """The case a re-derived guard waves through, which is why the passage is recorded.
 
     The panorama wrote the second passage's opening. While the team was still hearing it,
@@ -225,30 +249,43 @@ def test_a_line_prepared_for_a_passage_the_team_has_since_left_is_not_handed_ove
     passage compares the third to the third and hands over a line written from the second
     passage's meaning map, spoken as the third's own framing.
     """
-    panorama = IRSession(id="ov", pericope=f"OV-{ROOM_BOOK}", prepared_pericope=SECOND)
-    panorama.prepared_speech = "a fala da segunda"
-    panorama.prepared_audio_key = "tts/v/p02.mp3"
-    opening_on_the_next_one = IRSession(id="s1", pericope=CANON[2])
+    panorama = await _stored(
+        db_session,
+        pericope=f"OV-{ROOM_BOOK}",
+        prepared_pericope=SECOND,
+        prepared_speech="a fala da segunda",
+        prepared_audio_key="tts/v/p02.mp3",
+    )
+    opening_on_the_next_one = await _stored(db_session, pericope=CANON[2])
 
-    assert hand_over(panorama, opening_on_the_next_one) is False
+    assert await hand_over(db_session, panorama, opening_on_the_next_one) is False
+    await db_session.refresh(opening_on_the_next_one)
+    await db_session.refresh(panorama)
     assert opening_on_the_next_one.prepared_speech is None
     assert panorama.prepared_speech == "a fala da segunda", (
         "a fala foi gasta por uma sessao que nao a recebeu"
     )
 
 
-def test_a_line_with_no_passage_recorded_is_not_handed_to_anybody() -> None:
+async def test_a_line_with_no_passage_recorded_is_not_handed_to_anybody(
+    db_session: AsyncSession,
+) -> None:
     """A row written before this slice carries no `prepared_pericope`, and cannot be trusted.
 
     Biased the same way the floor is: what is unknown is refused. The cost is one session
     writing its own opening; the cost of the other direction is P01's framing spoken over
     whatever passage the team is actually on.
     """
-    panorama = IRSession(id="ov", pericope=f"OV-{ROOM_BOOK}", prepared_pericope=None)
-    panorama.prepared_speech = "de antes desta fatia"
-    panorama.prepared_audio_key = "tts/v/velha.mp3"
+    panorama = await _stored(
+        db_session,
+        pericope=f"OV-{ROOM_BOOK}",
+        prepared_pericope=None,
+        prepared_speech="de antes desta fatia",
+        prepared_audio_key="tts/v/velha.mp3",
+    )
+    first = await _stored(db_session, pericope=FIRST)
 
-    assert hand_over(panorama, IRSession(id="s1", pericope=FIRST)) is False
+    assert await hand_over(db_session, panorama, first) is False
 
 
 # -------------------------------------------------------------------- the constant, and its paths

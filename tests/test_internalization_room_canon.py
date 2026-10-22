@@ -43,30 +43,8 @@ def test_entities_without_a_wikilink_are_still_entities() -> None:
         for entity in s.beings + s.places + s.objects + s.times
     ]
 
-    assert len(entities) == 350
+    assert len(entities) == 340
     assert any(entity.code is None for entity in entities)
-
-
-def test_an_unapproved_map_is_refused_not_degraded() -> None:
-    text = (
-        (MAPS_DIR / "P03-Ruth-1-15-18.md")
-        .read_text()
-        .replace('status: "complete"', 'status: "draft"')
-    )
-
-    with pytest.raises(ValidationError, match="not approved canon"):
-        parse_map(text, source="P03-draft")
-
-
-def test_poetry_is_refused_until_the_project_enables_it() -> None:
-    text = (
-        (MAPS_DIR / "P03-Ruth-1-15-18.md")
-        .read_text()
-        .replace('genre-group: "NARRATIVE"', 'genre-group: "POETIC_SUNG"')
-    )
-
-    with pytest.raises(ValidationError, match="not enabled"):
-        parse_map(text, source="T13-like")
 
 
 def test_a_map_missing_its_arc_section_raises() -> None:
@@ -102,7 +80,7 @@ def test_only_do_not_decide_rules_reach_the_preservation_set() -> None:
     """P01 R1 is `required_in_audit` but not `do_not_decide` — a preference, not a constraint."""
     rules = preservation_rules("Ruth")
 
-    assert len(rules) == 39
+    assert len(rules) == 99
     assert not any(r.pericope == "P01" and r.rule_id == "R1" for r in rules)
 
 

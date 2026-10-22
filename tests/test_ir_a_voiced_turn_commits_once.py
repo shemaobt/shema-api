@@ -22,12 +22,11 @@ from app.services.internalization_room.sessions import (
     get_session,
     mark_needs_person,
     raise_a_warning,
-    save_comprehension,
     unattend,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
-from tests.baker import fully_supported_comprehension
-from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -53,11 +52,6 @@ class _Models:
 @pytest.fixture()
 def models() -> _Models:
     return _Models()
-
-
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
 
 class _Voice:
@@ -114,7 +108,7 @@ async def client(
 
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     return await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
@@ -131,7 +125,6 @@ async def _the_team_answers(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
         data=data,
     )
@@ -155,6 +148,7 @@ def _in_a_transaction_while_thinking(
         return any(each.in_transaction() for each in (db, *of_their_own))
 
     async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
+        await asyncio.sleep(0.2)
         held["stt"] = in_a_transaction()
         return await _heard(audio, **kwargs)
 
@@ -174,28 +168,31 @@ def _in_a_transaction_while_thinking(
     return held
 
 
-async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
+async def test_a_voiced_turn_reaches_the_database_in_one_commit_after_its_claim(
     client: httpx.AsyncClient, waiting_room: IRSession, commits: list[object]
 ) -> None:
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert len(commits) == 1, (
+    assert len(commits) == 2, (
         "o turno gravava a comprehension e as mensagens em dois commits, cada um com o seu"
-        " refresh da linha inteira"
+        " refresh da linha inteira, além da reivindicação do turno (ADR 0079)"
     )
 
 
-async def test_an_opening_the_room_voices_live_reaches_the_database_in_one_commit(
+async def test_an_opening_the_room_voices_live_lands_in_one_commit_after_its_claim(
     client: httpx.AsyncClient, db_session: AsyncSession, commits: list[object]
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     commits.clear()
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
-    assert len(commits) == 1, "a abertura gravava a comprehension e a primeira fala em dois commits"
+    assert len(commits) == 2, (
+        "a abertura gravava a comprehension e a primeira fala em dois commits, além da"
+        " reivindicação da abertura (ADR 0053)"
+    )
 
 
 async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
@@ -205,7 +202,8 @@ async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     lit = dict(initial_state(P))
-    lit[next(iter(lit))] = CoverageStatus.ENGAGED.value
+    settled_key = next(iter(lit))
+    lit[settled_key] = CoverageStatus.ENGAGED.value
 
     async def the_last_turns_settle_lands() -> None:
         async with rival_factory() as rival:
@@ -216,9 +214,14 @@ async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["coverage"]["engaged"] == 1, (
-        "a resposta levava as contas lidas antes do Guia, e a conta acesa apagava na tela"
+    async with rival_factory() as fresh:
+        stored = (await get_session(fresh, waiting_room.id)).coverage_state
+    assert stored[settled_key] == CoverageStatus.ENGAGED.value, (
+        "o turno gravava as contas lidas antes do Guia por cima da conta acesa"
     )
+    assert answered.json()["coverage"]["engaged"] == sum(
+        status == CoverageStatus.ENGAGED.value for status in stored.values()
+    ), "a resposta levava as contas lidas antes do Guia, e a conta acesa apagava na tela"
 
 
 async def test_a_person_asked_for_while_the_guide_thinks_is_still_asked_for_after_the_turn(
@@ -251,7 +254,7 @@ async def test_a_person_asked_for_while_the_guide_composes_the_opening_is_still_
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     async def the_tablet_asks_for_a_person() -> None:
         async with rival_factory() as rival:
@@ -260,7 +263,7 @@ async def test_a_person_asked_for_while_the_guide_composes_the_opening_is_still_
 
     models.while_the_guide_thinks = the_tablet_asks_for_a_person
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"
@@ -279,7 +282,10 @@ async def test_a_turn_with_its_id_is_remembered_in_the_same_commit_as_its_exchan
     answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
     assert answered.status_code == 200, answered.text[:300]
-    assert len(commits) == 1, "a resposta lembrada do turno era gravada num commit a mais"
+    assert len(commits) == 2, (
+        "a resposta lembrada do turno era gravada num commit a mais, além da reivindicação do"
+        " turno (ADR 0079)"
+    )
 
 
 async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exchange(
@@ -306,7 +312,7 @@ async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exch
     ], "a resposta lembrada em duplicata voltava a transação e levava a troca junto"
 
 
-async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its_resend_is(
+async def test_a_turn_whose_clip_never_reached_the_bucket_is_still_written_and_its_resend_reads_it(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     voice: _Voice,
@@ -325,20 +331,21 @@ async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its
     monkeypatch.setattr(sessions_api.room, "append_exchange", append_then_say_so)
     voice.the_bucket_is_down = True
 
-    failed = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
+    answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
-    assert failed.status_code >= 500, failed.text[:300]
+    assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
         after = await get_session(fresh, waiting_room.id)
         remembered = (await fresh.execute(select(IRTurn))).scalars().all()
-    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [FIRST_QUESTION], (
-        "a troca ficava gravada sem a equipe ter ouvido nada"
-    )
-    assert remembered == []
+    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [
+        FIRST_QUESTION,
+        GUIDE_LINE,
+    ], "o bucket recusava o clipe e a troca já validada se perdia"
+    assert len(remembered) == 1
 
     resent = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
-    assert resent.status_code == 200, resent.text[:300]
+    assert resent.json() == answered.json()
     async with rival_factory() as fresh:
         after = await get_session(fresh, waiting_room.id)
     assert [m["text"] for m in after.messages if m["role"] == "guide"] == [
@@ -406,12 +413,13 @@ async def test_a_turn_whose_row_moved_while_the_guide_thought_is_refused_not_wri
             )
 
     models.while_the_guide_thinks = another_turn_lands_first
+    session_id = waiting_room.id
 
-    answered = await _the_team_answers(client, waiting_room.id)
+    answered = await _the_team_answers(client, session_id)
 
     assert answered.status_code == 409, answered.text[:300]
     async with rival_factory() as fresh:
-        after = await get_session(fresh, waiting_room.id)
+        after = await get_session(fresh, session_id)
     assert [m["text"] for m in after.messages] == [FIRST_QUESTION, "Rute ficou", "E depois?"], (
         "com a transação solta antes do Guia, o turno escrevia por cima da troca que chegou antes"
     )
@@ -424,10 +432,10 @@ async def test_an_opening_the_room_voices_live_is_composed_with_the_database_let
     voice: _Voice,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert held == {"guide": False, "validator": False, "voice": False}, (
@@ -445,9 +453,7 @@ async def test_a_line_said_again_is_voiced_with_the_database_let_go(
 ) -> None:
     held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
 
-    again = await client.post(
-        f"{PREFIX}/sessions/{waiting_room.id}/turns", headers={"X-Room-Key": KEY}
-    )
+    again = await client.post(f"{PREFIX}/sessions/{waiting_room.id}/turns")
 
     assert again.status_code == 200, again.text[:300]
     assert held == {"voice": False}, (
@@ -462,12 +468,11 @@ async def test_an_opening_the_tablet_names_is_composed_with_every_session_let_go
     voice: _Voice,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
 
     opened = await client.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": "abertura-1"},
     )
 
@@ -569,7 +574,6 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await save_comprehension(db_session, waiting_room, fully_supported_comprehension(P))
     await mark_needs_person(db_session, waiting_room)
 
     async def a_visit_and_then_the_last_settle_close_the_passage() -> None:
@@ -595,7 +599,7 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     )
 
 
-async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_the_halt_back(
+async def test_a_halt_raised_while_the_guide_answered_still_stands_after_its_visit_is_undone(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     models: _Models,
@@ -615,8 +619,7 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_th
     async with rival_factory() as fresh:
         undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
     assert undone.status is IRSessionStatus.NEEDS_PERSON, (
-        "o turno apagava o lifted_halt de uma parada que nem existia quando começou, e"
-        " desfazer a visita não trazia o pedido de volta"
+        "o turno levantava uma parada que nem existia quando começou"
     )
     assert undone.halt_kind == HaltKind.BLOCKING.value
 
@@ -737,7 +740,7 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_p
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     async def the_tablet_asks_and_a_facilitator_marks_the_visit() -> None:
         async with rival_factory() as rival:
@@ -747,7 +750,7 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_p
 
     models.while_the_guide_thinks = the_tablet_asks_and_a_facilitator_marks_the_visit
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"

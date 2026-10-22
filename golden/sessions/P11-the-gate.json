@@ -1,0 +1,261 @@
+{
+  "name": "P11-the-gate",
+  "pericopeId": "P11",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's nine rulings of 2026-09-27 on P11 (Ruth 4:1-8), vendored with SC-0087 (compiler branch tip e671354, re-pinned to the merge commit after her merge word): the high-risk register (14 entries, 8 do_not_decide — R1 the order of the telling: the field alone and 'I will redeem', then Ruth and 'I cannot', never why Boaz speaks in this order; R2 the man without a name: Boaz calls him So-and-so ('Fulano'), no 'friend' in the Hebrew, a team 'amigo' or any non-name is correct, never a name or a judging label; R3 the refusal: 'I cannot', said twice, a team 'não quis' offered back gently, he does not explain why it would ruin his inheritance; R4 at 4:1 only 'and behold' — no 'por acaso', no 'God made him pass'; R5 the sandal: the voice tells only that he drew it off, a team 'deu pro Boaz' is correct, no law the story does not cite (the levirate law, Deuteronomy 25); R6 the gate silences: Ruth and Naomi are not at the gate and neither speaks, no one speaks of the night at the threshing floor, no one says the name of God; R7 never which son was Ruth's husband; R10 the marriage is not told here) and the map corrections (no queue, no strategy words, no forward pointers). The judge reads them in the map and the register; the keys below are the mechanical half. No earlierPassages fixture: the team has not reached P11 and its statuses then are not known, so the app's fact is left out as in most scripts. Turn 0: the kickoff is the Familiarization (F1, the whole passage, the scenes by number, F3 as the last words) — the order of the telling kept (the field alone, 'eu resgatarei', then Ruth, 'não posso'), Boaz calls him Fulano with no 'amigo' of the voice's own and no name, 'e eis que' with no 'por acaso' and no God, the sandal drawn off with the handing left to the custom, no marriage told, no son named, no law beyond the custom the narrator explains. Turn 1: in the Familiarization the team offers readings (team_reading_stays_theirs): 'por acaso', 'ou foi Deus que fez ele passar?' (the story says only 'e eis que'; the narrator does not say why he passes at that moment — R4) and 'o Boaz foi esperto … pro outro desistir' (the narrator does not say why Boaz speaks in this order; never that he planned it — R1); F4 as the last words, no scene opened. Turn 2: 'Estamos prontos.' opens scene 1 — I1 cena 1 and her closing. Turn 3: 'Vamos pro ensaio.' — A1 before the fence. Turn 4: a whole scene rehearsal of scene 1 (S1) where Boaz says 'Ô amigo Fulano' — accepted, the non-name kept, no name given (R2). Turn 5: 'Pode abrir a segunda cena pra gente?' with a question about the women (the tail; R6: Ruth and Naomi are not at the gate) and whether Boaz told the elders about the night at the threshing floor (at the gate no one speaks of the night — R6). Turn 6: A2 before the fence. Turn 7: a scene rehearsal of scene 2 that joins the field and Ruth in one offer — the order offered back gently as a missing detail (in this scene Boaz speaks of the field alone, and the man says 'eu resgatarei'), the fence again, no choice offer (a first imperfect telling). Turn 8: scene 2 again, whole — accepted. Turn 9: 'Pode abrir a terceira cena pra gente?' with two questions: why it would ruin his inheritance (he does not explain; the story only sets side by side Boaz's 'to raise up the name of the dead upon his inheritance' and his 'lest I ruin my own inheritance' — R3) and which of Naomi's sons was the dead man (never which son — R7; no_pairing). Turn 10: A3 before the fence. Turn 11: a scene rehearsal of scene 3 that says 'não quis' / 'não quero' — offered back gently: he said 'não posso', twice (R3); the fence again, no choice offer. Turn 12: scene 3 again, whole — accepted. Turn 13: 'Pode abrir a última cena pra gente?' with a question about the levirate law of Deuteronomy (no law the story does not cite: the narrator explains the custom himself — R5) and whether Boaz married Ruth there (the marriage is not told in this passage — R10). Turn 14: A4 before the fence. Turn 15: a scene rehearsal of scene 4 ending 'tirou a sandália e deu pro Boaz' — accepted, not an addition (R5); nothing of a marriage; with S1 to S4 all recorded, the plain Ensaio Final send-off (ONE instruction, the orange dot; the moment EF) — never the fence and the red microphone again, never the whole passage asked. The team's lines are the builder's fixtures, pending Marcia's word.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "no_pairing": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Chamou a atenção da gente que o resgatador passou bem na hora, por acaso. Ou foi Deus que fez ele passar? E o Boaz foi esperto, né? Ele falou primeiro só do campo e deixou a Rute pro final, pro outro desistir.",
+      "expect": {
+        "no_fail_safe": true,
+        "team_reading_stays_theirs": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "familiarization_tail": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "moment_after": "I1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "O Boaz subiu até a porta da cidade e sentou ali.",
+          "E eis que o resgatador de quem o Boaz tinha falado vinha passando.",
+          "O Boaz disse: Ô amigo Fulano, vem cá, senta aqui. E ele veio e sentou.",
+          "Depois o Boaz chamou dez homens dos anciãos da cidade e disse: sentem aqui. E eles sentaram."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": [
+        "S1"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente? A Rute e a Noemi estavam lá na porta, ouvindo? E o Boaz contou pros anciãos o que aconteceu na eira, de noite?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 2,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "O Boaz disse pro resgatador: a Noemi, que voltou de Moabe, está vendendo o pedaço de campo do nosso irmão Elimeleque.",
+          "Se você comprar o campo, você fica também com a Rute, a moabita. Compra na frente dos anciãos.",
+          "Se você quer resgatar, resgata. Se não, me diz, porque não tem ninguém além de você pra resgatar, e eu venho depois de você.",
+          "E o homem disse: eu resgato."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "O Boaz disse pro resgatador: a Noemi, que voltou dos campos de Moabe, está vendendo a parte do campo que era do nosso irmão Elimeleque.",
+          "Eu resolvi te contar: compra na frente dos que estão sentados aqui e na frente dos anciãos do meu povo.",
+          "Se você quer resgatar, resgata. Se não quer, me diz, pra eu saber, porque não tem ninguém além de você pra resgatar, e eu venho depois de você.",
+          "E ele disse: eu resgato."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a terceira cena pra gente? Por que o homem disse que ia estragar a herança dele? E qual dos filhos da Noemi era o morto, o marido da Rute?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_pairing": true,
+        "no_spoiler": true,
+        "moment_after": "I3",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 3,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_pairing": true,
+        "moment_after": "A3",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Aí o Boaz disse: no dia que você comprar o campo da mão da Noemi, você também adquire a Rute, a moabita, a mulher do morto, pra levantar o nome do morto sobre a herança dele.",
+          "Então o resgatador não quis. Ele disse: eu não quero resgatar pra mim, senão eu estrago a minha herança.",
+          "Resgata você o meu direito de resgate."
+        ],
+        "sceneId": "S3"
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_pairing": true,
+        "moment_after": "A3",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Aí o Boaz disse: no dia que você comprar o campo da mão da Noemi, você também adquire a Rute, a moabita, a mulher do morto, pra levantar o nome do morto sobre a herança dele.",
+          "E o resgatador disse: eu não posso resgatar pra mim, senão eu estrago a minha herança.",
+          "Resgata você o meu direito de resgate, porque eu não posso resgatar."
+        ],
+        "sceneId": "S3"
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_pairing": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a última cena pra gente? Essa coisa da sandália é a lei do levirato, aquela de Deuteronômio, né? E o Boaz casou com a Rute ali mesmo, na porta?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "moment_after": "I4",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 4,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A4",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Antigamente em Israel era assim: pra resgatar ou pra trocar alguma coisa, pra confirmar o negócio, um homem tirava a sandália e dava pro outro. Assim se confirmava em Israel.",
+          "Então o resgatador disse pro Boaz: compra pra você.",
+          "E ele tirou a sandália e deu pro Boaz."
+        ],
+        "sceneId": "S4"
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2",
+        "S3",
+        "S4"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "moment_after": "EF"
+      }
+    }
+  ]
+}

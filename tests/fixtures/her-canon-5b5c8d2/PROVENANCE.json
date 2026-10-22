@@ -1,0 +1,18 @@
+{
+  "source": "shemaobt/Tripod-Internalization at 18fa7c4, _spec/canon/VENDOR_MANIFEST.json",
+  "pin_commit": "5b5c8d2b3ae7632279c07017224f861ae369b0d7",
+  "files": {
+    "compilation-log/E01-Esther-1-1-9-COMPILATION-LOG.md": "d514be9c855f568994079e1aa3b561aefc722e82d8d8b17a4ff80e0ca5a69560",
+    "compilation-log/J01-Jonah-1-1-3-COMPILATION-LOG.md": "b43c5c96b57ee452401ab24ee579667c207b69a395f0ad1c84a3177046e43eac",
+    "compilation-log/J02-Jonah-1-4-2-1-COMPILATION-LOG.md": "683a7254ad21efe0b03de885ec709ee969b557bc41d663c81b55b92952081d98",
+    "compilation-log/J03-Jonah-2-2-9-COMPILATION-LOG.md": "789e7970c71bcf01a116bebece848bacfc1dea57a2914dc9a05e8caecfe28d2a",
+    "compilation-log/J04-Jonah-2-10-3-10-COMPILATION-LOG.md": "de98855dd685d0823f330a3d18998b0f860df5511625586c6bbc6d9fa9e3708a",
+    "compilation-log/J05-Jonah-4-1-11-COMPILATION-LOG.md": "96b2267537aa619125d168427d44ac9a52e22a1f316c090bb3b98b6826d0e771",
+    "meaning-map/E01-Esther-1-1-9.md": "0c5eaa001b15c4e1cb36bb92e8833cc5103712cea5b010ecebff2b5a41d2a32c",
+    "meaning-map/J01-Jonah-1-1-3.md": "d6c6ae37316922f271ce5b4aa4a0d6d6b85c5d32a4535b949490b44f979dd1bf",
+    "meaning-map/J02-Jonah-1-4-2-1.md": "124c53be0ec67a99dfd15e72edd5428b73698e82327e38897421776eee08c928",
+    "meaning-map/J03-Jonah-2-2-9.md": "e3a6ade271f52f42c0fa67469a1f73fc15ccaebf861a2af0fb70c1ed407252ff",
+    "meaning-map/J04-Jonah-2-10-3-10.md": "019f1e53f4341b020b11181334f825fd2f38de6909e5d0aed14ea5f33d5e8e1e",
+    "meaning-map/J05-Jonah-4-1-11.md": "624cad8ee302bf837e43604c5cca9cf1bf612dfa13e12b9271519d3cd3e39258"
+  }
+}

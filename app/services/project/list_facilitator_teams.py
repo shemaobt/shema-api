@@ -15,19 +15,23 @@ plan is a sequential scan of `ir_sessions`, `ir_questions` and `ir_takes` per re
 `project_id` indexes never touched. Measured on a seeded Postgres before the scope was pushed
 down — three seq scans over 70,000 rows to answer fourteen teams. A query whose cost is the size
 of the installation rather than the size of the answer is one that works until the installation
-grows.
+grows. A platform admin and a consultant read every team, so for them the installation is the
+answer.
 
 The three numbers on the envelope are not the same kind of fact. ``teams`` answers the
 query; ``serves_any_team`` and ``open_hands_total`` answer the facilitator, and neither
-narrows with the restriction.
+narrows with the restriction. ``open_hands_total`` counts only the teams the reader
+facilitates: a hand on a team they only read is not theirs to answer.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from sqlalchemy import Select, func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Subquery
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.auth import User
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
@@ -44,10 +48,13 @@ from app.models.team import (
     TeamFilter,
     TeamListingResponse,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import active_passages
-from app.services.project.facilitated_scope import facilitated_projects as _facilitated_projects
+from app.services.internalization_room.team_sessions import canon_pins_of
+from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.facilitated_scope import within as _within
 from app.services.project.team_restriction import as_work_queue, matching
 from app.services.project.team_state import team_state
@@ -66,17 +73,21 @@ def _last_activity_subquery(scope: Select | None) -> Subquery:
     internalization-room repository). It is not a room of the team, so it must not move
     them up a facilitator's queue; `entered()` excludes it from this leg alone; the question
     and take legs read every row they always did.
+
+    **A zeroed passage's work is left out (ADR 0047).** The session leg and the take leg ask
+    `live()` of the session, because a take written after its session's Zerar is not stamped.
+    The question leg keeps every hand: hands are never stamped and stay the field's signal.
     """
     moments = union_all(
         select(IRSession.project_id.label("project_id"), IRSession.updated_at.label("at")).where(
-            _within(IRSession.project_id, scope), entered()
+            _within(IRSession.project_id, scope), entered(), live()
         ),
         select(IRQuestion.project_id.label("project_id"), IRQuestion.created_at.label("at")).where(
             _within(IRQuestion.project_id, scope)
         ),
-        select(IRTake.project_id.label("project_id"), IRTake.created_at.label("at")).where(
-            _within(IRTake.project_id, scope)
-        ),
+        select(IRTake.project_id.label("project_id"), IRTake.created_at.label("at"))
+        .outerjoin(IRSession, IRSession.id == IRTake.session_id)
+        .where(_within(IRTake.project_id, scope), live()),
     ).subquery()
     return (
         select(moments.c.project_id, func.max(moments.c.at).label("last_activity_at"))
@@ -160,9 +171,9 @@ async def list_facilitator_teams(
 ) -> TeamListingResponse:
     """The caller's teams, restricted and ordered, beside two facts the restriction misses.
 
-    A platform admin reaches every team, as they do on every other facilitator route: they
-    already hold every other power here, and scoping the one person able to investigate an
-    installation to nothing would leave nobody able to look at it.
+    A platform admin and a consultant reach every team, as they do on every other read route
+    (ADR 0058). ``facilitates`` is read from the facilitator links and never from that scope:
+    it says whether a write on the team would be accepted, which a consultant's never is.
 
     A row whose ``project_id`` is null belongs to no team and is counted for none. That is the
     only honest answer — there is nothing to attribute it to — and it is worth knowing that it
@@ -175,16 +186,20 @@ async def list_facilitator_teams(
     — and it is one statement for the roll rather than one per card.
     """
     moment = now or datetime.now(UTC)
-    scope = _facilitated_projects(user)
+    scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
+    pins = await canon_pins_of(
+        db, [(row.id, pericope) for row in rows if (pericope := here[row.id]) is not None]
+    )
+    facilitated = await writable_project_ids(db, user)
 
     every_team = [
         FacilitatorTeamView(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(here[row.id]),
+            active_passage=_passage(row.id, here[row.id], pins),
             state=team_state(
                 book_closed=here[row.id] is None,
                 last_activity_at=row.last_activity_at,
@@ -193,6 +208,7 @@ async def list_facilitator_teams(
             open_raised_hands=row.open_hands,
             device_count=row.device_count,
             last_activity_at=row.last_activity_at,
+            facilitates=row.id in facilitated,
         )
         for row in rows
     ]
@@ -200,11 +216,13 @@ async def list_facilitator_teams(
     return TeamListingResponse(
         teams=as_work_queue(matching(every_team, search=search, chosen=chosen)),
         serves_any_team=bool(every_team),
-        open_hands_total=sum(team.open_raised_hands for team in every_team),
+        open_hands_total=sum(team.open_raised_hands for team in every_team if team.facilitates),
     )
 
 
-def _passage(pericope: str | None) -> ActivePassageView | None:
+def _passage(
+    team_id: str, pericope: str | None, pins: Mapping[tuple[str, str], str | None]
+) -> ActivePassageView | None:
     """The passage by both its names, or nothing at all at the end of the book.
 
     `None` is the answer for a team that has closed every passage, and it is a position rather
@@ -222,4 +240,8 @@ def _passage(pericope: str | None) -> ActivePassageView | None:
     """
     if pericope is None:
         return None
-    return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
+    try:
+        with reading_the_canon_of(pins.get((team_id, pericope))):
+            return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
+    except CanonNotKept:
+        return ActivePassageView(pericope=pericope, reference=None)

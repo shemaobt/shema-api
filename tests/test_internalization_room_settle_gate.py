@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 IR = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
 TEAM = "A fome grande fez a família se mudar."
 FAIL_SAFE = "Tem bastante coisa aqui. Vamos com calma e ficar nesta cena."
 OPENING = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
@@ -49,14 +49,9 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-    from app.services.internalization_room.comprehension.state import ComprehensionState
-    from app.services.internalization_room.live_turn import ComprehensionTurn
     from app.services.platform.tts import SynthesizedSpeech
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
@@ -67,11 +62,14 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         staged = _Room(client=c, outcome=TurnOutcome(speech=OPENING, transcript=""))
 
-        async def _comprehension_turn(*_: Any, **__: Any) -> ComprehensionTurn:
-            return ComprehensionTurn(outcome=staged.outcome, state=ComprehensionState())
+        async def _comprehension_turn(*_: Any, **__: Any) -> TurnOutcome:
+            return staged.outcome
 
         async def _heard(*_: Any, **__: Any) -> HeardSpeech:
             return staged.heard or HeardSpeech(text=staged.outcome.transcript)
@@ -99,14 +97,14 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 async def passage(db_session: AsyncSession) -> str:
     """A passage session with nothing prepared, so every opening here is written on demand."""
-    session = await create_session(db_session, pericope="P01", language="pt")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="P01", language="pt"
+    )
     return session.id
 
 
 async def _the_room_opens(room: _Room, session_id: str) -> httpx.Response:
-    opened = await room.client.post(
-        f"{IR}/sessions/{session_id}/turns", headers={"X-Room-Key": ROOM_KEY}
-    )
+    opened = await room.client.post(f"{IR}/sessions/{session_id}/turns")
     assert opened.status_code == 200, opened.text[:200]
     return opened
 
@@ -114,7 +112,6 @@ async def _the_room_opens(room: _Room, session_id: str) -> httpx.Response:
 async def _the_team_answers(room: _Room, session_id: str) -> httpx.Response:
     answered = await room.client.post(
         f"{IR}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": ROOM_KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text[:200]
@@ -200,47 +197,20 @@ async def test_an_opening_the_room_could_not_phrase_hands_over_nothing(
     )
 
 
-async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
-    room: _Room, passage: str
-) -> None:
-    """Words the room is about to ask the team to repeat are not words to credit beads to.
-
-    `uncertain` exists to under-count and nothing else — an uncertain transcript is repeated,
-    never judged as misunderstanding (`HeardSpeech`). It reaches the gate looking like an
-    answer, because the inaudible outcome carries the transcript forward while the team hears
-    a request to say it again. Coverage only moves forward and feeds the Guide's next prompt,
-    so a bead settled on a word the hearing distrusts cannot be taken back.
-    """
-    room.outcome = TurnOutcome(
-        speech=INAUDIBLE, transcript=TEAM, used_fail_safe=True, degraded=True
-    )
-    room.heard = HeardSpeech(text=TEAM, transcript_confidence=0.2)
-
-    await _the_team_answers(room, passage)
-
-    assert room.settled == [], (
-        "a cobertura era creditada em cima de palavras que o próprio STT marcou como "
-        "não confiáveis, enquanto a equipe ouvia um pedido para repetir"
-    )
-
-
 async def test_an_answer_left_in_another_language_hands_over_nothing(
     room: _Room, passage: str
 ) -> None:
     """The room asked for the session's language back; it did not take the answer up.
 
-    Mother-tongue speech is not distrusted the way an uncertain transcript is — it is heard
-    perfectly well and left unengaged, and the team hears the off-bridge fixed line rather
-    than a reply. Settling it would credit beads read against a meaning map in one language
-    from an utterance in another, on a turn the room declined, and coverage does not come
-    back down.
+    Mother-tongue speech is heard perfectly well and left unengaged, and the team hears the
+    off-bridge fixed line rather than a reply. Settling it would credit beads read against a
+    meaning map in one language from an utterance in another, on a turn the room declined,
+    and coverage does not come back down.
     """
     room.outcome = TurnOutcome(
         speech=OFF_BRIDGE, transcript=TEAM, used_fail_safe=True, fixed_line="off_bridge"
     )
-    room.heard = HeardSpeech(
-        text=TEAM, language_code="ter", language_probability=0.99, transcript_confidence=0.9
-    )
+    room.heard = HeardSpeech(text=TEAM, language_code="ter", language_probability=0.99)
 
     await _the_team_answers(room, passage)
 
@@ -294,7 +264,9 @@ async def test_a_panorama_answer_is_heard_but_promises_no_classification(
         return room.outcome
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama_turn)
-    panorama = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    panorama = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV-Ruth", language="pt"
+    )
     room.outcome = TurnOutcome(speech=OPENING, transcript=TEAM)
 
     answered = await _the_team_answers(room, panorama.id)

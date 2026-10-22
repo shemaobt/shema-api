@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import router
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
-from tests.room_harness import CORRECTION_MARK
 from tests.turn_harness import the_room_agent_is
 
 RUNNER_KEY = "runner-de-teste"
+GOLDEN = "/api/internalization-room/golden"
+BEARER = {"Authorization": f"Bearer {RUNNER_KEY}"}
 
 GUIDE_LINE = "Olá, eu sou o Facilitador Digital. Vamos começar pelo todo."
 TEAM_LINE = "Bom dia. Somos a equipe Terena. Pode continuar."
@@ -44,11 +45,13 @@ class ScriptedAgent:
     def __init__(self, script: list[Any]) -> None:
         self._script = list(script)
         self.guide_inputs: list[str] = []
+        self.guide_systems: list[str] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         validating = "corrected_response" in system_prompt
         if not validating:
             self.guide_inputs.append(user_content)
+            self.guide_systems.append(system_prompt)
         planned = self._script.pop(0) if self._script else None
         if planned is not None:
             return planned
@@ -64,24 +67,13 @@ def the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> Scripted
 
 
 class Analyst:
-    """The analyst in its two modes, each answering what the case set.
-
-    The whole reading answers the next entry of `readings`; the correction check answers
-    `resolves` and whatever `broke` carries. The two are told apart by the heading only the
-    correction prompt has, the way a reader would — not by counting calls.
-    """
+    """The analyst answering what the case set."""
 
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []
-        self.verifications: list[str] = []
         self.answered: list[str] = []
-        self.resolves = True
-        self.broke: list[dict[str, str]] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if CORRECTION_MARK in system_prompt:
-            self.verifications.append(system_prompt)
-            return json.dumps({"resolved": self.resolves, "findings": self.broke})
         reply = json.dumps(self.readings.pop(0) if self.readings else {"findings": []})
         self.answered.append(reply)
         return reply

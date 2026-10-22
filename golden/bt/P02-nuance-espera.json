@@ -1,0 +1,148 @@
+{
+  "name": "P02-nuance-espera",
+  "pericopeId": "P02",
+  "language": "Brazilian Portuguese",
+  "joined": true,
+  "why": "The NUANCE WAITS behind a blocking finding (Marcia's ruling 2026-09-24, option (b); her word \"(b), pode fazer\": «A conferência passa a ter um tipo 'nuance', que aparece uma vez, com o número da frase, e não impede a aprovação.»; the design rule: the verdict names a nuance only when no blocking finding remains, one at a time). Map: _spec/canon/meaning-map/P02-Ruth-1-6-14.md, scene 1 (1:6–7: Naomi hears that the Lord has given his people bread and rises to return — no request by the daughters-in-law) and :237 / :324 (scene 3: EVEN TONIGHT she might belong to a husband and bear sons). Planted, both at once: frase 1 as in P02-causa-a-mais round 1 (the bread news kept, 'e decidiu voltar para Judá porque as noras pediram' added — an addition, it blocks) and frase 7 as in P02-nuance-esta-noite ('tivesse marido UM DIA' for tonight — a nuance, it never blocks); the other seven frases are the faithful telling. Expected round 1: the addition on frase 1, not conferida, the voice names frase 1 ONLY (asks whether it entered in the translation, the whole sentence if it is in the audio) and says nothing of the nuance — the Analyst MAY already report it (optional), but it must not be named beside the addition. Round 2: frase 1 translated again faithfully (supersedes it) — nothing blocks now: conferida, ONE nuance on frase 7, named once the drafted way (the team's words, the story's, 'regravem a frase 7 inteira', the invitation to listen again and approve). Round 3 (nothing told): the nuance was said — not said again; a clean verdict. Every clip is WAV and the recording joined (repair \"sentence\"). The drafted texts are a DRAFT awaiting her word (2026-09-24). LIVE run owed — never in session hours.",
+  "draft": {
+    "clips": [
+      {
+        "key": "S1",
+        "durationMs": 20000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S2",
+        "durationMs": 25000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S3",
+        "durationMs": 45000,
+        "contentType": "audio/wav"
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi ouviu, nos campos de Moabe, que o Senhor tinha dado pão ao seu povo, e decidiu voltar para Judá porque as noras pediram."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 10,
+          "coversTo": 20,
+          "text": "Ela saiu do lugar onde estava, com as duas noras, e as três foram andando pela estrada para voltar para a terra de Judá."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 0,
+          "coversTo": 8,
+          "text": "No caminho, Noemi disse para as duas noras: vão, voltem cada uma para a casa da sua mãe."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 8,
+          "coversTo": 17,
+          "text": "Que o Senhor trate vocês com bondade, como vocês trataram os que morreram e a mim. Que o Senhor dê a vocês descanso, cada uma na casa de um marido."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 17,
+          "coversTo": 25,
+          "text": "Ela beijou as duas, e elas choraram alto. E disseram: não, nós vamos voltar com a senhora para o seu povo."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi disse: voltem, minhas filhas. Por que vocês iriam comigo? Eu ainda tenho filhos dentro de mim para serem maridos de vocês?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 10,
+          "coversTo": 25,
+          "text": "Voltem, vão. Eu estou velha demais para ter marido. Mesmo se eu dissesse que tenho esperança, e tivesse marido um dia e tivesse filhos, vocês iam esperar até eles crescerem? Iam ficar sem casar por causa deles?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 25,
+          "coversTo": 33,
+          "text": "Não, minhas filhas. Para mim é muito mais amargo do que para vocês, porque a mão do Senhor se voltou contra mim."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 33,
+          "coversTo": 45,
+          "text": "Elas choraram alto de novo. Orfa beijou a sogra e voltou. Mas Rute se agarrou a Noemi."
+        }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [
+          {
+            "kind": "addition",
+            "note": "(?=[\\s\\S]*noras?)(?=[\\s\\S]*pedi)(?=[\\s\\S]*(decid|volt))",
+            "frase": 1
+          },
+          {
+            "kind": "nuance",
+            "note": "noite|um dia",
+            "frase": 7,
+            "optional": true
+          }
+        ],
+        "no_kinds": [
+          "missing"
+        ],
+        "spoken_names_frase": 1,
+        "spoken_asks_audio_or_explanation": true,
+        "spoken_whole_sentence": 1,
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)|um dia|noite|detalhe|nuance"
+      }
+    },
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi ouviu, nos campos de Moabe, que o Senhor tinha visitado o seu povo e dado pão a eles. Então ela se levantou com as duas noras para voltar dos campos de Moabe.",
+          "supersedes": 0
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [
+          {
+            "kind": "nuance",
+            "note": "noite|um dia",
+            "frase": 7
+          }
+        ],
+        "no_kinds": [
+          "missing",
+          "addition"
+        ],
+        "voices_nuance": 7,
+        "spoken_names_frase": 7,
+        "spoken_whole_sentence": 7,
+        "spoken_matches": "detalhe",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    },
+    {
+      "frases": [],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    }
+  ]
+}

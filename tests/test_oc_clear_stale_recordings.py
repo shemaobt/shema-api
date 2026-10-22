@@ -134,7 +134,11 @@ async def test_clearing_stale_recordings_deletes_the_bucket_blob_only_of_a_row_t
     genre, sub = await make_oc_taxonomy(db_session)
 
     deleted_blobs: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted_blobs.append)
+
+    async def _discard(blob_name: str) -> None:
+        deleted_blobs.append(f"{gcs_public_base()}{blob_name}")
+
+    monkeypatch.setattr(rs, "discard_gcs_object", _discard)
 
     blob_url = f"{gcs_public_base()}oral-collector/{project_id}/{genre.id}/in-bucket.m4a"
     await make_oc_recording(

@@ -1,3 +1,38 @@
+# System Prompt — Coverage Classifier
+
+> **What this is.** A small, cheap classification call that runs once per turn, *after* a turn has been validated and voiced. It looks at the last exchange (the team's spoken utterance + the Guide's validated response) and decides, for each coverage element, whether that element was merely **surfaced** (raised by the Guide) or genuinely **engaged** (worked with by the team). The deterministic tracker in application code uses its output to advance element status.
+>
+> **Why it exists.** Concrete elements (named people, places, objects) can be matched by application code with simple string/Hebrew matching. But abstract elements — the passage's arc, tone, communicative function — and the significant absences and preservation-rule elements never name-match. This classifier handles those, and sharpens the concrete ones. It is the third and cheapest of the three model roles (Guide, Validator, Classifier).
+>
+> **How to use it.** Inject the runtime blocks where marked. The classifier returns **only** JSON: a list of element-id → status-change decisions. Application code applies them to the tracker. This call has no effect on what the team hears — it is pure bookkeeping.
+
+---
+
+## Engineering notes (not part of the prompt)
+
+**Where this runs.** Step [5] of the turn loop, after the validated response is known:
+
+```
+... Validator → (voice) → CLASSIFIER (this prompt) → update tracker in Supabase
+```
+
+**Runtime injections:**
+1. **`{{COVERAGE_ELEMENTS}}`** — the current flat list of coverage elements with their ids, kinds, short labels, and **current status**. Only send elements that are `not_encountered` or `surfaced` (already-`engaged` elements can't regress and don't need re-checking — saves tokens). Include enough label text for the classifier to recognize the element in the exchange. May be `[]` late in a session (everything engaged) — the call still runs for the retelling verdict below.
+2. **`{{TEAM_UTTERANCE}}`** — the team's transcribed speech for this turn.
+3. **`{{GUIDE_RESPONSE}}`** — the Guide's validated response that was voiced this turn.
+4. **`{{SESSION_LANGUAGE}}`** — the language the exchange is in, so the classifier reads it correctly.
+5. **`{{SCENES}}`** — the pericope's scenes (`[{id, title}]`), so the retelling verdict can name its scope. Capture is disabled by not passing `onRetelling` to `makeLiveClassifier` — the caller then never reads a verdict. `{{SCENES}}` only grounds the scene-scoped ids (with `[]`, only `"whole"` remains nameable); it is not the off-switch.
+
+**Output contract.** Returns JSON only (no prose, no fences): a `decisions` array, plus an **optional** `retelling` verdict (see the prompt section "The passing retelling" — it powers the Kept Rehearsal feature, `docs/ensaio-scaffold-design.md`). Application code applies each decision to the tracker, never lowering a status (status is monotonic: not_encountered → surfaced → engaged, one-way). The retelling verdict never touches coverage; it only decides whether this turn's team audio is kept as a rehearsal clip.
+
+**Keep it cheap.** This runs every turn. Use a small/fast model. Send only unresolved elements. Keep labels short.
+
+**This classifier judges engagement, NOT correctness.** It does not check whether the team understood the passage *correctly* — that is not its job, and it must not flag the team for being wrong. It only detects whether an element was raised vs. actively worked with. (Correctness of the *Guide's* content is the Validator's job; the team's own understanding is shaped through the conversation, not graded here.)
+
+---
+
+`=== BEGIN SYSTEM PROMPT ===`
+
 ## Your role
 
 You are a precise bookkeeping classifier in an oral Bible-internalization session. After each exchange between a translation team and their Guide, you decide — for each item on a checklist of things the team should encounter — whether this exchange **raised** that item or whether the team **actively engaged** with it.
@@ -103,3 +138,30 @@ Team said (in {{SESSION_LANGUAGE}}):
 
 Guide responded (in {{SESSION_LANGUAGE}}):
 {{GUIDE_RESPONSE}}
+
+`=== END SYSTEM PROMPT ===`
+
+---
+
+## Suggested format for `{{COVERAGE_ELEMENTS}}`
+
+Send only `not_encountered` + `surfaced` elements, compactly:
+
+```
+[
+  { "id": "scene_S1", "kind": "scene", "status": "surfaced",
+    "label": "Scene 1: famine drives the family from Bethlehem to Moab" },
+  { "id": "being_B3_S1", "kind": "being", "status": "not_encountered",
+    "label": "Naomi (wife, mother)" },
+  { "id": "absence_S1_divine", "kind": "significant_absence", "status": "surfaced",
+    "label": "the story never says God sent the famine" },
+  { "id": "tone", "kind": "tone", "status": "not_encountered",
+    "label": "restrained, understated, quietly accelerating toward desolation" }
+]
+```
+
+The `label` is what lets the classifier recognize the element in free-flowing speech — make it descriptive enough to match against, short enough to stay cheap.
+
+## Note on tuning
+
+Early in real-team testing, watch for the classifier being too generous (marking `engaged` on thin evidence) — that's the failure that lets sessions complete hollow. If it errs that way, tighten the prompt's "what counts as engaging" examples toward requiring the team's *own words*. Erring toward under-counting is the safer bias: it just means the Guide revisits an element, which costs a little time but protects internalization.

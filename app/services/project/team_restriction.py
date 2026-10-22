@@ -56,11 +56,11 @@ def _matches_search(team: FacilitatorTeamView, search: str) -> bool:
         return True
 
     passage = team.active_passage
-    written_on_the_card = [team.name, team.mother_tongue]
+    written_on_the_card: list[str | None] = [team.name, team.mother_tongue]
     if passage is not None:
         written_on_the_card += [passage.reference, passage.pericope]
 
-    return any(wanted in folded(written) for written in written_on_the_card)
+    return any(wanted in folded(written) for written in written_on_the_card if written is not None)
 
 
 def _matches_filter(team: FacilitatorTeamView, chosen: TeamFilter) -> bool:

@@ -36,7 +36,9 @@ house doctrine in `progression.py` and `list_facilitator_teams.py` warns about.
 
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, func, or_, select
+from typing import Any
+
+from sqlalchemy import ColumnElement, UnaryExpression, case, func, or_, select
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake
 
@@ -50,4 +52,13 @@ def entered() -> ColumnElement[bool]:
     )
 
 
-__all__ = ["entered"]
+def latest_entered_first() -> tuple[UnaryExpression[Any], ...]:
+    return (
+        case((entered(), 1), else_=0).desc(),
+        IRSession.updated_at.desc(),
+        IRSession.created_at.desc(),
+        IRSession.id.desc(),
+    )
+
+
+__all__ = ["entered", "latest_entered_first"]

@@ -12,7 +12,7 @@ that each worker owns its own file.
 No model is imported at the top of this file, and that is the point of the third case: what
 the schema has must come from the conftest importing `app.db.models`, never from what this
 module happened to reach for. A module-level `from app.db.models.auth import App` runs the
-package's `__init__` and registers all 121 tables, which would make that case unable to fail.
+package's `__init__` and registers all 127 tables, which would make that case unable to fail.
 """
 
 import os
@@ -26,14 +26,10 @@ from tests.database_naming import the_generated_database_file
 SEEDED_KEYS = ["meaning-map-generator", "translation-helper"]
 
 #: `Base.metadata` is populated by importing the models, not by collecting the suite.
-TABLES_IN_THE_SCHEMA = 123
+TABLES_IN_THE_SCHEMA = 127
 
 A_THIRD_APP = "a-third-app-committed-outside-the-test-session"
-
-#: Written by the case that commits on the production path and read by the case that says
-#: the sweep took it back. Without it the second of the two passes on a clean database when
-#: the order it depends on is gone, which is a gate that fails open.
-_COMMITTED_OUTSIDE: list[str] = []
+A_FOURTH_APP = "a-fourth-app-committed-before-the-sweep"
 
 
 async def _app_keys(session) -> list[str]:
@@ -45,28 +41,29 @@ async def test_a_test_starts_with_the_two_seeded_apps_and_nothing_else(db_sessio
     assert await _app_keys(db_session) == SEEDED_KEYS
 
 
-async def test_the_production_path_commits_on_its_own_connection(db_session) -> None:
-    """24 sites in `app/` open their own session and commit; this is one of them.
+@pytest.fixture()
+async def a_row_committed_before_the_sweep(test_engine) -> None:
+    from app.db.models.auth import App
 
-    First of the two on purpose: under `--dist loadfile` the module's cases run on one
-    worker in file order, and the next one is what says the row did not survive.
-    """
+    async with AsyncSessionLocal() as session:
+        session.add(App(app_key=A_FOURTH_APP, name="A fourth app", is_active=True))
+        await session.commit()
+
+
+async def test_the_production_path_commits_on_its_own_connection(db_session) -> None:
+    """One of the sites in `app/` that open their own session and commit."""
     from app.db.models.auth import App
 
     async with AsyncSessionLocal() as session:
         session.add(App(app_key=A_THIRD_APP, name="A third app", is_active=True))
         await session.commit()
-    _COMMITTED_OUTSIDE.append(A_THIRD_APP)
 
     assert A_THIRD_APP in await _app_keys(db_session)
 
 
-async def test_the_sweep_takes_back_what_the_production_path_committed(db_session) -> None:
-    assert _COMMITTED_OUTSIDE == [A_THIRD_APP], (
-        "the case that commits outside the test session did not run before this one, so a "
-        "clean database here says nothing: the split is no longer `--dist loadfile`"
-    )
-
+async def test_the_sweep_takes_back_what_the_production_path_committed(
+    a_row_committed_before_the_sweep, db_session
+) -> None:
     assert await _app_keys(db_session) == SEEDED_KEYS
 
 

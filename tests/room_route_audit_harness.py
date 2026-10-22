@@ -11,6 +11,10 @@ routes are found reaches every audit built on it.
 
 from __future__ import annotations
 
+import typing
+
+from pydantic import BaseModel
+
 
 def _dependency_calls(dependant) -> set:
     calls = {dependant.call}
@@ -22,7 +26,7 @@ def _dependency_calls(dependant) -> set:
 def _direct_calls(endpoint) -> set:
     """Gate functions the endpoint's own body calls by name, bypassing ``Depends``.
 
-    `voice.py`'s clip route awaits `require_room_caller` directly so it can run beside the
+    `voice.py`'s clip route awaits `linked_tablet` directly so it can run beside the
     GCS read — a call the dependant tree above never sees. Its name still shows up in the
     function's own bytecode, resolved against the module it was imported into.
     """
@@ -44,7 +48,7 @@ def room_app_routes() -> list:
     from app.api.internalization_room import _deps
     from app.main import app
 
-    gates = {_deps.require_room_caller, _deps.require_device}
+    gates = {_deps.linked_tablet, _deps.require_device}
     return sorted(
         (
             route
@@ -54,3 +58,26 @@ def room_app_routes() -> list:
         ),
         key=lambda route: (route.path, sorted(route.methods)),
     )
+
+
+def models_in(annotation, seen: frozenset = frozenset()) -> set[type[BaseModel]]:
+    """Every model a body of this shape can carry, following nesting."""
+    if annotation in seen:
+        return set()
+    seen = seen | {annotation}
+
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        found = {annotation}
+        for field in annotation.model_fields.values():
+            found |= models_in(field.annotation, seen)
+        return found
+
+    found = set()
+    for arg in typing.get_args(annotation):
+        found |= models_in(arg, seen)
+    return found
+
+
+def named(route) -> tuple[str, str]:
+    """The route's verb and path, the way a report names it."""
+    return sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path

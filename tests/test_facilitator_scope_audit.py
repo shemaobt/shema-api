@@ -49,6 +49,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
@@ -63,12 +64,14 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room import questions as question_service
 from app.services.internalization_room.voice_handles import to_handle
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
 )
+from tests.facilitator_route_audit_harness import facilitator_routes, template_of
+from tests.room_harness import the_bucket_is_in_memory
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
@@ -79,44 +82,16 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 FORCE = {"json": {"force": True}}
 
 
-def _dependency_calls(dependant) -> set:
-    found = {dependant.call}
-    for sub in dependant.dependencies:
-        found |= _dependency_calls(sub)
-    return found
-
-
-def facilitator_routes() -> list[tuple[str, str]]:
-    """Every mounted route behind the facilitator role, as (method, path).
-
-    Derived from the gate object in each route's dependency tree rather than from the path,
-    because `/facilitator` in a path is a naming convention and this is not. A route added
-    to either family is covered here the moment it is mounted.
-    """
-    from app.api.facilitator._deps import facilitator_role
-    from app.main import app
-
-    gate = getattr(facilitator_role, "dependency", facilitator_role)
-    found = []
-    for route in app.routes:
-        dependant = getattr(route, "dependant", None)
-        if dependant is None:
-            continue
-        calls = {getattr(c, "dependency", c) for c in _dependency_calls(dependant)}
-        if gate not in calls:
-            continue
-        for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
-            found.append((method, route.path))
-    return sorted(found)
-
-
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The real application, so no route is out of scope by not being mounted here."""
     from app.api.internalization_room import takes as take_routes
+    from app.core.config import get_settings
     from app.core.database import get_db
     from app.main import app
     from app.services.internalization_room import questions as question_service
+    from app.services.internalization_room import session_takes
+    from app.services.internalization_room import takes as takes_service
 
     class MemoryStore:
         def __init__(self) -> None:
@@ -143,6 +118,14 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
 
+    async def _signed_download(bucket: str, key: str, **kw) -> str:
+        return f"https://storage.example/{bucket}/{key}"
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed_download)
+    monkeypatch.setattr(session_takes, "listen_url", _signed_take)
+    the_bucket_is_in_memory(monkeypatch)
+
     async def _get_db():
         yield db_session
 
@@ -162,7 +145,7 @@ class Facilitator:
 
 async def a_facilitator(db: AsyncSession, *, email: str) -> Facilitator:
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)
@@ -250,6 +233,13 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     # to do with scope. A shared fixture would make this file fail for the wrong reason.
     heard_id = await _a_question_of(db, owner, f"h{tag}")
     reply_id = await _a_question_of(db, owner, f"r{tag}")
+    replied = await _a_question_of(db, owner, f"y{tag}")
+    await db.execute(
+        update(IRQuestion)
+        .where(IRQuestion.id == replied)
+        .values(reply_audio_key=f"internalization-room/questions/{replied}/resposta-1.m4a")
+    )
+    await db.commit()
     resolve_id = await _a_question_of(db, owner, f"v{tag}")
     await _a_question_of(db, owner, f"k{tag}")
     #: The key route names its resource by key, so the bytes have to exist for the owner's
@@ -345,6 +335,21 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (owner.project.id, absent),
         },
         {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/archive", {}),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/archive", {}),
+            "ids": (owner.project.id, absent),
+        },
+        {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/release", FORCE),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/release", FORCE),
+            "ids": (owner.project.id, absent),
+            #: The owner's passage holds no rehearsal take, so the force refuses it naming
+            #: `no_rehearsal_audio`. A stranger is 404, which is the whole question here.
+            "owner_expects": 409,
+        },
+        {
             "method": "GET",
             "owned": (f"{IR}/facilitator/questions", {"params": {"team_id": owner.project.id}}),
             "absent": (f"{IR}/facilitator/questions", {"params": {"team_id": absent}}),
@@ -355,6 +360,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/questions/{heard_id}/audio", {}),
             "absent": (f"{IR}/facilitator/questions/{absent}/audio", {}),
             "ids": (heard_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/questions/{replied}/reply/audio", {}),
+            "absent": (f"{IR}/facilitator/questions/{absent}/reply/audio", {}),
+            "ids": (replied, absent),
         },
         {
             "method": "GET",
@@ -378,6 +389,24 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/takes", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/takes", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/mother-tongue-takes", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/takes/downloads", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/takes/downloads", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/scene-rehearsals", {}),
             "ids": (session_id, absent),
         },
         {
@@ -445,14 +474,40 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (session_id, absent),
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/coverage", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/coverage", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/turns", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/turns", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/boundary-turns", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/boundary-turns", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/turns/0/audio", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/turns/0/audio", {}),
+            "ids": (session_id, absent),
+            #: The owner is told this session has no turn 0, where a stranger is told the
+            #: session does not exist: a session that has spoken would send the owner to the
+            #: bucket, which is not what this audit is about.
+            "owner_expects": 404,
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
             "ids": (force_id, absent),
-            #: The owner is refused by the gate, for the reason the read above is: a force
-            #: sets aside two blockers and a session this far from finished stands on the
-            #: others. A stranger is still 404, which is the whole question here.
-            "owner_expects": 409,
+            #: The owner's session holds a rehearsal take, so the force passes every other
+            #: blocker and mints the release (ADR 0075). A stranger is still 404.
         },
     ]
 
@@ -471,35 +526,6 @@ def _shape(body, *ids: str):
     return out
 
 
-#: Templates of the same set, for matching against the mounted paths.
-REFUSING_TEMPLATES = {
-    ("POST", f"{DESK}/devices/claim"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
-    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
-    ("PATCH", f"{DESK}/devices/{{device_id}}"),
-    ("DELETE", f"{DESK}/devices/{{device_id}}"),
-    ("POST", f"{DESK}/devices/{{device_id}}/attended"),
-    ("DELETE", f"{DESK}/devices/{{device_id}}/attended"),
-    ("GET", f"{DESK}/teams/{{team_id}}"),
-    ("GET", f"{DESK}/teams/{{team_id}}/devices"),
-    ("GET", f"{DESK}/teams/{{team_id}}/coverage"),
-    ("GET", f"{DESK}/teams/{{team_id}}/pericopes"),
-    ("GET", f"{DESK}/teams/{{team_id}}/sessions"),
-    ("GET", f"{DESK}/teams/{{team_id}}/nudges"),
-    ("GET", f"{IR}/facilitator/questions"),
-    ("GET", f"{IR}/facilitator/questions/{{question_id}}/audio"),
-    ("GET", f"{IR}/facilitator/questions/audio/{{handle}}"),
-    ("POST", f"{IR}/facilitator/questions/{{question_id}}/reply"),
-    ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
-    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),
-    ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
-    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
-    ("DELETE", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
-}
-
 #: Routes that name no resource and cannot refuse: they answer with a list, and the scoping
 #: shows as a row that is absent rather than a status. Checked by its own case below.
 FILTERING_TEMPLATES = {
@@ -509,6 +535,7 @@ FILTERING_TEMPLATES = {
     #: full body and looks right from every angle except the caller who should not be in
     #: it. `tests/test_internalization_room_facilitator_sessions.py` holds both halves.
     ("GET", f"{IR}/facilitator/sessions"),
+    ("GET", f"{DESK}/sessions"),
 }
 
 #: Routes that carry nothing of the installation at all: the answer is the same for every
@@ -533,20 +560,43 @@ def test_the_audit_is_not_empty() -> None:
     )
 
 
-def test_every_facilitator_route_is_covered_by_this_audit() -> None:
-    """A route in neither group is a route this file silently skips.
+async def test_every_facilitator_route_is_covered_by_this_audit(client, db_session) -> None:
+    """A route in no group is a route this file silently skips.
 
-    The set of routes is derived; what is written by hand is how to *ask* each one. This is
-    what stops the two drifting apart — a new facilitator route fails here until somebody
-    says which kind of scoping it has.
+    The set of routes is derived; what is written by hand is how to *ask* each one, in
+    `refusing_routes`, and the derivation proves that table complete. This is what stops
+    the two drifting apart — a new facilitator route fails here until somebody says which
+    kind of scoping it has.
     """
+    owner = await a_facilitator(db_session, email="dono@example.com")
     mounted = set(facilitator_routes())
-    covered = REFUSING_TEMPLATES | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
+    held = {
+        (case["method"], template_of(case["method"], case["owned"][0]))
+        for case in await refusing_routes(db_session, owner, "x")
+    }
+    covered = held | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
 
     assert mounted == covered, (
         "as rotas de facilitador mudaram e esta auditoria nao acompanhou — "
         f"sem cobertura: {sorted(mounted - covered)}; sobrando na tabela: "
         f"{sorted(covered - mounted)}"
+    )
+
+
+async def test_refusing_routes_holds_a_case_for_every_mounted_route_that_names_a_resource(
+    client, db_session
+) -> None:
+    owner = await a_facilitator(db_session, email="dono@example.com")
+
+    held = {
+        (case["method"], template_of(case["method"], case["owned"][0]))
+        for case in await refusing_routes(db_session, owner, "x")
+    }
+    named = set(facilitator_routes()) - FILTERING_TEMPLATES - NOTHING_TO_SCOPE
+
+    assert held == named, (
+        "a tabela de casos nao acompanha as rotas montadas — "
+        f"sem caso: {sorted(named - held)}; caso sem rota: {sorted(held - named, key=str)}"
     )
 
 

@@ -31,14 +31,13 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # current_version these routes do not have, and SESSION_LOCKED promises a holder that no
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
+#: A turn that waited the whole opening wait behind another turn of its session. Its own code
+#: because nothing about this turn is stale and no version reloads it: the server could not
+#: place it after the other reply, so nothing was stored and nothing was voiced (ADR 0079).
+ERROR_CODE_TURN_COLLISION: Final = "TURN_COLLISION"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
-#: An approval that cannot be numbered, because a release is named by project, pericope
-#: and version and this session names no project. Its own code because the tablet acts on
-#: it: nothing about the passage is wrong and retrying changes nothing — the room was
-#: opened on the shared key, and only a credentialed device can approve.
-ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
-#: A force asked for without the word that makes it one. Its own code for the reason above:
-#: nothing about the passage is wrong and retrying changes nothing — the Desk arms the force
+#: A force asked for without the word that makes it one. Its own code because nothing about
+#: the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
@@ -50,11 +49,44 @@ ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 #: the tablet acts on it: it drops the pending translation and re-reads its stretches, which is
 #: the wrong response to every other BAD_REQUEST, and it must not tell the two apart by the words.
 ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
+#: A recording, a telling or a check aimed at a panorama, which records nothing. Its own code
+#: because the tablet must tell it apart from any other 400 without reading the words.
+ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: A telling whose transcription holds no words. Its own code because the tablet says the
 #: inaudible line named in the body instead of showing a refused call, and it must not tell
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
+#: A scene frase whose place is not inside its scene recording.
+ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
+#: A scene label that is not one of the passage's scenes.
+ERROR_CODE_UNKNOWN_SCENE: Final = "UNKNOWN_SCENE"
+#: A frase, restart or send for a scene rehearsal whose send landed: never accepted, never
+#: retried.
+ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
+#: A frase, restart or send for a scene rehearsal another send is still taking to the voice:
+#: retried, since that send may fail and leave the rehearsal open.
+ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
+#: A restart that closes an attempt which is not the current one yet: retried once it is.
+ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
+ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
+ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
+ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
+ERROR_CODE_OVERLAPS_A_STANDING_FRASE: Final = "OVERLAPS_A_STANDING_FRASE"
+ERROR_CODE_SENTENCE_TOO_LONG: Final = "SENTENCE_TOO_LONG"
+ERROR_CODE_SENTENCE_TOO_SHORT: Final = "SENTENCE_TOO_SHORT"
+ERROR_CODE_SENTENCE_FORMAT_DIFFERS: Final = "SENTENCE_FORMAT_DIFFERS"
+ERROR_CODE_SENTENCE_ID_REUSED: Final = "SENTENCE_ID_REUSED"
+ERROR_CODE_PART_NOT_WAV: Final = "PART_NOT_WAV"
+#: A take or scene rehearsal whose ``sha256`` is not the hash of the bytes sent with it.
+ERROR_CODE_TAKE_FINGERPRINT_DIFFERS: Final = "TAKE_FINGERPRINT_DIFFERS"
+#: A take or scene rehearsal whose ``duration_ms`` is more than the slack from its sound's length.
+ERROR_CODE_TAKE_DURATION_DIFFERS: Final = "TAKE_DURATION_DIFFERS"
+#: A take or scene rehearsal whose bytes measure longer than any recording of the room can last.
+ERROR_CODE_TAKE_TOO_LONG: Final = "TAKE_TOO_LONG"
+ERROR_CODE_ANOTHER_SENTENCE_AWAITS: Final = "ANOTHER_SENTENCE_AWAITS"
+ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION: Final = "FRASE_AWAITS_ITS_TRANSLATION"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -68,9 +100,6 @@ ERROR_CODE_UNPROCESSABLE_VALUE: Final = "UNPROCESSABLE_VALUE"
 ERROR_CODE_NOT_FOUND = "NOT_FOUND"
 ERROR_CODE_INTERNAL = "INTERNAL_ERROR"
 ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR"
-#: A model answered and the answer could not be read. Not UPSTREAM_ERROR: the provider was
-#: up, and a code that says otherwise sends the investigation to the wrong place.
-ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 
 #: A device whose credential was revoked. Its own code because the tablet acts on it: it
 #: forgets the credential it holds and shows its claim code again, which is the wrong
@@ -78,6 +107,9 @@ ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 ERROR_CODE_DEVICE_REVOKED: Final = "DEVICE_REVOKED"
 
 ERROR_CODE_STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
+ERROR_CODE_UPLOAD_OBJECT_MISSING: Final = "UPLOAD_OBJECT_MISSING"
+ERROR_CODE_UPLOAD_SIZE_MISMATCH: Final = "UPLOAD_SIZE_MISMATCH"
+ERROR_CODE_UPLOAD_CHECKSUM_MISMATCH: Final = "UPLOAD_CHECKSUM_MISMATCH"
 
 
 class AuthenticationError(Exception):
@@ -116,6 +148,15 @@ class SessionLockChanged(ConflictError):
     """
 
 
+class TurnCollision(ConflictError):
+    """A turn still waiting, at the end of the opening wait, on another turn of its session.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code promises
+    a version to reload from, and there is none. The turn was neither stored nor voiced, and
+    the tablet that sent it calls a person (ADR 0079).
+    """
+
+
 class ProjectGranularityLocked(ConflictError):
     """The project's bead granularity was asked to move after something was cut at it.
 
@@ -126,20 +167,10 @@ class ProjectGranularityLocked(ConflictError):
     """
 
 
-class ReleaseWithoutProject(ConflictError):
-    """A session opened on the shared room key was asked to approve its passage.
-
-    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
-    promises a version to reload from, and there is none. Refused rather than numbered in
-    a group belonging to nobody, because a release is named by project, pericope and
-    version, and the shared key names no project.
-    """
-
-
 class NothingToForce(ConflictError):
     """The force route was called by a body that does not ask for a force.
 
-    Its own exception beside ``ReleaseWithoutProject`` and for the same reason: the generic
+    Its own exception for the reason SessionLockChanged is: the generic
     CONFLICT code promises a blocker or a version to reload from, and there is neither. The
     session was not even looked at — a route whose only purpose is to overrule the gate has
     nothing to say about a caller who did not ask it to.
@@ -170,6 +201,32 @@ class IdempotencyKeyInFlight(ConflictError):
 
 class PassageClosed(ConflictError):
     pass
+
+
+class CanonNotKept(ConflictError):
+    pass
+
+
+class SceneRehearsalSent(ConflictError):
+    """A frase or a restart for a scene rehearsal that was sent, which is frozen for good.
+
+    Its own exception so the tablet's outbox can tell it from a conflict worth retrying.
+    """
+
+
+class SceneRehearsalSending(ConflictError):
+    """A send for a scene rehearsal another turn is still sending to the voice, landed nowhere yet.
+
+    Its own exception so the tablet's outbox retries it: that turn may still fail and leave the
+    rehearsal sendable.
+    """
+
+
+class RestartOutOfOrder(ConflictError):
+    """A restart that closes an attempt which is not the rehearsal's current one.
+
+    Its own exception so the tablet's outbox retries it once its predecessor has landed.
+    """
 
 
 class RoleError(Exception):
@@ -260,6 +317,32 @@ class IncompleteSubmission(ValidationError):
         self.errors = errors
 
 
+class NoWordsHeard(ValidationError):
+    """The recognizer heard the take and found no words in it, which is not a refusal.
+
+    It carries the language the recognizer still reported, so the turn's record keeps what
+    the recognizer heard even when it wrote nothing down.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        language_code: str | None = None,
+        language_probability: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.language_code = language_code
+        self.language_probability = language_probability
+
+
+class PanoramaRecordsNothing(ValidationError):
+    """A door that records, tells back or checks was asked of a panorama session.
+
+    Its own exception for the reason ERROR_CODE_PANORAMA_RECORDS_NOTHING gives; still a 400.
+    """
+
+
 class StretchNoLongerCounts(ValidationError):
     """A stretch that was replaced, or whose Part was recorded again, was addressed anyway.
 
@@ -267,16 +350,64 @@ class StretchNoLongerCounts(ValidationError):
     """
 
 
-class WordlessTelling(ValidationError):
-    """A telling was transcribed and holds no words, so it is no stretch and counts nothing.
+class PauseCannotMove(ValidationError):
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
 
-    Carries the name of the inaudible line the room says in its place, chosen by whoever
-    refuses, because the handler has no session to choose it from.
+
+class OverlapsAStandingFrase(ValidationError):
+    pass
+
+
+class SentenceRefused(Exception):
+    def __init__(
+        self, status_code: int, code: str, detail: str, frases: list[int] | None = None
+    ) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.code = code
+        self.frases = frases
+
+
+class RecordingRefused(Exception):
+    """A recording whose bytes contradict what the tablet said of them, or are no recording's.
+
+    Refused rather than corrected: the room keeps nothing the tablet would believe it described.
     """
 
-    def __init__(self, fixed_line: str) -> None:
-        super().__init__("The telling has no words in it")
-        self.fixed_line = fixed_line
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
+
+
+class FraseAwaitsItsTranslation(ValidationError):
+    pass
+
+
+class SceneRehearsalUntranslated(ValidationError):
+    """A scene rehearsal sent with no live frase: there is nothing in the bridge language to hand
+    the voice. A plain 422, with no code of its own: the tablet never offers «terminei» then."""
+
+
+class WordlessTelling(ValidationError):
+    """A telling holds no words the room could make out, so it is no stretch and counts nothing.
+
+    Silence, a failed transcriber and one that did not answer in time are the same refusal. The
+    room says nothing in its place: the tablet shows its own line and asks for the telling again.
+    """
+
+    def __init__(self, detail: str = "The telling has no words in it") -> None:
+        super().__init__(detail)
+
+
+class FraseOutOfPlace(ValidationError):
+    """A scene frase that ends before it starts, past the end of its scene recording, or over a
+    stretch a current frase of its attempt holds and does not replace."""
+
+
+class UnknownScene(ValidationError):
+    """A scene label given to a scene rehearsal that is not one of its passage's scenes."""
 
 
 class IdempotencyKeyReused(ValidationError):
@@ -298,6 +429,11 @@ class UpstreamServiceError(Exception):
     """
 
 
+class ProviderNotConfigured(Exception):
+    """A provider this deploy calls has no key: a mistake of ours, never the provider failing,
+    so it is kept apart from `UpstreamServiceError` and answered as our 500."""
+
+
 def upstream_or_validation_error(status_code: int, message: str) -> Exception:
     """Their outage is not our client's bad request.
 
@@ -307,22 +443,6 @@ def upstream_or_validation_error(status_code: int, message: str) -> Exception:
     if status_code in (401, 403, 429) or status_code >= 500:
         return UpstreamServiceError(message)
     return ValidationError(message)
-
-
-class UnreadableReply(Exception):
-    """A model answered, and the answer could not be read — not a provider that is down.
-
-    Kept apart from `UpstreamServiceError` because the two send an investigation to
-    opposite places. On 2026-09-02 the analyst answered a real session with valid JSON
-    and valid findings, the parser refused the reply over a contradiction it had no rule
-    for, and the route raised the upstream error: the log said the provider had failed,
-    the team heard that the service was unavailable, and a whole investigation went
-    looking for an outage that never happened. Whoever raises this has the reply in
-    hand; the parser that refused it is expected to have logged it with the reason.
-
-    Still a 502: the reply *is* an invalid response from upstream, in the sense that
-    status code has always had. Only the code and the log change.
-    """
 
 
 class TranscriptionDefect(Exception):
@@ -358,12 +478,38 @@ class InvalidCleaningStatusError(ValidationError):
         )
 
 
+class SourceReferenceOnRawRecordingError(ValidationError):
+    """A citation on a raw field recording, after the update is applied to the stored row.
+
+    The schema catches the contradiction when one payload carries both fields; this is
+    the other half, for an update that mentions only one of them and would leave the
+    stored row saying raw with a citation beside it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "source_reference is only meaningful on an external recording; a raw field "
+            "recording has no published source to cite"
+        )
+
+
 class SecondaryClassificationConflictError(ValidationError):
     def __init__(self) -> None:
         super().__init__(
             "secondary classification must differ from the primary in at least "
             "one of register, genre, or subcategory"
         )
+
+
+class UploadNotConfirmed(ValidationError):
+    """confirm-upload refused the uploaded object, and `code` names the check it failed.
+
+    Still a 400. Its own codes because the app tells the person why, without reading the words.
+    """
+
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
 
 
 class SegmentClassificationConflictError(ValidationError):
@@ -413,21 +559,19 @@ async def handle_session_lock_changed(_request: Request, exc: SessionLockChanged
     )
 
 
+async def handle_turn_collision(_request: Request, exc: TurnCollision) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_TURN_COLLISION),
+    )
+
+
 async def handle_project_granularity_locked(
     _request: Request, exc: ProjectGranularityLocked
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_PROJECT_GRANULARITY_LOCKED),
-    )
-
-
-async def handle_release_without_project(
-    _request: Request, exc: ReleaseWithoutProject
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=_error_body(str(exc), ERROR_CODE_RELEASE_WITHOUT_PROJECT),
     )
 
 
@@ -459,6 +603,22 @@ async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONRe
     )
 
 
+async def handle_canon_not_kept(_request: Request, exc: CanonNotKept) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_CANON_NOT_KEPT),
+    )
+
+
+async def handle_panorama_records_nothing(
+    _request: Request, exc: PanoramaRecordsNothing
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_PANORAMA_RECORDS_NOTHING),
+    )
+
+
 async def handle_stretch_no_longer_counts(
     _request: Request, exc: StretchNoLongerCounts
 ) -> JSONResponse:
@@ -468,13 +628,103 @@ async def handle_stretch_no_longer_counts(
     )
 
 
+async def handle_upload_not_confirmed(_request: Request, exc: UploadNotConfirmed) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), exc.code),
+    )
+
+
+async def handle_pause_cannot_move(_request: Request, exc: PauseCannotMove) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), exc.code),
+    )
+
+
+async def handle_sentence_refused(_request: Request, exc: SentenceRefused) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_body(str(exc), exc.code)
+        | ({"frases": exc.frases} if exc.frases is not None else {}),
+    )
+
+
+async def handle_frase_awaits_its_translation(
+    _request: Request, exc: FraseAwaitsItsTranslation
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION),
+    )
+
+
+async def handle_overlaps_a_standing_frase(
+    _request: Request, exc: OverlapsAStandingFrase
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_OVERLAPS_A_STANDING_FRASE),
+    )
+
+
 async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            **_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
-            "fixed_line": exc.fixed_line,
-        },
+        content=_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
+    )
+
+
+async def handle_scene_rehearsal_untranslated(
+    _request: Request, exc: SceneRehearsalUntranslated
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_BAD_REQUEST),
+    )
+
+
+async def handle_scene_rehearsal_sent(_request: Request, exc: SceneRehearsalSent) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_SCENE_REHEARSAL_SENT),
+    )
+
+
+async def handle_scene_rehearsal_sending(
+    _request: Request, exc: SceneRehearsalSending
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_SCENE_REHEARSAL_SENDING),
+    )
+
+
+async def handle_restart_out_of_order(_request: Request, exc: RestartOutOfOrder) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_RESTART_OUT_OF_ORDER),
+    )
+
+
+async def handle_frase_out_of_place(_request: Request, exc: FraseOutOfPlace) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_FRASE_OUT_OF_PLACE),
+    )
+
+
+async def handle_unknown_scene(_request: Request, exc: UnknownScene) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_UNKNOWN_SCENE),
+    )
+
+
+async def handle_recording_refused(_request: Request, exc: RecordingRefused) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), exc.code),
     )
 
 
@@ -561,14 +811,6 @@ async def handle_upstream_service_error(
     return JSONResponse(
         status_code=status.HTTP_502_BAD_GATEWAY,
         content=_error_body(str(exc), ERROR_CODE_UPSTREAM),
-    )
-
-
-async def handle_unreadable_reply(_request: Request, exc: UnreadableReply) -> JSONResponse:
-    logger.warning("Model reply could not be read: %s", exc)
-    return JSONResponse(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        content=_error_body(str(exc), ERROR_CODE_UNREADABLE_REPLY),
     )
 
 
@@ -662,26 +904,39 @@ def register_exception_handlers(app: FastAPI) -> None:
     # Starlette walks the raised class's MRO, so the subclass wins over ConflictError
     # above regardless of the order these are registered in.
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
+    app.add_exception_handler(TurnCollision, handle_turn_collision)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
-    app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
+    app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
     app.add_exception_handler(UnprocessableValueError, handle_unprocessable_value)  # type: ignore[arg-type]
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
+    app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
+    app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
+    app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
+    app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
+    app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
+    app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
+    app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
+    app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
+    app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
+    app.add_exception_handler(SentenceRefused, handle_sentence_refused)  # type: ignore[arg-type]
+    app.add_exception_handler(FraseAwaitsItsTranslation, handle_frase_awaits_its_translation)  # type: ignore[arg-type]
+    app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
     app.add_exception_handler(StoredAnswer, handle_stored_answer)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(IncompleteSubmission, handle_incomplete_submission)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
-    app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
     app.add_exception_handler(StorageUnavailableError, handle_storage_unavailable_error)  # type: ignore[arg-type]
     app.add_exception_handler(ElementLabelsBroken, handle_element_labels_broken)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

@@ -27,14 +27,15 @@ from app.db.models.internalization_room import IRPromptKey, IRSession, IRTake, I
 from app.services.internalization_room import segments as service
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import analyse_telling_back
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import store_take
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import a_piece_still_to_be_told, heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 PASSAGE = "P01"
@@ -81,11 +82,8 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     said: list[str] = []
 
@@ -103,7 +101,10 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -131,18 +132,21 @@ async def _rehearsal(db: AsyncSession, session: IRSession, audio: bytes) -> IRTa
 
 
 async def _open_session(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": PASSAGE}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": PASSAGE})
     assert created.status_code == 200, created.text
     return str(created.json()["session_id"])
 
 
-async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
+async def _record(
+    client: httpx.AsyncClient, session_id: str, audio: bytes, *, part: int | None = None
+) -> str:
+    data = {"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE}
+    if part is not None:
+        data = {**data, "scope": f"parte-{part}", "chunk_index": str(part)}
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
+        headers={"X-Room-Device": DEVICE},
+        data=data,
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
     assert kept.status_code == 200, kept.text
@@ -160,7 +164,7 @@ async def _tell_back(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -168,7 +172,7 @@ async def _tell_back(
 
 async def _told_so_far(client: httpx.AsyncClient, session_id: str) -> list[dict[str, Any]]:
     """What the room says the session holds, read the way the tablet reads it."""
-    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    state = await client.get(f"{PREFIX}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     return list(state.json()["back_translation"]["segments"])
 
@@ -229,8 +233,8 @@ async def test_the_interval_is_read_inside_its_own_recording(
     every stretch after it.
     """
     session_id = await _open_session(client)
-    first_take = await _record(client, session_id, b"o primeiro ensaio, que a equipe abandonou")
-    second_take = await _record(client, session_id, b"o segundo ensaio, que vale")
+    first_take = await _record(client, session_id, b"a primeira parte do ensaio", part=1)
+    second_take = await _record(client, session_id, b"a segunda parte do ensaio", part=2)
 
     client.said.extend(["contado do primeiro arquivo", "contado do segundo arquivo"])  # type: ignore[attr-defined]
     await _tell_back(
@@ -343,6 +347,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
         scope=PASSAGE,
         pericope_num=PASSAGE,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 
@@ -435,7 +440,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     )
 
     assert first.status_code == 200 and first.json()["captured"] is True
-    assert second.json()["chunks"] == 2
+    assert second.json()["captured"] is True
 
     async def analyst(*, system_prompt: str, user_content: str, **_: Any) -> str:
         return (
@@ -567,6 +572,7 @@ async def test_a_piece_cut_off_and_not_yet_told_is_not_read_as_something_told(
         scope=PASSAGE,
         pericope_num=PASSAGE,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 

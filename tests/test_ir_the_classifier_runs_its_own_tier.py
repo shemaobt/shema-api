@@ -126,6 +126,16 @@ async def test_a_reply_in_the_promised_shape_still_moves_the_beads(recording_cli
     )
 
 
+async def test_the_classifier_leaves_its_effort_at_the_models_default(recording_client) -> None:
+    messages = recording_client()
+
+    await _settle()
+
+    assert "effort" not in messages.calls[0]["output_config"], (
+        "o classificador era fixado em esforço alto onde a Marcia deixa o padrão do modelo"
+    )
+
+
 async def test_a_ceiling_high_enough_now_leaves_room_for_the_thinking_too(
     recording_client,
 ) -> None:

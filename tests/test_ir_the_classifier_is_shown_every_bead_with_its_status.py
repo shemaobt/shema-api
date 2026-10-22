@@ -1,10 +1,10 @@
 """What the bead classifier is handed each turn, and what it is allowed to move.
 
-Her injection contract (`prompts/vendor/classifier_system_prompt.md`, runtime injection 1):
-the elements go as structured entries carrying their **current status**, and only the ones
-still at `not_encountered` or `surfaced`. The offer is every bead short of `engaged`, of any
-scene or of none — the Scene pointer is never a scope on it — and an id that was not offered
-moves nothing.
+Her injection contract (`app/services/internalization_room/prompts/classifier_system_prompt.md`,
+runtime injection 1): the elements go as structured entries carrying their **current status**,
+and only the ones still at `not_encountered` or `surfaced`. The offer is every bead short of
+`engaged`, of any scene or of none — the Scene pointer is never a scope on it — and an id that
+was not offered moves nothing.
 """
 
 from __future__ import annotations
@@ -121,11 +121,12 @@ def test_the_scenes_are_named_by_the_bare_id_the_prompt_asks_for_and_their_title
 def test_a_decision_buried_in_a_sentence_of_prose_still_moves_the_beads() -> None:
     wrapped = (
         "Sure — here is the classification for this exchange: "
-        '{"decisions": [{"element_id": "scene:1", "new_status": "engaged", "evidence": "told it"}]}'
+        '{"decisions": [{"element_id": "scene:S1", "new_status": "engaged", '
+        '"evidence": "told it"}]}'
         " Let me know if you need anything else."
     )
 
-    assert _parse(wrapped)["engaged"] == ["scene:1"], (
+    assert _parse(wrapped)["engaged"] == ["scene:S1"], (
         "o leitor aceitava JSON nu ou cercado e mais nada; um objeto embrulhado numa frase "
         "era 'JSON ilegível' e a classificação do turno sumia em silêncio"
     )
@@ -146,11 +147,11 @@ async def test_a_settle_offers_every_bead_short_of_engaged_whatever_scene_holds_
     monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
     session = await service.create_session(db_session, pericope=P)
     worked = [element.key for element in elements_for(P) if element.scene == 1]
-    worked.remove("absence:1")
+    worked.remove("absence:S1")
     await service.apply_coverage(
         db_session,
         session.id,
-        merge(initial_state(P), pericope_num=P, surfaced=["absence:1"], engaged=worked),
+        merge(initial_state(P), pericope_num=P, surfaced=["absence:S1"], engaged=worked),
     )
     for team_utterance, guide_response in [
         ("a famine came and the family left Bethlehem", "and then Elimelech died there"),
@@ -165,6 +166,7 @@ async def test_a_settle_offers_every_bead_short_of_engaged_whatever_scene_holds_
     await background.settle_coverage(
         session_id=session.id,
         turn_id="turn-5",
+        turn_number=1,
         team_utterance="Ruth stayed with Naomi in Moab",
         guide_response="what happened to the two women",
         pericope_num=P,
@@ -179,7 +181,7 @@ async def test_a_settle_offers_every_bead_short_of_engaged_whatever_scene_holds_
     assert session.coverage_state[ruth_in_scene_three] == CoverageStatus.ENGAGED.value, (
         "a resposta do classificador sobre uma conta da cena 3 tem de chegar ao registro"
     )
-    assert session.coverage_state["absence:1"] == CoverageStatus.SURFACED.value, (
+    assert session.coverage_state["absence:S1"] == CoverageStatus.SURFACED.value, (
         "o classificador não nomeou o silêncio: ele fica onde estava"
     )
 
@@ -194,7 +196,7 @@ async def test_an_id_the_classifier_was_not_offered_this_turn_moves_nothing(
             {
                 "decisions": [
                     {"element_id": naomi_before_the_scenes, "new_status": "engaged"},
-                    {"element_id": "scene:1", "new_status": "engaged"},
+                    {"element_id": "scene:S1", "new_status": "engaged"},
                 ]
             }
         )
@@ -210,7 +212,7 @@ async def test_an_id_the_classifier_was_not_offered_this_turn_moves_nothing(
             settings=_settings(),
         )
 
-    assert settled["scene:1"] == CoverageStatus.ENGAGED.value
+    assert settled["scene:S1"] == CoverageStatus.ENGAGED.value
     assert settled[naomi_before_the_scenes] == CoverageStatus.NOT_ENCOUNTERED.value, (
         "uma chave que o registro guardado ainda tem mas o mapa não tem mais passava pelo "
         "merge como qualquer outra: o modelo movia uma conta que o turno nunca ofereceu"

@@ -46,10 +46,10 @@ class SplitRequestedPayload(BaseModel):
     secondary_genre_id: str | None = None
     secondary_subcategory_id: str | None = None
     secondary_register_id: str | None = None
-
-
-class BlobVerificationResult(BaseModel):
-    size: int
+    #: Defaulted so an in-flight event from before these fields existed still parses;
+    #: such a parent was written by the app and is raw.
+    source: str = "raw"
+    source_reference: str | None = None
 
 
 class SegmentResult(BaseModel):

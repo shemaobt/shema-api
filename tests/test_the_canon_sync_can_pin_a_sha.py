@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 import scripts.sync_internalization_canon as canon
+from tests.canon_sync_harness import Compiler, point_the_sync_at
 
 PINNED_SHA = "cafef00dfacade00cafef00dfacade00cafef00d"
 HEAD_SHA = "1eadbeef1eadbeef1eadbeef1eadbeef1eadbeef"
@@ -23,12 +24,10 @@ HEAD_SHA = "1eadbeef1eadbeef1eadbeef1eadbeef1eadbeef"
 
 @pytest.fixture
 def redirected_vendor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    vendor = tmp_path / "vendor"
-    monkeypatch.setattr(canon, "VENDOR", vendor)
-    monkeypatch.setattr(canon, "PIN_FILE", vendor / "VENDOR_PIN")
-    monkeypatch.setattr(canon, "_listing", lambda kind, sha: [])
-    monkeypatch.setattr(canon, "_raw", lambda kind, sha, name: b"")
-    return vendor
+    compiler = Compiler()
+    compiler.book("ruth")
+    compiler.passage("P01-Ruth-1-1-5")
+    return point_the_sync_at(monkeypatch, canon, compiler, tmp_path)
 
 
 def test_sync_with_pin_never_asks_upstream_for_its_head(
@@ -41,7 +40,7 @@ def test_sync_with_pin_never_asks_upstream_for_its_head(
 
     canon.sync(pin=PINNED_SHA)
 
-    assert canon.PIN_FILE.read_text().strip() == PINNED_SHA
+    assert f"pin_commit:       {PINNED_SHA}\n" in canon.PIN_FILE.read_text()
 
 
 def test_sync_without_pin_still_resolves_the_upstream_head(
@@ -51,4 +50,4 @@ def test_sync_without_pin_still_resolves_the_upstream_head(
 
     canon.sync(pin=None)
 
-    assert canon.PIN_FILE.read_text().strip() == HEAD_SHA
+    assert f"pin_commit:       {HEAD_SHA}\n" in canon.PIN_FILE.read_text()

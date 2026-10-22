@@ -15,7 +15,7 @@ its pin.
 - [ ] a prompt under `app/services/internalization_room/prompts/`
 - [ ] a model id or a ladder order (`tripod_voice_model`, `tripod_analysis_model`, `tripod_classifier_model`)
 - [ ] an effort level, a thinking setting, or a token budget at a `call_agent` site
-- [ ] the pin in `docs/doctrine/DOCTRINE_PIN` (a re-sync of a vendored artefact)
+- [ ] a pin in `docs/doctrine/` — `FREEZE_PIN` or `DOCTRINE_PIN` (a re-sync of a vendored artefact)
 - [ ] none of the above
 
 **Her words:**

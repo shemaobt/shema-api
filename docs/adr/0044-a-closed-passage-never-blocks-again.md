@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0076: attending no longer lifts a halt, so the team's return is the only lift
 date: 2026-10-01
 ---
 

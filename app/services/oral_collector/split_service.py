@@ -121,6 +121,8 @@ async def request_split(
         recorded_at=recording.recorded_at.isoformat(),
         description=recording.description,
         storyteller_id=recording.storyteller_id,
+        source=recording.source,
+        source_reference=recording.source_reference,
         secondary_genre_id=recording.secondary_genre_id,
         secondary_subcategory_id=recording.secondary_subcategory_id,
         secondary_register_id=recording.secondary_register_id,

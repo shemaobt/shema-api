@@ -12,6 +12,7 @@ module keeps the three-line fixture that calls it — which is also how `release
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -43,17 +44,15 @@ from app.services.internalization_room.sessions import (
     create_session,
     get_session,
     retire_the_part_recorded_again,
-    save_comprehension,
 )
 from app.services.internalization_room.takes import take_by_id
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
-    KEY,
     PREFIX,
     TABLET,
     P,
     ensaio_take,
-    supported_comprehension,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -65,10 +64,6 @@ PLAYBACK_BLOCKER = "playback_did_not_cover_the_clip"
 #: part uploaded during the case has to be newer than the one it was recorded over, and two
 #: rows written in the same second cannot say which.
 REHEARSED_AT = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
-
-#: The heading that only the correction prompt carries. The double tells the two readings
-#: apart by it, the way a reader would — not by counting calls.
-CORRECTION_MARK = "## What the team told back now"
 
 
 class Analyst:
@@ -98,26 +93,15 @@ class ScriptedAnalyst:
     """The analyst answering the findings a case wrote, one entry per whole reading.
 
     A case about what the room does *with* a finding has to put one there, and the counting
-    double above cannot: it answers the same clean reading every time. The correction check is
-    told apart by the heading only its prompt carries, the way a reader would, and it keeps
-    what it was shown and passes: a case that needs it to refuse, or to raise something of its
-    own, sets that up here when there is one — buttons nobody presses are a double agreeing
-    with itself. The seam has a double of the same shape (`text_seam_harness.Analyst`) and the
-    two are deliberately not merged: this module is where `CORRECTION_MARK` lives, so importing
-    that one back would close an import cycle.
+    double above cannot: it answers the same clean reading every time.
     """
 
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []
-        self.verifications: list[str] = []
-        self.verification: dict[str, Any] = {"resolved": True, "findings": []}
         self.shown: list[str] = []
         self.on_reading: Callable[[], Awaitable[None]] | None = None
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if CORRECTION_MARK in system_prompt:
-            self.verifications.append(system_prompt)
-            return json.dumps(self.verification)
         self.shown.append(system_prompt)
         if self.on_reading is not None:
             await self.on_reading()
@@ -255,8 +239,8 @@ async def room_client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The room's routes on an app of their own, over the session the case writes through.
 
-    `runner_key` opens the text seam as well, which exists only where the key is set, and
-    sends it on every request the way her runner does.
+    `runner_key` opens the text seam and the Golden doors as well, which exist only where the
+    key is set, and sends it on every request in the header each door reads.
 
     `per_request` gives every request a session of its own from that factory, closed when the
     request unwinds, which is what `get_db` does in the deployed app and what one shared
@@ -270,7 +254,6 @@ async def room_client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     if runner_key is not None:
         monkeypatch.setattr(
             get_settings(), "internalization_room_runner_key", runner_key, raising=False
@@ -289,10 +272,16 @@ async def room_client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"X-Access-Code": runner_key} if runner_key else {},
+        headers=tablet.headers
+        | (
+            {"X-Access-Code": runner_key, "Authorization": f"Bearer {runner_key}"}
+            if runner_key
+            else {}
+        ),
     ) as client:
         yield client
 
@@ -317,7 +306,13 @@ async def tell_back_about(
 
 
 async def rehearsed_in_parts(
-    db: AsyncSession, count: int, *, project_id: str | None = None
+    db: AsyncSession,
+    count: int,
+    *,
+    project_id: str | None = TABLET_TEAM,
+    language: str = "pt",
+    content_types: tuple[str, ...] | None = None,
+    audio: tuple[bytes, ...] | None = None,
 ) -> tuple[IRSession, list[IRTake]]:
     """A session the release refuses only for want of a report, rehearsed in `count` parts.
 
@@ -331,10 +326,13 @@ async def rehearsed_in_parts(
     The parts are numbered the way the tablet numbers them — `parte-N` and `chunk_index` N,
     from one — because a part's identity is that number and not the scope string. Unnumbered,
     every part of a built rehearsal was one part under the same null.
+
+    `language` is the language the room speaks to this team. `content_types` is what each part
+    was uploaded as, one per part, and `audio` the bytes each one holds, so a case that sends
+    those bytes again meets the take that already has them.
     """
-    session = await create_session(db, pericope=P, project_id=project_id, language="pt")
+    session = await create_session(db, pericope=P, project_id=project_id, language=language)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P))
 
     parts = []
     for index in range(count):
@@ -342,10 +340,14 @@ async def rehearsed_in_parts(
             session.id,
             scope=f"parte-{index + 1}",
             ordinal=index + 1,
-            sha256=chr(ord("a") + index) * 64,
+            sha256=hashlib.sha256(audio[index]).hexdigest()
+            if audio
+            else chr(ord("a") + index) * 64,
             created_at=REHEARSED_AT + timedelta(minutes=index),
             project_id=session.project_id,
         )
+        if content_types:
+            take.content_type = content_types[index]
         db.add(take)
         await db.commit()
         await capture_segment(
@@ -394,11 +396,10 @@ async def rehearsed_in_parts_of(
     if unnumbered_first and told_whole:
         raise ValueError("a rehearsal told whole has no numbered part to come after it")
 
-    session = await create_session(db, pericope=pericope, language=language)
+    session = await create_session(db, pericope=pericope, project_id=TABLET_TEAM, language=language)
     session.coverage_state = merge(
         initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
     )
-    await save_comprehension(db, session, supported_comprehension(pericope))
 
     parts = []
     told = 0
@@ -582,7 +583,13 @@ async def heard_every_part(
 
 
 async def upload_a_part(
-    client: httpx.AsyncClient, session_id: str, *, part: int | None, audio: bytes
+    client: httpx.AsyncClient,
+    session_id: str,
+    *,
+    part: int | None,
+    audio: bytes,
+    content_type: str = "audio/mp4",
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     """Send a rehearsal recording up the way the tablet sends one.
 
@@ -599,9 +606,9 @@ async def upload_a_part(
         data["chunk_index"] = str(part)
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers=headers or {"X-Room-Device": TABLET},
         data=data,
-        files={"file": ("gravacao.m4a", audio, "audio/mp4")},
+        files={"file": ("gravacao.m4a", audio, content_type)},
     )
 
 
@@ -611,7 +618,6 @@ async def press_terminei(
     """Press `terminei`, with or without a report of what the tablet played."""
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": KEY},
         **({"json": report} if report is not None else {}),
     )
 

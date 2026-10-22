@@ -35,7 +35,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     {
       "decision_id": "P06-D1",
       "decision": "Wife-pairing withheld at v.11 husband reference.",
-      "description": "At v.11 Boaz says 'after the death of your husband' without naming which son. The Mahlon-Ruth / Chilion-Orpah pairing is withheld in narrator-readable text until 4:10. P7 recital_components uses after_whose_death: B? rather than B4. Carries P01-D2 forward into Boaz's recital."
+      "description": "At v.11 Boaz says 'after the death of your husband' without naming which son. The pairing is withheld in narrator-readable text. The Mahlon–Ruth pairing is said at 4:10; the text never says whose wife Orpah was. P7 recital_components uses after_whose_death: B? rather than B4. Carries P01-D2 forward into Boaz's recital."
     },
     {
       "decision_id": "P06-D2",
@@ -419,7 +419,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       "id": "R1",
       "kind": "FIGURE_FIRST_OCCURRENCE",
       "applies_to": "FIG_0011 Wing-of-Refuge at 2:12 (P9)",
-      "note": "REQUIRED keep-image. The Hebrew word kanaph must render the same way at 2:12 and at 3:9 so the petition lands as an answer to the blessing. Cross-pericope pair opens here.",
+      "note": "REQUIRED keep-image. The Hebrew word kanaph must render the same way at 2:12 and at 3:9 so the same word, wing, is heard in both places (a verbal echo). Cross-pericope pair opens here.",
       "required_in_audit": true,
       "do_not_decide": true,
       "carries_forward_to": "P09_audit",
@@ -429,7 +429,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       "id": "R2",
       "kind": "FIGURE_FIRST_OCCURRENCE",
       "applies_to": "FIG_0132 Amah-Vs-Shifchah at 2:13 (P11)",
-      "note": "PREFERRED keep-image. Opens here with shifchah self-designation; closes at P09 3:9 with amah. Status-shift signals positioning for marriage proposal.",
+      "note": "PREFERRED keep-image. The pair opens with shifchah and closes at 3:9 with amah; the change of word is kept; its meaning is not stated.",
       "required_in_audit": true,
       "carries_forward_to": "P09_audit",
       "source_in_meaning_map": "Section 3C Scene 2 Objects (TH_SHIFCHAH_SELF_NAMING_FORM); Section 5B Figure Flags (FIG_0132)"
@@ -606,7 +606,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
   "known_limitations": [
     "PL_AMONG_SHEAVES used as a working code pending formal PL-code assignment in BCD v0.4.",
     "Cross-pericope pair verification for FIG_0011, FIG_0132, and FIG_0104 deferred pending P07 and P09 compilations.",
-    "Wife pairing at v.11 withheld per P01-D2 source-text discipline. Pairing disclosure carried forward to P13 audit at 4:10.",
+    "Wife pairing at v.11 withheld per P01-D2 source-text discipline. Pairing disclosure carried forward to P12 audit at 4:10.",
     "FIG_0001 Ruth-the-Moabitess narrator-epithet does not fire in P06; carries forward to P07 v.21 where the narrator-voice epithet returns.",
     "CB_0011 Hesed lexeme does not fire in P06; hesed is enacted in narrative substance but the word first appears at 2:20 (P07).",
     "community_verified and translation_team_verified remain false; this is a pilot compilation."

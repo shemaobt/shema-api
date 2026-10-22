@@ -12,14 +12,16 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
-from app.core.exceptions import ConflictError, UpstreamServiceError
+from app.core.exceptions import ConflictError
+from app.services import internalization_room as room
 from app.services.internalization_room import idempotency
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
     IR,
-    ROOM_KEY,
     SLICES,
+    a_new_recording,
 )
 from tests.hard_stretch_harness import (
     MemoryStore as _MemoryStore,
@@ -39,6 +41,7 @@ from tests.hard_stretch_harness import (
 from tests.release_harness import a_claimed_device
 
 OTHER_AUDIO = b"a equipe contou este trecho de outro jeito"
+CORRECTION_AUDIO = b"a equipe corrigiu este trecho"
 CLOCK = "app.services.internalization_room.idempotency.utcnow"
 WAIT_S = 10
 
@@ -78,12 +81,10 @@ async def client(db_session: AsyncSession, test_engine, monkeypatch: pytest.Monk
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import segments as segments_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     transcriber = Transcriber()
     monkeypatch.setattr(bt_api, "heard", transcriber)
     monkeypatch.setattr(segments_api, "heard", transcriber)
@@ -104,7 +105,12 @@ async def client(db_session: AsyncSession, test_engine, monkeypatch: pytest.Monk
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={DEVICE_CREDENTIAL_HEADER: tablet.credential},
+    ) as c:
         c.transcriber = transcriber  # type: ignore[attr-defined]
         yield c
 
@@ -115,12 +121,11 @@ def _answers(client: httpx.AsyncClient) -> list[Any]:
 
 def _headers(
     key: str | None,
-    room_key: str = ROOM_KEY,
     *,
     device: str | None = DEVICE,
     credential: str | None = None,
 ) -> dict[str, str]:
-    headers = {"X-Room-Key": room_key}
+    headers = {}
     if device is not None:
         headers["X-Room-Device"] = device
     if credential is not None:
@@ -139,7 +144,6 @@ async def _chunk(
     key: str | None = None,
     again: bool = False,
     audio: bytes = AUDIO,
-    room_key: str = ROOM_KEY,
     device: str | None = DEVICE,
     credential: str | None = None,
 ) -> httpx.Response:
@@ -149,7 +153,7 @@ async def _chunk(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers=_headers(key, room_key, device=device, credential=credential),
+        headers=_headers(key, device=device, credential=credential),
         data=data,
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -163,13 +167,14 @@ async def _replace(
     stretch: int,
     *,
     key: str | None = None,
+    audio: bytes = CORRECTION_AUDIO,
 ) -> httpx.Response:
     starts, ends = SLICES[stretch - 1]
     return await client.post(
         f"{IR}/sessions/{session_id}/segments/{segment_id}/replace",
         headers=_headers(key),
         data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
-        files={"file": ("correcao.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("correcao.m4a", audio, "audio/mp4")},
     )
 
 
@@ -197,23 +202,35 @@ async def test_one_stretch_per_key(client: httpx.AsyncClient, db_session: AsyncS
     assert len(await _current(db_session, session_id)) == 1
 
 
-@pytest.mark.parametrize("heard", ["o trecho 1 corrigido", ""], ids=["heard", "empty"])
+@pytest.mark.parametrize(
+    ("heard", "status", "tellings"),
+    [("o trecho 1 corrigido", 200, 2), ("", 422, 1)],
+    ids=["heard", "empty"],
+)
 async def test_one_correction_per_key(
-    client: httpx.AsyncClient, db_session: AsyncSession, heard: str
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    heard: str,
+    status: int,
+    tellings: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
     [stretch] = await _current(db_session, session_id)
+    monkeypatch.setattr(room, "is_a_resend", lambda *_: False)
 
     _answers(client).append(heard)
     first = await _replace(client, session_id, take_id, stretch.id, 1, key="uma-correcao")
     again = await _replace(client, session_id, take_id, stretch.id, 1, key="uma-correcao")
 
-    assert first.status_code == 200, first.text
+    assert first.status_code == status, first.text
     assert again.status_code == first.status_code
     assert again.json() == first.json()
     [standing] = await _current(db_session, session_id)
-    assert standing.tellings == 2
+    assert standing.tellings == tellings, (
+        "a chave repetida não era respondida pelo replay: a porta voltava a decidir sozinha"
+    )
 
 
 async def test_a_key_reused_with_another_body_is_refused(
@@ -284,7 +301,6 @@ async def test_a_key_older_than_a_day_is_a_new_request(
 @pytest.mark.parametrize(
     ("unsettled", "status"),
     [
-        pytest.param(lambda: UpstreamServiceError("transcriber down"), 502, id="502"),
         pytest.param(lambda: HTTPException(status_code=429, detail="slow down"), 429, id="429"),
         pytest.param(lambda: ConflictError("written by another turn"), 409, id="409"),
     ],
@@ -327,7 +343,7 @@ async def test_a_refused_credential_does_not_spend_the_key(
 ) -> None:
     session_id, take_id = await _a_rehearsed_session(db_session, client)
 
-    refused = await _chunk(client, session_id, take_id, 1, key="um-trecho", room_key="errada")
+    refused = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential="errada")
     resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
 
     assert refused.status_code == 401, refused.text
@@ -342,7 +358,7 @@ async def test_a_replay_is_answered_only_to_a_caller_the_door_lets_in(
     first = await _chunk(client, session_id, take_id, 1, key="um-trecho")
     assert first.status_code == 200, first.text
 
-    stranger = await _chunk(client, session_id, take_id, 1, key="um-trecho", room_key="errada")
+    stranger = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential="errada")
 
     assert stranger.status_code == 401, stranger.text
 
@@ -364,12 +380,17 @@ async def test_a_retold_chunk_sent_twice_under_one_key_counts_one_telling(
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
     _answers(client).append("o trecho 1 de novo")
-    retold = await _chunk(client, session_id, take_id, 1, again=True)
+    retold = await _chunk(client, session_id, take_id, 1, again=True, audio=OTHER_AUDIO)
     assert retold.status_code == 200, retold.text
 
     _answers(client).append("o trecho 1 pela terceira vez")
-    first = await _chunk(client, session_id, take_id, 1, key="terceira", again=True)
-    again = await _chunk(client, session_id, take_id, 1, key="terceira", again=True)
+    third_audio = a_new_recording()
+    first = await _chunk(
+        client, session_id, take_id, 1, key="terceira", again=True, audio=third_audio
+    )
+    again = await _chunk(
+        client, session_id, take_id, 1, key="terceira", again=True, audio=third_audio
+    )
 
     assert first.status_code == 200, first.text
     assert again.json() == first.json()
@@ -387,7 +408,9 @@ async def test_a_stretch_superseded_while_a_chunk_is_heard_refuses_the_chunk(
     held = Held("o trecho 1 de novo")
     _answers(client).extend([held, "o trecho 1 corrigido"])
 
-    chunk = asyncio.create_task(_chunk(client, session_id, take_id, 1, again=True))
+    chunk = asyncio.create_task(
+        _chunk(client, session_id, take_id, 1, again=True, audio=OTHER_AUDIO)
+    )
     try:
         await held.until_reached()
         superseded = await _replace(client, session_id, take_id, stretch.id, 1)
@@ -463,9 +486,9 @@ async def test_a_request_missing_its_device_does_not_spend_the_key(
 async def test_another_projects_device_is_refused_as_without_a_key_never_replayed(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    team, own = await a_claimed_device(db_session, email="ana@example.com")
+    own = (await a_linked_tablet(db_session, team_id=TABLET_TEAM)).credential
     _, stranger = await a_claimed_device(db_session, email="bia@example.com")
-    session_id = await _a_session(db_session, team_id=team.id)
+    session_id = await _a_session(db_session, team_id=TABLET_TEAM)
     take_id = await _rehearse(client, session_id)
     first = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential=own)
     assert first.status_code == 200, first.text
@@ -555,4 +578,4 @@ async def test_a_store_that_fails_after_a_cancellation_frees_the_key(
     resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
 
     assert resent.status_code == 200, resent.text
-    assert len(await _current(db_session, session_id)) == 2
+    assert [one.tellings for one in await _current(db_session, session_id)] == [1]

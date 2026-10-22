@@ -5,14 +5,14 @@ retelling was counted toward the warning. A telling with no words is refused wit
 code and the name of the inaudible line, and counts nothing. The audio stays kept: no
 recording is ever lost.
 
-A real outage was never mistaken for silence here — the transcriber raises
-`UpstreamServiceError` for it, `heard` does not catch it, and it was already a 502. What the
-transcriber raises `ValidationError` for is the recording it could not read, which is the
-telling with no words.
+ENG-1226 reads an outage the same way: `heard` returns nothing for it, so it is refused too
+(ADR 0049). What the transcriber raises `ValidationError` for is the recording it could not
+read, which is the telling with no words.
 """
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import httpx
@@ -22,16 +22,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UpstreamServiceError, ValidationError
-from app.db.models.internalization_room import IRSegment, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRSessionStatus
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
     IR,
-    ROOM_KEY,
     SLICES,
     current,
     marks,
+    retro_takes,
     row,
     told,
 )
@@ -51,13 +52,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import hearing
     from app.services.internalization_room import takes as takes_service
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     queue: list[str | Exception] = []
 
@@ -84,7 +82,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.transcriber = queue  # type: ignore[attr-defined]
         c.said = queue  # type: ignore[attr-defined]
         c.bucket = bucket  # type: ignore[attr-defined]
@@ -107,7 +108,7 @@ async def _tell(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data=data,
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
@@ -116,13 +117,6 @@ async def _tell(
 async def _segment_rows(db: AsyncSession, session_id: str) -> list[str]:
     result = await db.execute(
         select(IRSegment.id).where(IRSegment.session_id == session_id).order_by(IRSegment.id)
-    )
-    return list(result.scalars().all())
-
-
-async def _retro_takes(db: AsyncSession, session_id: str) -> list[IRTake]:
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO)
     )
     return list(result.scalars().all())
 
@@ -148,7 +142,7 @@ async def test_a_first_telling_with_no_words_is_refused_and_is_no_stretch(
     body = refused.json()
     assert body["code"] == "WORDLESS_TELLING"
     assert body["detail"]
-    assert body["fixed_line"] == "D0"
+    assert "fixed_line" not in body
     assert await _segment_rows(db_session, session_id) == before
     assert await current(db_session, session_id) == []
 
@@ -174,7 +168,7 @@ async def test_an_empty_retelling_is_refused_and_counts_nothing(
     assert await _segment_rows(db_session, session_id) == before
     assert await marks(db_session, session_id) == []
     assert (await row(db_session, session_id)).status is not IRSessionStatus.NEEDS_PERSON
-    read = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    read = await client.get(f"{IR}/sessions/{session_id}")
     assert read.status_code == 200, read.text
     assert read.json()["halt"] is None
 
@@ -188,11 +182,11 @@ async def test_the_recording_of_a_refused_telling_stays_kept(
     refused = await _tell(client, session_id, take_id, 1, "")
 
     assert refused.status_code == 422
-    assert len(await _retro_takes(db_session, session_id)) == 1
+    assert len(await retro_takes(db_session, session_id)) == 1
     assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
 
 
-async def test_a_transcriber_outage_is_a_server_failure_that_counts_nothing(
+async def test_a_transcriber_outage_is_a_wordless_refusal_that_counts_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session_id = await _a_session(db_session)
@@ -205,8 +199,8 @@ async def test_a_transcriber_outage_is_a_server_failure_that_counts_nothing(
         client, session_id, take_id, 1, UpstreamServiceError("transcriber down"), again=True
     )
 
-    assert outage.status_code == 502, outage.text
-    assert outage.json()["code"] == "UPSTREAM_ERROR"
+    assert outage.status_code == 422, outage.text
+    assert outage.json()["code"] == "WORDLESS_TELLING"
     (after,) = await current(db_session, session_id)
     assert after.id == standing.id
     assert after.tellings == tellings
@@ -223,3 +217,40 @@ async def test_a_telling_with_words_is_still_a_stretch(
     assert answered.status_code == 200, answered.text
     assert answered.json()["captured"] is True
     assert len(await current(db_session, session_id)) == 1
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param(httpx.Response(200, text="<html>bad gateway</html>"), id="not json"),
+        pytest.param(httpx.Response(200, json=["texto"]), id="not an object"),
+    ],
+)
+async def test_a_recognizer_answer_nobody_can_read_is_a_wordless_refusal(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    answer: httpx.Response,
+) -> None:
+    from app.core.config import get_settings
+    from app.services.internalization_room import hearing
+
+    recognizer = importlib.import_module("app.services.translation_helper.transcribe_audio")
+
+    keyed = get_settings().model_copy(update={"elevenlabs_api_key": "chave-de-teste"})
+    monkeypatch.setattr(recognizer, "get_settings", lambda: keyed)
+    monkeypatch.setattr(
+        recognizer,
+        "_make_client",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(lambda _: answer)),
+    )
+    monkeypatch.setattr(hearing, "transcribe_audio", recognizer.transcribe_audio)
+    session_id = await _a_session(db_session)
+    take_id = await _rehearse(client, session_id)
+    before = await _segment_rows(db_session, session_id)
+
+    refused = await _tell(client, session_id, take_id, 1, "não usado")
+
+    assert refused.status_code == 422, "um 500 o tablet lê como sem conexão"
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert await _segment_rows(db_session, session_id) == before

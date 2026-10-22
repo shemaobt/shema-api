@@ -127,7 +127,7 @@ async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
 
     assert await release_blockers(db_session, session) == [NOT_CHECKED, PLAYBACK_BLOCKER]
     assert unheard_parts(
-        await stored_telling_back(db_session, session), sorted([fresh_a.id, b.id, c.id, d.id])
+        await stored_telling_back(db_session, session), [fresh_a, b, c, d], []
     ) == [fresh_a.id], "only the part the team recorded again is unheard"
 
 
@@ -177,10 +177,10 @@ async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
     await tell_back_about(db_session, session, fresh_a, bridge_take_id="retro-de-novo")
     stored = await stored_telling_back(db_session, session)
 
-    assert unheard_parts(stored, sorted([fresh_a.id, b.id, c.id, d.id])) == [fresh_a.id], (
+    assert unheard_parts(stored, [fresh_a, b, c, d], []) == [fresh_a.id], (
         "the stale entry for the old part does not stand in for the new one"
     )
-    assert unheard_parts(stored, sorted([b.id, c.id, d.id])) == [], (
+    assert unheard_parts(stored, [b, c, d], []) == [], (
         "a rehearsal that no longer names the part is heard on the three that remain"
     )
 
@@ -219,7 +219,7 @@ async def test_a_flat_report_is_evidence_of_nothing(
     assert stored.played_ranges == [[0, glued]]
     assert stored.clip_duration_ms == glued
     assert stored.played_take_ids == ids
-    assert unheard_parts(in_flight, ids) == ids, (
+    assert unheard_parts(in_flight, parts, []) == ids, (
         "a row written before this change names every part, however the subject was stamped"
     )
 
@@ -246,7 +246,7 @@ def test_coverage_is_measured_per_part_with_the_tolerance() -> None:
         ]
     )
 
-    assert unheard_parts(state, sorted(entries)) == sorted(
+    assert unheard_parts(state, [IRTake(id=take_id) for take_id in entries], []) == sorted(
         [
             "gap-of-751",
             "short-by-751",
@@ -281,7 +281,7 @@ async def test_the_packet_carries_the_report_per_take(
     )
     packet = await release_packet(db_session, session)
 
-    assert packet["schema_version"] == "tripod.internalization-release.v0.6"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.9"
     assert packet["back_translation"]["played_by_take"] == per_take
     assert "played_ranges" not in packet["back_translation"]
     assert "clip_duration_ms" not in packet["back_translation"]
@@ -433,13 +433,11 @@ async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     """Each errand is named once, and only the errands that exist.
 
     There is nothing to have played back before a stretch exists, so the room does not hand the
-    team a second errand that would not help. What it does name twice is two different things:
-    the reading is empty, and the recording they made carries nobody's words. A team told only
-    the first would go looking for a list to fill; told only the second, for a recording to make.
+    team a second errand that would not help.
     """
     session, _ = await rehearsed_session(db_session, language="pt")
 
     refused = await release_blockers(db_session, session)
 
-    assert refused == ["no_telling_back", "untold_part"]
+    assert refused == ["no_telling_back"]
     assert PLAYBACK_BLOCKER not in refused

@@ -8,11 +8,10 @@ concludes from the rows it reads is the case's own.
 Fixtures are not exported, for the reason `room_harness` gives: what travels is the builder
 and each module keeps the three-line fixture that calls it.
 
-The room key and the prefix are declared here rather than read off `release_harness`, which
-also has them. A take is stored and numbered long before any release exists, and nothing here
-touches one: reading the constants from there would put the release scaffold — the project,
-the device claim, four bakers — behind every case about how a take gets its number, and the
-first reader would have to open that file to find out why.
+The prefix is declared here rather than read off `release_harness`, which also has it. A
+take is stored and numbered long before any release exists, and nothing here touches one:
+reading the constant from there would put the release scaffold behind every case about how
+a take gets its number, and the first reader would have to open that file to find out why.
 """
 
 from __future__ import annotations
@@ -22,15 +21,12 @@ import httpx
 from app.db.models.internalization_room import IRTakeKind
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 
 
 async def open_session(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": PASSAGE}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": PASSAGE})
     assert created.status_code == 200, created.text
     return str(created.json()["session_id"])
 
@@ -38,7 +34,7 @@ async def open_session(client: httpx.AsyncClient) -> str:
 async def record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
@@ -57,7 +53,7 @@ async def tell_back(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )

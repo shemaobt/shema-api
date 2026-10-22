@@ -3,8 +3,8 @@ but the code only `write_bytes` per name from the upstream listing: a file that 
 survived in ours silently, and `--check` did not see it either, since it iterated the upstream
 listing only (ENG-926).
 
-Never runs against the real vendor: `_raw`/`_listing` are doubled, and `VENDOR`/`PIN_FILE` are
-redirected into `tmp_path`.
+Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
+through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
 """
 
 from __future__ import annotations
@@ -14,27 +14,29 @@ from pathlib import Path
 import pytest
 
 import scripts.sync_internalization_canon as canon
+from tests.canon_sync_harness import SHA, Compiler, point_the_sync_at
 
-SHA = "cafef00dfacade00cafef00dfacade00cafef00d"
+
+@pytest.fixture
+def a_compiler_holding_one_whole_passage_of_ruth() -> Compiler:
+    compiler = Compiler()
+    compiler.book("ruth")
+    compiler.passage("P01-Ruth-1-1-5")
+    return compiler
 
 
 @pytest.fixture
 def vendor_with_a_file_upstream_no_longer_has(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    a_compiler_holding_one_whole_passage_of_ruth: Compiler,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> Path:
-    vendor = tmp_path / "vendor"
+    vendor = point_the_sync_at(
+        monkeypatch, canon, a_compiler_holding_one_whole_passage_of_ruth, tmp_path
+    )
     (vendor / "meaning-map").mkdir(parents=True)
     (vendor / "meaning-map" / "P15-Ruth-Gone.md").write_bytes(b"stale")
     (vendor / "meaning-map" / "P01-Ruth-1-1-5.md").write_bytes(b"kept-locally-stale-bytes")
-
-    monkeypatch.setattr(canon, "VENDOR", vendor)
-    monkeypatch.setattr(canon, "PIN_FILE", vendor / "VENDOR_PIN")
-    monkeypatch.setattr(
-        canon,
-        "_listing",
-        lambda kind, sha: ["P01-Ruth-1-1-5.md"] if kind == "meaning-map" else [],
-    )
-    monkeypatch.setattr(canon, "_raw", lambda kind, sha, name: b"fresh-upstream-bytes")
     return vendor
 
 
@@ -50,24 +52,15 @@ def test_sync_deletes_a_vendored_file_the_upstream_listing_no_longer_has(
 
 @pytest.fixture
 def pinned_vendor_with_a_file_upstream_no_longer_has(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    a_compiler_holding_one_whole_passage_of_ruth: Compiler,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> Path:
-    vendor = tmp_path / "vendor"
-    (vendor / "meaning-map").mkdir(parents=True)
-    (vendor / "compilation-log").mkdir(parents=True)
-    kept = b"kept-bytes-matching-upstream"
-    (vendor / "meaning-map" / "P01-Ruth-1-1-5.md").write_bytes(kept)
-    (vendor / "meaning-map" / "P15-Ruth-Gone.md").write_bytes(b"stale")
-    (vendor / "VENDOR_PIN").write_text(SHA + "\n")
-
-    monkeypatch.setattr(canon, "VENDOR", vendor)
-    monkeypatch.setattr(canon, "PIN_FILE", vendor / "VENDOR_PIN")
-    monkeypatch.setattr(
-        canon,
-        "_listing",
-        lambda kind, sha: ["P01-Ruth-1-1-5.md"] if kind == "meaning-map" else [],
+    vendor = point_the_sync_at(
+        monkeypatch, canon, a_compiler_holding_one_whole_passage_of_ruth, tmp_path
     )
-    monkeypatch.setattr(canon, "_raw", lambda kind, sha, name: kept)
+    canon.sync(pin=SHA)
+    (vendor / "meaning-map" / "P15-Ruth-Gone.md").write_bytes(b"stale")
     return vendor
 
 

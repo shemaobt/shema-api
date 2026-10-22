@@ -103,6 +103,11 @@ jobs:
           # so both sides of the comparison move together and it is always green.
           uv run alembic check
 
+      - name: A transaction of the app carries its two waits
+        # Production reaches Neon through its pooler, so the app sets lock_timeout and
+        # statement_timeout in every transaction (ADR 0079); only a real Postgres shows it.
+        run: uv run python scripts/postgres_waits_are_bounded.py
+
       - name: Downgrade the newest migrations and upgrade again
         run: |
           set -euo pipefail
@@ -122,10 +127,10 @@ jobs:
             uv run alembic upgrade head
           done <<< "$targets"
 
-      # The nineteen migration-walking tests build their own throwaway SQLite file each and
+      # The thirty-two migration-walking files build their own throwaway SQLite file each and
       # never touch this job's Postgres — but only once `DATABASE_URL` is cleared. The job
       # sets it at job level, and the suite's conftest honours it when set: left in place, the
-      # nineteen would run against this Postgres instead, serially (AGENTS.md: a run that
+      # thirty-two would run against this Postgres instead, serially (AGENTS.md: a run that
       # names its own database runs without `-n`), and create tables over the schema the
       # upgrade step above just migrated — a step-level `env` cannot unset a job-level one in
       # Actions, so the `run` line does it.

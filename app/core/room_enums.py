@@ -1,8 +1,9 @@
-"""The room's two closed vocabularies, kept where both layers can reach them.
+"""The room's closed vocabularies, kept where both layers can reach them.
 
 ``ElementKind`` names what a bead of a passage *is*; ``CoverageStatus`` names how far a team
 has taken one. Both are canon vocabulary and both travel on the wire, so the service layer and
-the DTO layer each need them — and that is exactly why neither may own them.
+the DTO layer each need them — and that is exactly why neither may own them. The same holds
+for ``EarlierPassageStatus``, which the room stamps on a session and her runner sends.
 
 **They lived in `services/internalization_room/` and the DTO module imported them from there.**
 Importing anything inside a package runs that package's ``__init__``, which imports
@@ -40,6 +41,14 @@ class CoverageStatus(enum.StrEnum):
     SURFACED = "surfaced"
     PARTIALLY_ENGAGED = "partially_engaged"
     ENGAGED = "engaged"
+
+
+class EarlierPassageStatus(enum.StrEnum):
+    """A team's status on an earlier passage of the book: her three words, as she spells them."""
+
+    APPROVED = "approved"
+    STARTED = "started"
+    NOT_WORKED = "not_worked"
 
 
 class HaltKind(enum.StrEnum):

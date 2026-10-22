@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from app.services.internalization_room import llm
-from app.services.internalization_room.bridge_language import strays_from
 
 CallAgent = Callable[..., Awaitable[str]]
 
@@ -20,7 +19,6 @@ class RoomAgent:
     analyst: Agent = field(default_factory=Agent)
     classifier: Agent = field(default_factory=Agent)
     judge: Agent = field(default_factory=Agent)
-    strays_from: Callable[[str, str], bool] = strays_from
 
 
 _current = RoomAgent()

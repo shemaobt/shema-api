@@ -18,15 +18,19 @@ routes; this one asserts that the check, where present, means the right thing.
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.core.exceptions import ValidationError
+from app.db.models.org import Organization
 from app.services.device import create_device
 from app.services.project.grant_user_access import grant_user_access
 from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
 from app.services.project.update_user_access_role import update_user_access_role
 from tests.baker import (
+    a_language,
+    an_email,
     grant_facilitator_app_role,
     make_language,
     make_organization,
@@ -93,8 +97,9 @@ async def a_user_holding(db: AsyncSession, project, role, *, email):
     return user, await auth_header(db, user)
 
 
-async def a_user_via_organization(db: AsyncSession, project, *, email):
+async def a_user_via_organization(db: AsyncSession, project, *, email: str | None = None):
     """A user who reaches ``project`` only through organization membership."""
+    email = email or an_email()
     user = await make_user(db, email=email)
     org = await make_organization(db, name=f"Org {email}", slug=email.split("@")[0])
     await make_organization_member(db, user.id, org.id)
@@ -382,3 +387,15 @@ async def test_a_role_the_column_already_holds_still_denies_rather_than_grants(c
 
         answer = await client.get(team_devices_url(team.id), headers=headers)
         assert answer.status_code == 404, f"{stored!r} was treated as the facilitator role"
+
+
+async def test_two_default_users_reached_through_an_organization_get_two_different_org_slugs(
+    db_session,
+):
+    language = await a_language(db_session)
+    team = await make_project(db_session, language.id, name="Team")
+    await a_user_via_organization(db_session, team)
+    await a_user_via_organization(db_session, team)
+
+    slugs = (await db_session.execute(select(Organization.slug))).scalars().all()
+    assert len(slugs) == len(set(slugs)) == 2

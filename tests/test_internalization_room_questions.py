@@ -5,6 +5,8 @@ anyway — telling a team that cannot read that their question had been received
 here exists so that knot stands for something.
 """
 
+from dataclasses import dataclass
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -14,17 +16,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.core.exceptions import NothingToHear, ReplyMovedOn, ValidationError
+from app.db.models.auth import User
 from app.db.models.internalization_room import IRCoverageEvent, IRQuestion, IRQuestionStatus
+from app.services.auth.issue_tokens import issue_tokens
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.voice_handles import team_audio_url
-from tests.baker import make_language, make_project, make_project_user_access, make_user
-from tests.release_harness import a_claimed_device
+from tests.baker import (
+    grant_facilitator_app_role,
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_user,
+)
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.release_harness import a_claimed_device, claimed_tablets_of_one_team
 
 DEVICE = "tablet-da-equipe-1"
-OTHER_DEVICE = "tablet-de-outra-equipe"
 OV = "OV-Ruth"
 QUESTIONS = "/api/internalization-room/questions"
+FACILITATOR_QUESTIONS = "/api/internalization-room/facilitator/questions"
 
 
 class MemoryStore:
@@ -42,13 +53,9 @@ class MemoryStore:
 async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The tablet's side of the router — real HTTP, real SQLite, a faked speech store."""
     from app.api.internalization_room.questions import router as questions_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
-    )
     monkeypatch.setattr(service, "_store", lambda *a, **kw: MemoryStore())
 
     async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
@@ -64,10 +71,11 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
         base_url="http://test",
-        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+        headers=tablet.headers | {"X-Room-Device": DEVICE},
     ) as client:
         yield client
 
@@ -90,7 +98,7 @@ async def _coverage_events(db: AsyncSession, session_id: str) -> list[IRCoverage
 
 
 async def _raise(
-    db: AsyncSession, store: MemoryStore, *, device: str = DEVICE, project_id: str | None = None
+    db: AsyncSession, store: MemoryStore, *, device: str = DEVICE, project_id: str = TABLET_TEAM
 ):
     return await service.raise_question(
         db,
@@ -158,7 +166,7 @@ async def test_an_answer_reaches_the_team_that_asked(db_session: AsyncSession) -
     await service.answer_with_voice(
         db_session, question, audio=b"o facilitador respondeu", answered_by="user-1", store=store
     )
-    waiting = await service.replies_for(db_session, DEVICE, project_id=None)
+    waiting = await service.replies_for(db_session, project_id=TABLET_TEAM)
 
     assert [q.id for q in waiting] == [question.id]
     assert store.objects[waiting[0].reply_audio_key or ""] == b"o facilitador respondeu"
@@ -171,7 +179,7 @@ async def test_an_answer_never_reaches_another_team(db_session: AsyncSession) ->
         db_session, question, audio=b"resposta", answered_by="user-1", store=store
     )
 
-    assert await service.replies_for(db_session, OTHER_DEVICE, project_id=None) == []
+    assert await service.replies_for(db_session, project_id="equipe-vizinha") == []
 
 
 async def test_an_answer_survives_the_session_it_was_asked_in(db_session: AsyncSession) -> None:
@@ -182,7 +190,7 @@ async def test_an_answer_survives_the_session_it_was_asked_in(db_session: AsyncS
         db_session, question, audio=b"resposta", answered_by="user-1", store=store
     )
 
-    waiting = await service.replies_for(db_session, DEVICE, project_id=None)
+    waiting = await service.replies_for(db_session, project_id=TABLET_TEAM)
 
     assert waiting[0].session_id == "sessao-1"
     assert len(waiting) == 1
@@ -197,7 +205,7 @@ async def test_a_reply_is_offered_once_and_not_again(db_session: AsyncSession) -
 
     await service.mark_heard(db_session, question)
 
-    assert await service.replies_for(db_session, DEVICE, project_id=None) == []
+    assert await service.replies_for(db_session, project_id=TABLET_TEAM) == []
 
 
 async def test_resolved_elsewhere_never_arrives_in_the_app(db_session: AsyncSession) -> None:
@@ -209,7 +217,7 @@ async def test_resolved_elsewhere_never_arrives_in_the_app(db_session: AsyncSess
     await service.resolve_elsewhere(db_session, question, answered_by="user-1")
 
     assert question.status is IRQuestionStatus.RESOLVED
-    assert await service.replies_for(db_session, DEVICE, project_id=None) == []
+    assert await service.replies_for(db_session, project_id=team.id) == []
     assert await _still_open(db_session, facilitator) == []
 
 
@@ -232,6 +240,7 @@ async def test_a_corrected_reply_reaches_a_team_that_heard_the_first(
     store = MemoryStore()
     question = await service.raise_question(
         db_session,
+        project_id=TABLET_TEAM,
         device_id=DEVICE,
         session_id="s1",
         pericope="P01",
@@ -247,7 +256,7 @@ async def test_a_corrected_reply_reaches_a_team_that_heard_the_first(
         db_session, question, audio=b"certo", answered_by="fac", store=store
     )
 
-    waiting = await service.replies_for(db_session, DEVICE, project_id=None)
+    waiting = await service.replies_for(db_session, project_id=TABLET_TEAM)
     assert [q.id for q in waiting] == [question.id], (
         "o heard_at da primeira filtrava a correção para sempre, e a equipe ficava com a "
         "renderização errada sem meio de descobrir"
@@ -260,6 +269,7 @@ async def test_resolving_does_not_bury_a_reply_nobody_has_heard(
     store = MemoryStore()
     question = await service.raise_question(
         db_session,
+        project_id=TABLET_TEAM,
         device_id=DEVICE,
         session_id="s1",
         pericope="P01",
@@ -273,7 +283,7 @@ async def test_resolving_does_not_bury_a_reply_nobody_has_heard(
     with pytest.raises(ValidationError):
         await service.resolve_elsewhere(db_session, question, answered_by="fac")
 
-    waiting = await service.replies_for(db_session, DEVICE, project_id=None)
+    waiting = await service.replies_for(db_session, project_id=TABLET_TEAM)
     assert [q.id for q in waiting] == [question.id]
 
 
@@ -435,42 +445,6 @@ async def test_a_question_of_another_project_is_not_listed_to_a_matching_device_
     assert [r["question_id"] for r in allowed.json()["replies"]] == [question.id]
 
 
-async def test_a_question_that_names_no_project_is_still_listed_to_a_claimed_device(
-    db_session: AsyncSession, room_client: httpx.AsyncClient
-) -> None:
-    _team, credential = await a_claimed_device(db_session, email="unowned-list@example.com")
-    store = MemoryStore()
-    question = await _raise(db_session, store)
-    await service.answer_with_voice(
-        db_session, question, audio=b"resposta", answered_by="fac", store=store
-    )
-
-    response = await room_client.get(
-        f"{QUESTIONS}/replies", headers={"X-Device-Credential": credential}
-    )
-
-    assert [r["question_id"] for r in response.json()["replies"]] == [question.id], (
-        "a maioria das perguntas de hoje nasce de uma sessão da chave compartilhada e não "
-        "nomeia projeto; exigir igualdade esvaziava a fila de quem já tem credencial"
-    )
-
-
-async def test_the_shared_key_still_lists_a_project_question_by_device(
-    db_session: AsyncSession, room_client: httpx.AsyncClient
-) -> None:
-    team, _credential = await a_claimed_device(db_session, email="shared-list@example.com")
-    store = MemoryStore()
-    question = await _raise(db_session, store, project_id=team.id)
-    await service.answer_with_voice(
-        db_session, question, audio=b"resposta", answered_by="fac", store=store
-    )
-
-    assert await _served_reply(room_client, question.id) is not None, (
-        "a chave compartilhada não nomeia aparelho nem projeto, e a fila dela é por aparelho "
-        "como sempre foi; conferir projeto ali a deixaria sem as respostas que já recebe"
-    )
-
-
 async def test_a_question_nobody_answered_cannot_be_heard(db_session: AsyncSession) -> None:
     question = await _raise(db_session, MemoryStore())
 
@@ -535,7 +509,9 @@ async def test_a_panorama_question_keeps_the_sessions_own_pericope(
 ) -> None:
     """A hand raised on the Book Panorama screen names OV-Ruth, never a fallback or a book id
     stripped of its prefix (ENG-802)."""
-    session = await session_service.create_session(db_session, pericope="OV")
+    session = await session_service.create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV"
+    )
     assert session.pericope == OV
 
     question_id = await _raise_the_hand(room_client, session_id=session.id)
@@ -552,7 +528,9 @@ async def test_raising_a_hand_in_the_panorama_touches_no_coverage(
     """The boundary this half of ENG-779 does not move: the hand reads no map, reads the
     coverage events once (the SELECT behind `last_bead_moved_in_session`, the anchor that ENG-456
     added) and writes none, so the session's necklace is exactly what it was before the question."""
-    session = await session_service.create_session(db_session, pericope="OV")
+    session = await session_service.create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV"
+    )
     state_before = dict(session.coverage_state)
     events_before = await _coverage_events(db_session, session.id)
 
@@ -561,3 +539,181 @@ async def test_raising_a_hand_in_the_panorama_touches_no_coverage(
     await db_session.refresh(session)
     assert session.coverage_state == state_before
     assert await _coverage_events(db_session, session.id) == events_before
+
+
+@dataclass(frozen=True)
+class _TeamWithTwoTablets:
+    team_id: str
+    facilitator: User
+    tablet_a: dict[str, str]
+    tablet_b: dict[str, str]
+
+    @property
+    def asking_device(self) -> str:
+        return self.tablet_a["X-Room-Device"]
+
+
+async def _a_team_with_two_tablets(db: AsyncSession, *, email: str) -> _TeamWithTwoTablets:
+    team, facilitator, [a, b] = await claimed_tablets_of_one_team(db, email=email, tablets=2)
+    return _TeamWithTwoTablets(
+        team_id=team.id, facilitator=facilitator, tablet_a=a.headers, tablet_b=b.headers
+    )
+
+
+async def _a_tablet_of_another_team(db: AsyncSession, *, email: str) -> dict[str, str]:
+    _team, _facilitator, [tablet] = await claimed_tablets_of_one_team(db, email=email, tablets=1)
+    return tablet.headers
+
+
+async def _a_reply_to_a_question_asked_on(
+    db: AsyncSession, *, device: str, project_id: str, store: MemoryStore | None = None
+) -> IRQuestion:
+    store = store or MemoryStore()
+    question = await _raise(db, store, device=device, project_id=project_id)
+    return await service.answer_with_voice(
+        db, question, audio=b"resposta da facilitadora", answered_by="fac", store=store
+    )
+
+
+async def _listed_on(client: httpx.AsyncClient, tablet: dict[str, str]) -> list[str]:
+    response = await client.get(f"{QUESTIONS}/replies", headers=tablet)
+    assert response.status_code == 200, response.text[:300]
+    return [reply["question_id"] for reply in response.json()["replies"]]
+
+
+async def _played_to_the_end_on(
+    client: httpx.AsyncClient, tablet: dict[str, str], question: IRQuestion
+) -> httpx.Response:
+    return await client.post(
+        f"{QUESTIONS}/{question.id}/heard",
+        headers=tablet,
+        json={"audio_url": team_audio_url(question.reply_audio_key or "")},
+    )
+
+
+async def test_a_reply_to_a_question_asked_on_tablet_a_is_listed_on_tablet_b_of_the_team(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    team = await _a_team_with_two_tablets(db_session, email="equipe-lista@example.com")
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
+
+    assert await _listed_on(room_client, team.tablet_b) == [reply.id], (
+        "a resposta é da equipe: a equipe perguntou no tablet A e agora trabalha no B, e a "
+        "resposta nunca chegava"
+    )
+
+
+async def test_a_reply_played_to_the_end_on_tablet_b_is_no_longer_unheard_on_tablet_a(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    team = await _a_team_with_two_tablets(db_session, email="equipe-ouviu@example.com")
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
+
+    heard = await _played_to_the_end_on(room_client, team.tablet_b, reply)
+
+    assert heard.status_code == 200, heard.text[:300]
+    assert await _listed_on(room_client, team.tablet_a) == [], (
+        "ouvida até o fim em um tablet da equipe, a resposta conta como ouvida para a equipe "
+        "inteira"
+    )
+
+
+async def test_a_tablet_of_another_team_never_lists_the_reply(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    team = await _a_team_with_two_tablets(db_session, email="equipe-dona@example.com")
+    neighbour = await _a_tablet_of_another_team(db_session, email="vizinha-lista@example.com")
+    await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
+
+    assert await _listed_on(room_client, neighbour) == [], (
+        "a resposta é da equipe que perguntou; um tablet de outra equipe nunca a vê"
+    )
+
+
+async def test_a_tablet_of_another_team_cannot_mark_the_reply_heard(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    team = await _a_team_with_two_tablets(db_session, email="equipe-marca@example.com")
+    neighbour = await _a_tablet_of_another_team(db_session, email="vizinha-marca@example.com")
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
+
+    refused = await _played_to_the_end_on(room_client, neighbour, reply)
+
+    assert refused.status_code == 404, refused.text[:300]
+    assert await _listed_on(room_client, team.tablet_a) == [reply.id], (
+        "outra equipe não ouve pela equipe que perguntou; a resposta segue não ouvida"
+    )
+
+
+async def test_a_reply_nobody_marked_heard_stays_listed_on_both_tablets_of_the_team(
+    db_session: AsyncSession, room_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore()
+    monkeypatch.setattr(service, "_store", lambda *a, **kw: store)
+    team = await _a_team_with_two_tablets(db_session, email="equipe-metade@example.com")
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id, store=store
+    )
+
+    played = await room_client.get(
+        team_audio_url(reply.reply_audio_key or ""), headers=team.tablet_b
+    )
+
+    assert played.status_code == 200, played.text[:300]
+    assert await _listed_on(room_client, team.tablet_a) == [reply.id], (
+        "o tablet B tocou a resposta e parou sem marcar ouvida; o tablet A segue com ela"
+    )
+    assert await _listed_on(room_client, team.tablet_b) == [reply.id], (
+        "o tablet B tocou a resposta e parou sem marcar ouvida; ela segue na lista dele"
+    )
+
+
+async def test_the_desk_shows_a_reply_heard_on_another_tablet_as_heard_by_the_team(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    team = await _a_team_with_two_tablets(db_session, email="equipe-mesa@example.com")
+    await grant_facilitator_app_role(db_session, team.facilitator.id)
+    access, _refresh = await issue_tokens(db_session, team.facilitator)
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
+    heard = await _played_to_the_end_on(room_client, team.tablet_b, reply)
+    assert heard.status_code == 200, heard.text[:300]
+
+    desk = await room_client.get(
+        FACILITATOR_QUESTIONS,
+        params={"team_id": team.team_id},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+
+    assert desk.status_code == 200, desk.text[:300]
+    [card] = desk.json()["questions"]
+    assert card["heard_at"] is not None, (
+        "a Mesa mostra «✓ ouvida pela equipe» quando qualquer tablet da equipe ouviu, não só "
+        "o que perguntou"
+    )
+
+
+async def test_a_reply_already_heard_on_the_asking_tablet_stays_heard_for_the_whole_team(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    team = await _a_team_with_two_tablets(db_session, email="equipe-antiga@example.com")
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
+    await service.mark_heard(db_session, reply)
+
+    assert await _listed_on(room_client, team.tablet_b) == [], (
+        "uma resposta já ouvida no tablet que perguntou continua ouvida para a equipe inteira"
+    )
+    assert await _listed_on(room_client, team.tablet_a) == [], (
+        "a marca de ouvida do tablet que perguntou vale também para ele"
+    )

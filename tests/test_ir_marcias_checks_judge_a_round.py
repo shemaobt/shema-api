@@ -3,7 +3,8 @@
 The rules and the failure messages are hers, read from `src/golden/bt.ts` in
 `shemaobt/Tripod-Internalization` on 2026-09-11 and kept in her words, because a report of
 ours goes back to her and has to be legible beside one of hers. No check is added, none is
-dropped, none is loosened.
+dropped, none is loosened. One came after that reading: `spoken_whole_sentence`, which she added
+on 2026-09-21 and which is read from `src/golden/btChecks.ts` at her freeze, 18fa7c4.
 
 The inputs are typed from her `golden/bt/*.json`; the map behind the P02 ones is
 `_spec/canon/meaning-map/P02-Ruth-1-6-14.md`, scene 1 (Ruth 1:6-7).
@@ -14,6 +15,8 @@ from __future__ import annotations
 from typing import Any
 
 from scripts.bt_golden_checks import check_round
+from scripts.bt_golden_runner import load_script
+from scripts.sync_doctrine import REPO_ROOT
 
 #: A turn that passes every unconditional check of hers: it says `vocês`, says `tradu`,
 #: addresses nobody in the singular, names one frase, carries no banned verb, no `o mapa`
@@ -266,3 +269,243 @@ def test_her_dropped_no_finding_would_have_failed_the_correct_run() -> None:
         "a finding about a detail that IS in the telling (split across frases): "
         f'"{THE_EXTRA_CAUSE}"'
     ]
+
+
+THE_SOLD_HOUSE = "O homem vendeu a casa antes de ir para Moabe, e a história não conta isso."
+
+ACRESCIMO_ROUND_ONE = {
+    "conferida": False,
+    "findings": [{"kind": "addition", "note": "vend|casa", "frase": 2}],
+    "no_kinds": ["missing"],
+    "spoken_names_frase": 2,
+    "spoken_matches": "áudio|gravação",
+    "spoken_asks_audio_or_explanation": True,
+    "spoken_whole_sentence": 2,
+}
+
+ASKS_THE_WHOLE_SENTENCE = (
+    "Na frase 2 vocês traduziram que o homem vendeu a casa que tinha — isso a história não "
+    "conta. Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na "
+    "frase 2 e traduzam de novo. Se está no áudio, regravem a frase 2 inteira — a frase toda, "
+    "nunca só um pedaço — e traduzam essa frase de novo."
+)
+
+NEVER_ASKS_TO_RECORD = (
+    "Na frase 2 vocês traduziram que o homem vendeu a casa que tinha — isso a história não "
+    "conta. Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na "
+    "frase 2 e traduzam de novo. Se está no áudio, podem seguir com calma."
+)
+
+
+def _acrescimo(spoken: str) -> dict[str, Any]:
+    return _round(
+        findings=[{"kind": "addition", "note": THE_SOLD_HOUSE, "frase": 2}], spoken=spoken
+    )
+
+
+def test_a_voice_that_never_asks_to_record_the_frase_whole_fails() -> None:
+    assert check_round(_acrescimo(NEVER_ASKS_TO_RECORD), ACRESCIMO_ROUND_ONE) == [
+        'the voice does not ask to record frase 2 again WHOLE ("regravem a frase 2 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ], "a expectativa do script dela nunca era conferida: a voz podia não pedir nada"
+
+
+def test_her_approved_wording_for_a_whole_sentence_meets_the_key() -> None:
+    assert check_round(_acrescimo(ASKS_THE_WHOLE_SENTENCE), ACRESCIMO_ROUND_ONE) == [], (
+        "a frase aprovada pela Marcia em 2026-09-21 é a que o script dela espera"
+    )
+
+
+def test_a_voice_that_sends_the_team_to_a_part_or_a_scene_fails_even_beside_the_whole_ask() -> None:
+    part = _acrescimo(ASKS_THE_WHOLE_SENTENCE + " Ou gravem essa parte de novo.")
+    scene = _acrescimo(ASKS_THE_WHOLE_SENTENCE + " Ou regravem a cena.")
+
+    assert check_round(part, ACRESCIMO_ROUND_ONE) == [
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"gravem essa parte"'
+    ], "a gravação que aceita a frase inteira ainda mandava gravar um pedaço"
+    assert check_round(scene, ACRESCIMO_ROUND_ONE) == [
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"regravem a cena"'
+    ]
+
+
+def test_a_whole_ask_about_another_frase_is_not_the_whole_ask_for_this_one() -> None:
+    other = _acrescimo(
+        ASKS_THE_WHOLE_SENTENCE.replace(
+            "regravem a frase 2 inteira — a frase toda, nunca só um pedaço —",
+            "regravem a frase 3 inteira",
+        )
+    )
+
+    assert (
+        'the voice does not ask to record frase 2 again WHOLE ("regravem a frase 2 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ) in check_round(other, ACRESCIMO_ROUND_ONE), (
+        "pedir a frase 3 inteira não repara a frase 2 que o script plantou"
+    )
+
+
+def test_a_round_whose_script_does_not_carry_the_key_keeps_the_part_wording_it_always_had() -> None:
+    without_the_key = {
+        name: value
+        for name, value in ACRESCIMO_ROUND_ONE.items()
+        if name != "spoken_whole_sentence"
+    }
+    legacy = _acrescimo(
+        "Na frase 2 vocês traduziram que o homem vendeu a casa — isso a história não conta. "
+        "Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na frase "
+        "2 e traduzam de novo. Se está no áudio, gravem essa parte de novo — a parte 1."
+    )
+
+    assert check_round(legacy, without_the_key) == [], (
+        "os cinco scripts mais velhos, sem contentType, ainda mandam gravar a parte"
+    )
+
+
+def test_the_vendored_acrescimo_script_fails_a_voice_that_sends_the_team_to_a_part() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P01-regravar-frase-acrescimo.json")
+    expect = script.rounds[0].expect
+    legacy = _acrescimo(
+        "Na frase 2 vocês traduziram que o homem vendeu a casa — isso a história não conta. "
+        "Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na frase "
+        "2 e traduzam de novo. Se está no áudio, gravem essa parte de novo — a parte 1."
+    )
+
+    assert check_round(legacy, expect) == [
+        'the voice does not ask to record frase 2 again WHOLE ("regravem a frase 2 inteira" / '
+        '"essa frase inteira" / "a frase toda")',
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"gravem essa parte"',
+    ], "o script P01-regravar-frase-acrescimo esperava a frase inteira e ninguém conferia"
+    assert check_round(_acrescimo(ASKS_THE_WHOLE_SENTENCE), expect) == []
+
+
+THE_SWAPPED_CAUSE = [
+    {
+        "kind": "addition",
+        "note": "Noemi decidiu voltar porque as noras pediram — a história não conta esse pedido",
+        "frase": 1,
+    },
+    {
+        "kind": "missing",
+        "note": "Noemi ouviu a notícia de que o Senhor deu pão ao seu povo",
+        "frase": 1,
+    },
+]
+
+ONE_FIX_FOR_THE_SWAP = (
+    "Na frase 1 vocês traduziram que Noemi decidiu voltar porque as noras pediram — isso a "
+    "história não conta. A história conta que Noemi ouviu, nos campos de Moabe, que o povo dela "
+    "tinha pão de novo, e por isso se levantou para voltar. Está no áudio, ou entrou agora na "
+    "tradução? Traduzam a frase de novo, ou regravem essa frase inteira, uma vez, do jeito que "
+    "a história conta."
+)
+
+
+def test_the_vendored_troca_script_fails_a_voice_that_sends_the_team_to_a_part() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P02-regravar-frase-troca.json")
+    expect = script.rounds[0].expect
+    to_a_part = ONE_FIX_FOR_THE_SWAP.replace(
+        "regravem essa frase inteira", "gravem essa parte de novo"
+    )
+
+    assert check_round(_round(findings=THE_SWAPPED_CAUSE, spoken=to_a_part), expect) == [
+        'the voice does not ask to record frase 1 again WHOLE ("regravem a frase 1 inteira" / '
+        '"essa frase inteira" / "a frase toda")',
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"gravem essa parte"',
+    ], "o script P02-regravar-frase-troca esperava a frase inteira e ninguém conferia"
+    assert (
+        check_round(_round(findings=THE_SWAPPED_CAUSE, spoken=ONE_FIX_FOR_THE_SWAP), expect) == []
+    )
+
+
+THE_REQUEST_ADDED = {
+    "kind": "addition",
+    "note": "Noemi decidiu voltar porque as noras pediram — a história não conta esse pedido",
+    "frase": 1,
+}
+
+THE_NUANCE_FOUND = {
+    "kind": "nuance",
+    "note": "a frase diz 'um dia' onde a história diz esta noite",
+    "frase": 7,
+}
+
+ASKS_FRASE_ONE_WHOLE = (
+    "Na frase 1 vocês traduziram que Noemi decidiu voltar porque as noras pediram — isso a "
+    "história não conta. Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, "
+    "toquem na frase 1 e traduzam de novo. Se está no áudio, regravem a frase 1 inteira — a "
+    "frase toda, nunca só um pedaço — e traduzam essa frase de novo."
+)
+
+NEVER_ASKS_FRASE_ONE_AGAIN = ASKS_FRASE_ONE_WHOLE.replace(
+    "regravem a frase 1 inteira — a frase toda, nunca só um pedaço — e traduzam essa frase de "
+    "novo.",
+    "podem seguir com calma.",
+)
+
+THE_ONE_DETAIL = (
+    "Só um detalhe, na frase 7: vocês traduziram «tivesse marido um dia»; a história conta que "
+    "ela poderia ter marido ainda esta noite. Se foi só na tradução, toquem na frase 7 e "
+    "traduzam de novo. Se está assim no áudio e vocês quiserem mudar, regravem a frase 7 "
+    "inteira — a frase toda, nunca só um pedaço — e traduzam essa frase de novo. Se estiver bom "
+    "assim, vocês podem ouvir tudo de novo, do começo ao fim, e aprovar como rascunho final."
+)
+
+NEVER_ASKS_FRASE_SEVEN_AGAIN = THE_ONE_DETAIL.replace(
+    "Se está assim no áudio e vocês quiserem mudar, regravem a frase 7 inteira — a frase toda, "
+    "nunca só um pedaço — e traduzam essa frase de novo.",
+    "Se está assim no áudio, podem seguir com calma.",
+)
+
+
+def test_the_vendored_espera_script_fails_a_first_round_that_never_asks_for_frase_one() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P02-nuance-espera.json")
+    expect = script.rounds[0].expect
+    findings = [THE_REQUEST_ADDED, THE_NUANCE_FOUND]
+
+    assert check_round(_round(findings=findings, spoken=NEVER_ASKS_FRASE_ONE_AGAIN), expect) == [
+        'the voice does not ask to record frase 1 again WHOLE ("regravem a frase 1 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ], "o script P02-nuance-espera esperava a frase 1 inteira e ninguém conferia"
+    assert check_round(_round(findings=findings, spoken=ASKS_FRASE_ONE_WHOLE), expect) == []
+
+
+def test_the_vendored_espera_script_fails_a_second_round_that_never_asks_for_frase_seven() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P02-nuance-espera.json")
+    expect = script.rounds[1].expect
+
+    assert check_round(
+        _round(findings=[THE_NUANCE_FOUND], spoken=NEVER_ASKS_FRASE_SEVEN_AGAIN, conferida=True),
+        expect,
+    ) == [
+        'the voice does not ask to record frase 7 again WHOLE ("regravem a frase 7 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ], "o script P02-nuance-espera esperava a frase 7 inteira na segunda rodada"
+    assert (
+        check_round(
+            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True), expect
+        )
+        == []
+    )
+
+
+def test_the_vendored_esta_noite_script_fails_a_round_that_never_asks_for_frase_seven() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P02-nuance-esta-noite.json")
+    expect = script.rounds[0].expect
+
+    assert check_round(
+        _round(findings=[THE_NUANCE_FOUND], spoken=NEVER_ASKS_FRASE_SEVEN_AGAIN, conferida=True),
+        expect,
+    ) == [
+        'the voice does not ask to record frase 7 again WHOLE ("regravem a frase 7 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ], "o script P02-nuance-esta-noite esperava a frase 7 inteira e ninguém conferia"
+    assert (
+        check_round(
+            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True), expect
+        )
+        == []
+    )

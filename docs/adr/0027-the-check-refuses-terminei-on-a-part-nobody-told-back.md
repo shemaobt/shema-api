@@ -1,9 +1,17 @@
 ---
-status: accepted
+status: superseded by ADR 0068: terminei refuses no untold part; amended by shema-api#760: the restart route is back and writes a SupersededAttempt again
 date: 2026-09-18
 ---
 
 # The check refuses *terminei* on a part nobody told back, and names it
+
+**Amended by shema-api#760** on 13 October 2026: the restart route this decision retired is
+back as the team's «recomeçar a tradução» (ENG-1223), so the two paragraphs below that retire
+it and leave `SupersededAttempt` without a producer no longer hold. `POST
+/sessions/{id}/back-translation/restart` starts the translation over: every current frase stops
+counting, and the findings and the kept check rounds move onto one more `SupersededAttempt`,
+which `start_the_translation_over` writes. The record below is left as it was written; the
+refusal of *terminei* on a part nobody told back stands.
 
 ADR 0026 taught the release gate to read the current parts beside the stretches, and wrote its
 own gap into its consequences: the verdict's untold errand, `first_untold`, still walked stretch
@@ -54,9 +62,9 @@ Consequence, decided knowing it. The restart route
 (ENG-723), the Desk and the text seam never reached it, and the whole-session verb answered a
 gesture the room no longer offers — what a team re-records is the unit they rehearsed (ADR 0025),
 and the part they re-record is answered by the upload under its number. A rehearsal told whole and
-recorded again retires nothing, because that verb reads the number and an unnumbered take carries
-none; the telling the team already gave stands on a recording that is no longer the part, and this
-decision is what refuses that session at the check.
+recorded again retired nothing when this was written, because that verb read the number and an
+unnumbered take carries none, and this decision was what refused that session at the check; ADR
+0023 now records that the verb retires it too, and the refusal stands for the part that replaced it.
 
 Two more consequences, decided knowing them. **The D family stops answering any session a team
 reaches.** A rehearsal recorded and nothing told back is a current part with no stretch, so it is

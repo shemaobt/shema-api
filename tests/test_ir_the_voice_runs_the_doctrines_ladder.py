@@ -21,6 +21,7 @@ from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import llm
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import run_turn
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -122,7 +123,7 @@ async def _a_turn(
     )
 
 
-async def test_the_guide_and_the_validator_both_think_adaptively_at_high_effort(
+async def test_the_guide_thinks_adaptively_at_high_effort_inside_4096_tokens(
     recording_client,
 ) -> None:
     messages = recording_client()
@@ -131,17 +132,36 @@ async def test_the_guide_and_the_validator_both_think_adaptively_at_high_effort(
 
     calls = messages.calls
     assert len(calls) == 2, "um turno é o rascunho do Guia e o julgamento do Validador"
-    for call in calls:
-        role = "Validador" if _is_validator(call) else "Guia"
-        assert call["thinking"] == {"type": "adaptive"}, (
-            f"o {role} rodava em ThinkingLevel.LOW, que a doutrina proíbe no caminho da voz"
-        )
-        assert call["output_config"]["effort"] == "high", (
-            f"o {role} rodava sem esforço declarado e o padrão do provedor decidia por ele"
-        )
-        assert call["max_tokens"] == 4096, (
-            f"o teto de saída do {role} cortava a resposta inteira ao meio da frase"
-        )
+    guide = next(call for call in calls if not _is_validator(call))
+    assert guide["thinking"] == {"type": "adaptive"}, (
+        "o Guia rodava em ThinkingLevel.LOW, que a doutrina proíbe no caminho da voz"
+    )
+    assert guide["output_config"]["effort"] == "high", (
+        "o Guia rodava sem esforço declarado e o padrão do provedor decidia por ele"
+    )
+    assert guide["max_tokens"] == 4096, (
+        "o teto de saída do Guia cortava a resposta inteira ao meio da frase"
+    )
+
+
+async def test_the_validator_has_room_for_8192_tokens_and_no_effort_set(
+    recording_client,
+) -> None:
+    messages = recording_client()
+
+    await _a_turn()
+
+    validator = next(call for call in messages.calls if _is_validator(call))
+    assert validator["thinking"] == {"type": "adaptive"}, (
+        "o Validador rodava em ThinkingLevel.LOW, que a doutrina proíbe no caminho da voz"
+    )
+    assert validator["max_tokens"] == 8192, (
+        "em passagens longas (P11, P08) o veredito estourava 4096 e a equipe ouvia a linha "
+        "de segurança no lugar da voz"
+    )
+    assert "effort" not in validator.get("output_config", {}), (
+        "o Validador era fixado em esforço alto onde a Marcia deixa o padrão do modelo"
+    )
 
 
 async def test_the_map_that_repeats_every_turn_rides_in_one_cached_block(
@@ -225,7 +245,7 @@ async def test_the_book_the_panorama_reads_from_is_sent_once_and_cached(
         await run_panorama_turn(
             session_language="Portuguese",
             language_code="pt",
-            transcript=said,
+            speech=HeardSpeech(text=said),
             messages=[],
             panorama_prompt=panorama,
             validator_prompt=VALIDATOR,
@@ -255,7 +275,6 @@ async def test_the_verdict_the_guide_speaks_on_a_telling_back_rides_its_map_in_o
     from app.services.internalization_room.back_translation import (
         Finding,
         FindingKind,
-        closing_block,
         findings_block,
     )
     from app.services.internalization_room.part_names import Addresses
@@ -271,7 +290,6 @@ async def test_the_verdict_the_guide_speaks_on_a_telling_back_rides_its_map_in_o
             session_language="Portuguese",
             language_code="pt",
             findings_text=findings_block([finding], Addresses()),
-            closing=closing_block(finding),
             scope=P,
             pericope_num=P,
             messages=[],

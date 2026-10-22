@@ -24,16 +24,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRHardStretch, IRSegment, IRSession
 from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.segments import (
-    capture_segment,
-    first_telling_of,
-    refuse_a_stretch_that_is_not_a_unit,
-)
+from app.services.internalization_room.segments import capture_segment, first_telling_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
+    back_translation_of,
     raise_a_warning,
     save_back_translation,
 )
+
+
+def pass_of_a_telling(state: BackTranslationState) -> int:
+    """One before the analyst has read the telling-back, two once it has, clean or not.
+
+    Hers is the same floor, decided by the server and never by the telling: a frase told again
+    before any check is still the first pass, and a new frase after one is the second.
+    """
+    return 1 if state.never_analysed else 2
 
 
 async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRSegment) -> bool:
@@ -87,6 +93,22 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
     return True
 
 
+async def a_hard_stretch_stands(db: AsyncSession, stretch: IRSegment) -> bool:
+    first = await first_telling_of(db, stretch)
+    mark = await db.scalar(
+        select(IRHardStretch.id).where(
+            IRHardStretch.session_id == stretch.session_id, IRHardStretch.segment_id == first.id
+        )
+    )
+    return mark is not None
+
+
+async def _a_capture_after_a_check_unchecks(standing: BackTranslationState) -> None:
+    if not standing.never_analysed:
+        standing.checked = False
+        standing.verdict = None
+
+
 async def capture_and_note_a_hard_stretch(
     db: AsyncSession,
     session: IRSession,
@@ -96,10 +118,9 @@ async def capture_and_note_a_hard_stretch(
     ends_ms: int,
     bridge_take_id: str | None = None,
     transcript: str | None = None,
-    pass_number: int = 1,
     replaces: IRSegment | None = None,
     state: BackTranslationState | None = None,
-) -> bool:
+) -> tuple[IRSegment, bool]:
     """Write a captured telling and whatever it crossed into, in one transaction.
 
     The stretch row, the telling-back state and the mark of a hard stretch are one fact about
@@ -108,14 +129,21 @@ async def capture_and_note_a_hard_stretch(
     for anybody, on a telling the team believes landed.
 
     `state` is the telling-back state for the routes that carry one; the per-stretch correction
-    does not, and passes nothing. It sits here rather than in the router because the router does
-    not touch the database (ADR 0009), and here rather than in `segments` because this composes
-    the count and the halt, which is what this module is between the two services for.
+    passes none, and its state is read off the session here. It sits here rather than in the
+    router because the router does not touch the database (ADR 0009), and here rather than in
+    `segments` because this composes the count and the halt, which is what this module is
+    between the two services for.
+
+    The pass is `pass_of_a_telling`'s. And a capture after a check undoes what the check left:
+    `checked` goes false and the stored verdict goes, so approval is refused until a new clean
+    check, while `checked_at` stays to say when the analyst last read the team. The correction
+    writes that state back too, in this same transaction.
 
     The scope a state is stored under is defaulted here for the same reason. Two doors reach
     this capture — the tablet's chunks route and the text seam — and both wrote the default
     themselves, so the rule held until somebody opened a third door.
     """
+    standing = state if state is not None else back_translation_of(session)
     captured = await capture_segment(
         db,
         session,
@@ -124,44 +152,25 @@ async def capture_and_note_a_hard_stretch(
         ends_ms=ends_ms,
         bridge_take_id=bridge_take_id,
         transcript=transcript,
-        pass_number=pass_number,
+        pass_number=pass_of_a_telling(standing),
         replaces=replaces,
         commit=False,
     )
-    if state is not None:
-        state.scope = state.scope or session.pericope
-        await save_back_translation(db, session, state, commit=False)
+    if state is None:
+        await db.refresh(session, ["back_translation"])
+        standing = back_translation_of(session)
+    await _a_capture_after_a_check_unchecks(standing)
+    moved = replaces is not None and replaces.ends_ms != ends_ms
+    if moved:
+        standing.pauses_moved += 1
+    if state is not None or moved or not standing.never_analysed:
+        standing.scope = standing.scope or session.pericope
+        await save_back_translation(
+            db, session, standing, commit=False, rule=_a_capture_after_a_check_unchecks
+        )
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()
-    return crossed
-
-
-async def count_an_empty_telling(db: AsyncSession, session: IRSession, stretch: IRSegment) -> bool:
-    """Count a re-recording nobody could make out, and mark the stretch if that crossed it.
-
-    Only the replace route counts it; the chunk door refuses a telling with no words instead.
-
-    Nothing is captured, so there is no new row to carry the count onto: it goes on the row
-    that is standing. Not counting it is what made the room unreachable exactly when it was
-    broken — during a transcriber outage every attempt comes back empty, and the team could
-    tell one stretch forever without the room ever offering them a person.
-
-    The count and the mark land in **one** transaction, closed here. Committed apart, a failure
-    between them left the count at the number with no mark, which is a stretch the room can
-    never ask about again on the reading `raise_a_warning` gives it.
-
-    A row that no longer counts, or one the team divided, is refused before anything is counted
-    on it — the same answer the captured path gets from `capture_segment`. Unguarded, a tablet
-    retrying a correction it already sent spent a telling on a stretch the room had retired, and
-    a divided parent could be marked hard although nothing can ever replace it.
-    """
-    await refuse_a_stretch_that_is_not_a_unit(db, session.id, stretch)
-    stretch.tellings += 1
-    await db.flush()
-    crossed = await note_a_hard_stretch(db, session, stretch)
-    await db.commit()
-    await db.refresh(stretch)
-    return crossed
+    return captured, crossed
 
 
 async def hard_stretches_of(

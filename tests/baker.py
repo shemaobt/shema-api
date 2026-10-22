@@ -1,4 +1,5 @@
 import base64
+import itertools
 from datetime import UTC, datetime, timedelta
 
 from google_crc32c import Checksum
@@ -13,7 +14,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.db.models.journey import Journey
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
@@ -47,26 +48,12 @@ from app.db.models.translation_helper import (
 )
 from app.services.auth.hash_password import hash_password
 from app.services.internalization_room.canon.elements import (
-    ElementKind,
     element_keys,
-    elements_for,
 )
-from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import (
     apply_coverage,
     create_session,
-    save_comprehension,
 )
 from app.services.internalization_room.takes import store_take
 from app.services.oral_collector.review_flags import (
@@ -135,14 +122,14 @@ SAMPLE_MM_DATA: dict = {
 async def make_user(
     db: AsyncSession,
     *,
-    email: str = "user@example.com",
+    email: str | None = None,
     password: str = "password123",
     display_name: str | None = "Test User",
     is_active: bool = True,
     is_platform_admin: bool = False,
 ) -> User:
     user = User(
-        email=email.lower(),
+        email=(email or an_email()).lower(),
         password_hash=hash_password(password),
         display_name=display_name,
         is_active=is_active,
@@ -218,7 +205,12 @@ FACILITATOR_ROLE_KEY = "facilitator"
 
 
 async def grant_facilitator_app_role(db: AsyncSession, user_id: str) -> UserAppRole:
-    """Give a user the app role every facilitator route requires.
+    """Give a user the app role every facilitator route requires."""
+    return await grant_room_app_role(db, user_id, FACILITATOR_ROLE_KEY)
+
+
+async def grant_room_app_role(db: AsyncSession, user_id: str, role_key: str) -> UserAppRole:
+    """Give a user a role on the internalization-room app.
 
     The rows `20260812_room04` registers do not exist here: the suite builds its schema with
     ``create_all`` and never runs a migration. So the app and the role are created on first
@@ -236,14 +228,10 @@ async def grant_facilitator_app_role(db: AsyncSession, user_id: str) -> UserAppR
         app = await make_app(db, app_key=FACILITATOR_APP_KEY, name="Sala de Internalização")
 
     role = (
-        await db.execute(
-            select(Role).where(Role.app_id == app.id, Role.role_key == FACILITATOR_ROLE_KEY)
-        )
+        await db.execute(select(Role).where(Role.app_id == app.id, Role.role_key == role_key))
     ).scalar_one_or_none()
     if role is None:
-        role = await make_role(
-            db, app.id, role_key=FACILITATOR_ROLE_KEY, label="Facilitador", is_system=True
-        )
+        role = await make_role(db, app.id, role_key=role_key, label=role_key, is_system=True)
 
     return await make_user_app_role(db, user_id, app.id, role.id)
 
@@ -260,6 +248,27 @@ async def make_language(
     await db.commit()
     await db.refresh(lang)
     return lang
+
+
+_language_codes = itertools.count()
+
+
+def _next_language_code() -> str:
+    return f"{next(_language_codes) % 1000:03d}"
+
+
+_emails = itertools.count()
+
+
+def an_email() -> str:
+    return f"user{next(_emails)}@example.com"
+
+
+async def a_language(
+    db: AsyncSession, *, name: str | None = None, code: str | None = None
+) -> Language:
+    code = code or _next_language_code()
+    return await make_language(db, name=name or f"Lingua {code}", code=code)
 
 
 async def make_organization(
@@ -957,56 +966,11 @@ async def make_bcd_generation_log(
     return log
 
 
-def _carries_its_preservation_layer(pericope: str) -> bool:
-    """Whether the canon records withholdings for this passage, read from the canon itself.
-
-    Deliberately not `require_walkable`, and not a caught refusal: a fixture that asked the
-    guard whether the guard would refuse could never notice the guard refusing a passage it
-    should have opened. This reads the same signal the room refuses on — the `preserved:`
-    beads on the passage's coverage spine — from the vendored material, one step away from
-    the code under test.
-    """
-    return any(
-        element.kind is ElementKind.PRESERVED
-        for element in elements_for(pericope, load_map(pericope).book)
-    )
-
-
 async def open_ir_session(
     db: AsyncSession, *, pericope: str, project_id: str | None = None
 ) -> IRSession:
-    """A room session on one passage, opened through the room wherever the room opens it.
-
-    Since ENG-589 the room refuses a passage whose preservation layer nobody wrote, and eight
-    of Ruth's fourteen are in that state. Walking the whole book is therefore a position the
-    production path cannot reach with the canon as vendored today, so the fixtures that need
-    a team standing past P06 have those rows written here rather than pretend the room opened
-    them.
-
-    Which branch a passage takes is decided from the canon *before* calling, never from a
-    caught refusal. A passage that carries its layer goes through `create_session` unguarded:
-    if the room refuses one it should have opened, that raises here and the fixture's own
-    tests go red, which is the whole point. Swallowing it would hide exactly the regression
-    this slice exists to prevent.
-    """
-    if _carries_its_preservation_layer(pericope):
-        return await create_session(db, pericope=pericope, project_id=project_id)
-
-    session = IRSession(
-        project_id=project_id,
-        pericope=pericope,
-        status=IRSessionStatus.IN_PROGRESS,
-        messages=[],
-        after_panorama=False,
-        coverage_state=initial_state(pericope),
-        kept_takes={},
-        back_translation={},
-        comprehension={},
-    )
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-    return session
+    """A room session on one passage, opened through the room: every passage opens (ADR 0066)."""
+    return await create_session(db, pericope=pericope, project_id=project_id)
 
 
 class _BucketInMemory:
@@ -1039,6 +1003,8 @@ async def keep_a_take(
     *,
     kind: IRTakeKind = IRTakeKind.ENSAIO,
     audio: bytes = b"a equipe gravou",
+    ordinal: int | None = None,
+    pass_number: int | None = None,
 ) -> IRTake:
     """Audio the team recorded, kept the way the room keeps it.
 
@@ -1055,40 +1021,24 @@ async def keep_a_take(
         kind=kind,
         scope=session.pericope,
         audio=audio,
+        ordinal=ordinal,
+        pass_number=pass_number,
         store=_BucketInMemory(),
-    )
-
-
-def fully_supported_comprehension(pericope: str) -> ComprehensionState:
-    """The comprehension gate met: every checkpoint demonstrated, every scene practised."""
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints_for(pericope))
-        ],
-        practiced_scene_ids=scene_ids_for(pericope),
     )
 
 
 async def having_finished_the_passage(db: AsyncSession, session: IRSession) -> IRSession:
     """Take one conversation to the end of its passage the way the room does.
 
-    Three facts, because the room asks for three and they are not the same fact. Every bead
-    engaged and the comprehension gate met are what `session_is_done` reads, and what lets
-    the room send the team to record. The recording kept is what finishes the
-    passage — the ledger informs, it never ends the conversation.
+    Two facts, because the room asks for two and they are not the same fact. Every bead
+    engaged is what `session_is_done` reads, and what lets the room send the team to record.
+    The recording kept is what finishes the passage — the ledger informs, it never ends the
+    conversation.
 
-    Written through `apply_coverage`, `save_comprehension` and `store_take` rather than by
+    Written through `apply_coverage` and `store_take` rather than by
     setting fields, so a fixture cannot agree with a reader that reads a finished passage
     differently from how one is actually finished.
     """
-    await save_comprehension(db, session, fully_supported_comprehension(session.pericope))
     settled = await apply_coverage(
         db,
         session.id,

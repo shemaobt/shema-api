@@ -28,22 +28,30 @@ import httpx
 import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.exceptions import ERROR_CODE_UPSTREAM
-from app.db.models.internalization_room import IRPromptKey, IRSegment, IRTakeKind
+from app.db.models.internalization_room import (
+    IRPromptKey,
+    IRSegment,
+    IRSession,
+    IRSessionStatus,
+    IRTakeKind,
+)
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room import verdict_round
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
+from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.session_turns import turns_of
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P02"
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
@@ -124,6 +132,7 @@ async def _read(reply: str, patch_analyst):
         scope=PASSAGE,
         pericope_num=PASSAGE,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 
@@ -337,11 +346,8 @@ async def client(
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     said: list[str] = []
 
@@ -359,7 +365,10 @@ async def client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -367,7 +376,6 @@ async def client(
 async def _open_session(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": PASSAGE, "language": "pt"},
     )
     assert created.status_code == 200, created.text
@@ -377,7 +385,7 @@ async def _open_session(client: httpx.AsyncClient) -> str:
 async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
@@ -390,7 +398,7 @@ async def _tell_back(
 ) -> None:
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={
             "take_id": take_id,
             "starts_ms": str((position - 1) * 9000),
@@ -420,7 +428,7 @@ async def _four_stretches_told(client: httpx.AsyncClient) -> str:
 
 
 async def _resumed(client: httpx.AsyncClient, session_id: str) -> dict[str, Any]:
-    standing = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    standing = await client.get(f"{PREFIX}/sessions/{session_id}")
     assert standing.status_code == 200, standing.text
     return dict(standing.json()["back_translation"])
 
@@ -448,7 +456,7 @@ async def test_the_valid_finding_reaches_the_session(
     assert resumed["checked"] is False
 
 
-async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
+async def test_a_reply_the_room_cannot_read_is_heard_as_d_1_and_not_as_a_provider_that_is_down(
     client: httpx.AsyncClient,
     analyst: Analyst,
     caplog: pytest.LogCaptureFixture,
@@ -475,13 +483,21 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     with caplog.at_level(logging.WARNING):
         answered = await _finish(client, db_session, session_id)
 
-    assert answered.status_code == 502, answered.text
+    assert answered.status_code == 200, answered.text
     body = answered.json()
-    assert body["code"] == "UNREADABLE_REPLY"
+    assert body["fixed_line"] == "D0", "a equipe ouve a primeira linha D dela, não um erro"
+    assert body["audio_url"] == ""
+    assert body["used_fail_safe"] is True
+    assert body["checked"] is False
+    assert body["finding_kind"] is None
     assert UPSTREAM_LOG_LINE not in caplog.text, (
         "o serviço externo respondeu; chamar isso de queda custou uma investigação inteira"
     )
     assert verdicts == [], "sem leitura não há veredito: a voz não é chamada"
+    standing = (
+        await db_session.execute(select(IRSession.status).where(IRSession.id == session_id))
+    ).scalar_one()
+    assert standing is IRSessionStatus.IN_PROGRESS, "a leitura ilegível não chama ninguém"
 
     resumed = await _resumed(client, session_id)
     assert resumed["checked"] is False
@@ -489,6 +505,47 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
 
     await _finish(client, db_session, session_id)
     assert analyst.readings == 2, "nada foi salvo: o próximo terminei pergunta de novo"
+
+
+async def test_the_press_after_a_d_1_reads_the_telling_again_and_goes_on_as_usual(
+    client: httpx.AsyncClient,
+    analyst: Analyst,
+    spoken: list[str],
+    db_session: AsyncSession,
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    heard = await _finish(client, db_session, session_id)
+    assert heard.json()["fixed_line"] == "D0"
+
+    analyst.reply = '{"evidence_sufficient": true, "findings": []}'
+    again = await _finish(client, db_session, session_id)
+
+    assert again.status_code == 200, again.text
+    body = again.json()
+    assert analyst.readings == 2, "o D-1 foi servido de novo sem o analista ler outra vez"
+    assert body["fixed_line"] == ""
+    assert body["checked"] is True
+    assert spoken == ["Vocês contaram bem."]
+    assert (await _resumed(client, session_id))["checked"] is True
+
+
+async def test_the_d_1_is_a_turn_the_room_keeps(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    kept = (await room.get_session(db_session, session_id)).messages or []
+
+    guide = [message for message in kept if message["role"] == "guide"]
+    assert len(guide) == 1
+    assert guide[0]["text"] == "Desculpa, não consegui ouvir direito — podem repetir?"
+    assert guide[0]["outcome"] == "fail_safe"
+    assert guide[0]["fixed_line"] == "D0"
+    assert guide[0]["category"] == "D"
 
 
 async def test_a_provider_that_is_down_is_still_an_upstream_failure(
@@ -504,8 +561,9 @@ async def test_a_provider_that_is_down_is_still_an_upstream_failure(
     with caplog.at_level(logging.WARNING):
         answered = await _finish(client, db_session, session_id)
 
-    assert answered.status_code == 502, answered.text
-    assert answered.json()["code"] == ERROR_CODE_UPSTREAM
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["refusal"] == "CHECK_UNAVAILABLE"
+    assert answered.json()["used_fail_safe"] is False
     assert UPSTREAM_LOG_LINE in caplog.text
 
 
@@ -786,3 +844,119 @@ async def test_a_finding_that_survives_the_drop_is_what_the_room_says(
     assert body["audio_url"] != clip_url(STALE_CLIP), (
         "o que a equipe ouve é sobre a falta, não a fala de ontem sobre pouca evidência"
     )
+
+
+async def test_an_addition_and_an_unclear_with_no_readable_frase_each_leave_a_line(
+    patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    reply = json.dumps(
+        {
+            "findings": [
+                {"kind": "addition", "note": f"sem frase {MARK}"},
+                {"kind": "unclear", "note": "frase fora", "frase": 9},
+            ]
+        }
+    )
+    with caplog.at_level(logging.WARNING, logger=PARSER_LOGGER):
+        analysis = await _read(reply, patch_analyst)
+
+    assert analysis is not None
+    assert "BT analyst addition finding without a chunk" in caplog.text, (
+        "o acréscimo sem frase legível pousava sem nenhuma linha no log"
+    )
+    assert "BT analyst unclear finding without a chunk" in caplog.text
+    assert MARK in caplog.text, "a linha traz a resposta inteira"
+
+
+async def test_the_d_1_keeps_the_reason_it_was_said(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    kept = (await room.get_session(db_session, session_id)).messages or []
+
+    guide = next(message for message in kept if message["role"] == "guide")
+    attempts = guide["attempts"]
+    assert [attempt["note"] for attempt in attempts] == [
+        "The Analyst's reply could not be read, so there was no verdict."
+    ]
+
+
+async def test_the_d_1_does_not_say_the_team_was_inaudible(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    kept = (await room.get_session(db_session, session_id)).messages or []
+
+    assert [message["role"] for message in kept] == ["guide"], (
+        "o analista falhou, a equipe foi ouvida: a voz lia depois que a equipe estava inaudível"
+    )
+
+
+async def test_a_d_1_over_a_standing_finding_still_counts_it(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = CAPTURED_REPLY
+    session_id = await _four_stretches_told(client)
+    first = await _finish(client, db_session, session_id)
+    assert first.json()["findings_remaining"] == 1
+
+    session = await room.get_session(db_session, session_id)
+    stored = dict(session.back_translation)
+    stored["analysed_segment_ids"] = None
+    session.back_translation = stored
+    await db_session.commit()
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+
+    answered = await _finish(client, db_session, session_id)
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["fixed_line"] == "D0"
+    assert body["findings_remaining"] == 1, "o achado da rodada anterior continua de pé"
+    assert (await _resumed(client, session_id))["finding_kind"] == FindingKind.ADDITION.value
+
+
+async def test_a_turn_that_drafted_nothing_reads_zero_attempts_and_keeps_its_reason(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    session = await room.get_session(db_session, session_id)
+    guide = next(message for message in session.messages if message["role"] == "guide")
+    session.messages = [{key: value for key, value in guide.items() if key != "told_back"}]
+
+    (turn,) = turns_of(session).turns
+    assert turn.voice.attempts == 0
+    assert guide["attempts"][0]["note"] == (
+        "The Analyst's reply could not be read, so there was no verdict."
+    )
+
+
+async def test_a_guide_that_drafted_nothing_is_still_an_attempt_in_the_turn_view() -> None:
+    session = IRSession(
+        id="sessao-1",
+        messages=[
+            {
+                "role": "guide",
+                "text": "Desculpa, não consegui ouvir direito — podem repetir?",
+                "outcome": "fail_safe",
+                "category": "D",
+                "attempts": [{"attempt": 1, "draft": ""}],
+            }
+        ],
+    )
+
+    (turn,) = turns_of(session).turns
+
+    assert turn.voice.attempts == 1

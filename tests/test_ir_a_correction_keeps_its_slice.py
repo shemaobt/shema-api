@@ -25,7 +25,7 @@ from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.takes import current_parts, take_by_id, takes_of
 from tests.hard_stretch_harness import FROM_THE_DATABASE
-from tests.release_harness import KEY, PREFIX, TABLET
+from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
     a_piece_still_to_be_told,
@@ -39,7 +39,7 @@ from tests.room_harness import (
     the_room_speaks,
 )
 
-HEADERS = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
+HEADERS = {"X-Room-Device": TABLET}
 
 #: The telling the team records over the stretch they are correcting. Bytes of its own, so a
 #: case can tell a recording that was stored from one that was refused before anything was.
@@ -347,7 +347,6 @@ async def test_the_short_way_over_the_same_slice_is_one_more_telling(
     )
 
     assert answered.status_code == 200, answered.text
-    assert answered.json()["captured"] is True, "a correção foi guardada"
     assert "composed_take_id" not in answered.json(), "nada foi montado à volta dela"
     standing = await _standing(db_session, session.id)
     assert len(standing) == 1

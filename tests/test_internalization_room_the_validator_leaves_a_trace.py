@@ -20,6 +20,7 @@ import pytest
 
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.llm import TruncatedReply
 from app.services.internalization_room.run_turn import MAX_REDRAFTS, run_turn
 from tests.turn_harness import (
     GUIDE,
@@ -42,7 +43,6 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
 
 
 LOGGER_NAME = "app.services.internalization_room.validated_turn"
-BRIDGE_LANGUAGE_LOGGER_NAME = "app.services.internalization_room.bridge_language"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 
@@ -79,13 +79,13 @@ async def _a_turn(session_id: str, **overrides: Any):
     return await run_turn(**kwargs)
 
 
-async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_draft(
+async def test_a_validator_answering_loose_text_leaves_one_trace_on_the_draft(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Both readings are of the first draft, so both traces name attempt 1.
+    """The one reading is of the first draft, so the trace names attempt 1.
 
     Three traces on attempts 1, 2 and 3 was the shape when an unreadable reply cost a
-    redraft; a reply the room cannot read is now read again before anything is redrawn.
+    redraft; a reply the room cannot read is the fail-safe at once, with nothing redrawn.
     """
 
     class Garbage(FakeAgent):
@@ -103,7 +103,7 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert record.__dict__["attempt"] == 1
         assert record.__dict__["session_id"] == "sessao-1"
@@ -114,7 +114,7 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
 async def test_json_without_a_verdict_key_also_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"ok": True}] * 2))
+    patch_agent(FakeAgent(verdicts=[{"ok": True}]))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-2")
@@ -122,7 +122,7 @@ async def test_json_without_a_verdict_key_also_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert "verdict" in record.__dict__["condition"].lower()
         assert '"ok": true' in record.getMessage().lower()
@@ -155,10 +155,43 @@ async def test_a_regenerate_verdict_leaves_the_whole_reply(
         assert "claims_to_see_the_screen" in record.getMessage()
 
 
+async def test_a_regenerate_verdict_is_logged_as_a_regenerate_not_as_a_refused_reply(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "off_topic"}]}]
+            * (MAX_REDRAFTS + 1)
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await _a_turn("sessao-9")
+
+    messages = [record.getMessage() for record in _refusal_records(caplog)]
+    assert [message.split(":")[0] for message in messages] == [
+        "Validator regenerate verdict for session sessao-9, attempt 1",
+        "Validator regenerate verdict for session sessao-9, attempt 2",
+        "Validator regenerate verdict for session sessao-9, attempt 3",
+    ], "a readable regenerate was logged as 'Validator reply refused', the unreadable reply's line"
+
+
+async def test_an_unreadable_reply_is_still_logged_as_a_refused_reply(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(FakeAgent(verdicts=[{"ok": True}]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await _a_turn("sessao-10")
+
+    (record,) = _refusal_records(caplog)
+    assert record.getMessage().startswith("Validator reply refused (")
+
+
 async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}] * 2))
+    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}]))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-4")
@@ -166,46 +199,11 @@ async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert "correct" in record.__dict__["condition"].lower()
         assert "empty" in record.__dict__["condition"].lower()
         assert "corrected_response" in record.getMessage()
-
-
-async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_words(
-    patch_agent, caplog: pytest.LogCaptureFixture
-) -> None:
-    """The counterpart of the policy test, on the recusal path instead of the exception one.
-
-    The draft is the Guide's, and the Guide can echo the team — so only the condition and a
-    count of characters are allowed onto this logger, never the drafted words themselves.
-    """
-    draft = "Tell me what you think happens next in this part of the story."
-    patch_agent(
-        FakeAgent(
-            verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
-            drafts=[draft] * (MAX_REDRAFTS + 1),
-        )
-    )
-
-    with (
-        caplog.at_level(logging.WARNING, logger=LOGGER_NAME),
-        caplog.at_level(logging.WARNING, logger=BRIDGE_LANGUAGE_LOGGER_NAME),
-    ):
-        outcome = await _a_turn("sessao-5")
-
-    assert outcome.used_fail_safe is True
-    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-
-    refusals = _refusal_records(caplog)
-    assert len(refusals) == 3
-    for record in refusals:
-        assert "off_bridge_language" in record.__dict__["condition"]
-        assert draft not in record.getMessage()
-        for value in record.__dict__.values():
-            assert draft not in str(value)
-    assert draft not in caplog.text
 
 
 async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(
@@ -272,3 +270,171 @@ async def test_a_passing_verdict_leaves_no_refusal_trace(
         record.name == LOGGER_NAME and "sessao-8" in record.getMessage()
         for record in caplog.records
     ), "o turno some do próprio logger sem deixar rasto nenhum, nem o de sempre"
+
+
+def _fail_safe_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == LOGGER_NAME and record.getMessage().startswith("Fail-safe fired")
+    ]
+
+
+async def test_an_empty_draft_after_a_send_back_does_not_blame_the_issues_that_send_back_left(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}],
+            drafts=["Vamos começar.", ""],
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-11")
+
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 1 redrafts for session sessao-11: "
+        "the Guide's draft was empty, so the Validator never saw it"
+    ], "the first redraft's issues were printed as the reason the empty draft fell"
+
+
+async def test_an_empty_draft_after_a_send_back_leaves_the_outcome_with_no_issues(
+    patch_agent,
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}],
+            drafts=["Vamos começar.", ""],
+        )
+    )
+
+    outcome = await _a_turn("sessao-15")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.draft == ""
+    assert outcome.issues == [], "the empty redraft carried the issues of the draft before it"
+
+
+async def test_an_empty_draft_after_two_send_backs_leaves_the_outcome_with_no_issues(
+    patch_agent,
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[
+                {"verdict": "regenerate", "issues": [{"problem": "off_topic"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+            ],
+            drafts=["Vamos começar.", "Rute casou com Malom.", ""],
+        )
+    )
+
+    outcome = await _a_turn("sessao-16")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.redrafts == 2
+    assert outcome.issues == [], "the empty redraft carried the issues of the second draft"
+
+
+async def test_an_empty_first_draft_names_the_session_and_says_the_validator_never_saw_it(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    agent = patch_agent(FakeAgent(verdicts=[], drafts=[""]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-12")
+
+    assert agent.calls == ["guide"]
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 0 redrafts for session sessao-12: "
+        "the Guide's draft was empty, so the Validator never saw it"
+    ]
+
+
+async def test_an_unreadable_reply_is_not_a_send_back_in_the_fail_safe_line(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(verdicts=[{"verdict": "approve", "issues": [{"problem": "imported_knowledge"}]}])
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-13")
+
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 0 redrafts for session sessao-13: the Validator's reply could "
+        "not be read (verdict is not one of pass, correct or regenerate), so the draft was "
+        "never judged"
+    ], "a reply the room could not read was logged with its issues, as if the draft was sent back"
+
+
+async def test_three_send_backs_name_the_session_and_the_issues_of_the_last_draft(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[
+                {"verdict": "regenerate", "issues": [{"problem": "off_topic"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "claims_to_see_the_screen"}]},
+            ]
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-14")
+
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 2 redrafts for session sessao-14: the Validator sent the draft "
+        "back every time: issues=[{'problem': 'claims_to_see_the_screen'}]"
+    ], "the line did not say the draft was sent back, or printed an earlier draft's issues"
+
+
+async def test_the_attempt_kept_for_a_reply_cut_at_its_ceiling_names_the_cut(
+    patch_agent,
+) -> None:
+    class Cut(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            if "corrected_response" not in system_prompt:
+                return "rascunho"
+            raise TruncatedReply('{"verdict": "pass", "issues": [')
+
+    patch_agent(Cut(verdicts=[]))
+
+    outcome = await _a_turn("sessao-15")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.attempts == [
+        {
+            "attempt": 1,
+            "draft": "rascunho",
+            "issues": [],
+            "note": "validator error: validator reply cut at max_tokens=8192",
+        }
+    ], "a verdict cut at its ceiling kept the note of a reply that merely could not be read"
+
+
+async def test_the_cut_note_prints_the_ceiling_the_validator_call_was_sent(
+    patch_agent,
+) -> None:
+    sent: list[int] = []
+
+    class Cut(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            if "corrected_response" not in system_prompt:
+                return "rascunho"
+            sent.append(kwargs["max_output_tokens"])
+            raise TruncatedReply("{")
+
+    patch_agent(Cut(verdicts=[]))
+
+    outcome = await _a_turn("sessao-16")
+
+    assert len(sent) == 1
+    assert outcome.attempts[0]["note"] == (
+        f"validator error: validator reply cut at max_tokens={sent[0]}"
+    ), "the note named a ceiling the Validator call was not sent with"

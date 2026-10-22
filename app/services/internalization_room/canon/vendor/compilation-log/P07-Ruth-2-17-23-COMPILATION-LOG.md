@@ -149,8 +149,8 @@ pilot: "pilot-2"
     {
       "id": "R4",
       "kind": "FIGURE_FIRST_OCCURRENCE",
-      "applies_to": "FIG_0110 Living-and-Dead Formula at 2:20 (P11) — theological hinge",
-      "note": "REQUIRED keep-image. Opens here; pairs forward to P11 4:5 and P12 4:10. The paired phrase 'the living and the dead' must render as a deliberate pair so the dead remain in the family's covenantal accounting across the book. Theological hinge of the pericope.",
+      "applies_to": "FIG_0110 Living-and-Dead Formula at 2:20 (P11) — theological hinge; 4:5 says only 'the dead' (corrected under SC-0087); the link continues to 4:10",
+      "note": "REQUIRED keep-image. Opens here. The paired phrase 'the living and the dead' must render as a deliberate pair so the dead remain in the family's covenantal accounting across the book. Theological hinge of the pericope. Corrected under SC-0087: 4:5 says only 'the dead' — the phrase 'the living and the dead' is not repeated there — and 2:20 is not brought into 4:5; in the canon record the link continues to 4:10 (P12).",
       "required_in_audit": true,
       "do_not_decide": true,
       "carries_forward_to": "P11_audit",
@@ -235,10 +235,10 @@ pilot: "pilot-2"
       "id": "R14",
       "kind": "STRUCTURAL_ABSENCE_OF_GRIEF",
       "applies_to": "No further Ruth-Boaz contact through the harvest weeks (v.23 close)",
-      "note": "The narrator does not say Ruth and Boaz meet again or speak again through all the weeks of harvest; the season passes with no further contact recorded. The quiet must be preserved — the next move waits for Naomi's plan in chapter 3. The reconstructor must not invent intervening encounters.",
+      "note": "The narrator does not say Ruth and Boaz meet again or speak again through all the weeks of harvest; the season passes with no further contact recorded. The quiet must be preserved. The reconstructor must not invent intervening encounters.",
       "required_in_audit": true,
       "do_not_decide": true,
-      "source_in_meaning_map": "Significant Absence in Scene 4 ('Through all the weeks of both harvests, the narrator records no further meeting and no further word between Ruth and Boaz. The season passes in silence; the next move waits for Naomi's plan at 3:1')"
+      "source_in_meaning_map": "Significant Absence in Scene 4 ('Through all the weeks of both harvests, the narrator records no further meeting and no further word between Ruth and Boaz. The season passes in silence')"
     }
   ],
   "cross_pericope_pair_verification": {
@@ -274,16 +274,16 @@ pilot: "pilot-2"
       {
         "fig_id": "FIG_0110",
         "opens_at": "P07 P11 (2:20 living and dead)",
-        "closes_at": "P11 4:5; P12 4:10",
+        "closes_at": "P11 4:5 (only 'the dead'); P12 4:10",
         "verification_status": "PENDING",
-        "note": "FIG_0110 is present in the P11 and P12 MEANING_COORDINATES; full verification at those registers. Theological hinge pairing forward to the legal acquisition scenes."
+        "note": "FIG_0110 is present in the P11 and P12 MEANING_COORDINATES; full verification at those registers. 4:5 says only 'the dead': the 2:20 phrase 'the living and the dead' is not repeated there, and 2:20 is not brought into 4:5 (SC-0087). The link continues to 4:10 (P12)."
       },
       {
         "fig_id": "FIG_0113",
         "opens_at": "P07 P6 (2:18 leftover after satiety)",
-        "closes_at": "P08 (3:1-5)",
-        "verification_status": "PENDING",
-        "note": "The P08 MEANING_COORDINATES does NOT yet carry FIG_0113 — ruled by Marcia 2026-08-31: resolve at P08's high-risk register (next in this queue). OPTIONAL small abundance-after-famine image."
+        "closes_at": "P07 P6 (single occurrence)",
+        "verification_status": "VERIFIED",
+        "note": "Single occurrence within the pericope: the P07 MC flags FIG_0113 at P6 (2:18). 3:1–5 has no leftover image, and the P08 map and MC do not flag FIG_0113; registry frontmatter (vault note) confirms opens-at and closes-at P07. Marcia's ruling of 2026-08-31 (resolve at P08's high-risk register) is resolved there (SC-0089). OPTIONAL small abundance-after-famine image."
       },
       {
         "fig_id": "FIG_0001",

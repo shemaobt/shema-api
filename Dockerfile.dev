@@ -4,11 +4,12 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# `--no-install-recommends` matches `Dockerfile:17` and `.github/workflows/test.yml:34`, which
-# already pass it; this line was the last holdout. Without it `ffmpeg` pulls its full recommends
-# closure — mesa, GTK 3, X11, SDL2, LLVM, the VA/VDPAU video drivers. An API container uses none
-# of them, and production ships none of them: a dev image carrying packages prod lacks is how a
-# missing production dependency stays hidden until it reaches production.
+# `--no-install-recommends` matches the ffmpeg install in `Dockerfile` and the `Install ffmpeg`
+# step of `.github/workflows/test.yml`, which already pass it; this line was the last holdout.
+# Without it `ffmpeg` pulls its full recommends closure — mesa, GTK 3, X11, SDL2, LLVM, the
+# VA/VDPAU video drivers. An API container uses none of them, and production ships none of them: a
+# dev image carrying packages prod lacks is how a missing production dependency stays hidden until
+# it reaches production.
 #
 # It also shrinks, but does not remove, the exposure to a separate network-side failure. The CDN
 # serving deb.debian.org can begin refusing connections partway through a long fetch, and a
@@ -41,4 +42,4 @@ EXPOSE 8000
 # that job is what refuses a bifurcated graph, and it is the only thing that catches one,
 # since pytest builds its tables directly and never sees the graph at all. Policing the
 # graph is that job's business. The development container's business is to run.
-CMD ["sh", "-c", "uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+CMD ["sh", "-c", "uv run alembic upgrade heads && mkdir -p /app/.worktrees && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude /app/.worktrees"]

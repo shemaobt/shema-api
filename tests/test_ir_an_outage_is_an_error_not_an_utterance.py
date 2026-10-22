@@ -33,6 +33,8 @@ from app.services.internalization_room import llm
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.opening_harness import NOTE_PT_P03
 from tests.turn_harness import the_room_agent_is
 
 MODEL = "claude-fable-5-1"
@@ -143,7 +145,6 @@ async def test_a_call_that_failed_leaves_a_usage_line_with_its_status_and_cause(
 
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
@@ -193,11 +194,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         spoken.append(text)
@@ -225,14 +223,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": P, "language": "pt"},
     )
     assert created.status_code == 200
@@ -240,13 +240,12 @@ async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
 
 
 async def _the_room_takes_a_turn(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    return await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
 
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 
@@ -287,7 +286,7 @@ async def test_a_turn_that_failed_writes_no_exchange_and_leaves_the_status_where
     assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
     before = await get_session(db_session, session_id)
     status_before, messages_before = before.status, list(before.messages or [])
-    assert status_before == "in_progress" and len(messages_before) == 1
+    assert status_before == "in_progress" and len(messages_before) == 2
 
     answered = await _the_team_answers(client, session_id)
 
@@ -318,9 +317,10 @@ async def test_once_the_provider_answers_again_the_next_tap_is_a_normal_turn_on_
     assert spoken == [GUIDE_LINE], "a batida seguinte é um turno normal, sem linha enlatada"
     session = await get_session(db_session, session_id)
     spoken_lines = [{"role": m["role"], "text": m["text"]} for m in session.messages or []]
-    assert spoken_lines == [{"role": "guide", "text": GUIDE_LINE}], (
-        "a sessão é a mesma, e só o turno que respondeu ficou gravado"
-    )
+    assert spoken_lines == [
+        {"role": "team", "text": NOTE_PT_P03},
+        {"role": "guide", "text": GUIDE_LINE},
+    ], "a sessão é a mesma, e só o turno que respondeu ficou gravado"
 
 
 async def test_a_session_at_done_still_takes_a_turn_because_the_circle_is_alive(
@@ -395,15 +395,15 @@ class _EmptyBucket:
         return None
 
 
-async def test_a_broken_voice_is_answered_the_same_way_as_a_broken_microphone(
+async def test_a_broken_voice_keeps_the_turn_that_an_outage_on_the_way_in_never_makes(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
     spoken: list[str],
 ) -> None:
-    """ElevenLabs speaks the turn as well as it hears one: a dropped connection on the way
-    out gets the same 502 and the same intact session as an outage on the way in, never the
-    turn rendered as an utterance nobody heard finish."""
+    """A dropped connection to ElevenLabs on the way out comes after the turn was stored, so
+    the turn stands and its reply is voiced when it is asked for; an outage on the way in
+    still leaves nothing."""
     from app.core.config import get_settings
     from app.services.internalization_room.synthesize_facilitator_speech import (
         synthesize_facilitator_speech as real_synthesize_facilitator_speech,
@@ -430,17 +430,16 @@ async def test_a_broken_voice_is_answered_the_same_way_as_a_broken_microphone(
 
     answered = await _the_team_answers(client, session_id)
 
-    assert answered.status_code == 502, (
-        f"uma queda no ElevenLabs ao falar virava 500, não 502: {answered.text[:300]}"
+    assert answered.status_code == 200, (
+        f"uma queda no ElevenLabs ao falar perdia o turno inteiro: {answered.text[:300]}"
     )
-    body = answered.json()
-    assert body["code"] == "UPSTREAM_ERROR"
     assert spoken == spoken_before, "uma fala que falhou não entra na lista do que foi dito"
     after = await get_session(db_session, session_id)
     assert after.status == status_before, "a queda do TTS não muda o estado da sessão"
-    assert list(after.messages or []) == messages_before, (
-        "um turno que não terminou de falar não grava exchange nenhuma"
-    )
+    assert [m["text"] for m in (after.messages or [])[len(messages_before) :]] == [
+        TEAM_ANSWER,
+        GUIDE_LINE,
+    ], "a voz caiu e a troca que o Guia já tinha validado não ficou gravada"
 
 
 async def test_a_failed_turn_logs_its_cause_and_never_what_the_team_said(

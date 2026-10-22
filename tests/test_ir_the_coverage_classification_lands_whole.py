@@ -84,6 +84,7 @@ async def test_a_telling_of_the_whole_passage_lights_every_bead_it_touched(
     await background.settle_coverage(
         session_id=session.id,
         turn_id="turn-1",
+        turn_number=1,
         team_utterance=WHOLE_TELLING,
         guide_response=GUIDE_RESPONSE,
         pericope_num=P,

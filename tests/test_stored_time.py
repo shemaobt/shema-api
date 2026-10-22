@@ -126,9 +126,9 @@ def test_a_session_length_is_the_same_whichever_way_the_database_answers() -> No
         id="a", pericope="P01", created_at=AWARE, ended_at=AWARE + timedelta(minutes=42)
     )
 
-    assert end_of(naive, at=AWARE) == end_of(aware, at=AWARE)
-    assert end_of(naive, at=AWARE).duration_minutes == 42
-    assert end_of(naive, at=AWARE).state is SessionState.COMPLETE
+    assert end_of(naive) == end_of(aware)
+    assert end_of(naive).duration_minutes == 42
+    assert end_of(naive).state is SessionState.COMPLETE
 
 
 async def a_document(db: AsyncSession, *, tag: str):

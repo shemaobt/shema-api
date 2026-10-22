@@ -61,10 +61,15 @@ INTEGRATION_GLOB = "integration/**"
 
 #: A push filter that reaches these would put every branch in the repository through four
 #: jobs on every push. The cost of the test job alone is between 6 and 56 minutes (ENG-556),
-#: so the trigger staying narrow is a property worth holding, not a detail.
+#: so the trigger staying narrow is a property worth holding, not a detail. Only `test.yml` may
+#: also name `main`, as a report that gates nothing.
 TOO_BROAD = {"**", "*", "main", "master"}
 
-#: ENG-980's own lists, and every migration test added since: the nineteen files that walk a
+#: `main` is the one branch the Test workflow alone may add: a report on the merge commit, which
+#: blocks no merge and no deploy. No gate may reach these.
+ALWAYS_TOO_BROAD = TOO_BROAD - {"main"}
+
+#: ENG-980's own lists, and every migration test added since: the thirty-two files that walk a
 #: migration and the three that open a fresh interpreter, read here rather than derived, so a
 #: file the ticket names and the repo marks wrong is what
 #: `test_the_files_carry_the_marker_the_ticket_gives_them` catches instead of something this
@@ -89,6 +94,19 @@ MIGRATION_FILES = {
     "test_ir_closed_passage_repair_migration.py",
     "test_ir_team_sessions_migration.py",
     "test_shema552_migration.py",
+    "test_ir_earlier_passages_migration.py",
+    "test_ir_archives_migration.py",
+    "test_ir_opening_claim_migration.py",
+    "test_ir_session_canon_pin_migration.py",
+    "test_ir_consultant_role_migration.py",
+    "test_ir_her_ids_migration.py",
+    "test_ir_scene_rehearsals_migration.py",
+    "test_ir_retellings_migration.py",
+    "test_ir_take_origin_migration.py",
+    "test_ir_take_recording_time_migration.py",
+    "test_ir_a_stretch_marks_that_its_part_was_recorded_again_migration.py",
+    "test_ir_a_forced_release_records_its_blockers_migration.py",
+    "test_ir_the_claim_for_the_opening_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {
@@ -130,12 +148,28 @@ def test_the_gate_still_runs_on_pull_requests(filename: str) -> None:
     assert "pull_request" in triggers, f"{filename} stopped running on pull requests"
 
 
-@pytest.mark.parametrize("filename", sorted(GATES))
-def test_the_push_trigger_reaches_only_the_integration_branches(filename: str) -> None:
-    triggers = _triggers(_workflow(filename), filename)
-    branches = set(triggers["push"]["branches"])
+def test_the_test_workflow_runs_on_a_push_to_main_and_the_other_gates_stay_narrow() -> None:
+    """A crossing of two green pull requests shows on the commit it lands on, as a report."""
+    pushed = {
+        filename: set(_triggers(_workflow(filename), filename)["push"]["branches"])
+        for filename in GATES
+    }
 
-    assert not branches & TOO_BROAD, f"{filename} would run on every push: {branches}"
+    assert {"main", INTEGRATION_GLOB} <= pushed["test.yml"], pushed["test.yml"]
+    for filename, branches in pushed.items():
+        assert not branches & ALWAYS_TOO_BROAD, f"{filename} would run on every push: {branches}"
+    for filename in GATES.keys() - {"test.yml"}:
+        assert not pushed[filename] & TOO_BROAD, f"{filename} would run on main: {pushed[filename]}"
+
+
+def test_the_deploy_does_not_wait_for_the_test_workflow() -> None:
+    """The Test run on `main` reports and gates nothing: the deploy starts on the push itself."""
+    deploy = _workflow("deploy.yml")
+    triggers = _triggers(deploy, "deploy.yml")
+
+    assert "main" in triggers["push"]["branches"]
+    assert "workflow_run" not in triggers
+    assert all("needs" not in job for job in deploy["jobs"].values())
 
 
 @pytest.mark.parametrize(("filename", "jobs"), sorted(GATES.items()))
@@ -154,11 +188,10 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 #: raises the migrations ceiling to fit the `-m migration` step it adds, at twice the 3m04s
 #: the whole job measured on shemaobt/shema-api#474's own CI run. ENG-1092 raises the test
 #: ceiling to 12: at ~3700 tests the step measured 6m21s on shemaobt/shema-api#534, and a
-#: run cancelled at 7m15s was the timeout doing the wrong job. The suite on `dev` met the same
-#: seven minutes at 4768 tests, cancelling green runs of shemaobt/shema-api#592, and took the
-#: twelve with it.
+#: run cancelled at 7m15s was the timeout doing the wrong job. ENG-1498 holds that twelve on
+#: the `Run tests` step and gives the job thirty, over an apt install seen to stall past 12m41s.
 JOB_TIMEOUT_MINUTES = {
-    ("test.yml", "test"): 12,
+    ("test.yml", "test"): 30,
     ("checks.yml", "checks"): 10,
     ("migrations.yml", "migrations"): 7,
 }
@@ -174,6 +207,31 @@ def test_a_hung_job_turns_red_instead_of_staying_pending_for_hours(
     jobs = _workflow(filename)["jobs"]
     timeout = jobs[job].get("timeout-minutes")
     assert timeout == minutes, f"{filename}:{job} timeout-minutes is {timeout}, not {minutes}"
+
+
+def _the_pytest_step() -> dict:
+    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
+    running = [step for step in steps if "pytest" in step.get("run", "")]
+    assert len(running) == 1, f"test.yml runs pytest in {len(running)} steps"
+    return running[0]
+
+
+SLOWEST_SETUP_SEEN_MINUTES = 13
+
+
+def test_a_slow_setup_cannot_use_up_the_minutes_the_tests_are_held_to() -> None:
+    job = _workflow("test.yml")["jobs"]["test"]["timeout-minutes"]
+    tests = _the_pytest_step()["timeout-minutes"]
+
+    assert job - tests >= SLOWEST_SETUP_SEEN_MINUTES, (
+        f"the job has {job} minutes and the tests {tests}: {job - tests} left for the setup"
+    )
+
+
+def test_a_hang_in_the_tests_is_stopped_at_twelve_minutes_whatever_setup_took() -> None:
+    timeout = _the_pytest_step().get("timeout-minutes")
+
+    assert timeout == 12, f"the pytest step's timeout-minutes is {timeout}, not 12"
 
 
 def _checks_steps() -> list[dict]:
@@ -216,11 +274,21 @@ def test_the_one_job_runs_every_check_the_five_jobs_ran() -> None:
     assert unreached == [], f"the checks job never reaches, in this order: {unreached}"
 
 
-def test_the_canon_check_carries_the_token_its_api_calls_need() -> None:
-    """Its two calls to Marcia's repository share the runner's 60 requests/hour without it."""
-    step = _checks_step_running("scripts/sync_internalization_canon.py --check")
+def test_the_canon_check_is_held_to_a_clone_of_the_compiler_made_before_it() -> None:
+    """On a runner `CI` is set, and there the drift check fails without a compiler clone."""
+    steps = _checks_steps()
+    check = _checks_step_running("scripts/sync_internalization_canon.py --check")
+    clone = check.get("env", {}).get("TRIPOD_COMPILER_REPO")
+    cloned = [
+        step
+        for step in steps[: steps.index(check)]
+        if "git clone" in step.get("run", "")
+        and "https://github.com/MarciaSuzuki/tripod_compiler.git" in step["run"]
+        and str(clone) in step["run"]
+    ]
 
-    assert step.get("env", {}).get("GITHUB_TOKEN"), f"{step.get('name')} has env {step.get('env')}"
+    assert clone, f"{check.get('name')} has env {check.get('env')}"
+    assert cloned, f"no step before {check.get('name')} clones the compiler into {clone}"
 
 
 def test_the_boot_import_carries_the_three_variables_it_needs() -> None:
@@ -238,10 +306,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
     G2 (criterion 3): ENG-980 selects out the tests that spawn processes to prove what they
     prove — they run in Migrations and Checks instead.
     """
-    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
-    running_pytest = [step["run"] for step in steps if "pytest" in step.get("run", "")]
-    assert len(running_pytest) == 1, f"test.yml runs pytest in {len(running_pytest)} steps"
-    command = running_pytest[0]
+    command = _the_pytest_step()["run"]
 
     assert "-n 4" in command, f"the test step runs `{command}`"
     assert "--dist loadfile" in command, f"the test step runs `{command}`"
@@ -252,7 +317,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
 
 def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cleared() -> None:
     """G3 (criterion 4): a step `env` cannot unset a job-level `env` in Actions — only the
-    `run` line can, and without it the nineteen would run serially, against the job's
+    `run` line can, and without it the thirty-two would run serially, against the job's
     Postgres, on top of the schema the previous step just migrated."""
     steps = _workflow("migrations.yml")["jobs"]["migrations"]["steps"]
     running = [step for step in steps if "-m migration" in step.get("run", "")]
@@ -284,7 +349,7 @@ def test_the_two_markers_are_registered() -> None:
 def _module_level_marker(path: Path) -> str | None:
     """The name of the mark a file's `pytestmark = pytest.mark.<name>` line carries, by AST.
 
-    Reads the source rather than importing it: importing one of the twenty-two files to ask
+    Reads the source rather than importing it: importing one of the thirty-five files to ask
     what it is marked with is exactly the cost this ticket moves out of the PR job.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))

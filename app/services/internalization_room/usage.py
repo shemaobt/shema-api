@@ -203,9 +203,9 @@ def record(
 
 
 #: What each session has spent so far, oldest first. A running total and not a closing one:
-#: nothing in the backend fires when a session ends — `session_end` derives an end from six
-#: hours of silence — so a summary that waited for one would never be written for a session
-#: that was simply abandoned, which is most of them. Every turn appends the session's total
+#: nothing in the backend ends a session for being idle, and a team may come back after any
+#: silence, so a summary that waited for an end would never be written for a session that was
+#: simply left, which is most of them. Every turn appends the session's total
 #: to date instead, and the last line a session has is its total.
 _SESSIONS: OrderedDict[str, Spend] = OrderedDict()
 
@@ -245,9 +245,9 @@ def report_session(session_id: str, spend: Spend, *, a_turn: bool = True) -> Non
     """Where a session stands after one more stretch of work, so far.
 
     Written every time rather than once at the end, because there is no end to write at: a
-    session is completed or it is abandoned, and the second is derived from six hours of
-    silence long after the process that answered it. So the session's total is the last line
-    it has, and a session nobody ever came back to still has one.
+    session ends only by meeting the floor, and one the team left simply stops. So the
+    session's total is the last line it has, and a session nobody ever came back to still has
+    one.
     """
     total = session_total(session_id, spend, a_turn=a_turn)
     logger.info(

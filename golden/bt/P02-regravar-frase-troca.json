@@ -1,0 +1,122 @@
+{
+  "name": "P02-regravar-frase-troca",
+  "pericopeId": "P02",
+  "language": "Brazilian Portuguese",
+  "joined": true,
+  "why": "Ensaio Final Stage 2 — the SWAPPED CAUSE of golden/bt/P02-causa-trocada.json (Marcia's decision D6, 2026-09-07) on a recording the team's screen can repair by the sentence (docs/ENSAIO-FINAL-SPEC.md §8.3 — her texts, approved verbatim 2026-09-21). Every clip is WAV (`repair: \"sentence\"`), `joined: true` picks §8.3's kickoff. Map: _spec/canon/meaning-map/P02-Ruth-1-6-14.md, scene 1 (1:6–7): Naomi hears in the fields of Moab that YHWH has visited his people in giving them bread, and rises with her two daughters-in-law to return. Planted, exactly as in the older script: frase 1 says Naomi decided to return BECAUSE the daughters-in-law asked, and the bread news is told nowhere. Expected round 1: the addition on frase 1 (the whole relation) and the missing news, not conferida; the voice treats them as ONE thing and asks for ONE fix in the new wording — 'traduzam a frase de novo, ou regravem essa frase inteira, uma vez, do jeito que a história conta' — never 'gravem essa parte de novo' (`spoken_whole_sentence`), and never fills the map's marked silence (who told Naomi; that God brought her home — the older script's negative check, kept). Round 2 supersedes frase 1 with the faithful line → conferida. The older script (no contentType → `repair: \"part\"`) stays as the regression for today's wording. LIVE run owed — never in session hours.",
+  "draft": {
+    "clips": [
+      {
+        "key": "S1",
+        "durationMs": 20000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S2",
+        "durationMs": 25000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S3",
+        "durationMs": 45000,
+        "contentType": "audio/wav"
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi decidiu voltar para Judá porque as noras pediram."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 10,
+          "coversTo": 20,
+          "text": "Ela saiu do lugar onde estava, com as duas noras, e as três foram andando pela estrada para voltar para a terra de Judá."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 0,
+          "coversTo": 8,
+          "text": "No caminho, Noemi disse para as duas noras: vão, voltem cada uma para a casa da sua mãe."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 8,
+          "coversTo": 17,
+          "text": "Que o Senhor trate vocês com bondade, como vocês trataram os que morreram e a mim. Que o Senhor dê a vocês descanso, cada uma na casa de um marido."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 17,
+          "coversTo": 25,
+          "text": "Ela beijou as duas, e elas choraram alto. E disseram: não, nós vamos voltar com a senhora para o seu povo."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi disse: voltem, minhas filhas. Por que vocês iriam comigo? Eu ainda tenho filhos dentro de mim para serem maridos de vocês?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 10,
+          "coversTo": 25,
+          "text": "Voltem, vão. Eu estou velha demais para ter marido. Mesmo se eu dissesse que tenho esperança, e tivesse marido esta noite e tivesse filhos, vocês iam esperar até eles crescerem? Iam ficar sem casar por causa deles?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 25,
+          "coversTo": 33,
+          "text": "Não, minhas filhas. Para mim é muito mais amargo do que para vocês, porque a mão do Senhor se voltou contra mim."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 33,
+          "coversTo": 45,
+          "text": "Elas choraram alto de novo. Orfa beijou a sogra e voltou. Mas Rute se agarrou a Noemi."
+        }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [
+          {
+            "kind": "addition",
+            "note": "(?=[\\s\\S]*noras?)(?=[\\s\\S]*pedi)(?=[\\s\\S]*(decid|volt))",
+            "frase": 1
+          },
+          {
+            "kind": "missing",
+            "note": "pão|notícia|ouviu"
+          }
+        ],
+        "spoken_names_frase": 1,
+        "spoken_asks_audio_or_explanation": true,
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)",
+        "spoken_matches": "traduz\\w+ (a|essa) frase( 1)? de novo",
+        "spoken_whole_sentence": 1
+      }
+    },
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi ouviu, nos campos de Moabe, que o Senhor tinha visitado o seu povo e dado pão a eles. Então ela se levantou com as duas noras para voltar dos campos de Moabe.",
+          "supersedes": 0
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    }
+  ]
+}

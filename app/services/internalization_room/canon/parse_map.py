@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import ValidationError
+from app.core.served_books import ROOM_BOOK as ROOM_BOOK
+from app.core.served_books import SERVED_BOOKS
+from app.services.internalization_room.canon.kept import canon_path, per_canon
 
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
-
-ROOM_BOOK = "Ruth"
-
-CONSUMABLE_STATUS = "complete"
-SURVEYED_STATUS = "complete"
-SUPPORTED_GENRE_GROUPS = frozenset({"NARRATIVE"})
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 _H1 = re.compile(r"^# (\S+) — (.+)$", re.M)
@@ -48,6 +44,7 @@ _SCENE = re.compile(r"^### Scene (\d+) — (.+?) \(([^)]*)\)\s*$", re.M)
 _BLOCK = re.compile(r"^\*\*3([A-F]) — [^*]+\*\*\s*$", re.M)
 _ABSENCE = re.compile(r"^\*\*Significant Absence\*\*\s*$", re.M)
 _WIKILINK = re.compile(r"\[\[([A-Za-z]+[0-9_][^\]|]*)\]\]")
+_SLUGGED_LINK = re.compile(r"\[\[([^\]\n-]+)-[^\]\n]*\]\]")
 _PROPOSITION = re.compile(r"^### Proposition (\d+) — (.+?) \[Scene (\d+)\]\s*$", re.M)
 _ATOM = re.compile(r"^- \*\*Q:\*\* (.+?) \*\*A:\*\* (.+)$", re.M)
 
@@ -89,13 +86,6 @@ class MeaningMap(BaseModel):
     genre: str
     status: str
     sta_status: str
-    """How far the project's own survey of this passage got — `complete` or `pending`.
-
-    Read but not enforced here. A map is refused as canon at the door of the room rather
-    than at the door of the parser, because `load_book` parses the whole book in one call:
-    raising on a pending map would take the Book Panorama, the story-so-far and the passage
-    wheel down with it, including the passages whose survey is finished.
-    """
     arc_prose: str
     context_prose: str
     tone_prose: str
@@ -115,6 +105,10 @@ class MeaningMap(BaseModel):
         """Derived from the reference (`Ruth 1:15-18`) rather than stored, so the session
         table needs no second column that could disagree with canon."""
         return self.reference.split(" ", 1)[0]
+
+
+def code_only_links(text: str) -> str:
+    return _SLUGGED_LINK.sub(r"[[\1]]", text)
 
 
 def _entities(block: str) -> list[Entity]:
@@ -201,7 +195,7 @@ def _parse_propositions(body: str) -> list[Proposition]:
 
 
 def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
-    """Parse one Meaning Map. Refuses anything the project has not approved.
+    """Parse one Meaning Map, whatever its genre or status (ADR 0066).
 
     The section grammar is load-bearing: a heading that stops matching means the canon moved,
     and raising is the point — a half-parsed map would ground the Guide on a partial passage
@@ -211,20 +205,6 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
     if not front:
         raise ValidationError(f"{source}: no YAML frontmatter")
     meta = yaml.safe_load(front.group(1)) or {}
-
-    status = str(meta.get("status", ""))
-    if status != CONSUMABLE_STATUS:
-        raise ValidationError(
-            f"{source}: status is {status!r}, not {CONSUMABLE_STATUS!r} — not approved canon"
-        )
-
-    genre_group = str(meta.get("genre-group", ""))
-    if genre_group not in SUPPORTED_GENRE_GROUPS:
-        raise ValidationError(
-            f"{source}: genre-group {genre_group!r} is not enabled. Poetry maps keep the "
-            "psalm's own wording in Level 3, so treating them as narrative would coach teams "
-            "to reproduce phrasing. Coordinate with the project before enabling."
-        )
 
     body = text[front.end() :]
     h1 = _H1.search(body)
@@ -247,9 +227,9 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
         title=str(meta.get("pericope-title", "")),
         reference=h1.group(2).strip(),
         bcv=str(meta.get("bcv", "")),
-        genre_group=genre_group,
+        genre_group=str(meta.get("genre-group", "")),
         genre=str(meta.get("genre", "")),
-        status=status,
+        status=str(meta.get("status", "")),
         sta_status=str(meta.get("sta-status", "")),
         arc_prose=level_one["arc"],
         context_prose=level_one["context"],
@@ -271,23 +251,37 @@ _PERICOPE = re.compile(r"^[A-Za-z]{1,4}\d{1,3}$")
 _BOOK = re.compile(r"^[A-Za-z][A-Za-z0-9 '-]{0,60}$")
 
 
-@lru_cache(maxsize=64)
+@per_canon(maxsize=64)
 def load_map(pericope_num: str) -> MeaningMap:
     if not _PERICOPE.match(pericope_num):
         raise ValidationError(f"no vendored Meaning Map for {pericope_num}")
-    matches = sorted(MAPS_DIR.glob(f"{pericope_num}-*.md"))
+    matches = sorted(canon_path(MAPS_DIR).glob(f"{pericope_num}-*.md"))
     if not matches:
         raise ValidationError(f"no vendored Meaning Map for {pericope_num}")
     path = matches[0]
     return parse_map(path.read_text(encoding="utf-8"), source=path.name)
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def load_book(book: str) -> tuple[MeaningMap, ...]:
     """Every vendored map of one book, in story order."""
     if not _BOOK.match(book):
         raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
-    paths = sorted(MAPS_DIR.glob(f"*-{book}-*.md"))
+    paths = sorted(canon_path(MAPS_DIR).glob(f"*-{book}-*.md"))
     if not paths:
         raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
     return tuple(parse_map(path.read_text(encoding="utf-8"), source=path.name) for path in paths)
+
+
+def served_books() -> list[str]:
+    """The served books in the order of their passage ids, as her `listPericopes` sorts them."""
+    return sorted(SERVED_BOOKS, key=lambda book: load_book(book)[0].pericope_num)
+
+
+def served_maps() -> list[MeaningMap]:
+    """Every map of every served book, book by book in that order."""
+    return [meaning_map for book in served_books() for meaning_map in load_book(book)]
+
+
+def not_served(book: str) -> str:
+    return f"the {book} canon is not served in this release"

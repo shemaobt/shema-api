@@ -1,25 +1,29 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from app.core.config import Settings
-from app.services.internalization_room.fail_safe import validation_ladder
-from app.services.internalization_room.llm import Turn, cache_break_before
+from app.models.internalization_room_text_seam import Outcome
+from app.services.internalization_room.fail_safe import unrepairable
+from app.services.internalization_room.llm import (
+    TruncatedReply,
+    Turn,
+    cache_break_before,
+    the_rung_that_answers,
+)
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
-    NOT_THIS_TURN,
-    OPENING_MOVEMENT_INSTRUCTION,
-    SPEAK_THIS_TURN,
+    EARLIER_PASSAGES_HEADING,
+    TEAM_EVIDENCE_HEADING,
+    TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
-    _nobody_spoke_this_turn,
-    split_opening_movements,
+    her_block,
 )
 from app.services.internalization_room.usage import (
     Spend,
@@ -34,8 +38,49 @@ logger = logging.getLogger(__name__)
 
 MAX_REDRAFTS = 2
 
-#: How many times one draft is put to the Validator before its reply is given up on.
-READINGS_OF_ONE_DRAFT = 2
+UNREADABLE_REPLY_ATTEMPT_NOTE = (
+    "The Validator's reply could not be read, so this draft was not judged."
+)
+EMPTY_DRAFT_REASON = "the Guide's draft was empty, so the Validator never saw it"
+
+
+def _the_validators_words(issues: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The issues as an attempt keeps them: what the Validator said, as text, and nothing else.
+
+    A model's reply may carry any key and any value, and `json.loads` lets a bare `NaN` through
+    that Postgres' `json` refuses at commit, which would fail a turn that passed.
+    """
+    return [
+        {
+            key: str(row[key])
+            for key in ("problem", "claim", "explanation")
+            if row.get(key) is not None
+        }
+        for row in issues
+    ]
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """One draft of the Guide's and what the Validator and the room made of it."""
+
+    attempt: int
+    draft: str
+    issues: list[dict[str, str]] = field(default_factory=list)
+    verdict: str | None = None
+    corrected: str | None = None
+    note: str | None = None
+
+    def stored(self) -> dict[str, Any]:
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
+
+@dataclass(frozen=True)
+class CutPoint:
+    """Where the team cut the Guide's previous reply short, and how long that reply was."""
+
+    at_ms: int
+    of_ms: int | None
 
 
 @dataclass
@@ -47,29 +92,61 @@ class TurnOutcome:
     degraded: bool = False
     redrafts: int = 0
     issues: list[dict[str, Any]] = field(default_factory=list)
-    #: Which pre-approved line was spoken, when one was. The app ships these as audio, so a
-    #: fail-safe is named rather than synthesized — no TTS bill, no network, no waiting.
+    #: Which pre-approved line was spoken, when one was. The turn names it rather than voicing
+    #: it: the tablet asks `/fixed-lines/{line}`, which voices the line from the text this
+    #: server was deployed with.
     fixed_line: str = ""
-    #: The opening's two movements — the whole passage, then the scene and its invitation —
-    #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
-    #: mark was not exactly where it was asked for; `speech` always stays the whole text.
-    movements: list[str] = field(default_factory=list)
-    #: The last words the Guide drafted and the last verdict the Validator gave on them, as
-    #: it wrote it — empty when no draft was asked for, or when no reply could be read.
-    #: They are what the record keeps of a firing, so a fail-safe can be read back later.
+    #: The last words the Guide drafted and the last verdict the Validator gave on them —
+    #: empty when no draft was asked for, or when no reply could be read. `issues` above is
+    #: what the Validator wrote, whole; the record keeps only its text (`_the_validators_words`).
     draft: str = ""
     verdict: str = ""
+    #: Every draft of the turn, oldest first, with what the Validator and the room made of
+    #: it. Empty on a turn that asked no Validator. A check's D-1 keeps one entry with no draft,
+    #: carrying only the reason it was said.
+    attempts: list[dict[str, Any]] = field(default_factory=list)
     room_note: str = ""
+    #: The turn the Guide was handed in the team's place: their words behind any room note,
+    #: or the instruction it spoke on. Empty when no Guide was asked.
+    guide_heard: str = ""
+    #: The language the transcriber detected in the take, as it reported it.
+    language: str | None = None
+    #: The transcriber's probability for that language.
+    language_probability: float | None = None
+    #: Whether the take counted as the mother tongue; ``None`` on a turn the room did not
+    #: hear — the opening and the telling-back verdict — whose record keeps none.
+    mother_tongue: bool | None = None
+    #: The take's length as the note says it, in milliseconds: whole seconds for a measured
+    #: take, which the twenty-second rule read before it was rounded.
+    take_ms: float | None = None
+    #: Where the team cut the Guide's previous reply short to say this, when they did.
+    interrupted: CutPoint | None = None
+    #: The rung of the ladder that answered the Guide's last draft; ``None`` when no model did.
+    model: str | None = None
+    accepted_ids: list[str] = field(default_factory=list)
+
+
+def outcome_tag(outcome: TurnOutcome) -> Outcome:
+    """The tag the judge is defined against, read off what the turn already records.
+
+    A turn that fell to a pre-approved line says so. A voiced turn carrying the Validator's
+    issues is one the Validator mended: its contract lists no issues on a `pass`, and the only
+    other verdict that voices anything is `correct`, which lists every problem it repaired.
+    """
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.issues:
+        return "corrected"
+    return "pass"
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     """The session as the two speakers a model knows, oldest first and all of it.
 
-    The room stores three: the team, its own notes, and the Guide. Which of the three is the
-    assistant is the only thing being decided here — a room note collapses onto the team's
-    side the same as the team's own words do, because the API knows only two roles, and
-    nothing is left out — a session grows for as long as it runs, and what pays for the
-    length is the cache, not a window.
+    The room stores the team and the Guide, with its notes kept as team entries flagged
+    `room_note`; every entry that is not the Guide's is the user's, and nothing is left out —
+    a session grows for as long as it runs, and what pays for the length is the cache, not a
+    window.
     """
     return [
         Turn(
@@ -78,36 +155,6 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
         )
         for message in messages
     ]
-
-
-#: How each stored role is quoted back into the Validator's evidence block. Anything else
-#: (the team's own words) falls through to "Team" below.
-_EVIDENCE_LABELS = {"guide": "Guide", "room": "Room"}
-
-
-def _conversation_as_evidence(messages: list[dict[str, Any]]) -> str:
-    """The whole session, quoted, for the Validator to check a recollection against.
-
-    The Guide hears every turn (no window), so it may say what the team told it three
-    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
-    record, and with the slot reading "not this turn" nothing could be found: a true
-    recollection of the team's own words died as an "epistemic" violation and the team heard
-    the pause line for asking what it had said. This is quoted evidence, never a window — it
-    is all of it, oldest first, and the doctrine forbids the window, not the record.
-
-    Takes the raw stored messages, not `Turn`s: a room note is stored as its own role
-    (`sessions.append_exchange`), and the API's two-role `Turn` has already folded it onto
-    the team's side by the time `_conversation_turns` is done with it. Quoting it back as
-    `Team:` would credit the team with words it never said in the session language — this
-    labels it `Room:` instead, the one thing the Guide's own prompt already knows to do with
-    a bracketed note but the Validator's prompt is never told.
-    """
-    if not messages:
-        return NOT_THIS_TURN
-    return "\n".join(
-        f"{_EVIDENCE_LABELS.get(str(message.get('role')), 'Team')}: {message.get('text', '')}"
-        for message in messages
-    )
 
 
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
@@ -130,63 +177,61 @@ def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     )
 
 
-def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
-    """The room's own gate rejecting spoken text: the condition and a number, never the words.
+def _regenerated(raw: str, session_id: str, attempt: int) -> None:
+    """A Validator that read the draft and asked for another leaves its whole reply behind.
 
-    The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
-    ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
-    itself, because both can echo the team's own turn back at them, which is exactly what
-    `test_a_failed_turn_logs_its_cause_and_never_what_the_team_said` forbids of the log.
+    Not a refused reply: the verdict was readable, and what it decided was a redraft. The
+    `condition` field is kept so everything that already counts a Validator trace by it still
+    counts this one.
     """
     logger.warning(
-        "Guide draft rejected (%s) for session %s, attempt %s: %s",
-        condition,
+        "Validator regenerate verdict for session %s, attempt %s: %s",
         session_id,
         attempt,
-        detail,
-        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+        raw,
+        extra={
+            "session_id": session_id,
+            "attempt": attempt,
+            "condition": "verdict is 'regenerate'",
+        },
     )
+
+
+def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
+    """The Speaker's last user turn, behind everything already said.
+
+    What the team just said is that turn, on its own: the exchange it answers is the
+    conversation, not a heading inside the question. The instructions that ride per turn —
+    the opening's note — stay in that last message, which is where an
+    instruction is read as this turn's and not as something said earlier.
+    """
+    return utterance or opening_instruction
 
 
 async def _draft(
     *,
     guide_prompt: str,
     conversation: list[Turn],
-    utterance: str,
+    turn: str,
     redraft_note: str,
     settings: Settings,
-    opening_instruction: str = "",
-    ask_for_movements: bool = False,
-) -> str:
-    """Assemble the Speaker's last user turn, behind everything already said.
-
-    What the team just said is that turn, on its own: the exchange it answers is the
-    conversation, not a heading inside the question. The instructions that ride per turn —
-    the opening, the two-movement mark, the rewrite note — stay here, in the last message,
-    which is where an instruction is read as this turn's and not as something said earlier.
-
-    A turn with neither — the back-translation verdict — asks for its speech in the session's
-    own language rather than sending nothing: the API refuses an empty user message, and that
-    400 would reach the team as a fail-safe line. The fallback sits here and not at the call
-    site, because this is where the message is built.
-    """
-    if utterance:
-        user_content = utterance
-    else:
-        user_content = opening_instruction or SPEAK_THIS_TURN
-        if ask_for_movements:
-            user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
+) -> tuple[str, str | None]:
+    """Ask the Speaker for this turn, with the rewrite note behind it when there is one, and
+    say which rung answered."""
+    user_content = turn
     if redraft_note:
-        user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
-    draft: str = await room_agent().turn.call_agent(
-        role="guide",
-        system_prompt=guide_prompt,
-        user_content=user_content,
-        conversation=conversation,
-        max_output_tokens=4096,
-        settings=settings,
-    )
-    return draft.strip()
+        conversation = [*conversation, Turn(role="user", text=turn)]
+        user_content = redraft_note
+    with the_rung_that_answers() as answered:
+        draft: str = await room_agent().turn.call_agent(
+            role="guide",
+            system_prompt=guide_prompt,
+            user_content=user_content,
+            conversation=conversation,
+            max_output_tokens=4096,
+            settings=settings,
+        )
+    return draft.strip(), answered.rung
 
 
 def _timed(
@@ -272,37 +317,21 @@ async def _voiced_after_validation(
     settings: Settings,
     session_id: str = "?",
     opening_instruction: str = "",
-    ask_for_movements: bool = False,
     telling_back: str = "",
-    finding: str = "",
-    ordered_closing: str = "",
-    mother_tongue: bool = False,
     prepared_pericope: str | None = None,
+    earlier_passages: str = "",
+    with_history: bool = True,
+    first_scene: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
 
-    `telling_back`, `finding` and `ordered_closing` are the verdict turn's own context — what
-    the team told back outside the conversation, what the analyst found, and the ending the
-    Speaker was ordered to write. Every other turn leaves them empty, and the Validator is told
-    in words that an empty block is a block that does not apply to this turn rather than
-    evidence being withheld, so nothing about a conversation turn changes.
-
-    `mother_tongue` is the one case where `transcript` is not the team's own words in the
-    session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_UTTERANCE}}` is quoted
-    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech; this turn's note has not reached `messages` yet
-    either, so nothing in `RECENT_CONVERSATION` catches it. Left alone, the slot would credit
-    the team with a sentence in the session language it never spoke.
-
-    The movement mark is cut from the draft and never from the validated speech: the Validator
-    must judge exactly the words the team will hear, and it is told to write plain speakable
-    text, so a mark left in front of it comes back either flagged or silently dropped. When the
-    Validator returns a correction instead, the boundary the Guide drew no longer describes the
-    speech, and one clip is the honest answer.
+    The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
+    the kickoff's team text — and her turn loop hands that text to the Validator as what the
+    team said, so with no team words the note handed to the Guide stands
+    in the slot.
 
     A model or provider failure — a timeout, a rejected key, credits run out, a 5xx —
     rises out of here as the `UpstreamServiceError` that `call_agent` raises it as, and
@@ -310,50 +339,49 @@ async def _voiced_after_validation(
     as the family-A fail-safe: the next tap failed the same way, and the team heard the
     same canned line over and over with nothing to say a person was needed. The only
     fail-safe this engine still speaks is the designed one — a Validator that will not
-    settle after `MAX_REDRAFTS`, or one whose reply cannot be read twice over.
+    settle after `MAX_REDRAFTS`, or one whose reply is not a verdict.
 
-    A reply the room cannot read is not a verdict on the draft, so it costs a second
-    reading of the same draft and never a redraft: the Guide's words were not judged, and
-    sending them back to be rewritten spent the budget that keeps the Guide talking on a
-    fault that was the Validator's. Only when the second reading is unreadable too does the
-    family-A line answer, and the redrafts it reports are the ones actually spent.
+    The Validator reads each draft once, as in her app. A reply cut at its ceiling, one that
+    cannot be read, one with a verdict she never named, or a correction with nothing in it is
+    not a judgment of the draft and gets no second reading: the family-A line answers at once,
+    with no redraft spent, because the Guide's words were not judged and sending them back to
+    be rewritten would spend the budget that keeps the Guide talking on a fault that was the
+    Validator's.
     """
     started = time.monotonic()
     spend = open_ledger()
-    conversation = _conversation_turns(messages)
+    conversation = _conversation_turns(messages) if with_history else []
     redraft_note = ""
     issues: list[dict[str, Any]] = []
+    attempts: list[Attempt] = []
     warmed_connection = False
 
-    for attempt in range(MAX_REDRAFTS + 1):
-        draft, movements = split_opening_movements(
-            await _draft(
-                guide_prompt=speaker_system,
-                conversation=conversation,
-                utterance="" if opening else transcript,
-                redraft_note=redraft_note,
-                settings=settings,
-                opening_instruction=opening_instruction,
-                ask_for_movements=ask_for_movements,
-            )
-        )
-        if not ask_for_movements:
-            movements = []
+    turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
+    for attempt in range(MAX_REDRAFTS + 1):
+        draft, model = await _draft(
+            guide_prompt=speaker_system,
+            conversation=conversation,
+            turn=turn,
+            redraft_note=redraft_note,
+            settings=settings,
+        )
+        attempts.append(Attempt(attempt=attempt + 1, draft=draft))
+        if not draft:
+            attempts[-1] = replace(attempts[-1], note=EMPTY_DRAFT_REASON)
+            verdict: dict[str, Any] = {}
+            issues = []
+            break
+
+        reported = her_block(TEAM_REPORTED_HEADING, telling_back)
+        earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
         validator_system = render(
-            cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
+            cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            RECENT_CONVERSATION=_conversation_as_evidence(messages),
-            TEAM_UTTERANCE=(
-                NOT_THIS_TURN
-                if mother_tongue
-                else transcript or _nobody_spoke_this_turn(telling_back)
-            ),
+            EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
+            TEAM_EVIDENCE=her_block(TEAM_EVIDENCE_HEADING, transcript or opening_instruction),
             DRAFTED_RESPONSE=draft,
-            TELLING_BACK=telling_back or NOT_THIS_TURN,
-            FINDING=finding or NOT_THIS_TURN,
-            ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
         )
         if not warmed_connection:
             warm_connection_in_background(
@@ -362,39 +390,38 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             warmed_connection = True
-        for _reading in range(READINGS_OF_ONE_DRAFT):
+        try:
             raw_verdict = await room_agent().turn.call_agent(
                 role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
-                max_output_tokens=4096,
+                max_output_tokens=8192,
+                effort=None,
+                fails_on_truncation=True,
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)
-            issues = _issues_as_dicts(verdict.get("issues"))
-            if refusal is None:
-                break
-            _refused(refusal, raw_verdict, session_id, attempt + 1)
+            unread_note = UNREADABLE_REPLY_ATTEMPT_NOTE
+        except TruncatedReply as cut:
+            raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+            unread_note = "validator error: validator reply cut at max_tokens=8192"
+        issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
+            attempts[-1] = replace(attempts[-1], note=unread_note)
+            _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
+        attempts[-1] = replace(
+            attempts[-1], issues=_the_validators_words(issues), verdict=str(verdict["verdict"])
+        )
 
         speech = ""
         if verdict["verdict"] == "pass":
             speech = draft
         elif verdict["verdict"] == "correct":
             speech = str(verdict["corrected_response"]).strip()
-            movements = []
+            attempts[-1] = replace(attempts[-1], corrected=speech)
         else:
-            _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
-
-        if speech and bool(
-            await asyncio.to_thread(room_agent().strays_from, speech, language_code)
-        ):
-            issues = [*issues, {"problem": "off_bridge_language"}]
-            _draft_rejected(
-                "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
-            )
-            speech = ""
+            _regenerated(raw_verdict, session_id, attempt + 1)
 
         if speech:
             return _timed(
@@ -404,9 +431,11 @@ async def _voiced_after_validation(
                     peer_cue=detects_peer_cue(speech),
                     redrafts=attempt,
                     issues=issues,
-                    movements=movements,
                     draft=draft,
                     verdict=str(verdict["verdict"]),
+                    attempts=[attempt.stored() for attempt in attempts],
+                    guide_heard=turn,
+                    model=model,
                 ),
                 started,
                 session_id,
@@ -414,10 +443,22 @@ async def _voiced_after_validation(
                 prepared_pericope,
             )
 
-        redraft_note = _redraft_note(issues, language_code)
-    logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
+        redraft_note = _redraft_note(issues)
+    if not draft:
+        why = EMPTY_DRAFT_REASON
+    elif refusal is not None:
+        why = f"the Validator's reply could not be read ({refusal}), so the draft was never judged"
+    else:
+        why = f"the Validator sent the draft back every time: issues={issues}"
+    logger.warning(
+        "Fail-safe fired after %s redrafts for session %s: %s",
+        attempt,
+        session_id,
+        why,
+        extra={"session_id": session_id},
+    )
 
-    speech, line = validation_ladder(messages, language_code)
+    speech, line = unrepairable(attempt + 1, language_code, first_scene)
     return _timed(
         TurnOutcome(
             speech=speech,
@@ -429,6 +470,9 @@ async def _voiced_after_validation(
             fixed_line=line,
             draft=draft,
             verdict=str(verdict.get("verdict", "")),
+            attempts=[attempt.stored() for attempt in attempts],
+            guide_heard=turn,
+            model=model,
         ),
         started,
         session_id,

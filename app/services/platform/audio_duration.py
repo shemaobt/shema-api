@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 PROBE = "ffprobe"
 
+#: How long a recording's length is waited for on a request. The probe answers a phone's take
+#: in well under a second; one that has not answered by now is an unknown length, as one that
+#: failed is, and never holds the request or fails it.
+MEASURING_BOUND_S = 3.0
+
 
 async def measure_ms(audio: bytes) -> int | None:
     """The recording's length in milliseconds, or ``None`` when it cannot be read.
@@ -48,12 +53,25 @@ async def measure_ms(audio: bytes) -> int | None:
     return round(seconds * 1000)
 
 
+async def measure_ms_bounded(audio: bytes) -> int | None:
+    """``measure_ms`` waited for at most ``MEASURING_BOUND_S``, and ``None`` past it."""
+    try:
+        return await asyncio.wait_for(measure_ms(audio), MEASURING_BOUND_S)
+    except (TimeoutError, OSError) as failure:
+        logger.warning("The recording's length could not be read: %r", failure)
+        return None
+
+
 async def _probe_seconds(path: Path) -> float | None:
     """Ask ffprobe for the container's own duration, in seconds.
 
     The boundary is here and only here: a missing binary, a non-zero exit and unreadable
     output are all this process meeting the outside world, and each is reported as "no
     measurement" rather than raised at a caller with nothing to do about it.
+
+    A caller that stops waiting — the room bounds every take's measurement — takes the probe
+    down with it: killed and reaped before the cancellation goes on, so a probe stuck on a
+    truncated upload never outlives the wait it was given.
     """
     try:
         probe = await asyncio.create_subprocess_exec(
@@ -72,7 +90,12 @@ async def _probe_seconds(path: Path) -> float | None:
         logger.warning("%s is not installed: audio is stored without a duration", PROBE)
         return None
 
-    stdout, stderr = await probe.communicate()
+    try:
+        stdout, stderr = await probe.communicate()
+    except asyncio.CancelledError:
+        probe.kill()
+        await probe.wait()
+        raise
     if probe.returncode != 0:
         logger.warning("%s could not read the audio: %s", PROBE, stderr.decode()[:200])
         return None

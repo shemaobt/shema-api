@@ -62,6 +62,12 @@ def test_a_handle_for_something_else_is_refused(key: str) -> None:
     assert from_handle(to_handle(key), settings=_settings()) is None
 
 
+def test_a_clip_in_the_voice_that_once_spoke_spanish_is_no_longer_the_rooms_to_serve() -> None:
+    spanish = "tts/fYypSok4m8xKqKsDwS7O/eleven_turbo_v2_5/mp3_44100_128/abc123/def456.mp3"
+
+    assert from_handle(to_handle(spanish), settings=get_settings()) is None
+
+
 REPLY_KEY = "internalization-room/questions/8f2c/resposta-abc123.m4a"
 
 

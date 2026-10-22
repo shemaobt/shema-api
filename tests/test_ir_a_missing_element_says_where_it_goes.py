@@ -17,11 +17,10 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
-    CLOSING_MISSING_TO_REHEARSAL,
     FindingKind,
     analyse_telling_back,
-    closing_block,
 )
+from app.services.internalization_room.part_names import Addresses
 from tests.turn_harness import the_room_agent_is
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
@@ -76,6 +75,7 @@ async def _findings_for(reply: str, patch_analyst):
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
     assert analysis is not None
@@ -92,7 +92,6 @@ async def test_after_on_the_last_chunk_sends_the_team_to_rehearsal(patch_analyst
     )
 
     assert findings[0].segment_id is None
-    assert closing_block(findings[0]) == CLOSING_MISSING_TO_REHEARSAL
 
 
 async def test_after_in_the_middle_points_at_the_next_chunk(patch_analyst) -> None:

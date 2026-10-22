@@ -1,0 +1,113 @@
+{
+  "name": "P01-regravar-frase-acrescimo",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "joined": true,
+  "why": "Ensaio Final Stage 2 — an ADDITION on a recording the team's screen can repair by the sentence (docs/ENSAIO-FINAL-SPEC.md §6.8, §8.3 — Marcia's texts, approved verbatim 2026-09-21). Every clip is WAV, so runBtCheck hands the Speaker `repair: \"sentence\"`; `joined: true` picks §8.3's kickoff (the app joined the team's scene rehearsals). Map: _spec/canon/meaning-map/P01-Ruth-1-1-5.md, Proposition 2 (Ruth 1:1b): a man went from Bethlehem of Judah to sojourn in the fields of Moab with his wife and his two sons — the story tells of no house and no sale. Planted: frase 2 says the man SOLD HIS HOUSE before going; everything else is the faithful telling that came back conferida in P01-frases round 2 (frase 1 without the filled silence, frase 3 with the Ephrathites). Expected round 1: an addition on frase 2, nothing missing, not conferida; the voice names frase 2, asks whether it is in the audio or entered in the translation, and — the new wording — asks to record frase 2 again WHOLE ('regravem a frase 2 inteira — a frase toda, nunca só um pedaço') and NEVER sends the team to record a part or a scene again (`spoken_whole_sentence`). Round 2 is the 'only in the translation' path: frase 2 translated again, clean (supersedes) → conferida, the voice invites ouvir tudo e aprovar. LIVE run owed — never in session hours.",
+  "draft": {
+    "clips": [
+      {
+        "key": "S1",
+        "durationMs": 20000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S2",
+        "durationMs": 8000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S3",
+        "durationMs": 15000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S4",
+        "durationMs": 10000,
+        "contentType": "audio/wav"
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 6,
+          "text": "No tempo em que os juízes governavam, teve uma fome na terra."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 6,
+          "coversTo": 14,
+          "text": "Um homem de Belém de Judá vendeu a casa que tinha e foi morar em Moabe com a mulher e os dois filhos."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 14,
+          "coversTo": 20,
+          "text": "O nome do homem era Elimeleque, a mulher era Noemi, e os filhos eram Malom e Quiliom. Eles eram efrateus, de Belém de Judá. Eles chegaram nos campos de Moabe e ficaram lá."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 0,
+          "coversTo": 8,
+          "text": "Elimeleque, o marido de Noemi, morreu, e ela ficou com os dois filhos."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 0,
+          "coversTo": 7,
+          "text": "Os filhos casaram com mulheres de Moabe."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 7,
+          "coversTo": 15,
+          "text": "Uma se chamava Orfa e a outra se chamava Rute. Eles moraram lá uns dez anos."
+        },
+        {
+          "clipKey": "S4",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Depois Malom e Quiliom morreram também, os dois. E Noemi ficou sem os dois filhos e sem o marido."
+        }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [
+          {
+            "kind": "addition",
+            "note": "vend|casa",
+            "frase": 2
+          }
+        ],
+        "no_kinds": [
+          "missing"
+        ],
+        "no_finding": "Orfa|Rute|dez anos|casar|casamento",
+        "spoken_names_frase": 2,
+        "spoken_matches": "áudio|gravação",
+        "spoken_asks_audio_or_explanation": true,
+        "spoken_whole_sentence": 2
+      }
+    },
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 6,
+          "coversTo": 14,
+          "text": "Um homem de Belém de Judá foi morar em Moabe com a mulher e os dois filhos.",
+          "supersedes": 1
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir"
+      }
+    }
+  ]
+}

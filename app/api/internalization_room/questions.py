@@ -11,11 +11,11 @@ from hashlib import sha256
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.facilitator._deps import FacilitatorUser, ReaderUser
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import CanonNotKept, NotFoundError, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
@@ -30,8 +30,10 @@ from app.models.internalization_room import (
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.background import transcribe_question
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import label_index
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.team_sessions import canon_pins_by_session
 from app.services.internalization_room.voice_handles import (
     facilitator_audio_url,
     from_question_handle,
@@ -47,14 +49,14 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 DeviceId = device_dep
 
 
-@router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_caller_dep])
+@router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[linked_tablet_dep])
 async def raise_question(
     session_id: str,
     background: BackgroundTasks,
     device_id: str = DeviceId,
     element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> QuestionRaisedResponse:
     """Take the hand down and keep what was asked.
@@ -95,14 +97,15 @@ async def raise_question(
 
 
 @router.get(
-    "/questions/replies", response_model=HandRepliesResponse, dependencies=[room_caller_dep]
+    "/questions/replies",
+    response_model=HandRepliesResponse,
+    dependencies=[linked_tablet_dep, DeviceId],
 )
 async def replies(
-    device_id: str = DeviceId,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> HandRepliesResponse:
-    waiting = await service.replies_for(db, device_id, project_id=project_id)
+    waiting = await service.replies_for(db, project_id=project_id)
     return HandRepliesResponse(
         replies=[
             HandReplyView(
@@ -115,9 +118,9 @@ async def replies(
     )
 
 
-@router.get("/questions/audio/{handle}", dependencies=[room_caller_dep])
+@router.get("/questions/audio/{handle}", dependencies=[linked_tablet_dep])
 async def team_audio(
-    handle: str, project_id: str | None = device_project_dep, db: AsyncSession = Depends(get_db)
+    handle: str, project_id: str = device_project_dep, db: AsyncSession = Depends(get_db)
 ) -> Response:
     """Serve a facilitator's spoken reply to the app that asked.
 
@@ -133,16 +136,15 @@ async def team_audio(
     return await _audio(handle)
 
 
-@router.post("/questions/{question_id}/heard", dependencies=[room_caller_dep])
+@router.post("/questions/{question_id}/heard", dependencies=[linked_tablet_dep, DeviceId])
 async def heard(
     question_id: str,
     payload: HeardRequest | None = None,
-    device_id: str = DeviceId,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    question = await service.get_question_for_device(
-        db, question_id, device_id=device_id, project_id=project_id
+    question = await service.get_question_this_tablet_reaches(
+        db, question_id, project_id=project_id
     )
     await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
     nudge(question.project_id, "hands")
@@ -150,10 +152,10 @@ async def heard(
 
 
 def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -> InboxQuestionView:
-    """One card, with its bead named in the three languages the Desk offers.
+    """One card, with its bead named in the two languages the Desk offers.
 
     A hand raised on no bead, a key the catalogue does not have, and a pericope outside the
-    canon all arrive here as a miss, and all three leave the card with three nulls.
+    canon all arrive here as a miss, and all three leave the card with two nulls.
     """
     bead = named.get((question.pericope, question.element_key or ""))
     return InboxQuestionView(
@@ -164,10 +166,12 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
         pericope=question.pericope,
         element_label_pt=bead.label_pt if bead else None,
         element_label_en=bead.label_en if bead else None,
-        element_label_es=bead.label_es if bead else None,
         status=str(question.status),
         heard_at=_moment(question.heard_at),
         audio_url=facilitator_audio_url(question.audio_key),
+        reply_audio_url=(
+            facilitator_audio_url(question.reply_audio_key) if question.reply_audio_key else None
+        ),
         duration_ms=question.duration_ms,
         transcript=question.transcript,
         asked_at=_stamp(question.created_at),
@@ -176,7 +180,7 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
 
 @router.get("/facilitator/questions", response_model=QuestionInboxResponse)
 async def question_inbox(
-    user: FacilitatorUser,
+    user: ReaderUser,
     team_id: str | None = Query(default=None),
     status_wanted: IRQuestionStatus | None = Query(default=None, alias="status"),
     limit: int = Query(default=service.DEFAULT_PAGE, ge=1, le=service.MAX_PAGE),
@@ -192,31 +196,43 @@ async def question_inbox(
     page = await service.inbox_page(
         db, user, team_id=team_id, wanted=status_wanted, limit=limit, cursor=cursor
     )
-    named = label_index({question.pericope for question in page.questions})
+    pins = await canon_pins_by_session(db, {question.session_id for question in page.questions})
+    named: dict[str | None, dict[tuple[str, str], LabelledElement]] = {}
+    for pin in {pins.get(question.session_id) for question in page.questions}:
+        try:
+            with reading_the_canon_of(pin):
+                named[pin] = label_index(
+                    {q.pericope for q in page.questions if pins.get(q.session_id) == pin}
+                )
+        except CanonNotKept:
+            named[pin] = {}
     return QuestionInboxResponse(
-        questions=[_card(question, named) for question in page.questions],
+        questions=[
+            _card(question, named[pins.get(question.session_id)]) for question in page.questions
+        ],
         open_total=page.open_total,
+        answered_total=page.answered_total,
         next_cursor=page.next_cursor,
     )
 
 
 @router.get("/facilitator/questions/audio/{handle}")
 async def facilitator_audio(
-    handle: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    handle: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> Response:
-    """Serve a team's recorded question to the person deciding how to answer it.
+    """Serve a team's recorded question to the facilitator who answers it, or a consultant.
 
     A facilitator signs in and holds no device key, so the same bytes need a route their
     own credential opens — the queue is unusable if the only thing in it cannot be heard.
 
-    Scoped to the caller's own teams, like every other route that names a question. This
+    Scoped to the teams the caller reads, like every other route that names a question. This
     one names it by key rather than by id, which is why it was not among the five ENG-534
     fixed: it reached this codebase from a different line and arrived after the slice.
     """
     key = from_question_handle(handle)
     if key is None:
         raise NotFoundError("No such audio")
-    await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
+    await service.audio_of_a_question_this_reader_reads(db, user, key)
     await db.commit()
     return await _audio(handle)
 
@@ -226,7 +242,7 @@ async def facilitator_audio(
     response_model=QuestionAudioResponse,
 )
 async def listen_to_question(
-    question_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    question_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> QuestionAudioResponse:
     """Hand back a short-lived signed address for the recording, rather than redirecting.
 
@@ -239,11 +255,32 @@ async def listen_to_question(
     and points the element at storage — which needs no CORS, since media elements fetch in
     `no-cors` mode, and keeps `Range`, so seeking inside a recording still works.
     """
-    question = await service.get_question_for_facilitator(db, user, question_id)
+    question = await service.get_question_for_reader(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
     await db.commit()
     signed = await service.listen_address(question.audio_key)
+    return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
+
+
+@router.get(
+    "/facilitator/questions/{question_id}/reply/audio",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_reply(
+    question_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> QuestionAudioResponse:
+    """Hand back a short-lived signed address for the current reply, as the question's route does.
+
+    The Desk draws `<audio src=...>` for «Ouvir a resposta», and a media element sends no
+    headers, so the authenticated request is the caller's and the element is pointed at
+    storage. A reply recorded again replaces the key, so what plays is always the latest.
+    """
+    question = await service.get_question_for_reader(db, user, question_id)
+    if not question.reply_audio_key:
+        raise NotFoundError("No such reply")
+    await db.commit()
+    signed = await service.listen_address(question.reply_audio_key)
     return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
 
 

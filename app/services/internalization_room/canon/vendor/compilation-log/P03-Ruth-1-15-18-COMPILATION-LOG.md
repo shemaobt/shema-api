@@ -30,7 +30,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     "production_use": false
   },
   "confidence_overall": "MEDIUM_HIGH",
-  "confidence_overall_note": "P03 compiles cleanly with 5 propositions across 3 scenes. The pericope is the first oath-and-vow pericope in the pilot and surfaces the closed-list VOWS_* speech_act family for the first time, with a 1:1 mapping of the six bindings in Ruth's ladder (path / lodging / people / God / death-place / burial-place) to six VOWS_* values plus a separate INVOKES_SELF_CURSE_AS_OATH_ENFORCEMENT for the closing formula. Two scene-level INTIMATE overrides on S1 and S2 (mirroring the P02 S2/S3 pattern). YHWH-naming escalation v.16 unnamed → v.17 named captured across P3 and P4 with separate referential forms. No new B-codes, PL-codes, or TM-codes registered; all new vocabulary is TH_-prefixed structural objects and bounded-open scene_kinds / proposition_kinds / role tokens / referential forms. The expected drift profile is substantial (a dialogue-with-oath pericope built from a new VOWS_* speech-act family) but no closed-list violations. FIG_0072 PREFERRED + FIG_0074 REQUIRED + FIG_0075 REQUIRED open and close within the pericope. CB_0020 cross-pericope pair opens and is DEFERRED pending 3:13 compilation (Boaz's oath). FIG_0001 significantly absent at the moment of Ruth's covenantal binding.",
+  "confidence_overall_note": "P03 compiles cleanly with 5 propositions across 3 scenes. The pericope is the first oath-and-vow pericope in the pilot and surfaces the closed-list VOWS_* speech_act family for the first time, with a 1:1 mapping of the six bindings in Ruth's ladder (path / lodging / people / God / death-place / burial-place) to six VOWS_* values plus a separate INVOKES_SELF_CURSE_AS_OATH_ENFORCEMENT for the closing formula. Two scene-level INTIMATE overrides on S1 and S2 (mirroring the P02 S2/S3 pattern). YHWH-naming escalation v.16 unnamed → v.17 named captured across P3 and P4 with separate referential forms. No new B-codes, PL-codes, or TM-codes registered; all new vocabulary is TH_-prefixed structural objects and bounded-open scene_kinds / proposition_kinds / role tokens / referential forms. The expected drift profile is substantial (a dialogue-with-oath pericope built from a new VOWS_* speech-act family) but no closed-list violations. FIG_0072 PREFERRED + FIG_0074 REQUIRED + FIG_0075 REQUIRED open and close within the pericope. CB_0020 opens here and stays a single occurrence in Ruth (the 3:13 oath uses another formula, 'as YHWH lives'; SC-0086). FIG_0001 significantly absent at the moment of Ruth's covenantal binding.",
   "compilation_decisions": [
     {
       "decision_id": "P03-D1",
@@ -417,7 +417,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       "id": "R4",
       "kind": "FIGURE_FIRST_OCCURRENCE",
       "applies_to": "FIG_0075 SELF_CURSE_OATH_FORMULA at v.17b",
-      "note": "REQUIRED keep-image. The canonical Hebrew self-curse oath formula 'may YHWH do thus to me and worse' (כֹּה יַעֲשֶׂה יְהוָה לִי וְכֹה יוֹסִיף). Do not soften. High terminological-consistency requirement across the book (will recur at 3:13 in Boaz's oath at the threshing floor) and across the Hebrew canon (recurs at 1 Sam 3:17; 14:44; 20:13; 2 Sam 3:9; 19:14; 1 Kgs 2:23; 2 Kgs 6:31). Reconstruction must preserve the divine-name invocation and the open-ended 'and more' clause.",
+      "note": "REQUIRED keep-image. The canonical Hebrew self-curse oath formula 'may YHWH do thus to me and worse' (כֹּה יַעֲשֶׂה יְהוָה לִי וְכֹה יוֹסִיף). Do not soften. High terminological-consistency requirement across the Hebrew canon (recurs at 1 Sam 3:17; 14:44; 20:13; 2 Sam 3:9; 19:14; 1 Kgs 2:23; 2 Kgs 6:31). Reconstruction must preserve the divine-name invocation and the open-ended 'and more' clause.",
       "required_in_audit": true,
       "do_not_decide": true,
       "source_in_meaning_map": "Section 5B Figure Flags; Section 3C Scene 2 (TH_SELF_CURSE_OATH_FORMULA)"
@@ -477,10 +477,9 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     {
       "id": "R11",
       "kind": "CROSS_PERICOPE_PAIRING_FIRST_OCCURRENCE",
-      "applies_to": "CB_0020 Oath-Formula-Self-curse opens at P03 v.17b; will recur at 3:13 (Boaz's oath at the threshing floor)",
-      "note": "First occurrence of the canonical Hebrew self-curse oath formula in the book. The same formula recurs at 3:13 when Boaz swears an oath about redemption to Ruth at the threshing floor. The two oath-occurrences form a cross-pericope pair structurally — Ruth invokes the formula committing herself to Naomi (and to YHWH); Boaz later invokes the same formula committing himself to act for Ruth. Reconstructor must use the same oath-formula form at both occurrences so the cross-pericope rhyme is audible.",
+      "applies_to": "CB_0020 Oath-Formula-Self-curse opens at P03 v.17b",
+      "note": "First occurrence of the canonical Hebrew self-curse oath formula in the book; single occurrence in Ruth — no cross-pericope pair is tracked (the 3:13 oath is 'as YHWH lives', FIG_0135).",
       "required_in_audit": true,
-      "carries_forward_to": "P09_compilation_log_or_wherever_3_13_lands",
       "source_in_meaning_map": "Section 5A Concept Bank Flags (CB_0020 active at P4); Section 3C Scene 2 (TH_SELF_CURSE_OATH_FORMULA)"
     },
     {
@@ -571,7 +570,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     "no_reviewer_facing_prompts_in_compilation_log": true
   },
   "known_limitations": [
-    "Cross-pericope pair verification for CB_0020 / FIG_0075 (self-curse oath formula) is DEFERRED pending compilation of the pericope containing 3:13 (Boaz's oath at the threshing floor).",
+    "CB_0020 / FIG_0075 (self-curse oath formula): single occurrence in Ruth; the 3:13 oath uses another formula, 'as YHWH lives' (FIG_0135, P09), so no cross-pericope pair is tracked (SC-0086).",
     "Cross-pericope pair verification for FIG_0012 (dabaq clinging image-rhyme) remains DEFERRED from P02; closes at 2:23 (P07 not yet compiled).",
     "Substantial bounded-open vocabulary additions (5 new proposition_kinds, 3 new scene_kinds, ~10 new role_in_scene values, 3 new referential_forms, ~18 new object_kinds) reflect this pericope being the first oath-and-vow pericope in the pilot. All drift-warn against the canonical P01 seed; all should be accepted at Gate F as real pericope-specific values.",
     "VOW_AND_RATIFICATION_SCENE scene_kind on S2 is carried forward from Pilot 1 archive vocabulary; a drift warning is expected at Gate F.",

@@ -13,6 +13,7 @@ _QUESTIONS_PREFIX = "internalization-room/questions/"
 ROUTE = "/api/internalization-room/voice"
 TEAM_AUDIO_ROUTE = "/api/internalization-room/questions/audio"
 FACILITATOR_AUDIO_ROUTE = "/api/internalization-room/facilitator/questions/audio"
+FACILITATOR_SESSIONS_ROUTE = "/api/internalization-room/facilitator/sessions"
 
 
 def to_handle(key: str) -> str:
@@ -85,12 +86,14 @@ def from_question_handle(handle: str) -> str | None:
     return key
 
 
-def clip_url(key: str) -> str:
+def clip_url(key: str, *, session_id: str | None = None) -> str:
     """The address a turn hands the app for the line it must speak."""
     handle = to_handle(key)
     signing_key = get_settings().internalization_room_clip_signing_key
     if signing_key:
         handle = f"{handle}.{_signature(handle, signing_key)}"
+    if session_id:
+        return f"{ROUTE}/{handle}?session={session_id}"
     return f"{ROUTE}/{handle}"
 
 
@@ -103,8 +106,13 @@ def team_audio_url(key: str) -> str:
 
 
 def facilitator_audio_url(key: str) -> str:
-    """The address the facilitator's app is handed for a team's recorded question.
+    """The address the facilitator's app is handed for a team's recorded question or its reply.
 
     Served by the signed-in route, because a facilitator holds no device key.
     """
     return f"{FACILITATOR_AUDIO_ROUTE}/{to_handle(key)}" if key else ""
+
+
+def turn_audio_url(session_id: str, number: int) -> str:
+    """The address the Desk is handed for one voice turn's clip, served by the signed-in door."""
+    return f"{FACILITATOR_SESSIONS_ROUTE}/{session_id}/turns/{number}/audio"

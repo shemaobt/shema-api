@@ -550,7 +550,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       "id": "R5",
       "kind": "FIGURE_FIRST_OCCURRENCE",
       "applies_to": "FIG_0084 Full-and-Empty-Antithesis at P5 (v.21)",
-      "note": "REQUIRED keep-image. 'I went out full, and YHWH brought me back empty' — first antithetical state-word pair in the book. The pair is structurally placed across the journey-arc (out = full; back = empty). The Hebrew empty-handed lexeme riqam (רֵיקָם) is specifically the antonym Naomi uses; it recurs at P10 in the structural answer. Reconstructor must preserve both halves of the antithesis and the journey-arc placement.",
+      "note": "REQUIRED keep-image. 'I went out full, and YHWH brought me back empty' — first antithetical state-word pair in the book. The pair is structurally placed across the journey-arc (out = full; back = empty). The Hebrew empty-handed lexeme riqam (רֵיקָם) is specifically the antonym Naomi uses; it is said again at 3:17, in Boaz's words as Ruth reports them (P10 R4). Reconstructor must preserve both halves of the antithesis and the journey-arc placement.",
       "required_in_audit": true,
       "do_not_decide": true,
       "carries_forward_to": "P10_compilation_log",
@@ -707,7 +707,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
         "opens_at": "P04 P5 (1:21)",
         "closes_at": "P04 P5 (1:21) — within-pericope single-occurrence; concept recurs at P10",
         "verification_status": "VERIFIED",
-        "note": "Full-and-empty antithetical state-word pair; REQUIRED keep-image. The concept (CB_0024, CB_0044) recurs at P10 — pair verification deferred until P10 compilation."
+        "note": "Full-and-empty antithetical state-word pair; REQUIRED keep-image. The concept (CB_0024, CB_0044) recurs at P10 P11 (3:17); recorded in P10 R4."
       },
       {
         "fig_id": "FIG_0086",
@@ -735,7 +735,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
         "opens_at": "P03 P4 (1:17b)",
         "closes_at": "P03 P4 — single-occurrence at P03; cross-canonical recurrences outside Ruth",
         "verification_status": "VERIFIED",
-        "note": "P03 self-curse oath formula; cross-pericope pair with 3:13 (Boaz's oath) DEFERRED."
+        "note": "P03 self-curse oath formula; single occurrence in Ruth; no P04 activity."
       }
     ]
   },

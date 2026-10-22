@@ -43,7 +43,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     {
       "decision_id": "P01-D2",
       "decision": "Wife pairings withheld per source-text discipline.",
-      "description": "The source text at 1:4 names Orpah and Ruth but does not pair them with their husbands. The pairing Mahlon-Ruth and Chilion-Orpah is disclosed at 4:10. The MEANING_COORDINATES preserves the withholding structurally: P9 marriage_components use wife_taken: B? rather than naming specific brides. The reconstructor must not infer the pairing at 1:4."
+      "description": "The source text at 1:4 names Orpah and Ruth but does not pair them with their husbands. The Mahlon–Ruth pairing is said at 4:10; the text never says whose wife Orpah was. The MEANING_COORDINATES preserves the withholding structurally: P9 marriage_components use wife_taken: B? rather than naming specific brides. The reconstructor must not infer the pairing at 1:4."
     },
     {
       "decision_id": "P01-D3",
@@ -349,7 +349,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       "id": "R10",
       "kind": "WITHHELD_PAIRING_PER_SOURCE_DISCIPLINE",
       "applies_to": "Mahlon-Ruth and Chilion-Orpah pairings at 1:4 (P9)",
-      "note": "The source text does not pair the wives with their husbands at 1:4. Pairing is disclosed at 4:10. The MEANING_COORDINATES preserves the withholding via wife_taken: B? in P9 marriage_components. Reconstructor must not infer or state the pairing here.",
+      "note": "The source text does not pair the wives with their husbands at 1:4. The Mahlon–Ruth pairing is said at 4:10; the text never says whose wife Orpah was. The MEANING_COORDINATES preserves the withholding via wife_taken: B? in P9 marriage_components. Reconstructor must not infer or state the pairing here.",
       "required_in_audit": true,
       "do_not_decide": true,
       "source_in_meaning_map": "Section 4 Proposition 6 (brides named without husband-pairing in the text)"
@@ -452,7 +452,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
   "known_limitations": [
     "PL_HA_ARETZ used as a working code pending formal PL-code assignment in BCD v0.4.",
     "Cross-pericope pair verification for FIG_0013 and FIG_0001 deferred pending P02 and later pericope compilations.",
-    "Wife pairings at 1:4 deliberately withheld per source-text discipline. Pairing disclosure carried forward to P13 audit at 4:10.",
+    "Wife pairings at 1:4 deliberately withheld per source-text discipline. The Mahlon–Ruth pairing is said at 4:10 (P12); the text never says whose wife Orpah was.",
     "Name meanings (Elimelech, Mahlon, Chilion, Naomi) held at FIG keep-image UNKNOWN pending target tradition assessment.",
     "community_verified and translation_team_verified remain false; this is a pilot compilation."
   ]

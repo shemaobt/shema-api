@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import re
-import unicodedata
-from functools import lru_cache
-
 from pydantic import BaseModel
 
 #: Re-exported so a reader of `elements_of` sees the values it builds on without leaving
@@ -14,7 +10,9 @@ from app.services.internalization_room.canon.book_material import (
     PreservationRule,
     preservation_rules,
 )
-from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
+from app.services.internalization_room.canon.kept import per_canon
+from app.services.internalization_room.canon.names import being_names, thing_name, things_by_scene
+from app.services.internalization_room.canon.parse_map import MeaningMap, load_map
 
 
 class Element(BaseModel):
@@ -34,20 +32,8 @@ _AXES = (
 )
 
 
-def _slug(text: str) -> str:
-    """Key an unlinked entity by its name alone.
-
-    Parentheticals are dropped on purpose: the same road is written `the road (implied;
-    continues from P02)` in one scene and `the road (continued)` in the next, and keying on the
-    whole line would put two beads on the necklace for one place.
-    """
-    without_notes = re.sub(r"\([^)]*\)", " ", text)
-    plain = unicodedata.normalize("NFKD", without_notes).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", plain.casefold()).strip("-")[:32] or "unnamed"
-
-
-@lru_cache(maxsize=64)
-def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
+@per_canon(maxsize=64)
+def scene_of(pericope_num: str) -> dict[str, int]:
     """The scene each bead belongs to, for every bead that belongs to one.
 
     Preservation rules and the Level-1 axes are absent: they belong to the passage and to
@@ -55,7 +41,7 @@ def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
     """
     return {
         element.key: element.scene
-        for element in elements_for(pericope_num, book)
+        for element in elements_for(pericope_num)
         if element.scene is not None
     }
 
@@ -68,21 +54,24 @@ def scene_key(number: int) -> str:
     naming that scene's bead, so the format has a second reader — and a format with two
     readers and one spelling is a format that drifts the moment either moves.
     """
-    return f"{ElementKind.SCENE}:{number}"
+    return f"{ElementKind.SCENE}:{scene_code(number)}"
 
 
-def _entity_key(kind: ElementKind, scene_number: int, entity: Entity) -> str:
+def scene_code(number: int) -> str:
+    """How the canon writes a scene in a bead's key, and how a facilitator types it."""
+    return f"S{number}"
+
+
+def _entity_key(kind: ElementKind, scene_number: int, code: str) -> str:
     """Stable across sessions: coverage is persisted under these keys."""
-    return f"{kind}:S{scene_number}:{entity.code or _slug(_label(entity))}"
+    return f"{kind}:{scene_code(scene_number)}:{code}"
 
 
-def _label(entity: Entity) -> str:
-    """The human-readable tail of `[[B3-Naomi]] — נָעֳמִי / Naomi`."""
-    after_link = entity.label.split("]]", 1)[-1].lstrip(" —-")
-    return (after_link or entity.label).strip()
+def _things_named(meaning_map: MeaningMap, codes: list[str]) -> list[tuple[str, str]]:
+    return [(code, thing_name(meaning_map, code)) for code in codes]
 
 
-def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Element]:
+def elements_of(meaning_map: MeaningMap) -> list[Element]:
     """The passage's coverage spine, derived from its map.
 
     The four Level-1 axes first, then one bead per scene, per entity in each scene, per
@@ -98,7 +87,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     """
     elements: list[Element] = [
         Element(
-            key=kind.value,
+            key=f"L1:{kind}",
             label=f"Level-1 {kind.value}",
             kind=kind,
             detail=" ".join(getattr(meaning_map, section).split()),
@@ -106,11 +95,11 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
         for kind, section in _AXES
     ]
 
-    rules = (
-        [rule for rule in preservation_rules(book) if rule.pericope == meaning_map.pericope_num]
-        if book
-        else []
-    )
+    rules = [
+        rule
+        for rule in preservation_rules(meaning_map.book)
+        if rule.pericope == meaning_map.pericope_num
+    ]
     folded: set[str] = set()
 
     for scene in meaning_map.scenes:
@@ -122,18 +111,19 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
                 scene=scene.number,
             )
         )
+        things = things_by_scene(meaning_map.pericope_num)[scene.number]
         groups = (
-            (ElementKind.BEING, scene.beings),
-            (ElementKind.PLACE, scene.places),
-            (ElementKind.OBJECT, scene.objects),
-            (ElementKind.TIME, scene.times),
+            (ElementKind.BEING, being_names(meaning_map, scene.number)),
+            (ElementKind.PLACE, _things_named(meaning_map, things["place"])),
+            (ElementKind.OBJECT, _things_named(meaning_map, things["object"])),
+            (ElementKind.TIME, _things_named(meaning_map, things["time"])),
         )
-        for kind, entities in groups:
-            for entity in entities:
+        for kind, named in groups:
+            for code, name in named:
                 elements.append(
                     Element(
-                        key=_entity_key(kind, scene.number, entity),
-                        label=_label(entity),
+                        key=_entity_key(kind, scene.number, code),
+                        label=name,
                         kind=kind,
                         scene=scene.number,
                     )
@@ -143,7 +133,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
             folded.update(rule.rule_id for rule in related)
             elements.append(
                 Element(
-                    key=f"{ElementKind.ABSENCE}:{scene.number}",
+                    key=f"{ElementKind.ABSENCE}:{scene_code(scene.number)}",
                     label=" — ".join([scene.absence, *(_rule_label(rule) for rule in related)]),
                     kind=ElementKind.ABSENCE,
                     scene=scene.number,
@@ -168,18 +158,18 @@ def _rule_label(rule: PreservationRule) -> str:
     return f"{rule.kind}: {rule.note}"
 
 
-@lru_cache(maxsize=32)
-def elements_for(pericope_num: str, book: str = "Ruth") -> tuple[Element, ...]:
-    return tuple(elements_of(load_map(pericope_num), book=book))
+@per_canon(maxsize=32)
+def elements_for(pericope_num: str) -> tuple[Element, ...]:
+    return tuple(elements_of(load_map(pericope_num)))
 
 
-def element_keys(pericope_num: str, book: str = "Ruth") -> list[str]:
-    return [element.key for element in elements_for(pericope_num, book)]
+def element_keys(pericope_num: str) -> list[str]:
+    return [element.key for element in elements_for(pericope_num)]
 
 
-def absence_index(pericope_num: str, book: str = "Ruth") -> int:
+def absence_index(pericope_num: str) -> int:
     """Where the first significant absence sits in bead order, for the ring bead."""
-    for index, element in enumerate(elements_for(pericope_num, book)):
+    for index, element in enumerate(elements_for(pericope_num)):
         if element.kind is ElementKind.ABSENCE:
             return index
     return -1

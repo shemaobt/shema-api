@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
@@ -32,6 +33,7 @@ from app.models.internalization_room import (
     RetroverificationFinding,
     RetroverificationHardStretch,
     RetroverificationListening,
+    RetroverificationNuance,
     RetroverificationRelease,
     RetroverificationStretch,
     RetroverificationTake,
@@ -40,7 +42,10 @@ from app.models.internalization_room import (
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
-    rehearsed_parts,
+    frase_numbers,
+    listening_to_the_parts,
+    nuances_said,
+    said_before,
     unheard_parts,
 )
 from app.services.internalization_room.hard_stretches import hard_stretches_of
@@ -53,7 +58,7 @@ from app.services.internalization_room.segments import (
     told_back,
 )
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.takes import takes_of
+from app.services.internalization_room.takes import current_parts, takes_of
 
 #: Where a facilitator's browser fetches one take, as the file points at it. A path and never
 #: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
@@ -124,7 +129,7 @@ def _take_view(take: IRTake) -> RetroverificationTake:
         ordinal=take.ordinal,
         pass_number=take.pass_number,
         sha256=take.sha256,
-        recorded_at=_moment(take.created_at),
+        recorded_at=_moment(take.recorded_at),
         url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
     )
 
@@ -194,25 +199,27 @@ def _history_of(
 
 
 def _listening(
-    telling_back: BackTranslationState, parts: list[str]
+    telling_back: BackTranslationState, parts: list[IRTake], stretches: list[IRSegment]
 ) -> list[RetroverificationListening]:
     """The report part by part, with the parts nobody heard named as such.
 
-    Asked of the parts the stretches standing now are slices of, which is the subject both the
-    check and the release ask about: a part leaves the question by being recorded over and by
-    nothing else.
+    Asked of every current part of the rehearsal, told or not, which is what `terminei` and the
+    release ask to be heard (ADR 0068): a part recorded again and never played has its row here.
     """
-    unheard = set(unheard_parts(telling_back, parts))
-    reported = {entry.take_id: entry for entry in telling_back.played_by_take}
+    unheard = set(unheard_parts(telling_back, parts, stretches))
+    reported = {
+        entry.take_id: entry
+        for entry in listening_to_the_parts(telling_back.played_by_take, parts, stretches)
+    }
     listened = []
-    for take_id in parts:
-        entry = reported.get(take_id)
+    for part in parts:
+        entry = reported.get(part.id)
         listened.append(
             RetroverificationListening(
-                take_id=take_id,
+                take_id=part.id,
                 played_ranges=list(entry.played_ranges) if entry else [],
                 clip_duration_ms=entry.clip_duration_ms if entry else 0,
-                heard=take_id not in unheard,
+                heard=part.id not in unheard,
             )
         )
     return listened
@@ -240,6 +247,27 @@ def _notices(
     return said
 
 
+async def _of_the_same_archive(
+    db: AsyncSession, session: IRSession, releases: list[IRRelease]
+) -> list[IRRelease]:
+    """The releases minted on a session of this session's archive, live with live.
+
+    Read off the session that minted each one and not off the release's own stamp. No release
+    is minted on an archived session any more (ADR 0066), but a row minted after its session's
+    Zerar before that rule was not there to be stamped, and belongs to its session's archive
+    all the same.
+    """
+    minted_on = await db.execute(
+        select(IRSession.id, IRSession.archive_id).where(
+            IRSession.id.in_({release.session_id for release in releases})
+        )
+    )
+    archived = dict(minted_on.tuples().all())
+    return [
+        release for release in releases if archived.get(release.session_id) == session.archive_id
+    ]
+
+
 async def retroverification_file(db: AsyncSession, session: IRSession) -> RetroverificationFile:
     """The whole record of one session's check, assembled from the rows the room wrote.
 
@@ -247,6 +275,8 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     **Version** is per: a draft another conversation about this passage approved is a draft of
     this passage, and a list scoped to one session would hide it from the person reading the
     history. A session naming no project has none, which is the same answer the approval gives.
+    Only the releases of the session's own archive are the passage's here: a live session lists
+    the live drafts, and an archived one the drafts of its own archive (ADR 0047).
 
     The numbering is the session's own. A **Version** freezes the reading of the session it was
     built from, so the numbers come from the last release *this* session wrote and never from
@@ -284,13 +314,14 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
         if session.project_id
         else []
     )
+    releases = await _of_the_same_archive(db, session, releases)
     marks = (await hard_stretches_of(db, [session.id])).get(session.id, [])
 
     minted_here = [release for release in releases if release.session_id == session.id]
     latest = minted_here[-1] if minted_here else None
     frozen = _frozen_numbers(latest)
     told = told_back(stretches)
-    live = {stretch.id: position for position, stretch in enumerate(told, start=1)}
+    live = frase_numbers(told)
     standing = {stretch.id for stretch in counting}
     replaced_by = {row.id: row.superseded_by_id for row in retired}
     replaces = {row.superseded_by_id: row for row in retired if row.superseded_by_id}
@@ -309,6 +340,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             history=_history_of(stretch, replaces),
         )
 
+    said = nuances_said(telling_back.checks)
     numbered = [
         _stretch_view(
             stretch, frozen.get(stretch.id) if frozen is not None else live.get(stretch.id)
@@ -344,6 +376,16 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             if _walked_forward(row.id, replaced_by, standing) is None
         ],
         findings=[_finding_view(finding) for finding in telling_back.findings],
+        nuances=[
+            RetroverificationNuance(
+                chunk=nuance.chunk,
+                segment_id=nuance.segment_id,
+                quote=nuance.quote,
+                story=nuance.story,
+                said=said_before(nuance, said, told),
+            )
+            for nuance in telling_back.nuances
+        ],
         superseded_attempts=[
             RetroverificationAttempt(
                 findings=[_finding_view(finding) for finding in attempt.findings],
@@ -353,7 +395,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             )
             for attempt in telling_back.superseded
         ],
-        listening=_listening(telling_back, rehearsed_parts(stretches)),
+        listening=_listening(telling_back, current_parts(takes), stretches),
         hard_stretches=[
             RetroverificationHardStretch(
                 segment_id=_walked_forward(mark.segment_id, replaced_by, standing),

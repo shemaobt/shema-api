@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Enum,
     Index,
@@ -28,7 +29,6 @@ class IRPromptKey(enum.StrEnum):
     COVERAGE_CLASSIFIER = "coverage_classifier"
     BOOK_PANORAMA = "book_panorama"
     BT_ANALYST = "bt_analyst"
-    BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
 
 
@@ -74,8 +74,10 @@ class IRSession(Base):
     #: passage, and the line written from the old one is handed over as the new one's own
     #: framing — to people who cannot read and cannot check.
     prepared_pericope: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: The attempts the prepared opening above was drafted in, kept until the line is taken and
+    #: stored on the opening (ADR 0054). Null while nothing is prepared.
+    prepared_attempts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     #: Whose conversation this was. Null when the room app did not identify itself with a
     #: device credential, which is every session until ENG-454 ships that half — see the
@@ -83,12 +85,10 @@ class IRSession(Base):
     #: ``ir_takes``: the room tables carry ids across an app boundary and have never
     #: constrained them.
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    #: When the conversation ended, stamped only where an end actually happened — the
-    #: completion floor closing the session. A session nobody closed is not stamped here:
-    #: its end is derived from its last activity at read time, because the idle limit that
-    #: decides it is a proposal shared with the room app (ENG-435) and not yet agreed, and a
-    #: number nobody has agreed must not be frozen into rows. ``session_end.end_of`` is the
-    #: whole of the rule.
+    #: The moment the completion floor was met, written once when the status becomes
+    #: ``done``. It says "the floor was met at", not that the session is closed: nothing ends
+    #: a session for being idle, and a session without it is in progress however long it sat.
+    #: ``session_end.end_of`` reads it for the Desk's card.
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
@@ -99,8 +99,9 @@ class IRSession(Base):
     #: passage in each language is worse than the whole of it in either.
     #:
     #: Not ``Project.language_id``. That column records the team's own language for the rest
-    #: of the platform and the room does not read it: the device decides, because the device
-    #: is what the facilitator set up in front of them.
+    #: of the platform and the room's speech does not read it: the device decides, because the
+    #: device is what the facilitator set up in front of them. The release reads it as the
+    #: mother tongue (ADR 0048).
     language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
     #: Declared with the ``server_default`` its own migration already writes. The model said
     #: only ``default=dict``, which is Python-side and never reaches the DDL, so a table built
@@ -108,6 +109,12 @@ class IRSession(Base):
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    #: This team's status on each earlier passage of the book, by pericope id, stamped
+    #: when the session is created and read again after a turn once it is five minutes old:
+    #: read by the room, or handed in by her runner. Null on a
+    #: book's first passage, on a Panorama and for a caller with no team.
+    earlier_passages: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+    retellings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
     #: every halt and cleared by none: it outlives the halt on purpose, so that a halt lifted
     #: before any facilitator saw it is still readable on the team's history afterwards.
@@ -132,15 +139,8 @@ class IRSession(Base):
     #: on the day of the visit.
     attended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     attended_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    #: Which halt the visit above lifted, null when it lifted none — a facilitator may mark a
-    #: room that is running perfectly well, and most marks lift nothing.
-    #:
-    #: **Not derivable from ``halt_kind``, which is why it is a column.** That one is never
-    #: cleared, so it says "this session was halted at some point, ever"; undoing a visit has
-    #: to know whether *this* visit was the thing that lifted a halt. Without the distinction
-    #: an undo re-halts a conversation that the team had already restarted themselves — the
-    #: room stops, the queue reopens, and the kind it announces belongs to a halt somebody
-    #: cleared an hour earlier.
+    #: Read and written by nothing since a visit stopped lifting halts (ADR 0076); older rows
+    #: keep their values.
     lifted_halt: Mapped[str | None] = mapped_column(String(16), nullable=True)
     #: When somebody long-pressed this halted room to say they had arrived (ENG-792). Null
     #: until the first press, and cleared by every new halt — the moment belongs to the halt
@@ -156,13 +156,35 @@ class IRSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    #: Backs the optimistic check on ``messages`` and ``comprehension`` (ENG-643). Both are
-    #: whole-value JSON writes computed from whatever the writer read, so two turns landing
-    #: together for one session would otherwise have the later commit erase the evidence the
-    #: earlier one had just added, with neither writer ever told. `coverage_state` needs no
-    #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
-    #: under the same race.
+    #: Backs the optimistic check on ``messages`` (ENG-643). It is a whole-value JSON write
+    #: computed from whatever the writer read, so two turns landing together for one session
+    #: would otherwise have the later commit erase the evidence the earlier one had just
+    #: added, with neither writer ever told. `coverage_state` is not guarded here: a monotonic
+    #: merge still loses a rival's beads when its stale result is written whole, so
+    #: `apply_coverage` writes it only if it still holds what was read, without moving this.
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    #: The **Archive** a Zerar stamped this row with, null while it is live (ADR 0047). The
+    #: room's doors that pick or list a team's work read live rows only; the facilitator's
+    #: by-id doors still read a stamped one, because the work stays for the consultant.
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The **Turn claim**: the turn id under which the request answering a turn of this
+    #: session will store its answer, null until a turn is claimed. Written by a conditional
+    #: update while no live claim stands, so one turn of the session is answered at a time,
+    #: whichever instance each request reached. Named for the opening, the first turn that
+    #: took it (ADR 0053, ADR 0079).
+    opening_claim_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: When the turn was claimed. A claim older than the turn bound plus thirty seconds
+    #: belongs to a request that can no longer be running, and the next request takes it over.
+    opening_claimed_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+    #: Whether the turn claim was taken for the session's **Opening**: true only for the
+    #: request drafting it, false for a team turn's claim and for one taken over from the
+    #: opening, so every waiter reads from the row which of the two it waits on (ADR 0079).
+    claimed_for_the_opening: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class IRTeamSession(Base):
@@ -187,6 +209,31 @@ class IRTeamSession(Base):
     session_id: Mapped[str] = mapped_column(String(36), index=True)
 
 
+class IRArchive(Base):
+    """What one Zerar of a team's pericope left behind, every language at once (ADR 0047).
+
+    The work itself does not move: its rows carry this row's id in ``archive_id``. Copying it
+    into archive tables and prefixes, as her file stores do, was rejected because a copy then
+    delete on GCS is not atomic, so nothing here can be half-moved or written over.
+
+    ``snapshot`` is each stamped session as it stood, taken in the same transaction as the
+    stamp, so the consultant reads what the team had and not what a later read assembles.
+    """
+
+    __tablename__ = "ir_archives"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(String(36))
+    pericope: Mapped[str] = mapped_column(String(120))
+    #: Stamped by the application, for the reason ``IRCoverageEvent.at`` gives.
+    archived_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    #: The facilitator who called Zerar, by user id, the way ``IRSession.attended_by`` keeps one.
+    archived_by: Mapped[str] = mapped_column(String(36))
+    snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+
+
 class IRCoverageEvent(Base):
     """One step a session moved one bead forward.
 
@@ -196,7 +243,7 @@ class IRCoverageEvent(Base):
     turn and mostly reports beads that are already where it says.
 
     ``project_id`` and ``pericope`` are copied off the session instead of joined for.
-    Element keys come from the canon: ``being:B3`` is Naomi in every project that works
+    Element keys come from the canon: ``being:S1:B3`` is Naomi in every project that works
     this passage, and the same key repeats across the passages she appears in. A key alone
     therefore does not name a bead, and the question the Desk asks of this table — which
     session touched this one last — needs all three in one index to be a single lookup.
@@ -243,6 +290,8 @@ class IRCoverageEvent(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRQuestionStatus(enum.StrEnum):
@@ -261,9 +310,11 @@ _QUESTION_STATUS_TYPE = Enum(
 class IRQuestion(Base):
     """A question the team raised by the hand, addressed to a person rather than the app.
 
-    It belongs to the device, not to the session it was asked in. A facilitator may answer
-    hours later, long after that passage is closed, and the team must still receive it —
-    otherwise the necklace shows a knot for a question that went nowhere.
+    It belongs to the team, not to the session it was asked in nor to the tablet that asked:
+    the reply reaches every tablet of the team and is heard once for all of them. A question
+    with no team is reached by no tablet (ADR 0057). A facilitator may answer hours later,
+    long after that passage is closed, and the team must still receive it — otherwise the
+    necklace shows a knot for a question that went nowhere.
     """
 
     __tablename__ = "ir_questions"
@@ -344,6 +395,15 @@ class IRTake(Base):
     __tablename__ = "ir_takes"
     __table_args__ = (
         UniqueConstraint("session_id", "storage_key", name="uq_ir_takes_session_storage_key"),
+        Index(
+            "uq_ir_takes_session_kind_sha256",
+            "session_id",
+            "kind",
+            "sha256",
+            unique=True,
+            postgresql_where=text("sha256 <> ''"),
+            sqlite_where=text("sha256 <> ''"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -364,6 +424,138 @@ class IRTake(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The **Scene rehearsal** this part was joined from, as the tablet declared it. Null on a
+    #: part recorded as itself; a recording with any current part carrying one is **Joined**.
+    origin: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The take's **Recording time**: the tablet's clock for a take recorded on it, the server's
+    #: for a joined or spliced part and for a take sent with none. Never moved once stored.
+    recorded_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: How long the sound runs, as the tablet sent it when it matched the bytes, or as measured.
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The **Clock offset** of the tablet that sent this joined part, kept only at five minutes
+    #: or more; the consultant's alone.
+    device_clock_offset_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class IRSceneSaid(enum.StrEnum):
+    """When the team said a scene rehearsal's scene: as they recorded it, or afterwards."""
+
+    RECORDING = "recording"
+    LATER = "later"
+
+
+class IRSceneRehearsal(Base):
+    """One **Scene rehearsal**: the scene recorded whole in the mother tongue, and its record.
+
+    The recording is stored as sent and never reaches the recognizer or the voice; only its
+    **Scene frases** are heard. Its own table rather than a third take kind, because every
+    reader of ``ir_takes`` would read it as a passage **Part** (ADR 0059).
+    """
+
+    __tablename__ = "ir_scene_rehearsals"
+    __table_args__ = (
+        UniqueConstraint("session_id", "sha256", name="uq_ir_scene_rehearsals_session_sha256"),
+        UniqueConstraint("session_id", "n", name="uq_ir_scene_rehearsals_session_n"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    pericope: Mapped[str] = mapped_column(String(120))
+    n: Mapped[int] = mapped_column(Integer)
+    device_id: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The team's own label, one of the passage's scenes, and when they said it. The
+    #: classifier's guess never writes it.
+    scene: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    scene_said: Mapped[IRSceneSaid | None] = mapped_column(
+        Enum(
+            IRSceneSaid,
+            native_enum=False,
+            length=16,
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=True,
+    )
+    scene_guess: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    scene_foreign: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    sent_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The rehearsal's **Recording time**: the tablet's clock when it sent one, else the server's.
+    recorded_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRSceneFrase(Base):
+    """One **Scene frase**: a piece of the scene told in the bridge language, with its place.
+
+    ``starts_ms`` and ``ends_ms`` are relative to the scene recording. A replaced frase stays,
+    and the frase that replaced it names it in ``replaces_id``. ``restart_id`` is the
+    **Restart** that set it aside; null while it counts.
+    """
+
+    __tablename__ = "ir_scene_frases"
+    __table_args__ = (
+        UniqueConstraint("rehearsal_id", "sha256", name="uq_ir_scene_frases_rehearsal_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rehearsal_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    starts_ms: Mapped[int] = mapped_column(Integer)
+    ends_ms: Mapped[int] = mapped_column(Integer)
+    replaces_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    transcript: Mapped[str] = mapped_column(Text)
+    #: The attempt the frase was recorded in: the restart it follows, or none before the first.
+    attempt: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    restart_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRSceneRestart(Base):
+    """One **Restart** of a scene rehearsal's translation, numbered, with the record as it was."""
+
+    __tablename__ = "ir_scene_restarts"
+    __table_args__ = (
+        UniqueConstraint("rehearsal_id", "n", name="uq_ir_scene_restarts_rehearsal_n"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rehearsal_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    n: Mapped[int] = mapped_column(Integer)
+    restarted_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRTurn(Base):
@@ -475,9 +667,8 @@ class IRSegment(Base):
     #: contract to change in the same diff that redefines the address.
     pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: How many times the team has told this stretch, counting every version of it: the row a
-    #: telling supersedes hands its count on, and a re-recording nobody could make out is counted
-    #: here in place, because it captured no row of its own. A telling with no words is refused
-    #: at the chunk door and is not counted. At `RETELLS_BEFORE_A_WARNING` the
+    #: telling supersedes hands its count on. A telling with no words is refused on either door
+    #: and counts nothing. At `RETELLS_BEFORE_A_WARNING` the
     #: stretch is a hard stretch and `ir_hard_stretches` keeps the fact.
     tellings: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     bridge_take_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -486,9 +677,14 @@ class IRSegment(Base):
         UtcDateTime(timezone=True), nullable=True
     )
     superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    stale: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRRelease(Base):
@@ -509,9 +705,7 @@ class IRRelease(Base):
     exclude, and one that filtered on nothing would only teach the next reader that
     releases can be retired.
 
-    ``project_id`` is not null: a release is named by project, pericope and version, and a
-    session opened on the shared room key names no project — which is why approving one is
-    refused rather than numbered in a group belonging to nobody.
+    ``project_id`` is not null: a release is named by project, pericope and version.
 
     ``package_sha256`` keeps the packet's own key rather than the glossary's word, which is
     *packet* and avoids *package*: the fingerprint travels to Refine under that name, and one
@@ -540,7 +734,7 @@ class IRRelease(Base):
     #: team write leaving no attribution at all. Null on a release no tablet wrote: the ones
     #: from before this column, and every forced one, which is the Desk's act and not a room's.
     device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    #: The facilitator who minted this past an open finding or an unheard part, by user id the
+    #: The facilitator who minted this past the gate (ADR 0075), by user id the
     #: way ``IRSession.attended_by`` keeps one. Null on a release nobody forced, which is what
     #: separates the two and what the Desk reads to say that this draft was forced.
     forced_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -549,6 +743,11 @@ class IRRelease(Base):
     #: rather than counted or pointed at: the session goes on changing afterwards, and nothing
     #: else could answer later what this facilitator actually overruled.
     forced_open_findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    #: The blockers the force passed, sorted, and empty when it passed none. Null on a release
+    #: nobody forced and on the ones forced before this column (ADR 0075).
+    forced_blockers: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRHardStretch(Base):

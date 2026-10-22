@@ -1,0 +1,131 @@
+{
+  "name": "P02-nuance-esta-noite",
+  "pericopeId": "P02",
+  "language": "Brazilian Portuguese",
+  "joined": true,
+  "why": "The NUANCE (Marcia's ruling 2026-09-24, option (b); her word \"(b), pode fazer\": «A conferência passa a ter um tipo 'nuance', que aparece uma vez, com o número da frase, e não impede a aprovação.»). Map: _spec/canon/meaning-map/P02-Ruth-1-6-14.md:237 (scene 3: she grants the hypothetical that EVEN TONIGHT she might belong to a husband and bear sons) and :324 (proposition 9, hypothetical concession: Naomi having a husband tonight). Planted: the faithful nine-frase P02 telling of the 2026-09-07 experiment (frase 1 as in P02-causa-a-mais round 2), except frase 7, which keeps the whole hypothetical but tells its time as 'tivesse marido UM DIA' — the element is there, its time word points elsewhere (any day, not this very night): a nuance, never a missing element nor an addition. Every clip is WAV and the recording joined, so the Speaker reads `repair: \"sentence\"` and the drafted Nuance bullet's audio sentence ('regravem a frase 7 inteira') applies. Expected round 1: ONE nuance on frase 7, conferida (a nuance never blocks), the voice names frase 7 once, quotes the team's words, asks for the WHOLE sentence if they want to change the audio, leaves the approval open (the clean round's invitation), never says the kind's word 'nuance', and never fills the map's marked silences (who told Naomi; that God brought her home). Round 2 (nothing told): the nuance was said — it is NOT said again; a clean verdict. Round 3: frase 7 translated again with the same words (supersedes it — the same recording): still said, still clean. The drafted texts are a DRAFT awaiting her word (2026-09-24). LIVE run owed — never in session hours; the eight older scripts are the false-nuance regression of the same run.",
+  "draft": {
+    "clips": [
+      {
+        "key": "S1",
+        "durationMs": 20000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S2",
+        "durationMs": 25000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S3",
+        "durationMs": 45000,
+        "contentType": "audio/wav"
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi ouviu, nos campos de Moabe, que o Senhor tinha visitado o seu povo e dado pão a eles. Então ela se levantou com as duas noras para voltar dos campos de Moabe."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 10,
+          "coversTo": 20,
+          "text": "Ela saiu do lugar onde estava, com as duas noras, e as três foram andando pela estrada para voltar para a terra de Judá."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 0,
+          "coversTo": 8,
+          "text": "No caminho, Noemi disse para as duas noras: vão, voltem cada uma para a casa da sua mãe."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 8,
+          "coversTo": 17,
+          "text": "Que o Senhor trate vocês com bondade, como vocês trataram os que morreram e a mim. Que o Senhor dê a vocês descanso, cada uma na casa de um marido."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 17,
+          "coversTo": 25,
+          "text": "Ela beijou as duas, e elas choraram alto. E disseram: não, nós vamos voltar com a senhora para o seu povo."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Noemi disse: voltem, minhas filhas. Por que vocês iriam comigo? Eu ainda tenho filhos dentro de mim para serem maridos de vocês?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 10,
+          "coversTo": 25,
+          "text": "Voltem, vão. Eu estou velha demais para ter marido. Mesmo se eu dissesse que tenho esperança, e tivesse marido um dia e tivesse filhos, vocês iam esperar até eles crescerem? Iam ficar sem casar por causa deles?"
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 25,
+          "coversTo": 33,
+          "text": "Não, minhas filhas. Para mim é muito mais amargo do que para vocês, porque a mão do Senhor se voltou contra mim."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 33,
+          "coversTo": 45,
+          "text": "Elas choraram alto de novo. Orfa beijou a sogra e voltou. Mas Rute se agarrou a Noemi."
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [
+          {
+            "kind": "nuance",
+            "note": "noite|um dia",
+            "frase": 7
+          }
+        ],
+        "no_kinds": [
+          "missing",
+          "addition"
+        ],
+        "voices_nuance": 7,
+        "spoken_names_frase": 7,
+        "spoken_whole_sentence": 7,
+        "spoken_matches": "detalhe",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    },
+    {
+      "frases": [],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    },
+    {
+      "frases": [
+        {
+          "clipKey": "S3",
+          "coversFrom": 10,
+          "coversTo": 25,
+          "text": "Voltem, vão. Eu estou velha demais para ter marido. Mesmo se eu dissesse que tenho esperança, e tivesse marido um dia e tivesse filhos, vocês iam esperar até eles crescerem? Iam ficar sem casar por causa deles?",
+          "supersedes": 6
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)"
+      }
+    }
+  ]
+}

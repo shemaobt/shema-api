@@ -15,12 +15,38 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import TypeGuard
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, StretchNoLongerCounts, ValidationError
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.core.exceptions import (
+    ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+    ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+    ERROR_CODE_PAUSE_PAST_THE_END,
+    NotFoundError,
+    OverlapsAStandingFrase,
+    PauseCannotMove,
+    StretchNoLongerCounts,
+    ValidationError,
+)
+from app.db.models.internalization_room import (
+    IRRelease,
+    IRSegment,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
+from app.services.internalization_room.back_translation import BackTranslationState, part_length
+from app.services.internalization_room.takes import (
+    current_parts,
+    is_wav,
+    takes_of,
+    the_take_already_kept,
+)
+
+SHORTEST_FRASE_MS = 200
+END_SLACK_MS = 250
 
 
 def sits_at(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
@@ -58,6 +84,72 @@ def refuse_a_slice_the_stretch_does_not_sit_on(
         raise ValidationError(
             f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} is not this stretch's: "
             f"it sits from {segment.starts_ms} ms to {segment.ends_ms} ms of {segment.take_id}"
+        )
+
+
+def refuse_a_frase_under_the_floor(starts_ms: int, ends_ms: int) -> None:
+    if ends_ms < starts_ms + SHORTEST_FRASE_MS:
+        raise PauseCannotMove(
+            f"A frase from {starts_ms} ms to {ends_ms} ms is shorter than {SHORTEST_FRASE_MS} ms",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+
+
+async def refuse_a_slice_a_version_cannot_take(
+    db: AsyncSession,
+    session: IRSession,
+    segment: IRSegment,
+    take_id: str,
+    starts_ms: int,
+    ends_ms: int,
+) -> None:
+    if segment.stale:
+        takes = await takes_of(db, session.id)
+        replaced = next(take for take in takes if take.id == segment.take_id)
+        standing = next(
+            (part for part in current_parts(takes) if part.ordinal == replaced.ordinal), None
+        )
+        if standing is None or standing.id != take_id:
+            raise ValidationError(
+                f"The stretch from {segment.starts_ms} ms of {segment.take_id} is told again over "
+                f"the recording its part stands on now, and {take_id} is not it"
+            )
+        return
+    if segment.take_id != take_id or segment.starts_ms != starts_ms:
+        refuse_a_slice_the_stretch_does_not_sit_on(segment, take_id, starts_ms, ends_ms)
+    if segment.ends_ms == ends_ms:
+        return
+    state = BackTranslationState.model_validate(session.back_translation or {})
+    if state.checked:
+        raise PauseCannotMove(
+            "A passage already conferida keeps its pauses where they fell",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    approved = await db.execute(select(IRRelease.id).where(IRRelease.session_id == session.id))
+    if approved.first() is not None:
+        raise PauseCannotMove(
+            "A passage already approved keeps its pauses where they fell",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    take = (await db.execute(select(IRTake).where(IRTake.id == take_id))).scalar_one()
+    if not is_wav(take.content_type):
+        raise PauseCannotMove(
+            "A compressed recording keeps its pauses where they fell",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    part = [one for one in await final_segments(db, session.id) if one.take_id == take_id]
+    last = max(reversed(part), key=lambda one: one.ends_ms, default=None)
+    if last is None or last.id != segment.id:
+        raise PauseCannotMove(
+            "The pause moves only on the last frase of its part",
+            ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+        )
+    refuse_a_frase_under_the_floor(starts_ms, ends_ms)
+    length = part_length(take, state.played_by_take, part)
+    if length and ends_ms > length + END_SLACK_MS:
+        raise PauseCannotMove(
+            f"A pause at {ends_ms} ms falls past the end of a recording of {length} ms",
+            ERROR_CODE_PAUSE_PAST_THE_END,
         )
 
 
@@ -100,6 +192,43 @@ def refuse_a_slice_that_is_not_one(starts_ms: int, ends_ms: int) -> None:
         )
 
 
+def refuse_a_telling_over_part_of_a_frase(
+    told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
+) -> None:
+    if any(sits_at(one, take_id, starts_ms, ends_ms) for one in told):
+        return
+    over = _frase_standing_over(told, take_id, starts_ms, ends_ms)
+    if over is not None:
+        raise OverlapsAStandingFrase(
+            f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} falls over the frase "
+            f"standing from {over.starts_ms} ms to {over.ends_ms} ms without being it"
+        )
+
+
+def _frase_standing_over(
+    told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
+) -> IRSegment | None:
+    return next(
+        (
+            one
+            for one in told
+            if one.take_id == take_id and one.starts_ms < ends_ms and starts_ms < one.ends_ms
+        ),
+        None,
+    )
+
+
+def refuse_a_stale_telling_over_a_standing_frase(
+    told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
+) -> None:
+    over = _frase_standing_over(told, take_id, starts_ms, ends_ms)
+    if over is not None:
+        raise OverlapsAStandingFrase(
+            f"A stretch waiting to be told again is told where no frase stands, and one already "
+            f"stands from {over.starts_ms} ms to {over.ends_ms} ms of {take_id}"
+        )
+
+
 async def capture_segment(
     db: AsyncSession,
     session: IRSession,
@@ -126,15 +255,15 @@ async def capture_segment(
     count for the reason they keep the pass: born on the default, a stretch already told twice
     would hand the team a fresh count on each piece.
 
-    **A version keeps the slice of the stretch it replaces**:
+    **A version keeps the recording and the start of the stretch it replaces**:
     `refuse_a_slice_the_stretch_does_not_sit_on`. A stretch is one slice of one recording, so a
-    version naming other audio is not another telling of it. The recording the team performed
-    is the one that travels (ADR 0025), and a recording that was wrong is answered by recording
-    the **Part** again, which is an upload and not a version.
+    version naming other audio is not another telling of it. Only its end may move, and only on
+    the last frase of its part (`refuse_a_slice_a_version_cannot_take`). The recording the team
+    performed is the one that travels (ADR 0025), and a recording that was wrong is answered by
+    recording the **Part** again, which is an upload and not a version.
 
     What may be replaced at all — not a retired row, not one the team divided — is
-    `refuse_a_stretch_that_is_not_a_unit`, which the route that counts an unheard telling asks
-    the same question of.
+    `refuse_a_stretch_that_is_not_a_unit`.
 
     The retired row is stamped before the successor is inserted, not after. The two share a
     position, and the index that keeps one position to one current stretch is checked per
@@ -148,17 +277,31 @@ async def capture_segment(
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
 
     if replaces is not None:
-        refuse_a_slice_the_stretch_does_not_sit_on(replaces, take_id, starts_ms, ends_ms)
+        await refuse_a_slice_a_version_cannot_take(
+            db, session, replaces, take_id, starts_ms, ends_ms
+        )
         refuse_a_version_that_tells_nothing(transcript)
         await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
-        parent_id = replaces.parent_id
-        ordinal = replaces.ordinal
-        tellings = replaces.tellings + 1
+        if replaces.stale:
+            refuse_a_stale_telling_over_a_standing_frase(
+                await final_segments(db, session.id), take_id, starts_ms, ends_ms
+            )
+            parent_id = None
+            ordinal = await _next_ordinal(db, session.id, None)
+            tellings = 1
+        else:
+            parent_id = replaces.parent_id
+            ordinal = replaces.ordinal
+            tellings = replaces.tellings + 1
     elif parent is not None:
         parent_id = parent.id
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = parent.tellings
     else:
+        refuse_a_frase_under_the_floor(starts_ms, ends_ms)
+        refuse_a_telling_over_part_of_a_frase(
+            await final_segments(db, session.id), take_id, starts_ms, ends_ms
+        )
         parent_id = None
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = 1
@@ -172,7 +315,10 @@ async def capture_segment(
             bridge_take.ordinal = ordinal
 
     segment_id = str(uuid.uuid4())
-    if replaces is not None:
+    if replaces is not None and replaces.stale:
+        replaces.stale = False
+        await db.flush()
+    elif replaces is not None:
         replaces.superseded_at = datetime.now(UTC)
         replaces.superseded_by_id = segment_id
         await db.flush()
@@ -273,8 +419,8 @@ async def divide_segment(
 async def segment_for_session(db: AsyncSession, session_id: str, segment_id: str) -> IRSegment:
     """One stretch of **this** session, by its address.
 
-    The room key is one string shipped in every tablet, so it says nothing about whose work is
-    being reached; the session in the path is what does. Scoped here rather than by the caller,
+    The stretch id alone says nothing about whose work is being reached; the session in the
+    path is what does. Scoped here rather than by the caller,
     because a lookup that returns any stretch to anybody is a lookup every route has to
     remember to fence.
 
@@ -333,18 +479,45 @@ async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     return [row for row, divided in _read_in_order(rows) if divided]
 
 
-async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
+async def final_segments(
+    db: AsyncSession, session_id: str, takes: list[IRTake] | None = None
+) -> list[IRSegment]:
     """The stretches that count, in the order the team told them.
 
-    Current and leaf, which is the whole selection rule of the room in one place. Where a
-    stretch reads is where its audio sits — the part it is a slice of, then the milliseconds
+    Current and leaf, which is the whole selection rule of the room in one place. A stretch told
+    over a whole recording that stepped aside for numbered parts is only stored, and not one.
+    Where a stretch reads is where its audio sits — the part it is a slice of, then the milliseconds
     inside that part — so a stretch written long after its neighbours still reads in its own
     place, and a replacement reads where the row it replaced did. `current_segments` is where
     that order is asked of the database; the hierarchy is walked here, because a stretch the
     team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    return [row for row, divided in _read_in_order(rows) if not divided]
+    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
+    return [
+        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in set_aside
+    ]
+
+
+def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
+    """The rehearsal takes with no number once the session holds a numbered part."""
+    if not any(part.ordinal is not None for part in current_parts(takes)):
+        return set()
+    return {take.id for take in takes if take.kind is IRTakeKind.ENSAIO and take.ordinal is None}
+
+
+async def set_aside_segment_ids(
+    db: AsyncSession, session_id: str, takes: list[IRTake] | None = None
+) -> set[str]:
+    """Every stored stretch told over a whole that stepped aside, retired or not.
+
+    `takes` is the session's takes in `takes_of`'s order, for a caller that already read them.
+    """
+    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
+    if not set_aside:
+        return set()
+    rows = await db.execute(select(IRSegment.id).where(IRSegment.take_id.in_(set_aside)))
+    return set(rows.scalars().all())
 
 
 def told_back(segments: list[IRSegment]) -> list[IRSegment]:
@@ -396,6 +569,29 @@ async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     return list(result.scalars().all())
 
 
+async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
+    """The stretches of a part recorded again that nobody has told again, in reading order."""
+    rows = await _in_reading_order(db, session_id, IRSegment.stale.is_(True))
+    set_aside = await set_aside_segment_ids(db, session_id)
+    cut = set(
+        (
+            await db.execute(
+                select(IRSegment.parent_id).where(
+                    IRSegment.session_id == session_id,
+                    IRSegment.parent_id.in_([row.id for row in rows]),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        row
+        for row, divided in _read_in_order(rows)
+        if not divided and row.id not in set_aside and row.id not in cut
+    ]
+
+
 async def segment_by_id(db: AsyncSession, segment_id: str) -> IRSegment:
     """One stretch by its own address, whether it still counts or not."""
     result = await db.execute(select(IRSegment).where(IRSegment.id == segment_id))
@@ -431,7 +627,12 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
     went, so the whole reading goes with it.
     """
     _stop_counting(await current_segments(db, session_id))
-    await db.commit()
+    await db.execute(
+        update(IRSegment)
+        .where(IRSegment.session_id == session_id, IRSegment.stale.is_(True))
+        .values(stale=False)
+    )
+    await db.flush()
 
 
 async def retire_the_segments_of(
@@ -475,6 +676,8 @@ async def retire_the_segments_of(
     if not going:
         return going
     _stop_counting(going)
+    for row in going:
+        row.stale = True
     await db.flush()
     return going
 
@@ -498,10 +701,16 @@ async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     the engine, for the reason `takes_of` says it: SQLite sorts a NULL first and PostgreSQL
     last, and the whole recording — the part with no number — reads before the numbered ones.
     """
+    return await _in_reading_order(db, session_id, IRSegment.superseded_at.is_(None))
+
+
+async def _in_reading_order(
+    db: AsyncSession, session_id: str, *conditions: ColumnElement[bool]
+) -> list[IRSegment]:
     result = await db.execute(
         select(IRSegment)
         .outerjoin(IRTake, IRSegment.take_id == IRTake.id)
-        .where(IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None))
+        .where(IRSegment.session_id == session_id, *conditions)
         .order_by(
             IRTake.ordinal.asc().nulls_first(),
             IRSegment.starts_ms,
@@ -554,8 +763,8 @@ async def current_stretch_at(
     rather than a stretch nobody has told yet: the tablet sends the stretch's own address back.
 
     Read off the leaves, which is what the room reads. A stretch that was divided is no longer
-    a unit — its audio belongs to its pieces — so a chunk over its old slice is a stretch of its
-    own, and replacing it is refused anyway.
+    a unit — its audio belongs to its pieces — so a chunk over its old slice finds nothing here,
+    and the chunks door refuses it for falling over those pieces.
     """
     return next(
         (
@@ -565,6 +774,25 @@ async def current_stretch_at(
         ),
         None,
     )
+
+
+def is_a_resend(retold: IRSegment | None, retro: IRTake) -> TypeGuard[IRSegment]:
+    return retold is not None and retold.bridge_take_id == retro.id
+
+
+async def refuse_a_replace_before_its_recording_is_kept(
+    db: AsyncSession, session_id: str, segment: IRSegment, audio: bytes
+) -> None:
+    kept = await the_take_already_kept(db, session_id, IRTakeKind.RETRO, audio)
+    standing = await current_stretch_at(
+        db,
+        session_id,
+        take_id=segment.take_id,
+        starts_ms=segment.starts_ms,
+        ends_ms=segment.ends_ms,
+    )
+    if kept is None or not is_a_resend(standing, kept):
+        await refuse_a_stretch_that_is_not_a_unit(db, session_id, segment)
 
 
 async def refuse_a_stretch_that_is_not_a_unit(
@@ -590,7 +818,7 @@ async def refuse_a_stretch_that_is_not_a_unit(
     and could mark a divided parent nothing can ever replace.
     """
     await db.refresh(segment, with_for_update=True)
-    if segment.superseded_at is not None:
+    if segment.superseded_at is not None and not segment.stale:
         raise StretchNoLongerCounts(
             "This stretch no longer counts: it was already replaced, or the part of the "
             "rehearsal it is a slice of was recorded again"

@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import AUTHORED, room_language
 
 
 class FailSafe(enum.StrEnum):
@@ -20,10 +20,16 @@ class FailSafe(enum.StrEnum):
     STRETCH_TO_CORRECT = "I"
 
 
-ProcessFamily = Literal["P", "X"]
+ProcessFamily = Literal["P", "X", "N"]
 
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
+
+#: The instant acknowledgements her app ever plays, in either language: it fetches the F lines
+#: with ``i < 3`` (``app/page.tsx:280`` at her freeze). Her file, kept byte for byte, carries a
+#: fourth in each block, «Right.» and «Tá.», that the team could never hear from her, so the
+#: room reads no further than she does — the ruling of 2026-10-06.
+ACKNOWLEDGEMENTS_SHE_PLAYS = 3
 
 
 @lru_cache(maxsize=1)
@@ -34,11 +40,14 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     for index, mark in enumerate(marks):
         end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
         body = text[mark.end() : end]
-        parsed[(mark.group(1), mark.group(3))] = _BULLET.findall(body)
+        lines = _BULLET.findall(body)
+        if mark.group(1) == FailSafe.INSTANT_ACK:
+            lines = lines[:ACKNOWLEDGEMENTS_SHE_PLAYS]
+        parsed[(mark.group(1), mark.group(3))] = lines
     return parsed
 
 
-def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> list[str]:
+def utterances(kind: FailSafe | ProcessFamily, language_code: str = AUTHORED) -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
@@ -46,14 +55,16 @@ def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> li
     H family is the one exception, and it is not a fail-safe — see the supplement.
 
     The file tags its blocks by primary language (`-pt`) while the room is configured with
-    a locale (`pt-BR`), so a regional code is tried and then its primary before falling
-    back to the authored English. Without that step every family answers in English for a
-    Brazilian team. That was invisible while only the *name* of a line crossed the wire —
-    the app held the audio and the indexes match between the two blocks — and it stops
-    being invisible the moment a line is synthesized from its text.
+    a locale (`pt-BR`), so the code is read through `room_language`: the region is dropped,
+    a language the room does not speak becomes the fleet's floor, that floor's block is
+    tried first, and the authored English answers only when it has nothing written. Without
+    that step every family answers in English for a Brazilian team. That was invisible
+    while only the *name* of a line crossed the wire — the app held the audio and the
+    indexes match between the two blocks — and it stops being invisible the moment a line
+    is synthesized from its text.
     """
     sections = _sections()
-    written = localized(kind, language_code)
+    written = localized(kind, room_language(language_code))
     if written:
         return written
     return sections.get((str(kind), None), [])
@@ -67,7 +78,7 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     lookup without that fallback, so a guard can ask whether a language the room claims to
     speak has actually had its lines written.
 
-    The untagged authored block counts as the floor's own and not as a borrowing: the file
+    The untagged authored block counts as English's own and not as a borrowing: the file
     says of it *"Written here in English; localize per session language"*, so it is English
     that happens to be untagged rather than English standing in for something unwritten.
     """
@@ -77,27 +88,57 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
         written = sections.get((str(kind), tag))
         if written:
             return written
-    if primary == FLOOR:
+    if primary == AUTHORED:
         return sections.get((str(kind), None), [])
     return []
 
 
-def first(kind: FailSafe, language_code: str = FLOOR) -> str:
+_VOICED: dict[str, FailSafe | ProcessFamily] = {
+    "A": FailSafe.UNREPAIRABLE,
+    "D": FailSafe.INAUDIBLE,
+    "E": FailSafe.HARD_STOP,
+    "F": FailSafe.INSTANT_ACK,
+    "P": "P",
+    "X": "X",
+    "N": "N",
+}
+_KEPT_UNSPOKEN = {("N", 3)}
+_NAMED = re.compile(r"([A-Z])(\d+)")
+
+
+def her_line(name: str, language_code: str) -> str | None:
+    named = _NAMED.fullmatch(name)
+    if named is None or named.group(1) not in _VOICED:
+        return None
+    position = int(named.group(2))
+    if (named.group(1), position) in _KEPT_UNSPOKEN:
+        return None
+    lines = utterances(_VOICED[named.group(1)], language_code)
+    return lines[position] if position < len(lines) else None
+
+
+def first(kind: FailSafe, language_code: str = AUTHORED) -> str:
     lines = utterances(kind, language_code)
     return lines[0] if lines else ""
 
 
-def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
+def choose(kind: FailSafe, language_code: str = AUTHORED, *, turn: int = 0) -> tuple[str, str]:
     """One line for this situation, and the name the app knows it by.
 
-    Rotating with the turn is what the authored file asks for — *"vary them, don't repeat
-    the same line twice running, so the session doesn't feel robotic"* — and a room that
-    answers two failures in a row with the identical sentence sounds like a machine stuck,
-    which is the one impression the fail-safe exists to avoid.
+    ``turn`` is not a count of turns. The A family is read by the draft at which the turn
+    gave up, as her turn loop reads it (``failSafeLine(attempt)``, attempts from one): the
+    first draft says A-2, the third A-4, A-1 never, and nothing carries from one turn to the
+    next — so a Validator that refuses every draft makes each such turn say A-4, as hers would.
 
-    The name is what the app plays: these lines are shipped as audio inside the app, so a
-    failure costs no synthesis and needs no network — which matters, because the network is
-    often what failed.
+    The inaudible family ignores ``turn``. Her app answers every miss with
+    ``didntCatchThat(0)`` — in the conversation, on a telling-back with nothing told, and in
+    the check rounds — so every "couldn't hear" is her first D line, D-1. The other two D
+    lines stay in her file and are simply never chosen.
+
+    The name is what the app asks for: the tablet hands it back to `/fixed-lines/{line}`,
+    which voices the line from the text this server was deployed with, so a line she
+    re-rules is heard on the next load. Only the three notices said with no server at all
+    stay in the app's bundle.
 
     It takes a ``FailSafe`` and never a process family, so that a step cannot be handed to
     the one reader that rotates: ``choose("X", turn=7)`` would answer X-whole where the step
@@ -107,60 +148,24 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     lines = utterances(kind, language_code)
     if not lines:
         return "", ""
-    index = turn % len(lines)
+    index = 0 if kind is FailSafe.INAUDIBLE else turn % len(lines)
     return lines[index], f"{kind}{index}"
 
 
-def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
-    """The D line for one more miss, read off how many the room is already answering.
+def unrepairable(draft: int, language_code: str, first_scene: str = "") -> tuple[str, str]:
+    line, name = choose(FailSafe.UNREPAIRABLE, language_code, turn=draft)
+    if not first_scene or language_code.split("-")[0] != "en":
+        return line, name
+    pointer = first_scene[:1].lower() + first_scene[1:]
+    return f"{line.rstrip('.!?')} — this is the part about {pointer}.", ""
 
-    The ladder used to be indexed by the length of the conversation, so the very first miss
-    could draw the third line and a team heard perfectly for twenty turns met whichever line
-    the count landed on. It walks the run of misses now — the trailing guide turns that
-    answered with a D line — and any turn the room did hear starts it over.
 
-    It stays on the last line rather than wrapping: a fourth miss re-opening with the first
-    line would ask again as if for the first time, and her rule is one D per evidence asked.
+def inaudible_ladder(language_code: str) -> tuple[str, str]:
+    """The D line for one more miss: always her first, however many came before it.
+
+    Her rule is ``didntCatchThat(0)``, one line for every miss.
     """
-    misses = 0
-    for message in reversed(messages):
-        if message.get("role") != "guide":
-            continue
-        if message.get("category") != str(FailSafe.INAUDIBLE):
-            break
-        misses += 1
-    last = len(utterances(FailSafe.INAUDIBLE, language_code)) - 1
-    return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
-
-
-#: Consecutive validation fail-safes before the room stops re-asking and pauses out loud.
-FAILURES_BEFORE_THE_PAUSE = 2
-
-
-def validation_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
-    """The line for one more draft the Validator would not settle: A0, A1, then the pause.
-
-    Repeated validation failures used to walk the A catalogue by the parity of the record,
-    so a session picked two of its four lines and the graceful pause never came. The count
-    is the A and E lines in the trailing run of fail-safe turns; a turn that needed no
-    fail-safe ends the run, and a miss in between does not, because the team was not
-    answered by the Guide on that turn either.
-
-    The third consecutive failure is category E, and E is a spoken line and nothing more:
-    the session stays open behind it, and a fourth failure says it again. Nothing here
-    decides that a person is needed — that call is the tablet's.
-    """
-    failures = 0
-    for message in reversed(messages):
-        if message.get("role") != "guide":
-            continue
-        if message.get("outcome") != "fail_safe":
-            break
-        if message.get("category") in (str(FailSafe.UNREPAIRABLE), str(FailSafe.HARD_STOP)):
-            failures += 1
-    if failures >= FAILURES_BEFORE_THE_PAUSE:
-        return choose(FailSafe.HARD_STOP, language_code)
-    return choose(FailSafe.UNREPAIRABLE, language_code, turn=failures)
+    return choose(FailSafe.INAUDIBLE, language_code)
 
 
 class UnknownProcessLine(LookupError):
@@ -183,18 +188,24 @@ PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
 }
 
 
-def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
+def process_line(
+    family: ProcessFamily, step: str, language_code: str = AUTHORED
+) -> tuple[str, str]:
     """The line for one step of the telling-back or of the external check, and its name.
 
-    A fail-safe answers a failure and rotates, on the authored file's own instruction. A
-    process line marks a step, and her prose says of both families that *"the order is
-    fixed and read by position"*: rotating them would voice the thanks where the step means
-    the invitation. So there is no ``turn`` here, and the same step always answers the same.
+    A fail-safe answers a failure, so which of its lines is said follows the failure: the
+    draft that gave up for A, the wait for the untold stretch, her first line for the
+    inaudible. A process line marks a step, and her prose says of both families that *"the
+    order is fixed and read by position"*: rotating them would voice the thanks where the
+    step means the invitation. So there is no ``turn`` here, and the same step always
+    answers the same.
 
-    The language resolution is ``choose``'s, unchanged — regional, then primary, then the
-    authored English — and so is the shape of the answer, because the two consumers want
-    different halves of it: a step spoken by the server needs the text, and a step played
-    from the app's bundle needs the name.
+    The language resolution is ``choose``'s, unchanged — the code read through
+    ``room_language``, so the region is dropped and a language the room does not speak lands
+    on the fleet's floor, then the authored English only when that block is empty — and so
+    is the shape of the answer, because the two consumers want different halves of it: a
+    step spoken inside a server answer needs the text, and a step the tablet asks the room
+    for by name needs the name.
     """
     steps = PROCESS_STEPS.get(family)
     if steps is None or step not in steps:

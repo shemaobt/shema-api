@@ -1,0 +1,1275 @@
+{
+  "book": "RUTH",
+  "counts": {
+    "by_kind": {
+      "INSTITUTION": 9,
+      "PERSON": 32,
+      "PLACE": 19,
+      "THING": 24,
+      "TIME": 13
+    },
+    "entities": 97
+  },
+  "entities": {
+    "B1": {
+      "appears_in": [
+        "P01"
+      ],
+      "english": "Judges",
+      "gender": null,
+      "hebrew": "שֹׁפְטִים",
+      "hebrew_cons": "שפטים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B10": {
+      "appears_in": [
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P09",
+        "P12",
+        "P13"
+      ],
+      "english": "YHWH",
+      "gender": "m",
+      "hebrew": "יְהוָה",
+      "hebrew_cons": "יהוה",
+      "kind": "PERSON",
+      "referential_forms": [
+        "YHWH",
+        "ELOHIM",
+        "SHADDAI",
+        "ALTERNATING_YHWH_AND_SHADDAI"
+      ]
+    },
+    "B11": {
+      "appears_in": [
+        "P03"
+      ],
+      "english": "God",
+      "gender": "m",
+      "hebrew": "אֱלֹהִים",
+      "hebrew_cons": "אלהים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B12": {
+      "appears_in": [
+        "P04"
+      ],
+      "english": "Shaddai",
+      "gender": "m",
+      "hebrew": "שַׁדַּי",
+      "hebrew_cons": "שדי",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B13": {
+      "appears_in": [
+        "P05",
+        "P06",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12",
+        "P13",
+        "P14"
+      ],
+      "english": "Boaz",
+      "gender": "m",
+      "hebrew": "בֹּעַז",
+      "hebrew_cons": "בעז",
+      "kind": "PERSON",
+      "referential_forms": [
+        "NAMED",
+        "NAMED_AT_FIRST_SIGHT_WITH_CHAYIL_ATTRIBUTE",
+        "LEGAL_PERFORMATIVE_NAMING"
+      ]
+    },
+    "B14": {
+      "appears_in": [
+        "P05",
+        "P06"
+      ],
+      "english": "Harvesters",
+      "gender": null,
+      "hebrew": "קוֹצְרִים",
+      "hebrew_cons": "קוצרים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B15": {
+      "appears_in": [
+        "P05"
+      ],
+      "english": "The Foreman",
+      "gender": "m",
+      "hebrew": "נַעַר הַנִּצָּב עַל הַקּוֹצְרִים",
+      "hebrew_cons": "נערהנצבעלהקוצרים",
+      "kind": "PERSON",
+      "referential_forms": [
+        "NAAR_NITSAV_AL_HAQOTSRIM_NAMED_BY_ROLE"
+      ]
+    },
+    "B16": {
+      "appears_in": [
+        "P06",
+        "P07",
+        "P08"
+      ],
+      "english": "Young Women",
+      "gender": "f",
+      "hebrew": "נַעֲרוֹת",
+      "hebrew_cons": "נערות",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B17": {
+      "appears_in": [
+        "P06",
+        "P07"
+      ],
+      "english": "Young Men",
+      "gender": "m",
+      "hebrew": "נְעָרִים",
+      "hebrew_cons": "נערים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B18": {
+      "appears_in": [
+        "P07",
+        "P09",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "english": "The Redeemer",
+      "gender": "m",
+      "hebrew": "גֹּאֵל",
+      "hebrew_cons": "גאל",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B19": {
+      "appears_in": [
+        "P09",
+        "P10",
+        "P11",
+        "P12"
+      ],
+      "english": "The Nearer Redeemer",
+      "gender": "m",
+      "hebrew": "הָאִישׁ פְּלֹנִי אַלְמֹנִי",
+      "hebrew_cons": "האישפלניאלמני",
+      "kind": "PERSON",
+      "referential_forms": [
+        "NEARER_REDEEMER_REFERENCED",
+        "HA_ISH_THE_MAN",
+        "PLONI_ALMONI_VOCATIVE_OF_ANONYMITY",
+        "HA_GOEL_THE_REDEEMER",
+        "NEARER_REDEEMER_UNNAMED"
+      ]
+    },
+    "B2": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P05",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "english": "Elimelech",
+      "gender": "m",
+      "hebrew": "אֱלִימֶלֶךְ",
+      "hebrew_cons": "אלימלך",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B20": {
+      "appears_in": [
+        "P11",
+        "P12"
+      ],
+      "english": "Elders",
+      "gender": "m",
+      "hebrew": "זְקֵנִים",
+      "hebrew_cons": "זקנים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B21": {
+      "appears_in": [
+        "P09",
+        "P11",
+        "P12"
+      ],
+      "english": "All the People at the Gate",
+      "gender": null,
+      "hebrew": "כָּל הָעָם אֲשֶׁר בַּשַּׁעַר",
+      "hebrew_cons": "כלהעםאשרבשער",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B22": {
+      "appears_in": [
+        "P12"
+      ],
+      "english": "Rachel and Leah",
+      "gender": "f",
+      "hebrew": "רָחֵל לֵאָה",
+      "hebrew_cons": "רחללאה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B23": {
+      "appears_in": [
+        "P12"
+      ],
+      "english": "Tamar",
+      "gender": "f",
+      "hebrew": "תָּמָר",
+      "hebrew_cons": "תמר",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B24": {
+      "appears_in": [
+        "P04",
+        "P13"
+      ],
+      "english": "The Women",
+      "gender": "f",
+      "hebrew": "נָשִׁים",
+      "hebrew_cons": "נשים",
+      "kind": "PERSON",
+      "referential_forms": [
+        "Women of Bethlehem"
+      ]
+    },
+    "B25": {
+      "appears_in": [
+        "P13",
+        "P14"
+      ],
+      "english": "Obed",
+      "gender": "m",
+      "hebrew": "עוֹבֵד",
+      "hebrew_cons": "עובד",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B26": {
+      "appears_in": [
+        "P13",
+        "P14"
+      ],
+      "english": "Jesse and David",
+      "gender": "m",
+      "hebrew": "יִשַׁי דָּוִד",
+      "hebrew_cons": "ישידוד",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B27": {
+      "appears_in": [
+        "P02",
+        "P05",
+        "P12",
+        "P14"
+      ],
+      "english": "Perez and His Descendants",
+      "gender": "m",
+      "hebrew": "פֶּרֶץ חֶצְרוֹן רָם עַמִּינָדָב נַחְשׁוֹן שַׂלְמָה שַׂלְמוֹן",
+      "hebrew_cons": "פרץחצרוןרםעמינדבנחשוןשלמהשלמון",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B28": {
+      "appears_in": [
+        "P04"
+      ],
+      "english": "The Whole City",
+      "gender": null,
+      "hebrew": "הָעִיר",
+      "hebrew_cons": "העיר",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B29": {
+      "appears_in": [
+        "P05",
+        "P09",
+        "P11",
+        "P12"
+      ],
+      "english": "The Clan of Elimelech",
+      "gender": null,
+      "hebrew": "מִשְׁפַּחַת אֱלִימֶלֶךְ",
+      "hebrew_cons": "משפחתאלימלך",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B3": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P10",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "english": "Naomi",
+      "gender": "f",
+      "hebrew": "נָעֳמִי",
+      "hebrew_cons": "נעמי",
+      "kind": "PERSON",
+      "referential_forms": [
+        "the woman",
+        "Mara"
+      ]
+    },
+    "B30": {
+      "appears_in": [
+        "P11",
+        "P12"
+      ],
+      "english": "Judah",
+      "gender": "m",
+      "hebrew": "יְהוּדָה",
+      "hebrew_cons": "יהודה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B31": {
+      "appears_in": [
+        "P02",
+        "P03"
+      ],
+      "english": "His People / People of YHWH",
+      "gender": null,
+      "hebrew": "עַמּוֹ / עַם יְהוָה",
+      "hebrew_cons": "עמועםיהוה",
+      "kind": "PERSON",
+      "referential_forms": [
+        "his people (1:6)",
+        "your people (Naomi's people, 1:10)",
+        "People-of-YHWH",
+        "People of YHWH"
+      ]
+    },
+    "B32": {
+      "appears_in": [
+        "P09"
+      ],
+      "english": "Young Men Ruth Did Not Go After",
+      "gender": "m",
+      "hebrew": "בַּחוּרִים",
+      "hebrew_cons": "בחורים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B4": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P12"
+      ],
+      "english": "Mahlon",
+      "gender": "m",
+      "hebrew": "מַחְלוֹן",
+      "hebrew_cons": "מחלון",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B5": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P12"
+      ],
+      "english": "Chilion",
+      "gender": "m",
+      "hebrew": "כִּלְיוֹן",
+      "hebrew_cons": "כליון",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B6": {
+      "appears_in": [
+        "P01",
+        "P12"
+      ],
+      "english": "Ephrathites",
+      "gender": null,
+      "hebrew": "אֶפְרָתִים",
+      "hebrew_cons": "אפרתים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B7": {
+      "appears_in": [
+        "P01"
+      ],
+      "english": "Women of Moab",
+      "gender": "f",
+      "hebrew": "נָשִׁים מוֹאֲבִיוֹת",
+      "hebrew_cons": "נשיםמואביות",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B8": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "english": "Orpah",
+      "gender": "f",
+      "hebrew": "עָרְפָּה",
+      "hebrew_cons": "ערפה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B9": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "english": "Ruth",
+      "gender": "f",
+      "hebrew": "רוּת",
+      "hebrew_cons": "רות",
+      "kind": "PERSON",
+      "referential_forms": [
+        "NAMED",
+        "UNNAMED_AT_ARRIVAL_BUT_PRESENT",
+        "MOABITE_DAUGHTER_IN_LAW_DOUBLE_LABEL",
+        "SELF_LABELED_THE_MOABITE",
+        "MOABITE_YOUNG_WOMAN_WHO_RETURNED_WITH_NAOMI_FROM_FIELDS_OF_MOAB",
+        "THIRD_PARTY_GLEANER_IN_BOAZS_LINE_OF_SIGHT",
+        "RUTH_THE_MOABITESS_NARRATOR_EPITHET",
+        "RUTH_THE_MOABITESS_LEGAL_NAMING_AT_PROCEEDING"
+      ]
+    },
+    "I1": {
+      "appears_in": [
+        "P07",
+        "P09",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "english": "Kinsman-redeemer",
+      "gender": null,
+      "hebrew": "גֹּאֵל",
+      "hebrew_cons": "גאל",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I2": {
+      "appears_in": [
+        "P02",
+        "P11",
+        "P12"
+      ],
+      "english": "Levirate-style Obligation",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I3": {
+      "appears_in": [
+        "P05"
+      ],
+      "english": "Gleaning Rights",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I4": {
+      "appears_in": [
+        "P08",
+        "P09"
+      ],
+      "english": "The Threshing Floor as Agricultural Site",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I5": {
+      "appears_in": [
+        "P12"
+      ],
+      "english": "The Attestation-by-sandal-removal Custom",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I5_RETIRED": {
+      "appears_in": [],
+      "english": "[retired in V0.3; Migrated to CB GATE LEGAL Venue]",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I6": {
+      "appears_in": [
+        "P04",
+        "P13"
+      ],
+      "english": "Naming of A Child by the Community",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I7": {
+      "appears_in": [
+        "P11",
+        "P12",
+        "P14"
+      ],
+      "english": "Genealogy Preservation of Name",
+      "gender": null,
+      "hebrew": "זֶרַע שֵׁם",
+      "hebrew_cons": "זרעשם",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "I8": {
+      "appears_in": [
+        "P02",
+        "P05",
+        "P06",
+        "P07",
+        "P09",
+        "P12",
+        "P13"
+      ],
+      "english": "Communal Blessing",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "INSTITUTION",
+      "referential_forms": []
+    },
+    "O1": {
+      "appears_in": [
+        "P01"
+      ],
+      "english": "Famine",
+      "gender": null,
+      "hebrew": "רָעָב",
+      "hebrew_cons": "רעב",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O10": {
+      "appears_in": [
+        "P06",
+        "P07"
+      ],
+      "english": "Roasted Grain",
+      "gender": null,
+      "hebrew": "קָלִי",
+      "hebrew_cons": "קלי",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O11": {
+      "appears_in": [
+        "P05",
+        "P06"
+      ],
+      "english": "Sheaves and Handfuls",
+      "gender": null,
+      "hebrew": "עֳמָרִים צְבָתִים",
+      "hebrew_cons": "עמריםצבתים",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O12": {
+      "appears_in": [
+        "P07"
+      ],
+      "english": "Ephah",
+      "gender": null,
+      "hebrew": "אֵיפָה",
+      "hebrew_cons": "איפה",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O13": {
+      "appears_in": [
+        "P08",
+        "P10"
+      ],
+      "english": "Your Garments",
+      "gender": null,
+      "hebrew": "שִׁמְלֹתֵךְ שִׁמְלָה",
+      "hebrew_cons": "שמלתךשמלה",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O14": {
+      "appears_in": [
+        "P08",
+        "P10"
+      ],
+      "english": "Feet",
+      "gender": null,
+      "hebrew": "מַרְגְּלוֹת",
+      "hebrew_cons": "מרגלות",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O15": {
+      "appears_in": [],
+      "english": "Night and Morning",
+      "gender": null,
+      "hebrew": "לַיְלָה בֹּקֶר",
+      "hebrew_cons": "לילהבקר",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O16": {
+      "appears_in": [
+        "P10"
+      ],
+      "english": "Six Measures of Barley",
+      "gender": null,
+      "hebrew": "שֵׁשׁ שְׂעֹרִים",
+      "hebrew_cons": "שששערים",
+      "kind": "THING",
+      "referential_forms": [
+        "Six Barley"
+      ]
+    },
+    "O17": {
+      "appears_in": [
+        "P11"
+      ],
+      "english": "[retired in V0.3; See O26]",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O18": {
+      "appears_in": [
+        "P11",
+        "P12"
+      ],
+      "english": "Inheritance",
+      "gender": null,
+      "hebrew": "נַחֲלָה",
+      "hebrew_cons": "נחלה",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O19": {
+      "appears_in": [
+        "P09",
+        "P10"
+      ],
+      "english": "The Matter",
+      "gender": null,
+      "hebrew": "דָּבָר",
+      "hebrew_cons": "דבר",
+      "kind": "THING",
+      "referential_forms": [
+        "Word"
+      ]
+    },
+    "O2": {
+      "appears_in": [
+        "P04",
+        "P07",
+        "P10"
+      ],
+      "english": "Barley",
+      "gender": null,
+      "hebrew": "שְׂעוֹרִים קְצִיר שְׂעֹרִים",
+      "hebrew_cons": "שעוריםקצירשערים",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O20": {
+      "appears_in": [
+        "P12"
+      ],
+      "english": "Seed",
+      "gender": null,
+      "hebrew": "זֶרַע",
+      "hebrew_cons": "זרע",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O21": {
+      "appears_in": [
+        "P02",
+        "P13"
+      ],
+      "english": "Conception",
+      "gender": null,
+      "hebrew": "הֵרָיוֹן",
+      "hebrew_cons": "הריון",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O22": {
+      "appears_in": [
+        "P13"
+      ],
+      "english": "Son and Child",
+      "gender": null,
+      "hebrew": "בֵּן יֶלֶד",
+      "hebrew_cons": "בןילד",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O23-O25": {
+      "appears_in": [
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "english": "[reserved for P08-p10 In-compilation Absorptions, Pending Registry Merge]",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O26": {
+      "appears_in": [
+        "P08",
+        "P10",
+        "P12"
+      ],
+      "english": "Sandal",
+      "gender": null,
+      "hebrew": "נַעַל",
+      "hebrew_cons": "נעל",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O3": {
+      "appears_in": [
+        "P07"
+      ],
+      "english": "Wheat Harvest",
+      "gender": null,
+      "hebrew": "קְצִיר חִטִּים",
+      "hebrew_cons": "קצירחטים",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O4": {
+      "appears_in": [
+        "P02"
+      ],
+      "english": "Hand of the LORD",
+      "gender": null,
+      "hebrew": "יַד יְהוָה",
+      "hebrew_cons": "ידיהוה",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O5": {
+      "appears_in": [
+        "P06",
+        "P09"
+      ],
+      "english": "Wing",
+      "gender": null,
+      "hebrew": "כָּנָף",
+      "hebrew_cons": "כנף",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O6": {
+      "appears_in": [
+        "P05",
+        "P06"
+      ],
+      "english": "Favor",
+      "gender": null,
+      "hebrew": "חֵן",
+      "hebrew_cons": "חן",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O7": {
+      "appears_in": [
+        "P02",
+        "P09"
+      ],
+      "english": "Hesed",
+      "gender": null,
+      "hebrew": "חֶסֶד",
+      "hebrew_cons": "חסד",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O8": {
+      "appears_in": [
+        "P02",
+        "P06"
+      ],
+      "english": "Bread",
+      "gender": null,
+      "hebrew": "לֶחֶם",
+      "hebrew_cons": "לחם",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O9": {
+      "appears_in": [
+        "P06"
+      ],
+      "english": "Vinegar",
+      "gender": null,
+      "hebrew": "חֹמֶץ",
+      "hebrew_cons": "חמץ",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "PL1": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P04",
+        "P05",
+        "P12"
+      ],
+      "english": "Bethlehem",
+      "gender": null,
+      "hebrew": "בֵּית לֶחֶם יְהוּדָה",
+      "hebrew_cons": "ביתלחםיהודה",
+      "kind": "PLACE",
+      "referential_forms": [
+        "Bethlehem of Judah"
+      ]
+    },
+    "PL2": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P11"
+      ],
+      "english": "Fields of Moab",
+      "gender": null,
+      "hebrew": "שְׂדֵי מוֹאָב",
+      "hebrew_cons": "שדימואב",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL3": {
+      "appears_in": [
+        "P02"
+      ],
+      "english": "Mother's House",
+      "gender": null,
+      "hebrew": "בֵּית אִמָּהּ",
+      "hebrew_cons": "ביתאמה",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL4": {
+      "appears_in": [
+        "P04",
+        "P11"
+      ],
+      "english": "The Town",
+      "gender": null,
+      "hebrew": "הָעִיר",
+      "hebrew_cons": "העיר",
+      "kind": "PLACE",
+      "referential_forms": [
+        "The City"
+      ]
+    },
+    "PL5": {
+      "appears_in": [
+        "P05",
+        "P07"
+      ],
+      "english": "Field",
+      "gender": null,
+      "hebrew": "שָׂדֶה",
+      "hebrew_cons": "שדה",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL5_BOAZ_PORTION": {
+      "appears_in": [
+        "P05",
+        "P06",
+        "P07"
+      ],
+      "english": "Boaz's Portion of the Field",
+      "gender": null,
+      "hebrew": "חֶלְקַת הַשָּׂדֶה לְבֹעַז",
+      "hebrew_cons": "חלקתהשדהלבעז",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL5_ELIMELECH_PORTION": {
+      "appears_in": [
+        "P11"
+      ],
+      "english": "Elimelech's Portion of the Field",
+      "gender": null,
+      "hebrew": "חֶלְקַת הַשָּׂדֶה אֲשֶׁר לְאָחִינוּ לֶאֱלִימֶלֶךְ",
+      "hebrew_cons": "חלקתהשדהאשרלאחינולאלימלך",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL6": {
+      "appears_in": [
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "english": "Threshing Floor",
+      "gender": null,
+      "hebrew": "גֹּרֶן",
+      "hebrew_cons": "גרן",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL7": {
+      "appears_in": [
+        "P11",
+        "P12"
+      ],
+      "english": "Gate",
+      "gender": null,
+      "hebrew": "שַׁעַר",
+      "hebrew_cons": "שער",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL8": {
+      "appears_in": [
+        "P01",
+        "P12"
+      ],
+      "english": "Ephrathah",
+      "gender": null,
+      "hebrew": "אֶפְרָתָה",
+      "hebrew_cons": "אפרתה",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_AMONG_SHEAVES": {
+      "appears_in": [
+        "P06"
+      ],
+      "english": "Among the Sheaves",
+      "gender": null,
+      "hebrew": "בֵּין הָעֳמָרִים",
+      "hebrew_cons": "ביןהעמרים",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_EACH_HER_MOTHERS_HOUSE": {
+      "appears_in": [
+        "P02"
+      ],
+      "english": "Each One to Her Own Mother's House",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_END_OF_GRAIN_HEAP": {
+      "appears_in": [
+        "P09"
+      ],
+      "english": "End of the Grain Heap",
+      "gender": null,
+      "hebrew": "קְצֵה הָעֲרֵמָה",
+      "hebrew_cons": "קצההערמה",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_HA_BAYIT_FIELD_SHELTER": {
+      "appears_in": [
+        "P05"
+      ],
+      "english": "The Shelter at the Field",
+      "gender": null,
+      "hebrew": "הַבַּיִת",
+      "hebrew_cons": "הבית",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_ISRAEL": {
+      "appears_in": [
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "english": "Israel",
+      "gender": null,
+      "hebrew": "יִשְׂרָאֵל",
+      "hebrew_cons": "ישראל",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_LAND_OF_JUDAH": {
+      "appears_in": [
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "english": "the land of Judah",
+      "gender": null,
+      "hebrew": "אֶרֶץ יְהוּדָה",
+      "hebrew_cons": "ארץיהודה",
+      "hebrew_cons_aliases": [
+        "ארץ",
+        "הארץ"
+      ],
+      "kind": "PLACE",
+      "referential_forms": [
+        "THE_LAND_AFFLICTED_BY_FAMINE",
+        "LAND_OF_RETURN_AND_PROVISION"
+      ]
+    },
+    "PL_NAOMIS_DWELLING": {
+      "appears_in": [
+        "P05",
+        "P07",
+        "P13"
+      ],
+      "english": "Naomi's Dwelling in Bethlehem",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_OTHER_FIELD": {
+      "appears_in": [
+        "P06",
+        "P07"
+      ],
+      "english": "Another Field",
+      "gender": null,
+      "hebrew": "שָׂדֶה אַחֵר",
+      "hebrew_cons": "שדהאחר",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL_WHEREVER_B3_GOES": {
+      "appears_in": [
+        "P03"
+      ],
+      "english": "Wherever Naomi Goes Wherever Naomi Lodges",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "TM_BARLEY_HARVEST_BEGINNING": {
+      "appears_in": [
+        "P04",
+        "P05"
+      ],
+      "english": "Beginning of the Barley Harvest",
+      "gender": null,
+      "hebrew": "תְּחִלַּת קְצִיר שְׂעֹרִים",
+      "hebrew_cons": "תחלתקצירשערים",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_DAY_OF_PURCHASE": {
+      "appears_in": [
+        "P11"
+      ],
+      "english": "Day of Purchase",
+      "gender": null,
+      "hebrew": "בְּיוֹם־קְנוֹתְךָ",
+      "hebrew_cons": "ביוםקנותך",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_END_OF_BARLEY_HARVEST": {
+      "appears_in": [
+        "P04",
+        "P07"
+      ],
+      "english": "The End of the Barley Harvest",
+      "gender": null,
+      "hebrew": "כְּלוֹת קְצִיר הַשְּׂעֹרִים",
+      "hebrew_cons": "כלותקצירהשערים",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_EVENING": {
+      "appears_in": [
+        "P07"
+      ],
+      "english": "Evening",
+      "gender": null,
+      "hebrew": "הָעֶרֶב",
+      "hebrew_cons": "הערב",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_EXTENDED_HARVEST_SPAN": {
+      "appears_in": [
+        "P07"
+      ],
+      "english": "The Cumulative Duration of the Two Harvests",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_FORMER_TIMES": {
+      "appears_in": [
+        "P11",
+        "P12"
+      ],
+      "english": "In Former Times in Israel",
+      "gender": null,
+      "hebrew": "לְפָנִים בְּיִשְׂרָאֵל",
+      "hebrew_cons": "לפניםבישראל",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_MEALTIME": {
+      "appears_in": [
+        "P06"
+      ],
+      "english": "At Mealtime",
+      "gender": null,
+      "hebrew": "לְעֵת הָאֹכֶל",
+      "hebrew_cons": "לעתהאכל",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_MIDDLE_OF_THE_NIGHT": {
+      "appears_in": [
+        "P09"
+      ],
+      "english": "Middle of the Night",
+      "gender": null,
+      "hebrew": "בַּחֲצִי הַלַּיְלָה",
+      "hebrew_cons": "בחציהלילה",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_NIGHT_TO_MORNING": {
+      "appears_in": [
+        "P10"
+      ],
+      "english": "Night to Morning",
+      "gender": null,
+      "hebrew": "לַיְלָה בֹּקֶר",
+      "hebrew_cons": "לילהבקר",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_NIGHT_UNTIL_MORNING": {
+      "appears_in": [
+        "P09"
+      ],
+      "english": "Night Until Morning",
+      "gender": null,
+      "hebrew": "הַלַּיְלָה … בַבֹּקֶר",
+      "hebrew_cons": "הלילהבבקר",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_PERIOD_OF_JUDGES": {
+      "appears_in": [
+        "P01"
+      ],
+      "english": "In the Days When the Judges Judged",
+      "gender": null,
+      "hebrew": "בִּימֵי שְׁפֹט הַשֹּׁפְטִים",
+      "hebrew_cons": "בימישפטהשפטים",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_TODAY": {
+      "appears_in": [
+        "P07",
+        "P10",
+        "P12"
+      ],
+      "english": "Today",
+      "gender": null,
+      "hebrew": "הַיּוֹם",
+      "hebrew_cons": "היום",
+      "kind": "TIME",
+      "referential_forms": []
+    },
+    "TM_WHEAT_HARVEST": {
+      "appears_in": [
+        "P07"
+      ],
+      "english": "The Wheat Harvest",
+      "gender": null,
+      "hebrew": "קְצִיר הַחִטִּים",
+      "hebrew_cons": "קצירהחטים",
+      "kind": "TIME",
+      "referential_forms": []
+    }
+  },
+  "places_ner": {
+    "loaded": true,
+    "ner_place_spellings": 11,
+    "places_augmented": 0
+  },
+  "schema": "tripod-entity-aliases",
+  "schema_version": "0.1.0",
+  "source": "ruth-pilot-b-wiki/bcd frontmatter (+ ETCBC places NER sheet)"
+}

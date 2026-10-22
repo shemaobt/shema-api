@@ -1,13 +1,14 @@
 # Fail-Safe Utterances — Portuguese supplement
 
-The underscore marks this as ours, not one of the project's authored prompts. B, C and E
-moved out of here into the authored file's own `B-pt`/`C-pt`/`E-pt` on her word (ENG-833:
-Marcia confirmed the text 2026-09-21, "as reserve, with 'o facilitador de vocês'"), leaving
-this file with one kind of thing: the sections the authored file has no counterpart for in
-any language, because the situations they name did not exist when that file was written —
-H and I. Each carries its own English block here as well as its `-pt` one, since there is no
-authored English to fall back to. The record of that move — and of everything this file used
-to carry — is beside it, in `_fail_safe_pt_supplement_provenance.md`.
+The underscore marks this as ours, not one of hers. Her fail-safe file is the room's own, byte
+for byte, and this one is read after it for what hers does not carry: the sections she has no
+counterpart for in any language, because the situations they name did not exist when she
+wrote it — H and I, each with its own English block here as well as its `-pt` one, since
+there is no English of hers to fall back to — and the Portuguese reserve lines for B, C and E,
+which she confirmed on 2026-09-21 (ENG-833: "as reserve, with 'o facilitador de vocês'") and
+which her file has no `-pt` block for; they sit at the end. The record of what this file has
+carried, and of how its Portuguese came to be approved, is beside it, in
+`_fail_safe_pt_supplement_provenance.md`.
 
 ## H. A stretch is still waiting to be told back
 
@@ -61,8 +62,7 @@ already told, rather than telling what was not).
 *traduzir* wording approved by Henok, 2026-09-10, and the English line brought to the same
 word, 2026-09-11.**
 
-⚠ Neither the English nor the Spanish here has been read by a native speaker. ENG-683 records
-that this is true of every English and Spanish line the room speaks, not just this one.
+⚠ The English here has not been read by a native speaker.
 
 **Spoken, not shipped**, for the same reason H is: it rides on the verdict's own clip, which
 the server is synthesizing in that very request, so no app release stands between the team and
@@ -84,7 +84,7 @@ reads.
 
 **What the sentence may not do**, from a log where a draft was rejected for doing it:
 
-- **It does not name the bridge language.** "in English" is false in a Spanish session, and
+- **It does not name the bridge language.** "in English" is false in a Portuguese session, and
   the facilitator is already speaking the bridge language, so "for me" anchors it alone.
 - **It does not claim the two recordings were compared.** The Guide never checks the mother
   tongue and says that limit out loud; claiming the comparison is an epistemic-policy
@@ -104,3 +104,23 @@ warn about.
 ### I-pt. (Português brasileiro)
 
 - "Preciso que vocês me traduzam esta parte inteira de novo — o que já tinham traduzido, e também o que faltou."
+
+## B-pt, C-pt and E-pt — back from the authored file
+
+Her file at the freeze (18fa7c4) carries no B-pt, C-pt or E-pt, and it is now kept byte for
+byte, so the three reserve lines she confirmed on 2026-09-21 (ENG-833, item A1) live here again,
+verbatim.
+
+### B-pt. (Português brasileiro)
+
+- "Boa pergunta. Isso a passagem não conta — ela fica no que está bem aqui na nossa frente. Vamos ficar com o que ela está mostrando."
+- "A passagem fica quieta sobre isso. Vamos olhar o que ela conta nesta parte."
+
+### C-pt. (Português brasileiro)
+
+- "Essa pergunta é importante, e é bem do tipo de levar ao facilitador de vocês — alguém que pode ir mais longe do que esta passagem vai sozinha."
+- "Isso merece uma resposta de verdade, e vai além do que esta passagem conta. Vamos guardar para levar ao facilitador de vocês, e seguir por aqui."
+
+### E-pt. (Português brasileiro)
+
+- "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de vocês, e a gente retoma isso junto."

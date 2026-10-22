@@ -3,7 +3,10 @@
 The transcriber raises for silence, for a clipped recording, and for a file the encoder
 mangled. Left to propagate, each of those becomes a 4xx — and the app has one drawing for
 every failure it cannot act on, the one that says the network is down. A team would be told
-the internet failed because somebody sat too far from the microphone.
+the internet failed because somebody sat too far from the microphone, so `heard` reads them
+as nothing made out. A turn's take is read differently: a recognizer that refuses it is an
+outage, as in Marcia's app, which throws on any status that is not OK (`elevenlabs.ts:103`)
+and answers 502 to the throw (`route.ts:224-227`), while silence stays a miss.
 """
 
 from types import SimpleNamespace
@@ -25,7 +28,10 @@ async def test_what_the_team_said_comes_back_as_it_is(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
-    assert await hearing.heard(b"audio", settings=_settings()) == "a gente contou de novo"
+    assert (
+        await hearing.heard(b"audio", language="pt", settings=_settings())
+        == "a gente contou de novo"
+    )
 
 
 @pytest.mark.parametrize(
@@ -44,10 +50,10 @@ async def test_silence_and_mangled_audio_answer_empty_rather_than_raise(
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
-    assert await hearing.heard(b"audio", settings=_settings()) == ""
+    assert await hearing.heard(b"audio", language="pt", settings=_settings()) == ""
 
 
-async def test_an_elevenlabs_outage_reaches_heard_as_an_error_not_silence(
+async def test_an_elevenlabs_outage_reads_as_nothing_made_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _transcribe(*_: object, **__: object) -> str:
@@ -55,8 +61,7 @@ async def test_an_elevenlabs_outage_reaches_heard_as_an_error_not_silence(
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
-    with pytest.raises(UpstreamServiceError):
-        await hearing.heard(b"audio", settings=_settings())
+    assert await hearing.heard(b"audio", language="pt", settings=_settings()) == ""
 
 
 async def test_an_elevenlabs_outage_reaches_heard_speech_as_an_error_not_silence(
@@ -99,7 +104,6 @@ def test_a_team_speaking_the_sessions_own_language_is_never_heard_as_mother_tong
     )
 
     assert heard_it.mother_tongue is False
-    assert heard_it.reliable_bridge_speech is True
 
 
 def test_speech_outside_the_sessions_language_still_meets_the_boundary() -> None:
@@ -107,6 +111,17 @@ def test_speech_outside_the_sessions_language_still_meets_the_boundary() -> None
         text="uma família sai de Belém porque não há pão",
         bridge_language="en",
         language_code="pt",
+        language_probability=0.99,
+    )
+
+    assert heard_it.mother_tongue is True
+
+
+def test_spanish_is_no_bridge_language_even_for_a_row_still_stored_in_it() -> None:
+    heard_it = hearing.HeardSpeech(
+        text="una familia sale de Belén porque no hay pan",
+        bridge_language="es",
+        language_code="es",
         language_probability=0.99,
     )
 

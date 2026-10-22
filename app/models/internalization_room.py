@@ -1,8 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_serializer,
+)
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
@@ -11,21 +18,19 @@ from app.core.room_enums import CoverageStatus, ElementKind
 class LabelledElement(BaseModel):
     """One bead, named in each language the Desk offers.
 
-    `key` is unique only within its pericope: `scene:1` is a different scene in every
+    `key` is unique only within its pericope: `scene:S1` is a different scene in every
     passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
 
-    The three languages are named fields because that is the shape the Desk was promised, so
-    a fourth costs a field here as well as a catalogue entry — three files, not every call
+    The two languages are named fields because that is the shape the Desk was promised, so
+    a third costs a field here as well as a catalogue entry — three files, not every call
     site. `extra="forbid"` is what makes that cost visible: the loader builds this by
     spreading `LANGUAGES`, and pydantic drops an unknown keyword by default, so without it a
-    fourth language would be demanded of the catalogue and then thrown away in silence.
+    third language would be demanded of the catalogue and then thrown away in silence.
 
-    **`label_pt` and `label_es` are nullable and `label_en` is not**, which is the shape that
-    promise actually names: the Desk's own `CoverageLabels` is
-    `{ pt: string | null, en: string, es: string | null }`, because English comes almost free
-    from the canon and the other two are translation work. This model cited that promise and
-    contradicted its text, and nobody had noticed because the four translated passages are
-    complete in all three. The canon serves fourteen and D-03 walks every team through them.
+    **`label_pt` is nullable and `label_en` is not**, which is the shape that promise actually
+    names: the Desk's own `CoverageLabels` is `{ pt: string | null, en: string }`, because
+    English comes almost free from the canon and Portuguese is translation work. The room
+    serves three books and D-03 walks every team through each of their passages.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -35,15 +40,14 @@ class LabelledElement(BaseModel):
     scene: int | None = None
     label_pt: str | None
     label_en: str
-    label_es: str | None
 
 
 class CoverageLegend(BaseModel):
     """The names of the coverage states and the element kinds, once per response.
 
-    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose three
+    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose two
     fields the Desk was promised by name, nothing was promised about this shape — so here a
-    fourth language is a catalogue change and nothing else.
+    third language is a catalogue change and nothing else.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -62,7 +66,7 @@ class LegendName(BaseModel):
     walking the enum, so an enum type would re-refuse what is true by construction: it can
     only reject what the loader has just accepted.
 
-    **The three labels are not nullable, and `LabelledElement`'s are** — the two shapes
+    **The two labels are not nullable, and `LabelledElement`'s Portuguese is** — the two shapes
     disagree on purpose. A bead of a passage nobody has translated falls back to the canon,
     which is English and nothing else, so `label_pt` there is legitimately absent. A legend
     has no such fallback: `legend()` raises `ElementLabelsBroken` on a name missing in any
@@ -75,7 +79,6 @@ class LegendName(BaseModel):
     value: str
     label_pt: str
     label_en: str
-    label_es: str
 
 
 class CoverageLegendResponse(BaseModel):
@@ -87,14 +90,14 @@ class CoverageLegendResponse(BaseModel):
     hand the client an arrangement to make a second time, and ENG-462 is the record of what
     that costs.
 
-    The three languages are named fields rather than a map keyed by language, because that is
-    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`
-    / `label_es`. A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would
-    be two shapes for one thing on one screen. `CoverageLegend` — the loader's own answer —
-    keeps the map, because that is the catalogue's shape and a fourth language there costs a
-    catalogue entry and nothing else.
+    The two languages are named fields rather than a map keyed by language, because that is
+    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`.
+    A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would be two shapes
+    for one thing on one screen. `CoverageLegend` — the loader's own answer — keeps the map,
+    because that is the catalogue's shape and a third language there costs a catalogue entry
+    and nothing else.
 
-    ENG-449's coverage response repeats the same three fields and is what this legend is read
+    ENG-449's coverage response repeats the same two fields and is what this legend is read
     beside. It is named by its issue and not by its model, deliberately: a class name is a
     reference `grep` promises to resolve, so one naming a branch that has not merged is a
     reference that lies. An issue number promises nothing and therefore cannot.
@@ -122,9 +125,9 @@ class ElementCoverage(BaseModel):
     showing a facilitator any count, percentage or ratio, so an aggregate must not be able to
     arrive here by being passed along from somewhere that legitimately computes one.
 
-    `scene` names the scene bead this one sits under — `scene:2`, not `2`. It is a key into
+    `scene` names the scene bead this one sits under — `scene:S2`, not `2`. It is a key into
     this same response and not a number, because the alternative is the client composing
-    `scene:{n}` to join a bead to its scene, and composing a key on the client is what the
+    `scene:S{n}` to join a bead to its scene, and composing a key on the client is what the
     label layer exists to prevent: the day the shape of a key changes, a client that builds
     one builds the wrong one, in silence, and the necklace simply stops joining up.
 
@@ -132,11 +135,11 @@ class ElementCoverage(BaseModel):
     at the end of the necklace, the rules that must not be lost, which belong to the passage
     rather than to any one of its scenes.
 
-    `label_pt` and `label_es` are nullable and `label_en` is not, which is `LabelledElement`'s
-    shape carried through unchanged. A passage nobody has translated is served from the canon
-    with the other two absent, and a bead here must be able to say so: narrowing them to `str`
-    would mean this route could only ever answer the four translated passages, while D-03
-    walks every team through all fourteen.
+    `label_pt` is nullable and `label_en` is not, which is `LabelledElement`'s shape carried
+    through unchanged. A passage nobody has translated is served from the canon with
+    Portuguese absent, and a bead here must be able to say so: narrowing it to `str` would
+    mean this route could only ever answer Ruth's translated passages, while D-03 walks
+    every team through every passage of the served books.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,7 +147,6 @@ class ElementCoverage(BaseModel):
     key: str
     label_pt: str | None
     label_en: str
-    label_es: str | None
     kind: ElementKind
     scene: str | None = None
     #: The enum and not the string it serialises to, so the Desk reads the closed set of four
@@ -160,6 +162,17 @@ class PericopePosition(StrEnum):
     FUTURE = "future"
 
 
+class PassageRelease(BaseModel):
+    """The passage's live release with the highest **Version** for the team (ADRs 0014, 0047)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    release_id: str
+    version: int
+    forced_at: datetime | None
+    approved_at: datetime
+
+
 class PericopeStanding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -167,6 +180,9 @@ class PericopeStanding(BaseModel):
     reference: str
     title: str
     position: PericopePosition
+    release: PassageRelease | None
+    open_findings: int
+    approved: bool
 
 
 class SessionBead(BaseModel):
@@ -189,22 +205,16 @@ class SessionBead(BaseModel):
     kind: ElementKind
     label_pt: str | None
     label_en: str
-    label_es: str | None
     status: str
 
 
 class TeamSessionResponse(BaseModel):
     """One card of the Desk's session history (RF-06).
 
-    **`state` has three values where RF-06 names two**, and that is deliberate. The third
-    arrived with the rule that decides when a conversation is over: a session nobody closed
-    is over, and calling it complete would be a lie a facilitator can check against the
-    necklace drawn beside it, where the beads are plainly unfinished.
-
-    It is also why the state crosses at all. With two values it was a function of `ended_at`
-    and serving it would have been a second record of one fact. With three, `complete` and
-    `abandoned` both carry an `ended_at` and no client can tell them apart — it is a fact the
-    collection cannot be made to yield, which is the shape that has to be served.
+    **`state` is `complete` or `in_progress`.** `abandoned` is part of the vocabulary and is
+    never emitted: nothing ends a session for being idle, so a session left for days reads
+    `in_progress`. `complete` is the session whose floor was met, and only it carries an
+    `ended_at`.
 
     `duration_minutes` travels for the rule this product keeps: the client does not compute.
     It cannot disagree with `ended_at` because both come out of one function on one pair of
@@ -246,7 +256,7 @@ class TeamSessionResponse(BaseModel):
     #: When somebody long-pressed the halted room to say they had arrived (ENG-792). Null
     #: when nobody did, and null again on every halt after the one it answered.
     person_arrived_at: datetime | None
-    coverage: list[SessionBead]
+    coverage: list[SessionBead] | None
 
 
 class CoverageView(BaseModel):
@@ -254,6 +264,30 @@ class CoverageView(BaseModel):
     surfaced: int
     total: int
     absence_index: int
+    #: Her necklace's beads, 12 whatever the passage's number of elements.
+    beads_total: int
+    #: How many of the 12 the team has filled: `engaged` in proportion, rounded half up.
+    beads_filled: int
+
+
+At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
+
+Cause = Literal[
+    "scene_rehearsal",
+    "entrance",
+    "articulation_entrance",
+    "where_we_are",
+    "fence",
+    "part_closing",
+    "familiarization_closing",
+    "send_off",
+]
+
+
+class MomentView(BaseModel):
+    at: At
+    part: int | None = None
+    parts: int
 
 
 class CoverageFrame(BaseModel):
@@ -279,13 +313,8 @@ class CreateSessionRequest(BaseModel):
     #: whether to play the panorama again — so naming it for any other session would mark that
     #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
-    #: Whether the team chose this session themselves — the panorama's spoke on the wheel —
-    #: rather than the app asking for the panorama at launch. A launch request for a book
-    #: the team has heard is answered with the passage they stand on; a request they chose
-    #: opens the panorama again. Nothing stores it: the next launch reads the rows as before.
-    chosen: bool = False
-    #: Which language the room should speak to this team, read by the app off the tablet.
-    #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
+    #: Which language the room should speak to this team, as the team chose it on the tablet.
+    #: Named once here and fixed for the session's lifetime. Absent takes the floor, Portuguese;
     #: a language the room does not speak is refused rather than quietly answered in another.
     language: str | None = Field(default=None, max_length=8)
 
@@ -312,6 +341,31 @@ class SegmentView(BaseModel):
     #: it resumes a told stretch. Null while nothing was told on it — a piece cut out of another
     #: stretch — and on a stretch told through the text seam, which records no take.
     bridge_take_id: str | None = None
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The number the voice speaks for this stretch: its 1-based position among the told "
+            "stretches, in the voice's order. Null on a piece nobody has told yet, which takes "
+            "no number. A stretch told again keeps its number, and numbering starts over when "
+            "the translation is started over."
+        ),
+    )
+    stale: bool | None = Field(
+        default=None,
+        description=(
+            "Only served to a tablet that asks with `include_stale=true`, and then on every "
+            "stretch: true on one whose part was recorded again and that nobody has told again, "
+            "which stays out of the check, the release gate and the findings; false on the "
+            "stretches that count. Absent when the tablet did not ask."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _a_mark_nobody_asked_for_is_absent(self, handler: Any):  # type: ignore[no-untyped-def]
+        served: dict[str, Any] = handler(self)
+        if self.stale is None:
+            served.pop("stale", None)
+        return served
 
 
 class DivideSegmentRequest(BaseModel):
@@ -334,15 +388,55 @@ class SegmentsResponse(BaseModel):
 
     session_id: str
     segments: list[SegmentView] = Field(default_factory=list)
-    #: False when audio was sent and nothing could be made out of it. The stretch is then left
-    #: exactly as it was — replacing a good explanation with an empty one over a transcriber
-    #: outage would lose the team's work to somebody else's failure.
-    captured: bool = True
     #: True on the one correction that made this stretch a hard stretch. The room asks for a
     #: person rather than refusing anything, and it is said here as well as on the telling-back
     #: route: a team that crosses still gets the stretches back, and would otherwise have no
     #: sign that the room had asked at all.
     needs_person: bool = False
+
+
+class SentenceLaidInResponse(BaseModel):
+    """The part after one whole sentence was recorded again and laid in its frase's place.
+
+    The part is a new rehearsal take: the frase and every other frase of that part now sit on
+    it, the frases after the new sentence moved by the difference in length, and the take they
+    sat on before is kept. The whole list, as the other stretch verbs answer.
+    """
+
+    session_id: str
+    segments: list[SegmentView] = Field(default_factory=list)
+
+
+class FindingView(BaseModel):
+    kind: str
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The frase the check named, in the number the voice speaks it, followed to where "
+            "that stretch stands now: a cut, a telling or a part recorded again moves it. A "
+            "missing element placed after frase N says N while `segment_id` points at the "
+            "stretch after it. Null when the analyst named no readable frase, and when the "
+            "stretch it named is no longer among the told ones."
+        ),
+    )
+    segment_id: str | None = None
+
+
+class RerecordedSentenceView(BaseModel):
+    """One sentence the team recorded again and the room laid into its part.
+
+    Both recordings are kept: `previous_take_id` is the part as it stood before, still a
+    rehearsal take of the session and still playable by its id, and `sentence_id` names the
+    sentence as the team recorded it, before its silence was trimmed. `take_id`, `starts_ms`
+    and `ends_ms` are where the new sentence sits on the part now.
+    """
+
+    sentence_id: str
+    segment_id: str
+    previous_take_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
 
 
 class BackTranslationProgress(BaseModel):
@@ -362,7 +456,34 @@ class BackTranslationProgress(BaseModel):
     checked: bool = False
     finding_segment_id: str | None = None
     finding_kind: str | None = None
+    findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    awaiting_segment_id: str | None = Field(
+        default=None,
+        description=(
+            "The frase whose sentence was recorded again and is not translated yet. It keeps "
+            "its number and only its own translation, at exactly the span the new sentence "
+            "took, may be told; until then «terminei» answers `FRASE_AWAITING` naming it, "
+            "with her N-6. Null when no frase awaits."
+        ),
+    )
+    rerecorded_sentences: list[RerecordedSentenceView] = Field(
+        default_factory=list,
+        description="Every sentence recorded again and laid into its part, in the order laid.",
+    )
+
+
+class KeptTakeView(BaseModel):
+    scope: str
+    turn_number: int
+    audio_url: str
+
+
+class ApprovedDraftView(BaseModel):
+    version: int
+    release_id: str
+    approved_at: str
+    forced: bool
 
 
 class SessionStateResponse(BaseModel):
@@ -385,26 +506,25 @@ class SessionStateResponse(BaseModel):
     #: is the conservative answer: it sends somebody to a room that may not have needed one,
     #: where the other reading leaves a stopped room waiting.
     halt: str | None = None
-
-
-class SpokenSegment(BaseModel):
-    #: "panorama" first, then "scene" — the app replays the scene alone for "ouvir de novo".
-    role: str
-    audio_url: str
+    #: True once the session holds a Guide line, its Opening at least. The tablet asks a
+    #: session's Opening only while this is false.
+    opened: bool = False
+    moment: MomentView | None = None
+    kept_takes: list[KeptTakeView] = Field(default_factory=list)
+    #: The approval this session's draft stands under, while the passage's latest release
+    #: carries the hash of the packet the session composes now (ADR 0071); null otherwise, and
+    #: always null on a panorama. Derived on every read, never stored.
+    approved: ApprovedDraftView | None = None
 
 
 class TurnResponse(BaseModel):
     session_id: str
     #: Where to fetch the line the team hears this turn, empty when `fixed_line` names it
-    #: instead. Never a splice: on an ordinary turn this is the whole line, the same one an
-    #: app that ignores `segments` has always heard. On a marked opening it is the first of
-    #: the two movements below, not the whole passage — an app playing only this url now
-    #: hears the opening's first half, never its second.
+    #: instead. Never a splice: this is the whole line.
     audio_url: str = ""
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
     mime_type: str = "audio/mpeg"
-    transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
     degraded: bool = False
@@ -412,10 +532,7 @@ class TurnResponse(BaseModel):
     done: bool
     turn_id: str = ""
     classification_pending: bool = False
-    #: The session's opening cut at the boundary the Guide drew itself: the whole passage
-    #: first, then the scene and its invitation. Empty on every other turn, and empty
-    #: whenever the Guide did not mark the boundary exactly where it was asked for.
-    segments: list[SpokenSegment] = Field(default_factory=list)
+    moment: MomentView | None = None
 
 
 class PassageView(BaseModel):
@@ -423,11 +540,16 @@ class PassageView(BaseModel):
     #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
     #: the one entry with no beads of its own.
     kind: Literal["passage", "panorama"]
-    #: Where to fetch the line that names this passage aloud. There is no text field: the
-    #: team does not read, so a passage the room cannot say is a passage it cannot offer.
-    audio_url: str
+    #: Where to fetch the line that names this entry aloud, or None when no line is written
+    #: for it or its line could not be voiced (ADR 0066).
+    audio_url: str | None = None
+    #: The passage's Scripture reference as its Meaning Map's heading writes it, for the
+    #: facilitator's menu. The panorama has none.
+    reference: str | None = None
     beads: int = 0
     absence_index: int = -1
+    #: The team holds a live Release of this passage, from any tablet, forced or not.
+    approved: bool = False
 
 
 class BookPassagesResponse(BaseModel):
@@ -435,12 +557,16 @@ class BookPassagesResponse(BaseModel):
     passages: list[PassageView]
 
 
+class ServedBooksResponse(BaseModel):
+    books: list[str]
+
+
+class FixedLineView(BaseModel):
+    audio_url: str
+
+
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
-    #: How many stretches the passage has after this call, not how many recordings the team
-    #: sent. A retelling replaces the stretch it retells, so it adds none — the number moves
-    #: only when the team tells a stretch nobody had told yet.
-    chunks: int
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
@@ -451,6 +577,13 @@ class BackTranslationChunkResponse(BaseModel):
     #: next one will be too. False on every telling after it, because the ask is once per
     #: stretch and repeating it would erase the visit it already got.
     needs_person: bool = False
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The number the voice speaks for the stretch just told, which is the number the "
+            "next session read serves for it. A stretch told again keeps its number."
+        ),
+    )
 
 
 class PlayedTake(BaseModel):
@@ -462,9 +595,8 @@ class PlayedTake(BaseModel):
     it. Named, the rule the room applies is per part: what the team heard of one part is judged
     against that part alone.
 
-    The tablet keeps the ledger and sends all of it every time, because what is stored is what
-    was sent: a report listing one part is a report that one part was played and the others
-    were not.
+    Reports add up per take (ADR 0074): the tablet reports as each part ends and on leaving, so
+    a report listing one part says what was played of that part and nothing about the others.
 
     A length of zero is the honest default for an entry that arrives without one, rather than a
     refusal. Nothing can be measured against it, so it costs the release — and `terminei` still
@@ -510,7 +642,61 @@ class FinishBackTranslationRequest(BaseModel):
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
 
+class CheckRefusal(StrEnum):
+    """Why `terminei` reached no verdict, asked in this order and answered with the first.
+
+    - `FRASE_AWAITING`: a frase stands with no translation, or its sentence was recorded again
+      and awaits its new one, asked first, with her N-6 in `fixed_line`; `untold_segment_id`
+      names it and the tablet opens it.
+    - `PART_UNHEARD`: a part of the recording was not heard through; `unheard_take_ids` names it,
+      `fixed_line` is her P-unheard line, and the screen says «ainda falta ouvir um trecho da
+      gravação».
+    - `STRETCH_UNTRANSLATED`: on a joined recording, a part no translated frase stands on;
+      `untranslated` names each by its scene and where to play from, `fixed_line` is her N-3
+      line, and the screen says «falta traduzir um trecho — ouçam e traduzam, depois toquem em
+      'terminei'» with the scenes by number.
+    - `NOTHING_TRANSLATED`: no frase is translated; the screen says «ainda não tem frase
+      traduzida».
+    - `CHECK_UNAVAILABLE`: the check's model could not answer and nothing was saved; the screen
+      says «não deu para conferir agora — tentem de novo», and `terminei` again is the retry.
+    """
+
+    FRASE_AWAITING = "FRASE_AWAITING"
+    PART_UNHEARD = "PART_UNHEARD"
+    STRETCH_UNTRANSLATED = "STRETCH_UNTRANSLATED"
+    NOTHING_TRANSLATED = "NOTHING_TRANSLATED"
+    CHECK_UNAVAILABLE = "CHECK_UNAVAILABLE"
+
+
+class UntranslatedPart(BaseModel):
+    """A part of a joined recording with something still to translate, and where it starts."""
+
+    take_id: str
+    scene: int | None = Field(
+        default=None,
+        description=(
+            "The scene this part is, by its number in the passage, from one: the hint names "
+            "it («cena 2»). Null on a part recorded whole, which is no scene."
+        ),
+    )
+    from_ms: int = Field(
+        description=(
+            "Where in this part's own milliseconds the recording plays from: the first stretch "
+            "no translated frase covers, or 0 on a part with no translated frase at all."
+        ),
+    )
+
+
 class BackTranslationVerdictResponse(BaseModel):
+    """What `terminei` answers: the verdict's voice and the findings of the check that gave it.
+
+    `findings` is every finding of the check, in the analyst's order, as a kind, a frase number
+    and a stretch, and never the analyst's note. It rides beside the leading finding and does
+    not replace it. A refusal, which is not a check's answer, carries no list: the session
+    read is the standing truth, and a tablet that needs the marks after a refusal reads them
+    there.
+    """
+
     session_id: str
     audio_url: str = ""
     fixed_line: str = ""
@@ -536,15 +722,78 @@ class BackTranslationVerdictResponse(BaseModel):
     #: they owe is a clip to play. Empty on every answer that is not this refusal, so the app
     #: decides by the field and never by what is missing from the body.
     unheard_take_ids: list[str] = Field(default_factory=list)
-    #: Which current parts of the rehearsal carry nobody's words, by their own take, in the
-    #: order the parts read; empty when every one of them has been told back. Its own field for
-    #: the reason the two above are their own: a part recorded again owes a telling, and an app
-    #: reading this off `unheard_take_ids` would send the team to play a recording they still
-    #: have to explain, while one reading it off `untold_segment_id` would look for a stretch
-    #: that does not exist. Empty on every answer that is not this refusal.
-    untold_take_ids: list[str] = Field(default_factory=list)
+    findings: list[FindingView] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
+    check_at: datetime | None = None
+    named_nuance: FindingView | None = None
+    refusal: CheckRefusal | None = Field(
+        default=None,
+        description="Set when the press reached no verdict, and why; null on a verdict.",
+    )
+    untranslated: list[UntranslatedPart] = Field(
+        default_factory=list,
+        description=(
+            "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order; the "
+            "recording plays from the first. Empty on every other answer."
+        ),
+    )
+
+
+class VerdictHeardRequest(BaseModel):
+    at: datetime
+
+
+class VerdictHeardResponse(BaseModel):
+    marked: bool
+
+
+class ListenedWholeResponse(BaseModel):
+    """What follows a listening report, before any «terminei»: the parts still unheard, and more.
+
+    `unheard_take_ids` answers every report. Only a joined recording is ever checked by itself,
+    and only once a passage record: when `automatic_check` is true the tablet says
+    `fixed_line`, her N-2, reads «conferindo…» on «terminei» and presses the finish itself,
+    with no tap. Otherwise the tablet does what it does after a listen today.
+    """
+
+    session_id: str
+    automatic_check: bool = Field(
+        default=False,
+        description=(
+            "True when the room checks this recording now with no tap: say `fixed_line`, then "
+            "call `back-translation/finish` as «terminei» does. Never true on a recording no "
+            "join touched, nor once the passage record holds a check."
+        ),
+    )
+    fixed_line: str = Field(
+        default="",
+        description="Her line to say now, by position (`GET /fixed-lines`); empty for none.",
+    )
+    refusal: CheckRefusal | None = Field(
+        default=None,
+        description=(
+            "`STRETCH_UNTRANSLATED` when a joined recording still has something to translate, "
+            "whatever the record holds: say `fixed_line`, her N-3, show «falta traduzir um "
+            "trecho — ouçam e traduzam, depois toquem em 'terminei'» with the scenes, and play "
+            "from the first of `untranslated`. Null otherwise."
+        ),
+    )
+    untranslated: list[UntranslatedPart] = Field(
+        default_factory=list,
+        description=(
+            "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order: a part "
+            "with no translated frase, or a WAV part with half a second or more no frase "
+            "covers. Empty otherwise."
+        ),
+    )
+    unheard_take_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The current parts the room still counts as unheard after storing this report, "
+            "sorted, by the rule of ADR 0074; empty when every part is heard."
+        ),
+    )
 
 
 class NeedsPersonResponse(BaseModel):
@@ -600,23 +849,20 @@ class InboxQuestionView(BaseModel):
     ``element_key`` nor ``elementKey`` appears anywhere, so serving both would put a field on
     every card that its only consumer never reads.
 
-    **Three languages rather than one**, which is the same shape ``LabelledElement`` and the
+    **Two languages rather than one**, which is the same shape ``LabelledElement`` and the
     coverage legend take. The room negotiates a language for what it *says* — named on the
     session, and on the wheel that precedes any session — but not for what it *labels*: a
     bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
-    all three are served and the client picks, as it already does everywhere else.
+    both are served and the client picks, as it already does everywhere else.
 
-    **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
-    passages and four of them are translated, so on the other ten every bead carries English
-    and two nulls. A Desk reading ``pt`` first has to have somewhere to fall back to, and that
-    choice is the client's — this response does not make it, exactly as ``LabelledElement``
+    **``label_en`` is the one that is always there.** Only Ruth has a catalogue; Esther and
+    Jonah have none, so on their passages every bead but a scene carries English and a null
+    Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
+    and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
-    **Nothing reads this yet, and there is no window where something reads it wrong.** The
-    Desk has no HTTP client at all — no `fetch`, no `axios`, no `/api/` anywhere in its
-    `src/`; `FacilitatorService` is a type and its only implementation is a fixture. So the
-    key this replaces was never reaching a screen either, and mapping these three onto the
-    Desk's `elementLabel` is that side's work, on the day it grows a client.
+    The Desk's inbox reads these cards over HTTP, for a facilitator or a consultant
+    (ADR 0058), and draws the bead from these three fields.
 
     All three are null together when the question named no bead, when the key is one the
     catalogue does not have, or when the pericope is outside the canon. The last two are
@@ -657,10 +903,10 @@ class InboxQuestionView(BaseModel):
     pericope: str
     element_label_pt: str | None
     element_label_en: str | None
-    element_label_es: str | None
     status: str
     heard_at: str | None
     audio_url: str
+    reply_audio_url: str | None
     duration_ms: int | None
     transcript: str | None
     asked_at: str
@@ -674,6 +920,7 @@ class QuestionInboxResponse(BaseModel):
     than ``questions``, and when the two disagree the count is the true one.** That is the
     point of serving it: a client that counts the array it received reads one number inside
     the Desk and a larger one on the team list, and nothing about either looks broken.
+    ``answered_total`` is counted the same way for the questions answered or resolved.
 
     ``next_cursor`` is null on the last page. It is opaque on purpose — it stands for a place
     in this route's order, and a caller that took it apart would be depending on that order
@@ -682,6 +929,7 @@ class QuestionInboxResponse(BaseModel):
 
     questions: list[InboxQuestionView]
     open_total: int
+    answered_total: int
     next_cursor: str | None
 
 
@@ -765,6 +1013,9 @@ class FacilitatorHaltedDeviceView(BaseModel):
     """
 
     device_id: str
+    #: The team the tablet is linked to. A consultant reads every team's halted tablets, and
+    #: the Desk offers "attended" only on a team the reader facilitates (ADR 0058).
+    project_id: str
     label: str | None
     since: datetime
     #: When a facilitator said they went to this tablet, and who (ENG-792).
@@ -811,6 +1062,18 @@ class FacilitatorSessionsResponse(BaseModel):
     devices: list[FacilitatorHaltedDeviceView] = []
 
 
+def _an_instant_on_the_utc_clock(when: datetime) -> datetime:
+    try:
+        return when.astimezone(UTC)
+    except OverflowError:
+        raise ValueError("A recording time with no instant on the UTC clock") from None
+
+
+#: A **Recording time** as the tablet sends it: an instant with its offset, read on the UTC
+#: clock. One past the calendar's edge once converted is malformed, as one with no offset is.
+SentRecordingTime = Annotated[AwareDatetime, AfterValidator(_an_instant_on_the_utc_clock)]
+
+
 class TakeResponse(BaseModel):
     take_id: str
     session_id: str
@@ -826,13 +1089,179 @@ class TakeResponse(BaseModel):
     #: to Refine.
     ordinal: int | None = None
     pass_number: int | None = None
+    #: A tablet resuming from the listing reads this to know the recording is a joined one.
+    origin: str | None = None
     pericope: str = ""
     recorded_at: str = ""
+    duration_ms: int | None = None
 
 
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+
+
+class MotherTongueTake(BaseModel):
+    """One recording of the session in the mother tongue, as the consultant's record lists it."""
+
+    take_id: str
+    part: int | None
+    size_kb: int
+    fingerprint: str
+    recorded_at: str
+    play_url: str | None
+    unread: bool
+    duration_ms: int | None = None
+    #: The **Clock offset** of the tablet that joined this part, for the consultant's one line.
+    device_clock_offset_ms: int | None = None
+
+
+class KeptRehearsal(BaseModel):
+    turn_number: int
+    words: str
+    from_other_session: bool
+    scope: str
+    audio_url: str
+
+
+class MotherTongueTakesResponse(BaseModel):
+    session_id: str
+    takes: list[MotherTongueTake]
+    kept_rehearsals: list[KeptRehearsal] = Field(default_factory=list)
+    recording_grain: Literal["parts", "whole"] | None = None
+    finished_at: str | None = None
+
+
+class TakeDownload(BaseModel):
+    """One rehearsal take for Refine: its **Part key**, its file name, a link that saves it."""
+
+    take_id: str
+    key: str
+    filename: str
+    url: str
+    sha256: str
+    size_bytes: int
+    duration_ms: int | None
+    content_type: str
+
+
+class SupersededTakeDownload(TakeDownload):
+    """A **Superseded take**, with when the take that replaced it reached the server."""
+
+    superseded_at: str
+
+
+class TakeDownloadsResponse(BaseModel):
+    """The session's rehearsal takes by file name, live parts and superseded takes apart."""
+
+    session_id: str
+    release_id: str
+    links_valid_for_s: int
+    takes: list[TakeDownload]
+    superseded_takes: list[SupersededTakeDownload]
+
+
+class SceneFraseView(BaseModel):
+    """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
+
+    frase_id: str
+    starts_ms: int
+    ends_ms: int
+    replaces: str | None = None
+    replaced_by: str | None = None
+
+
+class SceneRehearsalFacts(BaseModel):
+    rehearsal_id: str
+    session_id: str
+    pericope: str
+    n: int
+    scene: str | None = None
+    scene_said: Literal["recording", "later"] | None = None
+    duration_ms: int | None = None
+    content_type: str
+    verified: bool = False
+    recorded_at: str = ""
+    sent_at: str | None = None
+    #: The **Restart** the current frases follow, which a frase names to say it belongs to
+    #: this attempt; null before the first restart.
+    after_restart: str | None = None
+
+
+class SceneRehearsalView(SceneRehearsalFacts):
+    """A scene rehearsal as any tablet of the team resumes it, with no words and no guess."""
+
+    frases: list[SceneFraseView]
+
+
+class SceneRehearsalsResponse(BaseModel):
+    pericope: str
+    scene_rehearsals: list[SceneRehearsalView]
+
+
+class PassageSceneView(BaseModel):
+    scene_id: str
+    title: str
+
+
+class PassageScenesResponse(BaseModel):
+    scenes: list[PassageSceneView]
+
+
+class SceneSnapshotFrase(BaseModel):
+    frase_id: str
+    starts_ms: int
+    ends_ms: int
+    replaces: str | None
+    transcript: str
+
+
+class SceneRestartSnapshot(BaseModel):
+    """The scene rehearsal as it stood when its translation restarted."""
+
+    n: int
+    scene: str | None
+    scene_said: str | None
+    scene_guess: str | None
+    duration_ms: int | None
+    sha256: str
+    frases: list[SceneSnapshotFrase]
+
+
+class ReaderSceneFraseView(SceneFraseView):
+    transcript: str
+
+
+class SceneRestartView(BaseModel):
+    """A restart for the Desk: the record as it was, and every frase it set aside, the ones
+    that arrived after it included."""
+
+    restart_id: str
+    restarted_at: str
+    snapshot: SceneRestartSnapshot
+    frases: list[ReaderSceneFraseView]
+
+
+class HeldAttemptView(BaseModel):
+    """Frases naming an attempt whose restart has not landed, waiting for it."""
+
+    attempt: str
+    frases: list[ReaderSceneFraseView]
+
+
+class ReaderSceneRehearsalView(SceneRehearsalFacts):
+    """The rehearsal for the Desk: the frases' words, its restarts and the classifier's guess."""
+
+    frases: list[ReaderSceneFraseView]
+    scene_guess: str | None = None
+    archive_id: str | None = None
+    restarts: list[SceneRestartView]
+    held: list[HeldAttemptView]
+
+
+class ReaderSceneRehearsalsResponse(BaseModel):
+    session_id: str
+    scene_rehearsals: list[ReaderSceneRehearsalView]
 
 
 class ReleaseResponse(BaseModel):
@@ -895,13 +1324,8 @@ class TeamReleaseResponse(BaseModel):
     package_sha256: str | None = None
     #: Null on a refusal, for the reason ``release_id`` is.
     approved_at: str | None = None
-    #: The gate's codes in the order the gate raised them, plus `no_project`, the one literal
-    #: that is the route's own (the gate never composes a project-less session); empty on a
-    #: mint. Never a sentence.
+    #: The gate's codes in the order the gate raised them; empty on a mint. Never a sentence.
     blockers: list[str] = Field(default_factory=list)
-    #: Which current parts carry nobody's words, by their own take, when `untold_part` is
-    #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).
-    untold_take_ids: list[str] = Field(default_factory=list)
     #: Which parts of the rehearsal the report does not cover, by their own take, when
     #: `playback_did_not_cover_the_clip` is among the blockers; empty otherwise.
     unheard_take_ids: list[str] = Field(default_factory=list)
@@ -943,6 +1367,14 @@ class RetroverificationFinding(BaseModel):
     chunk: int | None = None
     fills_silence: bool = False
     raised_by_check: bool = False
+
+
+class RetroverificationNuance(BaseModel):
+    chunk: int
+    segment_id: str
+    quote: str
+    story: str
+    said: bool
 
 
 class RetroverificationRelease(BaseModel):
@@ -1130,6 +1562,7 @@ class RetroverificationFile(BaseModel):
     divided: list[RetroverificationStretch] = Field(default_factory=list)
     abandoned: list[RetroverificationTelling] = Field(default_factory=list)
     findings: list[RetroverificationFinding] = Field(default_factory=list)
+    nuances: list[RetroverificationNuance] = Field(default_factory=list)
     superseded_attempts: list[RetroverificationAttempt] = Field(default_factory=list)
     listening: list[RetroverificationListening] = Field(default_factory=list)
     hard_stretches: list[RetroverificationHardStretch] = Field(default_factory=list)
@@ -1137,13 +1570,167 @@ class RetroverificationFile(BaseModel):
 
 
 class ConversationTurn(BaseModel):
-    role: Literal["team", "guide", "room"]
+    role: Literal["team", "guide"]
     text: str
     at: str | None
     fail_safe: bool
     fail_safe_category: str | None
+    note_kind: Literal["opening", "room"] | None
 
 
 class ConversationResponse(BaseModel):
     session_id: str
     turns: list[ConversationTurn]
+
+
+class TurnTeamSide(BaseModel):
+    language: str | None
+    language_probability: float | None
+    take_ms: float | None
+    mother_tongue: bool | None
+    interrupted_at_s: float | None
+    guide_heard: str | None
+
+
+TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
+TurnVerdictCode = Literal["pass", "correct", "regenerate"]
+
+
+class TurnValidatorIssue(BaseModel):
+    problem: str | None = None
+    claim: str | None = None
+    explanation: str | None = None
+
+
+class TurnTraceStep(BaseModel):
+    """One draft of the Guide's and what the Validator and the room made of it: her trace step.
+
+    `verdict` is `pass`, `correct` or `regenerate`, and is null when the draft was never judged:
+    the Validator's reply could not be read, or the Guide drafted nothing and the Validator was
+    never asked. `note` then says which. `corrected` is the text that was voiced when the
+    Validator corrected the draft.
+    """
+
+    attempt: int
+    draft: str
+    issues: list[TurnValidatorIssue] = Field(default_factory=list)
+    verdict: TurnVerdictCode | None = None
+    corrected: str | None = None
+    note: str | None = None
+
+
+class TurnMoment(BaseModel):
+    at: At
+    part: int | None = None
+    closed: bool = False
+    fenced: bool = False
+    numberlessOpening: bool = False
+
+    @model_serializer(mode="wrap")
+    def _an_opening_not_heard_is_absent(self, handler: Any) -> dict[str, Any]:
+        served: dict[str, Any] = handler(self)
+        if not self.numberlessOpening:
+            served.pop("numberlessOpening", None)
+        return served
+
+
+class TurnMomentStep(BaseModel):
+    before: TurnMoment
+    after: TurnMoment
+    by: list[Cause]
+    ignored: list[str] = Field(default_factory=list)
+
+
+class TurnVoiceSide(BaseModel):
+    outcome: TurnOutcomeCode
+    boundary: bool
+    attempts: int
+    trace: list[TurnTraceStep]
+    accepted_ids: list[str]
+    recognition_ms: int | None
+    reply_ms: int | None
+    synthesis_ms: int | None
+    model: str | None
+    text: str
+    audio_url: str
+    moment: TurnMomentStep | None
+
+
+class SessionTurn(BaseModel):
+    team: TurnTeamSide | None
+    voice: TurnVoiceSide
+
+
+class SessionTurnsResponse(BaseModel):
+    session_id: str
+    turns: list[SessionTurn]
+
+
+class BoundaryTurn(BaseModel):
+    number: int
+    outcome: TurnOutcomeCode
+    team: str
+    guide: str
+
+
+class SessionBoundaryTurnsResponse(BaseModel):
+    """The turns the boundary rule marks, her «Perguntas de fronteira».
+
+    `number` is the turn's place in `SessionTurnsResponse.turns`, from zero, and the `{number}`
+    of its clip; her «turno n» is `number + 1`. `team` is what the Guide was handed in the
+    team's place: on the opening, her stored kickoff note as her transcript prints it, empty
+    when the session stored none, and on any other turn the words heard, empty when nothing
+    was heard. `guide` is the line voiced.
+    `count` is the length of `turns`, served so the Desk never counts, and the section is read
+    with no turn marked as well: `count` 0 and `turns` empty.
+    """
+
+    session_id: str
+    count: int
+    turns: list[BoundaryTurn]
+
+
+class SessionCoverageBead(BaseModel):
+    """One bead of a session's necklace, as the full necklace's `ElementCoverage` names it.
+
+    `scene` is the scene key the full necklace groups the bead under and null for a rule of
+    the whole passage; `status` is the recorded coverage value, one of the four, unfolded.
+    """
+
+    key: str
+    kind: ElementKind
+    label_pt: str | None
+    label_en: str
+    scene: str | None
+    status: CoverageStatus
+
+
+class SessionCoverageGroup(BaseModel):
+    kind: ElementKind
+    beads: list[SessionCoverageBead]
+
+
+class SessionCoverageResponse(BaseModel):
+    """What the consultant reads of one session's coverage: her record's «Cobertura» block.
+
+    `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
+    «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
+    «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
+    listed. Each bead carries both labels, its scene and its recorded status, so the Desk can
+    regroup a session's beads in the scene strands of the full necklace.
+
+    `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
+    coverage when the read happens by the code that renders it for the Guide: what the voice
+    will be handed on its next turn if nothing changes, without the room facts that follow it.
+
+    A Panorama do Livro has no coverage: `panorama` is true, there are no groups and no ledger,
+    and the Desk shows her line «O Panorama não tem cobertura.» A passage whose map gives no
+    coverage element has `no_elements` true and no groups, and the Desk shows «Sem elementos de
+    cobertura.»
+    """
+
+    session_id: str
+    groups: list[SessionCoverageGroup]
+    panorama: bool
+    no_elements: bool
+    ledger: str | None

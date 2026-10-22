@@ -9,15 +9,15 @@ move one.
 **Derived, and what it is derived from moved.** A team's position is still a function of the
 book's order and of what the team did, and there is still no pointer anybody writes: nothing
 stores "this team is on P02". What it reads is no longer only the coverage events — it is the
-sessions that ended and the rehearsals kept in them, and both of those are records of things
+sessions that are done and the rehearsals kept in them, and both of those are records of things
 that happened rather than a computation that can be re-run to another answer.
 
 **The team's own recording is the mechanism.** A passage is closed when the team has a
 session on it that both reached the end of the conversation — `sessions.session_is_done`,
-whose instant is stamped on the row as `ir_sessions.ended_at` — and holds the rehearsal they
+which is the session's `done` status, or `needs_person` with its end stamped, the row ADR
+0044 leaves where the old code wrote a halt over `done` — and holds the rehearsal they
 recorded there. Nothing here reads the coverage floor on its own, and nothing here counts
-beads. Why the stamp and not the status they are written together with is on
-`finished_passages`.
+beads.
 
 **Reaching the rehearsal and finishing the passage are two facts, and this module wants the
 second.** `session_is_done` is the first: it is the signal the room reads to let a team into
@@ -32,7 +32,7 @@ with the parts they never worked counted as worked. The floor stays exactly what
 gate on the invitation to record.
 
 **The reading is the team's, not a session's tracker.** `ir_sessions.coverage_state` is one
-conversation's tracker, and what outlives the conversations is which of them ended. A passage
+conversation's tracker, and what outlives the conversations is which of them are done. A passage
 worked over two evenings closes on the evening the team finished it, whichever session that
 was; one worked over two evenings and never finished stays open.
 
@@ -71,15 +71,17 @@ still below the floor. Turning that into someone being *told* is ENG-482 (CS-06)
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
-from app.models.internalization_room import PericopePosition, PericopeStanding
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
+from app.models.internalization_room import PassageRelease, PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
+from app.services.internalization_room.live import live
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
 #: worked without finishing, are both simply absent — there is no third answer to give.
@@ -111,7 +113,13 @@ def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
     return None
 
 
-def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[PericopeStanding]:
+def standing(
+    finished: Collection[str],
+    *,
+    releases: Mapping[str, PassageRelease],
+    findings: Mapping[str, int],
+    book: str = ROOM_BOOK,
+) -> list[PericopeStanding]:
     """All fourteen with their position already resolved — closed, current, or future.
 
     Resolved here rather than left to be derived from the active passage, because a screen
@@ -125,6 +133,10 @@ def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[Perico
     Closed reads the same fact the resolution reads, and it has to: a passage the resolution
     still offers and this panel calls closed is one screen telling a facilitator the team is
     past work the room is about to hand them again.
+
+    Approved is a different fact again: a passage with a release (ENG-1228). A finished session
+    without one approves nothing, so `closed` and `approved` are both served and never derived
+    from each other.
     """
     here = resolve(finished, book=book)
     return [
@@ -133,6 +145,9 @@ def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[Perico
             reference=meaning_map.reference,
             title=meaning_map.title,
             position=_position(meaning_map.pericope_num, finished, here),
+            release=releases.get(meaning_map.pericope_num),
+            open_findings=findings.get(meaning_map.pericope_num, 0),
+            approved=meaning_map.pericope_num in releases,
         )
         for meaning_map in load_book(book)
     ]
@@ -149,12 +164,11 @@ def _position(pericope: str, finished: Collection[str], here: str | None) -> Per
 async def active_passage(
     db: AsyncSession, *, project_id: str | None, book: str = ROOM_BOOK
 ) -> str | None:
-    """Where one team stands. A tablet that never said whose it is stands at the beginning.
+    """Where one team stands. A session that names no team stands at the beginning.
 
-    `project_id` is nullable because the room's app does not send its device credential yet
-    (ENG-454), so today that is the common case in the field rather than the exception. Work
-    with no project belongs to nobody rather than to everybody, so there is no history to read
-    and the honest answer is the one a team that has not started gets.
+    `project_id` is nullable because the runner's doors open sessions that belong to no team.
+    Work with no team belongs to nobody rather than to everybody, so there is no history to
+    read and the honest answer is the one a team that has not started gets.
     """
     if project_id is None:
         return resolve(set(), book=book)
@@ -181,21 +195,20 @@ async def active_passages(
 async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> dict[str, Finished]:
     """Which passages each of these teams has finished a session on. One statement.
 
-    Two facts and both are required, because they are different facts. ``ended_at`` is the
-    instant ``session_is_done`` became true — the coverage floor and the comprehension gate,
-    stamped once in ``apply_coverage`` — and that gate is what the room reads to let a team
+    Two facts and both are required, because they are different facts. A ``done`` status is
+    ``session_is_done`` having become true — the coverage floor, written once in
+    ``apply_coverage`` — and that gate is what the room reads to let a team
     *into* the rehearsal. It is not what finishes a passage: a team can reach it and stop, and
     the ledger informs, it never ends the conversation (`DOCTRINE.md` §4). What ends it is the
     rehearsal itself arriving — a kept ``ensaio`` take on that same session. "O fecho ('gravem
     o ensaio') é decisão do Guia", Marcia, answer 8.
 
-    **The stamp and not the status**, though the two are written together. ``mark_needs_person``
-    overwrites the status with no guard on what it was, and the telling-back it is asked for
-    in only ever reaches a session that has already recorded — the back-translation route
-    refuses one without a take. Read from the status, a team that finished a passage and then
-    asked for a person while telling it back would have it handed to them again, and a landing
-    turn restores ``IN_PROGRESS`` and never ``DONE``, so it would stay handed back. ``ended_at``
-    is written at the same instant and no halt writes over it.
+    **The status decides "done"**: nothing overwrites a ``done`` session. A halt on a closed
+    passage is refused (`mark_needs_person`, ADR 0044) and a landing turn never moves a
+    session out of ``done``, so a team that finished a passage keeps it finished. The one
+    exception is a row the old code wrote ``needs_person`` over ``done``, which ADR 0044
+    leaves alone with its ``ended_at`` set until the next lift restores ``done``: it still
+    counts, or the passage would reopen for a team that never returns.
 
     A retro take is a stretch told back to the room and is not the rehearsal, so the kind is
     part of the question.
@@ -207,6 +220,8 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
 
     A team with no finished passage is absent rather than present and empty, which is what
     the caller reads as "nothing closed yet".
+
+    An archived session finishes nothing: a Zerar'd closed passage is the team's again.
     """
     if not project_ids:
         return {}
@@ -215,7 +230,14 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
         .join(IRTake, IRTake.session_id == IRSession.id)
         .where(
             IRSession.project_id.in_(project_ids),
-            IRSession.ended_at.is_not(None),
+            or_(
+                IRSession.status == IRSessionStatus.DONE,
+                and_(
+                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
+                    IRSession.ended_at.is_not(None),
+                ),
+            ),
+            live(),
             IRTake.kind == IRTakeKind.ENSAIO,
         )
         .distinct()
@@ -229,6 +251,11 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
 async def team_standing(
     db: AsyncSession, project_id: str, *, book: str = ROOM_BOOK
 ) -> list[PericopeStanding]:
-    """The fourteen as this team stands on them."""
+    """The fourteen as this team stands on them, each with its latest release and open findings."""
     finished = await finished_passages(db, project_ids=[project_id])
-    return standing(finished.get(project_id, set()), book=book)
+    return standing(
+        finished.get(project_id, set()),
+        releases=await latest_releases(db, project_id),
+        findings=await open_findings(db, project_id),
+        book=book,
+    )

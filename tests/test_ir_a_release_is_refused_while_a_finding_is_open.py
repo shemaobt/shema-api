@@ -9,8 +9,8 @@ Marcia's whole gate is two things: no open finding, and the whole rehearsal hear
 that disagrees with a finding has a road already, and it is not the packet: the raised hand,
 active the whole session, answered by a person. If that person agrees with the team, the
 facilitator forces the release with their own code, and the force is recorded — who, when,
-and which findings were open. Every other blocker is missing material rather than a dispute,
-and no code forces those.
+and which findings were open. Since ADR 0075 the force passes every other blocker too, but a
+passage with no rehearsal take, and the row names the blockers it passed.
 
 The route-level half of the slice lives here, in the shape of
 `test_ir_a_release_is_a_numbered_row`, because a force is a facilitator act and the refusal
@@ -43,10 +43,10 @@ from tests.baker import (
     make_app,
     make_role,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
-    KEY,
     PREFIX,
     TABLET,
     THE_FINDING,
@@ -78,11 +78,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -93,7 +90,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -124,7 +124,6 @@ async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, d
     assert body["blockers"] == ["telling_back_not_checked"]
     assert body["version"] is None
     assert body["release_id"] is None
-    assert body["untold_take_ids"] == []
     assert body["unheard_take_ids"] == []
     assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
@@ -165,8 +164,7 @@ async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
     Everything about this session is clean except that the tablet reports playing twenty of
     the sixty-one seconds: the team closed on a recording they did not hear through, which the
     release refuses. It is a dispute about what happened in the room and not missing material,
-    so it is forceable — and without a case here, dropping `playback_did_not_cover_the_clip`
-    from `FORCEABLE_BLOCKERS` would leave the whole suite green.
+    so it is forceable.
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_rehearsal_only_half_heard(db_session, project)
@@ -249,66 +247,66 @@ async def _a_wordless_stretch(db: AsyncSession, session: IRSession) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("blocker", "break_it"),
-    [
-        ("no_rehearsal_audio", _no_rehearsal_audio),
-        ("no_telling_back", _nothing_told_back),
-        ("telling_back_never_analysed", _never_analysed),
-        ("untold_stretch", _a_wordless_stretch),
-    ],
-)
-async def test_the_force_waives_only_the_two_blockers_of_her_gate(
-    client, db_session, room_app, blocker, break_it
+async def test_the_force_never_passes_a_passage_with_no_rehearsal_audio(
+    client, db_session, room_app
 ):
-    """A dispute is forceable; missing material is not.
-
-    The open finding and the unheard part are the two things a person can disagree about
-    after looking at them. A rehearsal nobody recorded, a stretch nobody told back: there is
-    nothing there to overrule, and a code that waived them would let the Desk mint a packet out
-    of a session that never happened.
-    """
+    """The one blocker the force does not pass: there is no recording to send (ADR 0075)."""
     project, _credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
-    await break_it(db_session, session)
+    await _no_rehearsal_audio(db_session, session)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     refused = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert refused.status_code == 409, refused.text
-    assert blocker in refused.json()["detail"]
+    assert "no_rehearsal_audio" in refused.json()["detail"]
     assert await releases_of(db_session, session.id) == []
 
 
 @pytest.mark.parametrize(
-    ("break_it", "expected_blockers", "expected_untold"),
+    ("blocker", "break_it"),
     [
-        # ADR 0026: retiring every stretch leaves the session's one part standing with no
-        # standing stretch either, so `untold_part` rides beside `no_telling_back` and is the
-        # only one of the two that names ground — measured with the probe in ENG-954's report,
-        # not assumed, because a session with an empty reading and at least one rehearsal take
-        # always trips both.
-        (_nothing_told_back, ["no_telling_back", "untold_part"], True),
-        (_never_analysed, ["telling_back_never_analysed"], False),
+        ("no_telling_back", _nothing_told_back),
+        ("telling_back_never_analysed", _never_analysed),
+        ("untold_stretch", _a_wordless_stretch),
+    ],
+)
+async def test_the_force_passes_every_other_blocker_and_records_it(
+    client, db_session, room_app, blocker, break_it
+):
+    """Every blocker but a missing recording yields to the force, and the row names it."""
+    project, _credential = await a_claimed_device(db_session)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    await break_it(db_session, session)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+
+    assert forced.status_code == 200, forced.text
+    (row,) = await releases_of(db_session, session.id)
+    assert blocker in row.forced_blockers
+
+
+@pytest.mark.parametrize(
+    ("break_it", "expected_blockers"),
+    [
+        (_nothing_told_back, ["no_telling_back"]),
+        (_never_analysed, ["telling_back_never_analysed"]),
         # `_no_rehearsal_audio` also leaves the open finding of the base fixture unanswered,
         # so `telling_back_not_checked` rides beside it; neither of the two names ground.
-        (_no_rehearsal_audio, ["no_rehearsal_audio", "telling_back_not_checked"], False),
+        (_no_rehearsal_audio, ["no_rehearsal_audio", "telling_back_not_checked"]),
     ],
 )
 async def test_the_gates_ground_fields_answer_only_their_own_blocker(
-    client, db_session, break_it, expected_blockers, expected_untold
+    client, db_session, break_it, expected_blockers
 ):
     """The route names ground where the gate says to, and nowhere else.
 
-    The rule this pins is the gate's, not the route's: `compose_internalization_release`
-    appends `untold_part` exactly when a current part stands with no standing stretch, and the
-    route's `untold_take_ids` is empty whenever that append did not happen. The first case
-    still has a door on the tablet (`untold_part`); the other two do not, and every ground
-    field stays empty for them.
+    None of these three blockers has a door on the tablet, and every ground field stays empty
+    for them.
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
-    part = await the_one_part_of(db_session, session)
     await break_it(db_session, session)
 
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
@@ -319,7 +317,6 @@ async def test_the_gates_ground_fields_answer_only_their_own_blocker(
     assert body["version"] is None
     assert body["unheard_take_ids"] == []
     assert body["untold_segment_id"] is None
-    assert body["untold_take_ids"] == ([part.id] if expected_untold else [])
     assert await releases_of(db_session, session.id) == []
 
 
@@ -742,7 +739,6 @@ async def test_the_team_route_refuses_a_panorama(client, db_session):
     body = refused.json()
     assert body["blockers"] == ["panorama_sessions_never_release"]
     assert body["version"] is None
-    assert body["untold_take_ids"] == []
     assert body["unheard_take_ids"] == []
     assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
@@ -776,8 +772,8 @@ def test_no_room_caller_route_accepts_force() -> None:
 
     Read off the mounted application, so a room route that grows the word tomorrow fails here
     without anybody remembering this file. The half that is red before the slice is the
-    facilitator route existing at all; the half that is the guard, and stays the guard, is
-    that no other route reads `force` and that the one that does sits behind the facilitator
+    facilitator routes existing at all; the half that is the guard, and stays the guard, is
+    that no other route reads `force` and that the two that do sit behind the facilitator
     role — the gate object itself, not a path that happens to be spelled `/facilitator`.
     """
     from app.api.facilitator._deps import facilitator_role
@@ -794,10 +790,18 @@ def test_no_room_caller_route_accepts_force() -> None:
         if getattr(route, "path", "").startswith(PREFIX) and "force" in _body_fields(route)
     )
 
-    assert forcing == [(f"{PREFIX}/facilitator/sessions/{{session_id}}/release", ["POST"])]
-    assert carries(
-        next(route for route in app.routes if getattr(route, "path", "") == forcing[0][0]).dependant
-    ), "a rota que lê force não está atrás do papel de facilitador"
+    assert forcing == [
+        (f"{PREFIX}/facilitator/projects/{{project_id}}/passages/{{pericope}}/release", ["POST"]),
+        (f"{PREFIX}/facilitator/sessions/{{session_id}}/release", ["POST"]),
+    ]
+    ungated = [
+        route.path
+        for route in app.routes
+        if getattr(route, "path", "") in {path for path, _ in forcing}
+        and "force" in _body_fields(route)
+        and not carries(route.dependant)
+    ]
+    assert ungated == [], f"rotas que leem force fora do papel de facilitador: {ungated}"
 
 
 @pytest.fixture()

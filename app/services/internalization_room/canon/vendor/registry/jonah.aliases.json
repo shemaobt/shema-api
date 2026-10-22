@@ -1,0 +1,404 @@
+{
+  "book": "JONAH",
+  "counts": {
+    "by_kind": {
+      "PERSON": 13,
+      "PLACE": 8,
+      "THING": 13
+    },
+    "entities": 34
+  },
+  "entities": {
+    "B1": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "Jonah",
+      "gender": "m",
+      "hebrew": "יוֹנָה",
+      "hebrew_cons": "יונה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B10": {
+      "appears_in": [
+        "J04"
+      ],
+      "english": "King of Nineveh",
+      "gender": "m",
+      "hebrew": "מֶלֶךְ נִינְוֵה",
+      "hebrew_cons": "מלךנינוה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B11": {
+      "appears_in": [
+        "J04"
+      ],
+      "english": "Nobles",
+      "gender": null,
+      "hebrew": "גְּדֹלָיו",
+      "hebrew_cons": "גדליו",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B12": {
+      "appears_in": [
+        "J04",
+        "J05"
+      ],
+      "english": "Animals",
+      "gender": null,
+      "hebrew": "בְּהֵמָה",
+      "hebrew_cons": "בהמה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B13": {
+      "appears_in": [
+        "J05"
+      ],
+      "english": "Worm",
+      "gender": "f",
+      "hebrew": "תּוֹלַעַת",
+      "hebrew_cons": "תולעת",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B2": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "YHWH",
+      "gender": "m",
+      "hebrew": "יְהוָה",
+      "hebrew_cons": "יהוה",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B3": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "Amittai",
+      "gender": "m",
+      "hebrew": "אֲמִתַּי",
+      "hebrew_cons": "אמתי",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B4": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "Ship Crew",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B5": {
+      "appears_in": [
+        "J01",
+        "J04",
+        "J05"
+      ],
+      "english": "People of Nineveh",
+      "gender": null,
+      "hebrew": "",
+      "hebrew_cons": "",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B6": {
+      "appears_in": [
+        "J02"
+      ],
+      "english": "Captain",
+      "gender": "m",
+      "hebrew": "רַב הַחֹבֵל",
+      "hebrew_cons": "רבהחבל",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B7": {
+      "appears_in": [
+        "J02",
+        "J04"
+      ],
+      "english": "Great Fish",
+      "gender": "m",
+      "hebrew": "דָּג גָּדוֹל",
+      "hebrew_cons": "דגגדול",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B8": {
+      "appears_in": [
+        "J03"
+      ],
+      "english": "Idol Keepers",
+      "gender": null,
+      "hebrew": "מְשַׁמְּרִים",
+      "hebrew_cons": "משמרים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "B9": {
+      "appears_in": [
+        "J04"
+      ],
+      "english": "God",
+      "gender": "m",
+      "hebrew": "אֱלֹהִים",
+      "hebrew_cons": "אלהים",
+      "kind": "PERSON",
+      "referential_forms": []
+    },
+    "O1": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "Ship",
+      "gender": null,
+      "hebrew": "אָנִיָּה",
+      "hebrew_cons": "אניה",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O10": {
+      "appears_in": [
+        "J04"
+      ],
+      "english": "Ashes",
+      "gender": null,
+      "hebrew": "אֵפֶר",
+      "hebrew_cons": "אפר",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O11": {
+      "appears_in": [
+        "J05"
+      ],
+      "english": "Qiqayon",
+      "gender": null,
+      "hebrew": "קִיקָיוֹן",
+      "hebrew_cons": "קיקיון",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O12": {
+      "appears_in": [
+        "J05"
+      ],
+      "english": "East Wind",
+      "gender": null,
+      "hebrew": "רוּחַ קָדִים",
+      "hebrew_cons": "רוחקדים",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O13": {
+      "appears_in": [
+        "J05"
+      ],
+      "english": "Booth",
+      "gender": null,
+      "hebrew": "סֻכָּה",
+      "hebrew_cons": "סכה",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O2": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "Fare",
+      "gender": null,
+      "hebrew": "שָׂכָר",
+      "hebrew_cons": "שכר",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O3": {
+      "appears_in": [
+        "J02"
+      ],
+      "english": "Wind",
+      "gender": null,
+      "hebrew": "רוּחַ",
+      "hebrew_cons": "רוח",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O4": {
+      "appears_in": [
+        "J02"
+      ],
+      "english": "Storm",
+      "gender": null,
+      "hebrew": "סַעַר",
+      "hebrew_cons": "סער",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O5": {
+      "appears_in": [
+        "J02"
+      ],
+      "english": "Cargo",
+      "gender": null,
+      "hebrew": "כֵּלִים",
+      "hebrew_cons": "כלים",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O6": {
+      "appears_in": [
+        "J02"
+      ],
+      "english": "Lots",
+      "gender": null,
+      "hebrew": "גּוֹרָלוֹת",
+      "hebrew_cons": "גורלות",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O7": {
+      "appears_in": [
+        "J03"
+      ],
+      "english": "Deep",
+      "gender": null,
+      "hebrew": "תְּהוֹם",
+      "hebrew_cons": "תהום",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O8": {
+      "appears_in": [
+        "J03"
+      ],
+      "english": "Weeds",
+      "gender": null,
+      "hebrew": "סוּף",
+      "hebrew_cons": "סוף",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "O9": {
+      "appears_in": [
+        "J04"
+      ],
+      "english": "Sackcloth",
+      "gender": null,
+      "hebrew": "שַׂק",
+      "hebrew_cons": "שק",
+      "kind": "THING",
+      "referential_forms": []
+    },
+    "PL1": {
+      "appears_in": [
+        "J01",
+        "J04",
+        "J05"
+      ],
+      "english": "Nineveh",
+      "gender": null,
+      "hebrew": "נִינְוֵה",
+      "hebrew_cons": "נינוה",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL2": {
+      "appears_in": [
+        "J01",
+        "J05"
+      ],
+      "english": "Tarshish",
+      "gender": null,
+      "hebrew": "תַּרְשִׁישׁ",
+      "hebrew_cons": "תרשיש",
+      "hebrew_cons_aliases": [
+        "תרשישה"
+      ],
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL3": {
+      "appears_in": [
+        "J01"
+      ],
+      "english": "Joppa",
+      "gender": null,
+      "hebrew": "יָפוֹ",
+      "hebrew_cons": "יפו",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL4": {
+      "appears_in": [
+        "J02"
+      ],
+      "english": "Sea",
+      "gender": null,
+      "hebrew": "יָם",
+      "hebrew_cons": "ים",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL5": {
+      "appears_in": [
+        "J02",
+        "J04"
+      ],
+      "english": "Dry Land",
+      "gender": null,
+      "hebrew": "יַבָּשָׁה",
+      "hebrew_cons": "יבשה",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL6": {
+      "appears_in": [
+        "J03"
+      ],
+      "english": "Sheol",
+      "gender": null,
+      "hebrew": "שְׁאוֹל",
+      "hebrew_cons": "שאול",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL7": {
+      "appears_in": [
+        "J03"
+      ],
+      "english": "Temple",
+      "gender": null,
+      "hebrew": "הֵיכָל",
+      "hebrew_cons": "היכל",
+      "kind": "PLACE",
+      "referential_forms": []
+    },
+    "PL8": {
+      "appears_in": [
+        "J03"
+      ],
+      "english": "Pit",
+      "gender": null,
+      "hebrew": "שַׁחַת",
+      "hebrew_cons": "שחת",
+      "kind": "PLACE",
+      "referential_forms": []
+    }
+  },
+  "places_ner": {
+    "loaded": false
+  },
+  "schema": "tripod-entity-aliases",
+  "schema_version": "0.1.0",
+  "source": "jonah-pilot-b-wiki/bcd frontmatter (+ ETCBC places NER sheet)"
+}

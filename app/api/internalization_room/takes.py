@@ -10,19 +10,34 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.facilitator._deps import ReaderUser
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
-from app.models.internalization_room import TakeResponse, TakesResponse
+from app.models.internalization_room import (
+    MotherTongueTakesResponse,
+    SentRecordingTime,
+    TakeDownloadsResponse,
+    TakeResponse,
+    TakesResponse,
+)
 from app.services import internalization_room as room
+from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.scene_rehearsals import (
+    refuse_an_origin_that_is_no_scene_rehearsal,
+)
+from app.services.internalization_room.session_takes import mother_tongue_takes_of
+from app.services.internalization_room.take_downloads import take_downloads_of
 from app.services.internalization_room.takes import (
+    LONGEST_TAKE_MS,
+    TakeStore,
     listen_url,
     store_take,
-    take_for_facilitator,
+    take_for_reader,
     take_in_session,
+    take_store,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -41,8 +56,10 @@ def _view(take: IRTake) -> TakeResponse:
         verified=take.verified_at is not None,
         ordinal=take.ordinal,
         pass_number=take.pass_number,
+        origin=take.origin,
         pericope=take.pericope,
-        recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
+        recorded_at=as_utc(take.recorded_at).isoformat(),
+        duration_ms=take.duration_ms,
     )
 
 
@@ -56,7 +73,7 @@ def _kind(raw: str) -> IRTakeKind:
 @router.post(
     "/sessions/{session_id}/takes",
     response_model=TakeResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def keep_take(
     session_id: str,
@@ -64,9 +81,42 @@ async def keep_take(
     scope: str = Form(...),
     pass_number: int | None = Form(default=None),
     chunk_index: int | None = Form(default=None),
+    origin: str | None = Form(
+        default=None,
+        description=(
+            "The id of the team's scene rehearsal of this passage the part was joined from, "
+            "when the tablet laid one in as this part. A recording with any current part "
+            "carrying one is joined: «terminei» refuses a part with no translated frase on "
+            "it, and the listen may check it with no tap. Absent on a part recorded as itself."
+        ),
+    ),
+    recorded_at: SentRecordingTime | None = Form(
+        default=None,
+        description=(
+            "When the recording stopped, by the tablet's clock, with its offset. It is the "
+            "take's recording time however late the upload lands; a joined part keeps the "
+            "server's clock instead, and this only measures how far the tablet's is off."
+        ),
+    ),
+    duration_ms: int | None = Form(
+        default=None,
+        ge=0,
+        le=LONGEST_TAKE_MS,
+        description=(
+            "The length of the file sent, read from the file itself. Refused with "
+            "TAKE_DURATION_DIFFERS when more than 100 ms from the length the server measures."
+        ),
+    ),
+    sha256: str | None = Form(
+        default=None,
+        description=(
+            "The sha256 of the bytes sent, in hex. Refused with TAKE_FINGERPRINT_DIFFERS when "
+            "it is not theirs; nothing is stored."
+        ),
+    ),
     file: UploadFile = File(...),
     device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TakeResponse:
     """Store one take and answer with where it landed.
@@ -87,9 +137,16 @@ async def keep_take(
     one service, called once the bytes are safe. It does not live inside the storing: that
     primitive knows nothing of parts — the routes that keep a telling of a stretch store through
     it as well — and what follows from a part arriving is the room's question, not storage's.
+
+    The tablet's fingerprint and length are checked against the bytes and refused when they
+    disagree, never corrected. A joined part keeps the server's clock as its recording time,
+    and a resend answers with the row already kept, its time unmoved.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
     take_kind = _kind(kind)
+    if origin is not None:
+        await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
     take = await store_take(
         db,
         session_id=session.id,
@@ -102,6 +159,10 @@ async def keep_take(
         pass_number=pass_number,
         ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",
+        origin=origin,
+        sent_sha256=sha256,
+        sent_duration_ms=duration_ms,
+        sent_recorded_at=recorded_at,
     )
     await room.retire_the_part_recorded_again(db, session, take)
     nudge(session.project_id, "takes")
@@ -111,11 +172,11 @@ async def keep_take(
 @router.get(
     "/sessions/{session_id}/takes",
     response_model=TakesResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def list_takes(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TakesResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
@@ -130,12 +191,12 @@ async def list_takes(
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     response_class=RedirectResponse,
     response_model=None,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def room_listens_to_take(
     session_id: str,
     take_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Give the team back the telling it just recorded, by the same signed redirect.
@@ -159,18 +220,48 @@ async def room_listens_to_take(
 
 @router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
 async def facilitator_takes(
-    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> TakesResponse:
     """What a session recorded, for the person who will listen to it.
 
-    A facilitator signs in; the team never does. So this carries no room key — the two
-    audiences never share a route.
+    A facilitator signs in; the team never does. So this carries no device credential — the
+    two audiences never share a route.
     """
-    session = await room.get_session_for_facilitator(db, user, session_id)
+    session = await room.get_session_for_reader(db, user, session_id)
     return TakesResponse(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
     )
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/mother-tongue-takes",
+    response_model=MotherTongueTakesResponse,
+)
+async def read_the_mother_tongue_takes(
+    session_id: str,
+    user: ReaderUser,
+    db: AsyncSession = Depends(get_db),
+    store: TakeStore = Depends(take_store),
+) -> MotherTongueTakesResponse:
+    session = await room.get_session_for_reader(db, user, session_id)
+    return await mother_tongue_takes_of(db, session, store)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/takes/downloads",
+    response_model=TakeDownloadsResponse,
+)
+async def read_the_take_downloads(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> TakeDownloadsResponse:
+    """What the facilitator hands Refine: each take under her file name, links good for an hour.
+
+    Read it again for fresh links; a name follows the passage's latest release at the moment of
+    the read.
+    """
+    session = await room.get_session_for_reader(db, user, session_id)
+    return await take_downloads_of(db, session)
 
 
 @router.get(
@@ -180,7 +271,7 @@ async def facilitator_takes(
     response_model=None,
 )
 async def listen_to_take(
-    take_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    take_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> RedirectResponse:
     """Redirect to a short-lived signed URL: storage serves the bytes.
 
@@ -188,6 +279,6 @@ async def listen_to_take(
     minutes of audio through the application server buys nothing over letting the bucket
     do it — the same reason the sound necklace redirects rather than proxies.
     """
-    take = await take_for_facilitator(db, user, take_id)
+    take = await take_for_reader(db, user, take_id)
     await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)

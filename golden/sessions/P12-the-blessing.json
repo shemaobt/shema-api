@@ -1,0 +1,138 @@
+{
+  "name": "P12-the-blessing",
+  "pericopeId": "P12",
+  "language": "Brazilian Portuguese",
+  "why": "SC-0088 (Marcia's map standard of 2026-09-28 and her four rulings of the same day, «(b), (b), (a), sim — pode seguir com as recomendações»), vendored at the compiler branch tip 46531c1 (re-pin to the merge commit after her merge word) — P12 = Ruth 4:9-12: the high-risk register (12 entries, 4 do_not_decide — R2 Boaz's purpose stays his stated purpose, only 'the dead', no law the story does not cite (the levirate law, Deuteronomy 25); R3 (her ruling D2 (b)) neither Ruth nor Naomi speaks, and the voice never says whether Ruth or Naomi is at the gate in 4:9-12 — if asked, the text does not say ('this young woman', 4:12, is not read as proof either way); R5 the blessing in its order, wishes not things told as done, no story of Rachel, Leah, Tamar or Judah from outside the book, no Tamar-Ruth link, no one later in the line; R6 the seed is asked for, not told as given — no child conceived or born, no taking-home told here; a team 'married' / 'casar' keeps the meaning of his declaration and is accepted without comment) and, not do_not_decide, R1 (4:10 names only Ruth as Mahlon's wife and never says whose wife Orpah was; the voice does not bring Orpah in), R7 ('Ruth the Moabite, the wife of Mahlon') and R9 (her ruling D3 (a): 'do worthily', the worth-word chayil of 2:1 and 3:11 — worth, standing, strength, prosperity or means are correct without comment; 'have (many) children' is offered back gently with the map's reading, as at 4:5; the voice does not teach the variants). The judge reads them in the map and the register; the keys below are the mechanical half. The voice never calls David anything (he is not in 4:9-12) and names no one later in the line. no_pairing is not keyed in this script: 4:10 itself says 'Ruth the Moabite, the wife of Mahlon', which the key's pattern would flag; the Orpah half (never paired) is the judge's. No earlierPassages fixture: the team's statuses at P12 are not known. Turn 0: the kickoff is the Familiarization (F1, the whole passage, F3 as the last words) — Ruth named as the wife of Mahlon only as 4:10 says it, the seed kept inside the wish ('the seed that YHWH will give you from this young woman'), no child told, no Genesis story of Tamar and Judah, no law. Turn 1: in the Familiarization the team asks whether Ruth was there at the gate, listening (D2: the text does not say; the voice says neither that she was nor that she was not) and whether Orpah was then Chilion's wife (R1: the text never says whose wife Orpah was); F4 as the last words, no scene opened. Turn 2: 'Estamos prontos.' opens scene 1 — I1 cena 1 and her closing. Turn 3: 'Vamos pro ensaio.' — A1 before the fence. Turn 4: a whole scene rehearsal of scene 1 (S1) with 'a Rute, a moabita, a mulher do Malom, eu comprei pra casar comigo' — accepted without comment (R6: 'married' keeps the meaning; R7 kept). Turn 5: 'Pode abrir a segunda cena pra gente?' with two questions from outside the book: whether this Tamar is the one of Genesis, with her story with Judah, and whether raising up the name of the dead is the levirate law (the tail, I2; no outside knowledge — the blessing tells no more of Tamar and Judah than it says, and the story cites no law — R5, R2). Turn 6: A2 before the fence. Turn 7: a scene rehearsal of scene 2 whose second wish is 'que você tenha muitos filhos em Efrata' (the seed kept a wish: 'a descendência que o Senhor vai te dar dessa moça') — offered back gently with the map's reading, the worth-word of 2:1 and 3:11 (D3 (a)); the fence again, no choice offer (a first imperfect telling). Turn 8: scene 2 again with 'que você prospere em Efrata' — accepted without comment (D3 (a): prosperity is in the word's range; the voice does not teach the variants); with S1 and S2 recorded, the plain Ensaio Final send-off (ONE instruction, the orange dot; the moment EF). The team's lines are the builder's fixtures, pending Marcia's word.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "A Rute estava lá na porta, ouvindo tudo isso? E a Orfa, então, era a mulher do Quiliom?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "familiarization_tail": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "O Boaz disse pros anciãos e pra todo o povo: vocês são testemunhas hoje de que eu comprei da mão da Noemi tudo o que era do Elimeleque, e tudo o que era do Quiliom e do Malom.",
+          "E também a Rute, a moabita, a mulher do Malom, eu comprei pra casar comigo, pra levantar o nome do morto sobre a herança dele, pra que o nome do morto não seja cortado do meio dos irmãos dele e da porta do lugar dele.",
+          "Vocês são testemunhas hoje."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente? Essa Tamar é aquela de Gênesis, da história dela com o Judá? E isso de levantar o nome do morto é a lei do levirato?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "moment_after": "I2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 2,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_spoiler": true,
+        "moment_after": "A2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "E todo o povo que estava na porta e os anciãos disseram: somos testemunhas.",
+          "Que o Senhor faça a mulher que está entrando na tua casa ser como Raquel e Lia, que as duas edificaram a casa de Israel.",
+          "Que você tenha muitos filhos em Efrata, e proclame um nome em Belém.",
+          "E que a tua casa seja como a casa de Perez, que Tamar deu à luz pra Judá, pela descendência que o Senhor vai te dar dessa moça."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": ["S1", "S2"],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_spoiler": true,
+        "moment_after": "A2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "E todo o povo que estava na porta e os anciãos disseram: somos testemunhas.",
+          "Que o Senhor faça a mulher que está entrando na tua casa ser como Raquel e Lia, que as duas edificaram a casa de Israel.",
+          "Que você prospere em Efrata, e proclame um nome em Belém.",
+          "E que a tua casa seja como a casa de Perez, que Tamar deu à luz pra Judá, pela descendência que o Senhor vai te dar dessa moça."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": ["S1", "S2"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "moment_after": "EF"
+      }
+    }
+  ]
+}

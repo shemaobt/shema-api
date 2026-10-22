@@ -29,7 +29,7 @@ class _Bucket:
 
 
 async def _welcome(db: AsyncSession, credential: str) -> Any:
-    return SimpleNamespace(project_id=None)
+    return SimpleNamespace(project_id="equipe", credential_collected_at="collected")
 
 
 @pytest.fixture()

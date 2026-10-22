@@ -51,8 +51,8 @@ async def _build_and_seed(database_url: str) -> dict[str, str]:
             await conn.execute(
                 text(
                     "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
-                    " coverage_state, kept_takes, back_translation, created_at, updated_at)"
-                    " VALUES (:id, 'P01', :status, '[]', 0, '{}', '{}', '{}', :opened, :last)"
+                    " coverage_state, back_translation, created_at, updated_at)"
+                    " VALUES (:id, 'P01', :status, '[]', 0, '{}', '{}', :opened, :last)"
                 ),
                 {"id": session_id, "status": status, "opened": OPENED, "last": LAST_WRITE},
             )

@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,13 +21,15 @@ from app.services.internalization_room.sessions import (
     resolve_pericope,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.deploy_harness import deploy_command
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.opening_harness import NOTE_PT_OV_RUTH
 from tests.turn_harness import the_room_agent_is
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 OV = "OV-Ruth"
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 
 def _settings() -> Settings:
@@ -47,11 +48,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         entry = SynthesizedSpeech(
@@ -78,23 +76,23 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 async def _open_panorama(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "OV", "language": "pt"})
     session_id: str = created.json()["session_id"]
-    await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    await client.post(f"{PREFIX}/sessions/{session_id}/turns")
     return session_id
 
 
 async def _speak(client: httpx.AsyncClient, session_id: str, filename: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": (filename, b"audio", "audio/m4a")},
     )
 
@@ -165,7 +163,7 @@ async def test_the_panorama_is_grounded_on_the_book_material(patch_agent) -> Non
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="",
+        speech=HeardSpeech(text=""),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -188,7 +186,7 @@ async def test_the_validator_judges_against_the_same_material(patch_agent) -> No
     await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="o que é esse livro?",
+        speech=HeardSpeech(text="o que é esse livro?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -212,7 +210,7 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="   ",
+        speech=HeardSpeech(text="   "),
         messages=[{"role": "guide", "text": "vamos conhecer o livro"}],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -227,7 +225,7 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     assert agent.systems == []
 
 
-async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
+async def test_a_panorama_missing_the_team_again_still_hears_her_first_d_line(
     patch_agent,
 ) -> None:
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
@@ -239,7 +237,7 @@ async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="   ",
+        speech=HeardSpeech(text="   "),
         messages=one_miss,
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -248,7 +246,7 @@ async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
         settings=_settings(),
     )
 
-    assert outcome.fixed_line == "D1", "duas mensagens guardadas davam D2 pela paridade"
+    assert outcome.fixed_line == "D0", "o app dela diz didntCatchThat(0) a cada falha"
     assert agent.systems == []
 
 
@@ -263,7 +261,7 @@ async def test_a_rejected_panorama_turn_is_never_voiced(patch_agent) -> None:
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="como termina?",
+        speech=HeardSpeech(text="como termina?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -285,9 +283,9 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
     heard = ["pergunta dois", "pergunta três"]
     routed: list[str] = []
 
-    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
-        routed.append(transcript)
-        return TurnOutcome(speech=f"resposta {len(routed)}.", transcript=transcript)
+    async def _panorama(*, speech: HeardSpeech, **_: Any) -> TurnOutcome:
+        routed.append(speech.text)
+        return TurnOutcome(speech=f"resposta {len(routed)}.", transcript=speech.text)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text=heard.pop(0))
@@ -307,7 +305,6 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
     for turn in (second, third):
         body = turn.json()
         assert body["audio_url"].startswith(f"{PREFIX}/voice/")
-        assert body["transcript"]
 
 
 async def test_the_third_turn_still_carries_the_sessions_first_exchange(
@@ -325,10 +322,10 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
     seen_messages: list[list[dict[str, Any]]] = []
 
     async def _panorama(
-        *, transcript: str, messages: list[dict[str, Any]], **_: Any
+        *, speech: HeardSpeech, messages: list[dict[str, Any]], **_: Any
     ) -> TurnOutcome:
         seen_messages.append(messages)
-        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=transcript)
+        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=speech.text)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text=heard.pop(0))
@@ -346,6 +343,7 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
         "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
     )
     assert [{"role": m["role"], "text": m["text"]} for m in seen_messages[2]] == [
+        {"role": "team", "text": NOTE_PT_OV_RUTH},
         opening_exchange,
         {"role": "team", "text": "pergunta dois"},
         {"role": "guide", "text": "resposta 2."},
@@ -377,7 +375,7 @@ async def test_a_slow_panorama_turn_is_not_cut_short(patch_agent) -> None:
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="me contem mais",
+        speech=HeardSpeech(text="me contem mais"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -403,13 +401,7 @@ def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workf
     `--timeout=300` on the `gcloud run deploy` command each workflow runs, and a change to
     either is exactly what would move this ceiling without a line of `app/` ever noticing.
     """
-    import yaml
-
-    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
-    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
-    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
-
-    assert "--timeout=300" in deploy_step["run"].split()
+    assert "--timeout=300" in deploy_command(workflow)
 
 
 async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turns(
@@ -418,8 +410,8 @@ async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turn
     """A panorama never 'completes' — not at the opening, not five turns in."""
     from app.api.internalization_room import sessions as sessions_api
 
-    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
-        return TurnOutcome(speech="resposta.", transcript=transcript)
+    async def _panorama(*, speech: HeardSpeech, **_: Any) -> TurnOutcome:
+        return TurnOutcome(speech="resposta.", transcript=speech.text)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text="mais uma pergunta")
@@ -427,13 +419,9 @@ async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turn
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
 
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "OV", "language": "pt"})
     session_id = created.json()["session_id"]
-    opening = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
-    )
+    opening = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     turns = [opening] + [await _speak(client, session_id, f"q{n}.m4a") for n in range(2, 6)]
 
@@ -459,7 +447,7 @@ async def test_a_direct_question_about_who_ruth_marries_is_answered_from_a_promp
     await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="com quem Rute vai se casar?",
+        speech=HeardSpeech(text="com quem Rute vai se casar?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,

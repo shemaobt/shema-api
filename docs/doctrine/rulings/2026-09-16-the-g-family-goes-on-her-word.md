@@ -4,6 +4,7 @@ pin: 533b6e3f338f1a0077c025a8de0edd89f5a4f4cd
 governs: the authored fail-safe utterances, which now carry one family beyond the vendored copy at the pin — X, not G
 word: "G: não existe mais; ver a pergunta 7" and, at question 7, "Não há mais fala fixa para isso. Quando o reconhecedor ouve outra língua, o app entrega ao Guia só o fato ('[A equipe falou na língua materna por cerca de N segundos; sem transcrição]') e o Guia acolhe o ensaio e pede o reconto em português."
 written: RESPOSTA-MARCIA.md, the ten fixed-utterance answers, 4 and 7, of 2026-09-04 — quoted in ENG-794 and ENG-796 (re-scoped 2026-09-07)
+superseded: in what it compares, by the byte-for-byte vendoring of her fail-safe file at her freeze (`FREEZE_PIN`, 18fa7c4; commit 97ac7de9): there is no vendored copy at 533b6e3 for the authored file to carry a family beyond. Her word on G stands and is carried out — no G block exists in the room's fail-safe text — and the Spanish supplement it also names has left the repository with the language.
 
 The ruling of 2026-09-15 recorded G as ours and `unruled`: it arrived with the facilitator's
 voice in efb2188e and cited no sentence of hers. Her word on it is the one above — the

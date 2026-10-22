@@ -1,11 +1,4 @@
-import asyncio
-import base64
-import logging
-from datetime import UTC, datetime
-from typing import Any
-
 import inngest
-from google.cloud import storage
 
 from app.core.database import AsyncSessionLocal
 from app.core.enums import (
@@ -14,113 +7,55 @@ from app.core.enums import (
     UploadStatus,
 )
 from app.core.inngest_client import inngest_client
-from app.db.models.oc_recording import OC_Recording
-from app.inngest.helpers import (
-    extract_failure_context,
-    notify_user,
-    update_recording_fields,
-)
-from app.inngest.schemas import BlobVerificationResult, UploadConfirmedPayload
-from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
-from app.services.oral_collector.gcs_utils import gcs_public_base
+from app.inngest.helpers import notify_user
+from app.inngest.schemas import UploadConfirmedPayload
 from app.services.oral_collector.recording_service import (
     fail_stalled_uploads,
+    mark_upload_verified,
     purge_failed_uploads,
 )
-
-logger = logging.getLogger(__name__)
-
-
-async def verify_gcs_blob(payload: UploadConfirmedPayload) -> BlobVerificationResult:
-    def _blocking() -> BlobVerificationResult:
-        client = storage.Client(project=GCS_OC_PROJECT)
-        bucket = client.bucket(gcs_oc_bucket())
-        blob = bucket.blob(payload.expected_blob_path)
-
-        if not blob.exists():
-            raise inngest.NonRetriableError("Blob does not exist in GCS — upload may have failed")
-
-        blob.reload()
-        actual_size = blob.size or 0
-        if payload.expected_size_bytes > 0 and actual_size != payload.expected_size_bytes:
-            raise inngest.NonRetriableError(
-                f"Size mismatch: expected {payload.expected_size_bytes}, got {actual_size}"
-            )
-
-        if payload.expected_md5_hash and blob.md5_hash:
-            gcs_md5_bytes = base64.b64decode(blob.md5_hash)
-            gcs_md5_hex = gcs_md5_bytes.hex()
-            if gcs_md5_hex != payload.expected_md5_hash.lower():
-                raise inngest.NonRetriableError(
-                    f"MD5 mismatch: client={payload.expected_md5_hash}, gcs={gcs_md5_hex}"
-                )
-
-        if payload.expected_crc32c and blob.crc32c != payload.expected_crc32c:
-            raise inngest.NonRetriableError(
-                f"CRC32C mismatch: client={payload.expected_crc32c}, gcs={blob.crc32c}"
-            )
-
-        return BlobVerificationResult(size=actual_size)
-
-    return await asyncio.to_thread(_blocking)
-
-
-async def _on_upload_failure(ctx: inngest.Context, _step: inngest.Step) -> None:
-    fc = extract_failure_context(ctx, "Upload processing failed")
-
-    await update_recording_fields(
-        fc.recording_id,
-        upload_status=UploadStatus.UPLOAD_FAILED,
-        upload_error=fc.error_message,
-    )
-
-    if fc.user_id:
-        await notify_user(
-            fc.user_id,
-            OCNotificationEvent.UPLOAD_FAILED,
-            "Upload failed — keep local recording",
-            f"Upload processing failed: {fc.error_message}. "
-            "Please keep the local recording and retry the upload.",
-        )
 
 
 @inngest_client.create_function(
     fn_id="process-upload",
     trigger=inngest.TriggerEvent(event=OCRecordingEvent.UPLOAD_CONFIRMED),
     retries=3,
-    on_failure=_on_upload_failure,  # type: ignore[arg-type]
 )
-async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
-    """Process a recording upload: verify integrity, finalize status, notify."""
+async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str | None:
+    """Mark a recording confirm-upload checked and published as verified, and notify.
+
+    A recording the job cannot mark verified keeps its status, and its owner is told to keep
+    the local recording, since only `verified` lets the phone free it.
+    """
     payload = UploadConfirmedPayload.model_validate(ctx.event.data)
 
-    async def _set_upload_metadata() -> str:
+    async def _finalize_verified() -> str | None:
         async with AsyncSessionLocal() as db:
-            recording = await db.get(OC_Recording, payload.recording_id)
-            if not recording:
-                raise inngest.NonRetriableError("Recording not found")
-            gcs_url = f"{gcs_public_base()}{payload.expected_blob_path}"
-            recording.gcs_url = gcs_url
-            recording.uploaded_at = datetime.now(UTC)
-            recording.upload_status = UploadStatus.UPLOADED
-            recording.upload_error = None
-            await db.commit()
-            return gcs_url
+            return await mark_upload_verified(
+                db,
+                payload.recording_id,
+                md5_hash=payload.expected_md5_hash,
+                crc32c=payload.expected_crc32c,
+            )
 
-    await step.run("set-upload-metadata", _set_upload_metadata)
+    status = await step.run("mark-verified", _finalize_verified)
 
-    async def _verify_blob() -> dict[str, Any]:
-        result = await verify_gcs_blob(payload)
-        return result.model_dump()
+    async def _notify_refused() -> None:
+        if payload.user_id is None:
+            return
+        await notify_user(
+            payload.user_id,
+            OCNotificationEvent.UPLOAD_FAILED,
+            "Upload failed — keep local recording",
+            "The uploaded audio did not match the recording. "
+            "Please keep the local recording and retry the upload.",
+        )
 
-    blob_info = BlobVerificationResult.model_validate(
-        await step.run("verify-gcs-blob", _verify_blob)
-    )
-
-    await step.run(
-        "finalize-verified",
-        lambda: update_recording_fields(payload.recording_id, upload_status=UploadStatus.VERIFIED),
-    )
+    if status is None:
+        return None
+    if status != UploadStatus.VERIFIED:
+        await step.run("notify-upload-refused", _notify_refused)
+        return str(status)
 
     async def _notify() -> None:
         if payload.user_id is None:
@@ -129,7 +64,7 @@ async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
             payload.user_id,
             OCNotificationEvent.UPLOAD_VERIFIED,
             "Recording uploaded — safe to free device storage",
-            f"Upload verified ({blob_info.size} bytes). You can safely delete the local recording.",
+            "Upload verified. You can safely delete the local recording.",
         )
 
     await step.run("notify-upload-complete", _notify)

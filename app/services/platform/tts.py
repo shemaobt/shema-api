@@ -28,7 +28,12 @@ from typing import Protocol
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
+from app.core.exceptions import (
+    ProviderNotConfigured,
+    UpstreamServiceError,
+    ValidationError,
+    upstream_or_validation_error,
+)
 from app.services.platform.voices import language_hint, resolve_voice
 
 logger = logging.getLogger(__name__)
@@ -133,6 +138,7 @@ async def synthesize_speech(
     voice_id: str | None = None,
     model: str | None = None,
     voice_settings: Mapping[str, float | bool] | None = None,
+    states_language: bool = True,
     api_key: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
@@ -142,6 +148,9 @@ async def synthesize_speech(
 
     `settings`, `client` and `store` are injectable — that is what makes the service testable
     without network and without GCS.
+
+    The language reaches ElevenLabs as `language_code` unless `states_language` is false, for
+    a caller that wants the voice to read the text with no hint at all.
 
     A hit is read through `fetch_clip`, which tries the in-process `_FRESH` cache before the
     bucket, and a miss seeds `_FRESH` with the bytes it just wrote — so a repeat request in the
@@ -155,6 +164,7 @@ async def synthesize_speech(
         voice_id=voice_id,
         model=model,
         voice_settings=voice_settings,
+        states_language=states_language,
         api_key=api_key,
         settings=settings,
         client=client,
@@ -185,6 +195,7 @@ async def synthesize_speech_key(
     voice_id: str | None = None,
     model: str | None = None,
     voice_settings: Mapping[str, float | bool] | None = None,
+    states_language: bool = True,
     api_key: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
@@ -197,6 +208,7 @@ async def synthesize_speech_key(
         voice_id=voice_id,
         model=model,
         voice_settings=voice_settings,
+        states_language=states_language,
         api_key=api_key,
         settings=settings,
         client=client,
@@ -248,6 +260,7 @@ def _addressed(
     voice_id: str | None,
     model: str | None,
     voice_settings: Mapping[str, float | bool] | None,
+    states_language: bool,
     api_key: str | None,
     settings: Settings | None,
     client: httpx.AsyncClient | None,
@@ -262,16 +275,17 @@ def _addressed(
         # ponytail: project_health uses a SECOND key (`ph_elevenlabs_api_key`), and the
         # internalization room now brings its own. A caller that passes none still falls
         # back to the shared one, so nothing that worked before needs to change.
-        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
+        raise ProviderNotConfigured("ELEVENLABS_API_KEY is not configured")
 
     voice = voice_id or resolve_voice(language)
     chosen_model = model or cfg.elevenlabs_tts_model
-    key = cache_key(
+    key = speech_key(
         text,
+        language=language,
         voice_id=voice,
         model=chosen_model,
-        output_format=cfg.elevenlabs_output_format,
         voice_settings=voice_settings,
+        settings=cfg,
     )
     voiced = partial(
         _synthesize,
@@ -280,11 +294,37 @@ def _addressed(
         language=language,
         model=chosen_model,
         voice_settings=voice_settings,
+        states_language=states_language,
         cfg=cfg,
         client=client,
         api_key=credential,
     )
     return key, store or _default_store(cfg), voiced
+
+
+def speech_key(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
+    settings: Settings | None = None,
+    **_: object,
+) -> str:
+    cfg = settings or get_settings()
+    return cache_key(
+        text,
+        voice_id=voice_id or resolve_voice(language),
+        model=model or cfg.elevenlabs_tts_model,
+        output_format=cfg.elevenlabs_output_format,
+        voice_settings=voice_settings,
+    )
+
+
+async def is_stored(key: str) -> bool:
+    """Whether the bucket holds this clip, asking it only when this process has not kept it."""
+    return _is_kept(key) or await _default_store(get_settings()).exists(key)
 
 
 async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
@@ -331,13 +371,12 @@ async def _synthesize(
     client: httpx.AsyncClient | None,
     model: str,
     voice_settings: Mapping[str, float | bool] | None = None,
+    states_language: bool = True,
     api_key: str | None = None,
 ) -> bytes:
-    body: dict[str, object] = {
-        "text": text,
-        "model_id": model,
-        "language_code": language_hint(language),
-    }
+    body: dict[str, object] = {"text": text, "model_id": model}
+    if states_language:
+        body["language_code"] = language_hint(language)
     if voice_settings:
         body["voice_settings"] = dict(voice_settings)
 

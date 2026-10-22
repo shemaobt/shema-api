@@ -2,8 +2,8 @@
 
 Two readings of the halt columns, in one place because four readers need them and the day
 they drift is the day the tablet and the Desk disagree about whether a room is stopped. The
-status a lift restores sits beside them because both doors that lift a halt must agree on it:
-a closed passage goes back to done (ADR 0044).
+status a lift restores sits beside them because the team's return, the one door that lifts a
+blocking halt, must agree with them on it: a closed passage goes back to done (ADR 0044, 0076).
 
 **They are different questions.** ``standing`` is what the tablet and the Desk ask: it must be
 null the moment no halt stands — one signal, not two. ``last`` is what a facilitator asks
@@ -70,6 +70,11 @@ def standing_warning_since(session: IRSession) -> datetime | None:
 
 
 def a_lift_restores() -> ColumnElement[IRSessionStatus]:
+    """What a lifted halt puts back: ``done`` where ``ended_at`` says the floor was met.
+
+    The status is ``needs_person`` here, so it cannot say whether the passage was closed;
+    ``ended_at``, written once with ``done``, can (ADR 0044).
+    """
     return case(
         (IRSession.ended_at.is_not(None), literal(IRSessionStatus.DONE, IRSession.status.type)),
         else_=literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),

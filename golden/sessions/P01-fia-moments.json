@@ -1,0 +1,147 @@
+{
+  "name": "P01-fia-moments",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's rulings of 2026-09-24, late evening (the three FIA moments — prompts/guide_system_prompt.md, 'The three moments'; texts in docs/MOMENTOS-FIA-TEXTOS.md). Turn 0: the kickoff is the Familiarization — 'Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira.', the whole passage, 'Essa passagem tem quatro cenas.' and the scenes by number, then F3, said whole, as the last words ('O que chamou a atenção de vocês nessa passagem? … a gente vai pra Internalização da primeira cena.'); no scene opened. Turn 1: the team comments on the whole and asks a question — the voice answers from the map and ends with F4, the closing's last two sentences, and opens no scene (the pilot P10 incident of 2026-09-24, turn 3: the voice answered a comment and opened part 1 in the same turn, without the team's word). Turn 2: 'Estamos prontos.' is the team's word with no question open — the first scene opens: 'Vamos pra Internalização da cena 1.', the scene, and her closing with 'cena' as the last words. Turn 3: 'Vamos pro ensaio.' — 'Vamos pra Articulação da cena 1.' right before the fence's opening line, the fenced block and the red microphone. Turn 4: the team asks for the next scene before scene 1 has come back at all — J1 (ii): the voice says where the team is ('Estamos na Articulação da cena 1. Primeiro a gente termina essa cena; depois vem a cena 2.'), opens no scene, and gives the fenced block again (no telling has come back, so there is nothing missing to name); the app's moment stays A1. Review of 2026-09-24, late evening — the rest of her rulings, played on after turn 4 (every turn also carries scene_word_cena: D1 (c), the voice calls a scene of today's passage 'cena', never 'a primeira parte'). Turn 5: 'Em que momento a gente está?' — E1 is the answer ('Estamos na Articulação da cena 1.'); the moment stays A1. Turn 6: 'Espera, a gente precisa entender primeiro.' after the fence — D5 (a): the voice goes back to the Internalization of the same scene, beginning again with 'Vamos pra Internalização da cena 1.', and ends with the tail ('Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.'), no call to rehearse; the screen goes back too (I1). Turn 7: the next scene asked for while scene 1 is in its Internalization — J1 (ii) in that moment: 'Estamos na Internalização da cena 1. Primeiro a gente termina essa cena; depois vem a cena 2.', any question answered, and the tail; I1. Turn 8: the whole passage asked for in the middle of the session — D7 (a): told without F1 and without F3 (no_familiarization_lines), and the moment does not change (I1). Turn 9: 'Entendemos. Vamos pro ensaio.' — the fenced block and the microphone again (the first fence for scene 1 was turn 3, so A1 is not owed here); A1. Turn 10: a scene rehearsal of scene 1, marked S1, that leaves out an event (the family's going to Moab) — the send-back: what is missing is named outside the fence, then the fenced block again (never the small-gaps choice: an event, on a first telling); A1. Turn 11: the next scene asked for after that telling — J1 (ii) after a gap: E1 with scene 1, what is still missing named before the fence, the fenced block again, and no scene 2; A1.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Chamou a atenção da gente que a família saiu de Belém por causa da fome e foi morar numa terra estranha. Por que eles foram justo pra Moabe?",
+      "expect": {
+        "no_fail_safe": true,
+        "familiarization_tail": true,
+        "no_outside_knowledge": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "moment_after": "I1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a próxima cena?",
+      "expect": {
+        "no_fail_safe": true,
+        "where_we_are": 1,
+        "no_next_part": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Em que momento a gente está?",
+      "expect": {
+        "no_fail_safe": true,
+        "where_we_are": 1,
+        "scene_word_cena": true,
+        "moment_after": "A1"
+      }
+    },
+    {
+      "team": "Espera, a gente precisa entender primeiro.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "part_entrance": 1,
+        "take_up_closing": true,
+        "scene_word_cena": true,
+        "moment_after": "I1"
+      }
+    },
+    {
+      "team": "Pode abrir a cena 2 pra gente?",
+      "expect": {
+        "no_fail_safe": true,
+        "where_we_are": 1,
+        "no_next_part": true,
+        "take_up_closing": true,
+        "scene_word_cena": true,
+        "moment_after": "I1"
+      }
+    },
+    {
+      "team": "Conta a passagem inteira de novo pra gente?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_familiarization_lines": true,
+        "no_rehearsal_invite": true,
+        "scene_word_cena": true,
+        "moment_after": "I1"
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "scene_word_cena": true,
+        "moment_after": "A1"
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Nos dias em que os juízes julgavam, teve uma fome na terra.",
+          "O nome do homem era Elimeleque, a mulher era Noemi, e os filhos Malom e Quiliom. Eram efrateus de Belém de Judá."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": [
+        "S1"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "scene_word_cena": true,
+        "moment_after": "A1"
+      }
+    },
+    {
+      "team": "E a próxima cena? Pode abrir a segunda cena pra gente?",
+      "expect": {
+        "no_fail_safe": true,
+        "where_we_are": 1,
+        "no_next_part": true,
+        "names_gap": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "scene_word_cena": true,
+        "moment_after": "A1"
+      }
+    }
+  ]
+}

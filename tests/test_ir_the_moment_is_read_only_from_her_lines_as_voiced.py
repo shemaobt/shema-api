@@ -1,0 +1,774 @@
+from typing import Any
+
+import pytest
+
+from app.services.internalization_room.hearing import SentSceneRehearsal
+from app.services.internalization_room.moment import _described, _Line, moment_step
+
+SCENES = ["S1", "S2", "S3", "S4"]
+FAMILIARIZATION = {"at": "familiarization"}
+SCENE_TWO_OPEN = {"at": "internalization", "part": 2}
+F3 = (
+    "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
+    "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização "
+    "da primeira cena."
+)
+CLOSING = (
+    "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+)
+CLOSING_OF_23_SEPTEMBER = (
+    "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+)
+FAMILIARIZATION_CLOSED = {"at": "familiarization", "closed": True}
+SCENE_ONE_OPEN = {"at": "internalization", "part": 1}
+SCENE_ONE = "Na primeira cena, a fome leva a família pra Moabe."
+SEND_OFF = (
+    "Vocês contaram a passagem inteira. "
+    "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
+)
+ENSAIO_FINAL = {"at": "ensaio_final"}
+SCENE_TWO_PRACTISED = {"at": "articulation", "part": 2, "fenced": False}
+SCENE_TWO_FENCED = {"at": "articulation", "part": 2, "fenced": True}
+FENCE = (
+    "Agora vou dizer tudo o que deve entrar no ensaio de vocês. Noemi decide voltar pra Belém. "
+    "Agora podem ensaiar."
+)
+TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. Noemi voltou."
+
+
+def _after(moment: dict[str, Any], voiced: str) -> dict[str, Any]:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
+    assert step is not None
+    return step.after.as_json()
+
+
+@pytest.mark.parametrize(
+    "voiced",
+    [
+        "Vamos pra Internalização da cena 2, onde Noemi decide voltar.",
+        "Vamos pra  Internalização   da cena 2.",
+        "Vamos pra\nInternalização da cena 2.\n\nNoemi decide voltar.",
+        "Então, vamos pra Internalização da cena 2.",
+        "Agora vamos pra Internalização da cena 2.",
+        "Muito bem. Agora vamos pra Internalização da cena 2.",
+        "Vamos para a Internalização da parte 2.",
+        "vamos pra internalização da cena dois!",
+        "Agora vamos pra Internalização da cena 2 — versos 10 a 13.",
+    ],
+)
+def test_her_opening_line_said_with_another_comma_or_space_still_opens_the_scene(
+    voiced: str,
+) -> None:
+    assert _after(FAMILIARIZATION, voiced) == SCENE_TWO_OPEN, (
+        f"a sala não reconheceu a linha dela dita assim: {voiced!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "voiced",
+    [
+        "Na articulação vocês vão ensaiar essa cena, depois de entender a história.",
+        "E depois vamos pra Internalização da cena 2.",
+        "Vamos pra Internalização da cena 2 e depois da cena 3.",
+        "Vamos pra Internalização da cena 2?",
+        "Depois vamos pra Internalização da cena 2.",
+        "Quando estiverem prontos, vamos pra Internalização da cena 2.",
+        "Não vamos pra Internalização da cena 2 ainda.",
+        "Agora vamos pra segunda parte, versos dez a treze.",
+    ],
+)
+def test_a_moment_named_in_passing_is_not_her_line_and_moves_nothing(voiced: str) -> None:
+    assert _after(FAMILIARIZATION, voiced) == FAMILIARIZATION, (
+        f"a sala mudou de momento por uma menção de passagem: {voiced!r}"
+    )
+
+
+def test_her_familiarization_closing_as_the_last_words_closes_the_familiarization() -> None:
+    assert _after(FAMILIARIZATION, f"{TOLD} {F3}") == {"at": "familiarization", "closed": True}, (
+        "o fechamento da Familiarização foi dito e a sala não registrou"
+    )
+
+
+def test_her_familiarization_closing_with_words_after_it_is_not_the_closing() -> None:
+    assert _after(FAMILIARIZATION, f"{TOLD} {F3} Mais alguma coisa?") == FAMILIARIZATION
+
+
+@pytest.mark.parametrize("closing", [CLOSING, CLOSING_OF_23_SEPTEMBER])
+def test_her_scene_closing_after_the_familiarization_closed_opens_the_first_scene(
+    closing: str,
+) -> None:
+    assert _after(FAMILIARIZATION_CLOSED, f"{SCENE_ONE} {closing}") == SCENE_ONE_OPEN, (
+        "o fechamento da cena terminou a abertura da cena 1 e a sala ficou na Familiarização"
+    )
+
+
+def test_her_scene_closing_moves_nothing_where_it_opens_no_new_scene() -> None:
+    assert _after(SCENE_TWO_OPEN, f"{SCENE_ONE} {CLOSING}") == SCENE_TWO_OPEN
+
+
+def test_her_send_off_as_the_last_words_puts_the_room_in_the_ensaio_final() -> None:
+    assert _after(SCENE_TWO_OPEN, SEND_OFF) == ENSAIO_FINAL, (
+        "a despedida mandou a equipe pro ponto laranja e a sala continuou na cena"
+    )
+
+
+def test_her_send_off_with_words_after_it_is_not_the_send_off() -> None:
+    assert _after(SCENE_TWO_OPEN, f"{SEND_OFF} Ou querem ouvir de novo?") == SCENE_TWO_OPEN
+
+
+def test_an_opening_line_after_the_send_off_leaves_the_room_in_the_ensaio_final() -> None:
+    assert _after(ENSAIO_FINAL, "Vamos pra Internalização da cena 2.") == ENSAIO_FINAL, (
+        "uma linha numerada depois da despedida tirou a sala do Ensaio Final"
+    )
+
+
+def test_her_articulation_line_moves_the_room_to_the_scenes_articulation() -> None:
+    assert _after(SCENE_TWO_OPEN, "Vamos pra Articulação da cena 2.") == SCENE_TWO_PRACTISED, (
+        "a voz abriu a Articulação da cena 2 e a sala continuou na Internalização"
+    )
+
+
+def test_her_articulation_line_said_again_in_that_articulation_keeps_its_fenced_block() -> None:
+    assert _after(SCENE_TWO_FENCED, "Vamos pra Articulação da cena 2.") == SCENE_TWO_FENCED
+
+
+@pytest.mark.parametrize(
+    "voiced", [FENCE, f"Vamos pra Articulação da cena 2. {FENCE}"], ids=["fence", "A1 then fence"]
+)
+def test_her_fence_opening_marks_the_scenes_fenced_block_as_given(voiced: str) -> None:
+    assert _after(SCENE_TWO_OPEN, voiced) == SCENE_TWO_FENCED, (
+        "a voz deu o bloco do ensaio e a sala não registrou"
+    )
+
+
+def test_her_fence_opening_promised_inside_another_sentence_is_not_the_fence() -> None:
+    promise = "Depois eu vou dizer tudo o que deve entrar no ensaio de vocês."
+    assert _after(SCENE_TWO_OPEN, promise) == SCENE_TWO_OPEN
+
+
+def test_her_fence_opening_in_the_familiarization_sets_no_scene() -> None:
+    assert _after(FAMILIARIZATION, FENCE) == FAMILIARIZATION
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "named"),
+    [
+        (
+            SCENE_TWO_OPEN,
+            "Estamos na Articulação da cena 2. Primeiro a gente termina essa cena; "
+            "depois vem a cena 3.",
+            SCENE_TWO_PRACTISED,
+        ),
+        (
+            {"at": "articulation", "part": 3, "fenced": True},
+            "Estamos na Internalização da cena 2.",
+            SCENE_TWO_OPEN,
+        ),
+        (SCENE_TWO_OPEN, "Estamos na Familiarização.", FAMILIARIZATION),
+        (FAMILIARIZATION_CLOSED, "Estamos na Familiarização.", FAMILIARIZATION_CLOSED),
+        (SCENE_TWO_FENCED, "Ainda estamos na Articulação da cena 2.", SCENE_TWO_FENCED),
+        (SCENE_TWO_OPEN, "Não estamos na Articulação da cena 2.", SCENE_TWO_OPEN),
+    ],
+    ids=["J1", "back to I2", "familiarization", "keeps closed", "ainda", "negated"],
+)
+def test_her_where_we_are_line_puts_the_room_where_it_says(
+    moment: dict[str, Any], voiced: str, named: dict[str, Any]
+) -> None:
+    assert _after(moment, voiced) == named, f"a voz disse onde a sala estava: {voiced!r}"
+
+
+F3_EN = (
+    "What caught your attention in this passage? Talk it over among yourselves. If you have any "
+    "questions, ask me. When you are ready, tell me and we will move to Internalization of the "
+    "first scene."
+)
+CLOSING_EN = (
+    "What caught your attention in this scene? Talk it over among yourselves. Is this scene "
+    "clear? If you have any questions, ask me. If you have understood it, tell me and we will "
+    "go to the rehearsal."
+)
+SEND_OFF_EN = "Now tap the orange dot at the top of the screen to open the Final Rehearsal."
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "heard"),
+    [
+        (FAMILIARIZATION, "Let's move to Internalization of scene 2.", SCENE_TWO_OPEN),
+        (
+            FAMILIARIZATION,
+            "Let\N{RIGHT SINGLE QUOTATION MARK}s go to the Internalization of part two.",
+            SCENE_TWO_OPEN,
+        ),
+        (SCENE_TWO_OPEN, "Let's move to Articulation of scene 2.", SCENE_TWO_PRACTISED),
+        (
+            SCENE_TWO_OPEN,
+            "Now I will say everything that should go into your rehearsal. Now you can rehearse.",
+            SCENE_TWO_FENCED,
+        ),
+        (SCENE_TWO_FENCED, "We are in Internalization of scene 2.", SCENE_TWO_OPEN),
+        (SCENE_TWO_OPEN, "We are in Familiarization.", FAMILIARIZATION),
+        (
+            FAMILIARIZATION,
+            f"First I will tell you the whole passage. {F3_EN}",
+            FAMILIARIZATION_CLOSED,
+        ),
+        (FAMILIARIZATION_CLOSED, f"In the first scene, a famine. {CLOSING_EN}", SCENE_ONE_OPEN),
+        (SCENE_TWO_OPEN, f"You told the whole passage. {SEND_OFF_EN}", ENSAIO_FINAL),
+    ],
+    ids=["I1", "I1 curly", "A1", "fence", "E1", "E1 familiarization", "F3", "closing", "send-off"],
+)
+def test_an_english_session_is_read_by_her_english_lines_the_same_way(
+    moment: dict[str, Any], voiced: str, heard: dict[str, Any]
+) -> None:
+    assert _after(moment, voiced) == heard, f"a sessão em inglês não leu a linha: {voiced!r}"
+
+
+@pytest.mark.parametrize(
+    "voiced",
+    [
+        "Vamos pra Internalização da cena 7.",
+        "Vamos pra Internalização da cena 0.",
+        "Estamos na Articulação da cena 5.",
+    ],
+)
+def test_a_scene_number_the_passage_does_not_have_moves_nothing(voiced: str) -> None:
+    assert _after(SCENE_TWO_OPEN, voiced) == SCENE_TWO_OPEN, (
+        f"uma cena que a passagem de quatro cenas não tem mudou o momento: {voiced!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("voiced", "heard"),
+    [
+        ("Vamos pra Internalização da segunda cena.", SCENE_TWO_OPEN),
+        ("Now let's go to the Internalization of the second scene.", SCENE_TWO_OPEN),
+        ("Agora vamos pra Internalização da última parte.", {"at": "internalization", "part": 4}),
+        (
+            "So, let's move to Articulation of the last scene.",
+            {"at": "articulation", "part": 4, "fenced": False},
+        ),
+        ("Estamos na Articulação da segunda cena.", SCENE_TWO_PRACTISED),
+    ],
+)
+def test_an_ordinal_inside_her_whole_line_names_the_scene(
+    voiced: str, heard: dict[str, Any]
+) -> None:
+    assert _after(FAMILIARIZATION, voiced) == heard, f"a voz nomeou a cena por ordinal: {voiced!r}"
+
+
+@pytest.mark.parametrize(
+    "earlier",
+    [
+        "Estamos na Familiarização.",
+        "Agora vou dizer tudo o que deve entrar no ensaio de vocês.",
+    ],
+    ids=["where we are", "fence"],
+)
+def test_her_scene_closing_after_another_moment_line_in_the_reply_moves_nothing(
+    earlier: str,
+) -> None:
+    voiced = f"{earlier} {SCENE_ONE} {CLOSING}"
+    assert _after(FAMILIARIZATION_CLOSED, voiced) == FAMILIARIZATION_CLOSED, (
+        f"o fechamento abriu a cena 1 depois de outra linha de momento: {earlier!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("voiced", "recorded"),
+    [
+        ("Vamos pra Articulação da cena 2.", "articulation_entrance 2"),
+        ("Estamos na Articulação da cena 2.", "where_we_are 2 (articulation)"),
+        ("Estamos na Internalização da cena 3.", "where_we_are 3 (internalization)"),
+        ("Estamos na Familiarização.", "where_we_are (familiarization)"),
+    ],
+)
+def test_every_numbered_line_after_the_send_off_is_kept_in_her_words(
+    voiced: str, recorded: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": ENSAIO_FINAL}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.ignored == [f"{recorded}: after the send-off (Ensaio Final)"], (
+        "uma linha de onde estamos depois da despedida foi ignorada sem ser anotada do jeito dela"
+    )
+
+
+@pytest.mark.parametrize(
+    "voiced",
+    [f"{SCENE_ONE} {CLOSING}", FENCE, SEND_OFF, "Boa. Podem continuar."],
+)
+def test_after_the_send_off_her_closing_her_fence_and_plain_words_leave_nothing_ignored(
+    voiced: str,
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": ENSAIO_FINAL}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert "ignored" not in step.as_json(), (
+        "uma fala que não era linha numerada entrou na lista de ignoradas depois da despedida"
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "described"),
+    [
+        (_Line(0, "where_we_are", part=2, to="articulation"), "where_we_are 2 (articulation)"),
+        (_Line(0, "where_we_are", part=2), "where_we_are 2"),
+        (_Line(0, "entrance", part=3, to="internalization"), "entrance 3"),
+        (_Line(0, "where_we_are", to="familiarization"), "where_we_are (familiarization)"),
+        (_Line(0, "fence", to="articulation"), "fence (articulation)"),
+        (_Line(0, "fence"), "fence"),
+    ],
+)
+def test_a_line_is_described_the_way_her_record_describes_it(line: _Line, described: str) -> None:
+    assert _described(line) == described, (
+        "a linha era descrita de um jeito que o registro dela nunca escreveu"
+    )
+
+
+@pytest.mark.parametrize("moment", [SCENE_TWO_OPEN, ENSAIO_FINAL])
+@pytest.mark.parametrize(
+    ("voiced", "recorded"),
+    [
+        ("Vamos pra Internalização da cena 5.", "entrance 5"),
+        ("Vamos pra Articulação da cena 4.", "articulation_entrance 4"),
+        ("Estamos na Articulação da cena 0.", "where_we_are 0 (articulation)"),
+    ],
+)
+def test_a_scene_number_the_passage_does_not_have_is_kept_in_her_words(
+    moment: dict[str, Any], voiced: str, recorded: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES[:3])
+
+    assert step is not None
+    assert step.ignored == [f"{recorded}: not a part of this passage (1..3)"], (
+        "um número de cena que a passagem não tem foi descartado sem registro"
+    )
+    assert step.after.as_json() == moment
+
+
+def _ignored(moment: dict[str, Any], voiced: str) -> list[str]:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
+    assert step is not None
+    return step.ignored
+
+
+def test_her_fence_opening_in_the_familiarization_is_kept_as_ignored_in_her_words() -> None:
+    assert _ignored(FAMILIARIZATION, FENCE) == ["fence: in the Familiarization, no part number"], (
+        "o bloco do ensaio dito na Familiarização foi descartado sem registro"
+    )
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced"),
+    [
+        (FAMILIARIZATION, f"Estamos na Familiarização. {SCENE_ONE} {CLOSING}"),
+        (SCENE_TWO_PRACTISED, f"Estamos na Articulação da cena 2. {SCENE_ONE} {CLOSING}"),
+    ],
+)
+def test_her_scene_closing_after_another_moment_line_is_kept_as_ignored_in_her_words(
+    moment: dict[str, Any], voiced: str
+) -> None:
+    assert _ignored(moment, voiced) == [
+        "part_closing: another moment line came earlier in the same reply"
+    ], "o fechamento recusado depois de outra linha de momento foi descartado sem registro"
+
+
+def test_her_scene_closing_that_ends_a_scene_opening_is_not_ignored() -> None:
+    voiced = f"Estamos na Internalização da cena 2. {SCENE_ONE} {CLOSING}"
+
+    assert _ignored(SCENE_TWO_OPEN, voiced) == [], (
+        "o fechamento que termina a abertura da própria cena entrou na lista de ignoradas"
+    )
+
+
+def test_her_scene_closing_before_f3_is_kept_as_ignored_in_her_words() -> None:
+    assert _ignored(FAMILIARIZATION, f"{SCENE_ONE} {CLOSING}") == [
+        "part_closing: the Familiarization's closing (F3) was not heard — heard as a scene "
+        "opening with no number: a marked scene rehearsal of part 1 will move the moment"
+    ], "o fechamento de cena antes do fechamento da Familiarização foi descartado sem registro"
+
+
+def test_her_scene_closing_after_the_familiarization_closed_is_not_ignored() -> None:
+    assert _ignored(FAMILIARIZATION_CLOSED, f"{SCENE_ONE} {CLOSING}") == []
+
+
+def test_her_scene_closing_after_the_last_part_is_kept_as_ignored_in_her_words() -> None:
+    last = {"at": "articulation", "part": 4, "fenced": True}
+
+    assert _ignored(last, f"{SCENE_ONE} {CLOSING}") == ["part_closing: after the last part"], (
+        "o fechamento depois da última cena foi descartado sem registro"
+    )
+
+
+def test_her_scene_closing_in_an_articulation_is_kept_as_ignored_with_no_rehearsal_back() -> None:
+    assert _ignored(SCENE_TWO_FENCED, f"{SCENE_ONE} {CLOSING}") == [
+        "part_closing: no scene rehearsal of part 2 has come back — heard as a scene opening "
+        "with no number: a marked scene rehearsal of part 3 will move the moment"
+    ], "o fechamento na Articulação foi descartado sem registro, sem dizer qual ensaio faltava"
+
+
+@pytest.mark.parametrize("moment", [SCENE_TWO_OPEN, SCENE_TWO_PRACTISED, ENSAIO_FINAL])
+def test_her_familiarization_closing_outside_the_familiarization_is_kept_as_ignored(
+    moment: dict[str, Any],
+) -> None:
+    assert _ignored(moment, F3) == ["familiarization_closing: outside the Familiarization"], (
+        "o fechamento da Familiarização dito fora dela foi descartado sem registro"
+    )
+
+
+def test_her_familiarization_closing_in_the_familiarization_is_not_ignored() -> None:
+    assert _ignored(FAMILIARIZATION, F3) == []
+
+
+def _rehearsed(scene: str | None) -> dict[str, Any]:
+    return {"rehearsal_id": "ensaio-1", "n": 1, "frases": 3, "scene": scene}
+
+
+def test_her_closing_opens_the_next_scene_once_its_marked_rehearsal_came_back() -> None:
+    heard = [
+        {
+            "role": "guide",
+            "text": "",
+            "scene_rehearsal": _rehearsed("S2"),
+            "moment": {"after": SCENE_TWO_PRACTISED},
+        },
+        {"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}},
+    ]
+
+    step = moment_step(heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.after.as_json() == {"at": "internalization", "part": 3}, (
+        "o ensaio marcado da cena 2 tinha voltado e o fechamento não abriu a cena 3"
+    )
+    assert (step.by, step.ignored) == (["part_closing"], [])
+
+
+@pytest.mark.parametrize("scene", [None, "S9"], ids=["unmarked", "a label the passage lacks"])
+def test_her_closing_opens_the_next_scene_when_an_unmarked_rehearsal_arrives_as_the_turn(
+    scene: str | None,
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.after.as_json() == {"at": "internalization", "part": 3}, (
+        "o ensaio sem cena chegou neste turno e o fechamento não abriu a cena 3"
+    )
+
+
+@pytest.mark.parametrize("scene", [None, "S1"], ids=["unmarked", "another scene"])
+def test_her_closing_stays_in_the_articulation_after_an_earlier_rehearsal_not_marked_for_it(
+    scene: str | None,
+) -> None:
+    heard = [
+        {
+            "role": "guide",
+            "text": "",
+            "scene_rehearsal": _rehearsed(scene),
+            "moment": {"after": SCENE_TWO_PRACTISED},
+        },
+        {"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}},
+    ]
+
+    step = moment_step(heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.after.as_json()["part"] == 2, (
+        "um ensaio que não era da cena 2 fez o fechamento abrir a cena 3"
+    )
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "opened"),
+    [
+        (
+            SCENE_TWO_FENCED,
+            f"{SCENE_ONE} {CLOSING}",
+            {"at": "articulation", "part": 2, "fenced": True, "numberlessOpening": True},
+        ),
+        (
+            FAMILIARIZATION,
+            f"{SCENE_ONE} {CLOSING}",
+            {"at": "familiarization", "numberlessOpening": True},
+        ),
+        (
+            FAMILIARIZATION_CLOSED,
+            f"Vamos pra Internalização da cena 7. {SCENE_ONE} {CLOSING}",
+            {"at": "familiarization", "closed": True, "numberlessOpening": True},
+        ),
+    ],
+    ids=["articulation", "familiarization", "after a scene the passage lacks"],
+)
+def test_her_closing_that_moves_nothing_with_no_number_before_it_is_a_numberless_opening(
+    moment: dict[str, Any], voiced: str, opened: dict[str, Any]
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert step.after.as_json() == opened, (
+        "a voz abriu uma cena sem número e a sala não guardou a abertura"
+    )
+    assert step.by == ["part_closing"]
+
+
+def test_her_closing_after_a_scene_the_passage_lacks_is_kept_with_her_numberless_note() -> None:
+    voiced = f"Vamos pra Internalização da cena 7. {SCENE_ONE} {CLOSING}"
+
+    assert _ignored(FAMILIARIZATION_CLOSED, voiced) == [
+        "entrance 7: not a part of this passage (1..4)",
+        "part_closing: another moment line came earlier in the same reply — heard as a scene "
+        "opening with no number: a marked scene rehearsal of part 1 will move the moment",
+    ], "o número fora da passagem não ancora o fechamento, e a nota dela sumiu"
+
+
+@pytest.mark.parametrize(
+    ("opened", "scene", "practised"),
+    [
+        (
+            {"at": "articulation", "part": 1, "fenced": True, "numberlessOpening": True},
+            "S2",
+            {"at": "articulation", "part": 2, "fenced": False},
+        ),
+        (
+            {"at": "familiarization", "numberlessOpening": True},
+            "S1",
+            {"at": "articulation", "part": 1, "fenced": False},
+        ),
+    ],
+    ids=["the next scene", "the first scene"],
+)
+def test_a_marked_rehearsal_of_the_scene_a_numberless_opening_opened_moves_to_its_articulation(
+    opened: dict[str, Any], scene: str, practised: dict[str, Any]
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": opened}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.after.as_json() == practised, (
+        "a cena aberta sem número foi ensaiada e a sala não foi pra Articulação dela"
+    )
+    assert (step.before.as_json(), step.by) == (practised, ["scene_rehearsal"])
+
+
+SCENE_TWO_OPENED_WITH_NO_NUMBER = {
+    "at": "articulation",
+    "part": 2,
+    "fenced": False,
+    "numberlessOpening": True,
+}
+FAMILIARIZATION_OPENED_WITH_NO_NUMBER = {"at": "familiarization", "numberlessOpening": True}
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "kept"),
+    [
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, "Boa. Podem continuar.", SCENE_TWO_OPENED_WITH_NO_NUMBER),
+        (
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+            FENCE,
+            {"at": "articulation", "part": 2, "fenced": True, "numberlessOpening": True},
+        ),
+        (
+            FAMILIARIZATION_OPENED_WITH_NO_NUMBER,
+            f"{TOLD} {F3}",
+            {"at": "familiarization", "closed": True, "numberlessOpening": True},
+        ),
+        (
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+            "Vamos pra Internalização da cena 9.",
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+        ),
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, "Vamos pra Articulação da cena 2.", SCENE_TWO_PRACTISED),
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, "Estamos na Articulação da cena 2.", SCENE_TWO_PRACTISED),
+        (FAMILIARIZATION_OPENED_WITH_NO_NUMBER, "Estamos na Familiarização.", FAMILIARIZATION),
+        (
+            SCENE_TWO_OPENED_WITH_NO_NUMBER,
+            "Vamos pra Internalização da cena 3.",
+            {"at": "internalization", "part": 3},
+        ),
+        (SCENE_TWO_OPENED_WITH_NO_NUMBER, SEND_OFF, ENSAIO_FINAL),
+    ],
+    ids=[
+        "kept: no line",
+        "kept: the fence",
+        "kept: F3",
+        "kept: a scene the passage lacks",
+        "forgotten: A1 of the same scene",
+        "forgotten: E1 of the same scene",
+        "forgotten: E1 of the familiarization",
+        "forgotten: another scene",
+        "forgotten: the send-off",
+    ],
+)
+def test_a_numberless_opening_is_kept_in_its_scene_until_the_voice_says_where_the_room_is(
+    moment: dict[str, Any], voiced: str, kept: dict[str, Any]
+) -> None:
+    assert _after(moment, voiced) == kept, (
+        f"a abertura sem número não seguiu a regra dela depois de: {voiced!r}"
+    )
+
+
+SCENE_ONE_FENCED = {"at": "articulation", "part": 1, "fenced": True}
+
+
+@pytest.mark.parametrize(
+    ("moment", "scene", "recorded"),
+    [
+        (
+            SCENE_ONE_FENCED,
+            "S3",
+            "scene_rehearsal 3: told ahead of part 1 — kept, the moment unchanged",
+        ),
+        (
+            SCENE_ONE_FENCED,
+            "S2",
+            "scene_rehearsal 2: told ahead of part 1 (no opening of part 2 heard) "
+            "— kept, the moment unchanged",
+        ),
+        (
+            SCENE_TWO_OPEN,
+            "S3",
+            "scene_rehearsal 3: told ahead of part 2 (no opening of part 3 heard) "
+            "— kept, the moment unchanged",
+        ),
+        (
+            FAMILIARIZATION,
+            "S2",
+            "scene_rehearsal 2: told ahead, in the Familiarization — kept, the moment unchanged",
+        ),
+        (
+            FAMILIARIZATION,
+            "S1",
+            "scene_rehearsal 1: told ahead, in the Familiarization (no opening of part 1 heard) "
+            "— kept, the moment unchanged",
+        ),
+        (
+            {**SCENE_ONE_FENCED, "numberlessOpening": True},
+            "S3",
+            "scene_rehearsal 3: told ahead of part 1 — kept, the moment unchanged",
+        ),
+    ],
+    ids=[
+        "a scene further on",
+        "the next scene",
+        "from an internalization",
+        "from the familiarization",
+        "the first scene",
+        "past the scene opened with no number",
+    ],
+)
+def test_a_marked_rehearsal_told_ahead_leaves_the_moment_and_is_kept_in_her_words(
+    moment: dict[str, Any], scene: str, recorded: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.ignored == [recorded], "a cena contada antes da hora não ficou registrada"
+    assert (step.after.as_json(), step.by) == (moment, [])
+
+
+def test_a_scene_told_ahead_is_kept_before_what_the_reply_declined() -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_FENCED}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene="S4")
+
+    step = moment_step(
+        heard, f"{SCENE_ONE} {CLOSING}", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert step.ignored == [
+        "scene_rehearsal 4: told ahead of part 2 — kept, the moment unchanged",
+        "part_closing: no scene rehearsal of part 2 has come back — heard as a scene opening "
+        "with no number: a marked scene rehearsal of part 3 will move the moment",
+    ], "o ensaio que chegou com o turno veio depois do que a resposta recusou"
+
+
+@pytest.mark.parametrize(
+    ("moment", "scene"),
+    [
+        (ENSAIO_FINAL, "S2"),
+        (SCENE_TWO_FENCED, "S1"),
+        (SCENE_TWO_FENCED, "S2"),
+        (SCENE_TWO_OPEN, "S1"),
+    ],
+    ids=[
+        "after the send-off",
+        "an earlier scene",
+        "the scene being practised",
+        "an earlier scene from an internalization",
+    ],
+)
+def test_a_marked_rehearsal_of_this_scene_or_an_earlier_one_moves_nothing_and_notes_nothing(
+    moment: dict[str, Any], scene: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene=scene)
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert (step.after.as_json(), step.by, step.ignored) == (moment, [], []), (
+        "um ensaio que não estava adiantado mexeu no momento ou entrou na lista de ignoradas"
+    )
+
+
+def test_a_marked_rehearsal_of_the_open_scene_moves_its_internalization_to_articulation() -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_OPEN}}]
+    arriving = SentSceneRehearsal(rehearsal_id="ensaio-1", n=1, frases=3, scene="S2")
+
+    step = moment_step(
+        heard, "Boa. Vocês contaram.", fail_safe=False, scenes=SCENES, arriving=arriving
+    )
+
+    assert step is not None
+    assert (step.after.as_json(), step.by, step.ignored) == (
+        SCENE_TWO_PRACTISED,
+        ["scene_rehearsal"],
+        [],
+    ), "o ensaio marcado da cena aberta chegou e a sala continuou na Internalização dela"
+
+
+def test_a_rehearsal_of_the_open_scene_kept_on_an_earlier_turn_does_not_move_a_later_one() -> None:
+    heard = [
+        {
+            "role": "guide",
+            "text": "",
+            "scene_rehearsal": {"scene": "S2"},
+            "moment": {"after": SCENE_TWO_OPEN},
+        }
+    ]
+
+    step = moment_step(heard, "Vamos ver essa cena juntos.", fail_safe=False, scenes=SCENES)
+
+    assert step is not None
+    assert (step.after.as_json(), step.by, step.ignored) == (SCENE_TWO_OPEN, [], []), (
+        "um ensaio guardado num turno anterior puxou de novo a sala pra Articulação"
+    )

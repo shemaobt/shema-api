@@ -34,6 +34,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 #: A real recording rather than bytes assembled here. A container written by this test would
 #: be measured by the reader this test is checking, and the two would agree with each other
@@ -126,13 +127,8 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
     from httpx import ASGITransport
 
     from app.api.internalization_room.questions import router as questions_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
-    )
 
     async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
         raise TypeError("o transcritor foi chamado errado")
@@ -148,10 +144,11 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
         base_url="http://test",
-        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+        headers=tablet.headers | {"X-Room-Device": DEVICE},
     ) as client:
         yield client
 
@@ -330,7 +327,7 @@ async def test_a_defect_of_ours_does_not_send_the_team_back_to_the_recorder(
     costs them a re-recording of something already committed. The reading runs after the
     answer and reports to nobody; what it leaves behind is a row with audio and no text.
     """
-    db_session.add(IRSession(id="sessao-1", pericope=PERICOPE))
+    db_session.add(IRSession(id="sessao-1", pericope=PERICOPE, project_id=TABLET_TEAM))
     await db_session.commit()
 
     answer = await room_client.post(
@@ -402,11 +399,7 @@ async def test_a_card_with_nothing_but_audio_still_reaches_the_desk(
     answer = await desk_client.get(INBOX, headers=await auth_header(db_session, facilitator))
 
     (card,) = answer.json()["questions"]
-    assert (card["element_label_pt"], card["element_label_en"], card["element_label_es"]) == (
-        None,
-        None,
-        None,
-    )
+    assert (card["element_label_pt"], card["element_label_en"]) == (None, None)
     assert card["transcript"] is None
     assert card["duration_ms"] is None
     assert card["audio_url"] == facilitator_audio_url(question.audio_key), (

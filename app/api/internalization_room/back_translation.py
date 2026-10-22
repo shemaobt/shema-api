@@ -1,35 +1,85 @@
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError, WordlessTelling
+from app.core.exceptions import UpstreamServiceError, ValidationError, WordlessTelling
 from app.core.stage_clock import stage, stopwatch
-from app.db.models.internalization_room import IRSession, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
+    CheckRefusal,
+    FindingView,
     FinishBackTranslationRequest,
+    ListenedWholeResponse,
+    VerdictHeardRequest,
+    VerdictHeardResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.back_translation import (
+    Finding,
+    is_joined,
+    untranslated_parts,
+)
 from app.services.internalization_room.background import read_ahead
-from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
+from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.fail_safe import process_line
+from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
-from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
+from app.services.internalization_room.segments import (
+    refuse_a_frase_under_the_floor,
+    refuse_a_slice_that_is_not_one,
+    refuse_a_telling_over_part_of_a_frase,
+)
+from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.takes import (
     current_parts,
+    refuse_a_take_that_is_no_longer_a_part,
     rehearsal_take_of,
     store_take,
     takes_of,
 )
 from app.services.internalization_room.voice_handles import clip_url
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
+CHECKING_LINE = "N1"
+UNTRANSLATED_LINE = "N2"
+
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def finding_views(
+    findings: list[Finding], analysed_segment_ids: list[str] | None, numbers: dict[str, int]
+) -> list[FindingView]:
+    return [
+        FindingView(
+            kind=one.kind.value,
+            frase=room.finding_frase(one, analysed_segment_ids, numbers),
+            segment_id=one.segment_id,
+        )
+        for one in findings
+    ]
+
+
+def named_nuance_view(state: room.BackTranslationState) -> FindingView | None:
+    named = next(
+        (one for one in (state.checks[-1].nuances if state.checks else []) if one.voiced == "now"),
+        None,
+    )
+    if named is None:
+        return None
+    return FindingView(kind="nuance", frase=named.chunk, segment_id=named.segment_id)
 
 
 async def add_chunk(
@@ -39,9 +89,8 @@ async def add_chunk(
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
-    retelling: bool = Form(default=False),
     device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationChunkResponse:
     """One piece told back in the bridge language, while the team's own recording plays.
@@ -54,22 +103,25 @@ async def add_chunk(
     moments the team re-records: a transcriber that times out raises past the store, and a
     chunk nobody could make out is refused after it.
 
-    `retelling` says the team is telling one stretch back a second time after a finding, and
-    the address they send is that stretch's own. So a retelling is a **new version of the
-    stretch it retells**, not a stretch of its own at the next position: the row it replaces
-    stops counting and hands it the count of tellings that stretch has had. At
-    `RETELLS_BEFORE_A_WARNING` the stretch is a hard stretch and the room asks for a person to
-    come and watch, once. A warning, not a cap — nothing is refused past it, and the chunk is
-    kept either way. Their work is never the thing thrown away.
+    A telling at the exact slice of a stretch that counts is a **new version of that stretch**,
+    not a stretch of its own at the next position: the row it replaces stops counting, keeps its
+    place and its number, and hands the new one the count of tellings that stretch has had. The
+    tablet sends the stretch's own address back both when the team tells it again after a finding
+    and when a lost answer made it say «não entendi» and tell it under a new key, and the
+    room reads the address, not a flag. At `RETELLS_BEFORE_A_WARNING` the stretch is a hard
+    stretch and the room asks for a person to come and watch, once. A warning, not a cap —
+    nothing is refused past it, and the chunk is kept either way. Their work is never the thing
+    thrown away.
 
-    A retelling of a slice no stretch currently covers is a first telling: the untold stretch
-    the room leads the team to arrives with the flag on and nothing to replace.
+    A telling at a slice no stretch currently covers is a first telling.
 
-    **A telling with no words is refused, not counted.** A transcript that is empty, or only
-    what the transcriber wrote about the audio, answers 422 `WORDLESS_TELLING` with the name of
-    the inaudible line: no stretch, no count toward the warning, and the recording stays kept.
-    A transcriber that is down is not that — it raises `UpstreamServiceError` and answers 502,
-    which the tablet sends again.
+    The telling is transcribed in the session's bridge language, within `TRANSCRIBER_BOUND_SECONDS`.
+
+    **A telling with no words is refused, not counted.** A transcript that is empty or only what
+    the transcriber wrote about the audio, a transcriber that fails and one that does not answer
+    in time all answer 422 `WORDLESS_TELLING` with no spoken line: no stretch, no count toward
+    the warning, and the recording stays kept. The tablet shows its own line and the team tells
+    it again.
 
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
@@ -78,7 +130,9 @@ async def add_chunk(
     it; a slice with no file to be a slice of would be the same defect under another name.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
+    await refuse_a_take_that_is_no_longer_a_part(db, session.id, rehearsal)
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -86,14 +140,13 @@ async def add_chunk(
 
     state = room.back_translation_of(session)
     told = await room.final_segments(db, session.id)
-    retold = (
-        await room.current_stretch_at(
-            db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
-        )
-        if retelling
-        else None
+    refuse_a_telling_over_part_of_a_frase(told, rehearsal.id, starts_ms, ends_ms)
+    retold = await room.current_stretch_at(
+        db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
     )
-    pass_number = 2 if retelling else 1
+    if retold is None:
+        refuse_a_frase_under_the_floor(starts_ms, ends_ms)
+    pass_number = pass_of_a_telling(state)
 
     # The bytes are kept before anything is asked of them. Transcribing first put the one
     # irreplaceable thing behind a network call to another company: `heard` only catches
@@ -115,30 +168,38 @@ async def add_chunk(
     )
     await db.commit()
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
-    if not text.strip():
-        _, line = choose(FailSafe.INAUDIBLE, session.language, turn=len(session.messages or []))
-        raise WordlessTelling(line)
-    warned = await room.capture_and_note_a_hard_stretch(
-        db,
-        session,
-        take_id=rehearsal.id,
-        starts_ms=starts_ms,
-        ends_ms=ends_ms,
-        bridge_take_id=retro.id,
-        transcript=text,
-        pass_number=pass_number,
-        replaces=retold,
-        state=state,
-    )
+    if room.is_a_resend(retold, retro):
+        captured, warned = retold, await room.a_hard_stretch_stands(db, retold)
+    else:
+        text = await heard(
+            audio_bytes,
+            language=room_language(session.language),
+            filename=file.filename,
+            mime_type=file.content_type,
+        )
+        if not text.strip():
+            raise WordlessTelling()
+        captured, warned = await room.capture_and_note_a_hard_stretch(
+            db,
+            session,
+            take_id=rehearsal.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=retro.id,
+            transcript=text,
+            replaces=retold,
+            state=state,
+        )
     nudge_stretches(session.project_id, warned=warned)
     background.add_task(read_ahead, session_id=session.id)
+    standing = await room.final_segments(db, session.id)
+    numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(
         session_id=session.id,
-        chunks=len(told) if retold is not None else len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
+        frase=numbers.get(captured.id),
     )
 
 
@@ -147,56 +208,20 @@ router.add_api_route(
     add_chunk,
     methods=["POST"],
     response_model=BackTranslationChunkResponse,
-    dependencies=[room_caller_dep, idempotency_dep],
+    dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
-
-
-async def _the_untold_errand(
-    db: AsyncSession,
-    session: IRSession,
-    state: room.BackTranslationState,
-    *,
-    segment_id: str | None = None,
-    take_ids: list[str] | None = None,
-) -> BackTranslationVerdictResponse:
-    """Say the H family over ground nobody has told back, and step the waiting ladder.
-
-    One errand over two grounds: a stretch standing with nothing said on it, and a current
-    **Part** no standing stretch is a slice of. The room says the same thing over both — the
-    family names no frase, so it is true of either — and the ladder belongs to the errand and
-    not to the ground, which is why a press spent on one advances the line the next press
-    speaks over the other.
-
-    The answer names its ground on its own field and leaves the other empty, so the app decides
-    by the field and never by what is missing from the body.
-    """
-    waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
-    with stage("db_let_go"):
-        await db.commit()
-    spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
-    state.waited += 1
-    await room.save_back_translation(db, session, state)
-    return BackTranslationVerdictResponse(
-        session_id=session.id,
-        audio_url=clip_url(spoken.key),
-        fixed_line="",
-        checked=False,
-        untold_segment_id=segment_id,
-        untold_take_ids=take_ids or [],
-        findings_remaining=0,
-    )
 
 
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def finish(
     session_id: str,
     payload: FinishBackTranslationRequest | None = None,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge.
@@ -207,12 +232,11 @@ async def finish(
     off the wheel for good, on a telling-back that never happened. A finished passage never
     returns to the wheel, by design, so there is no undo for that.
 
-    The answer is never the badge, then. The D family stood here — *"I could not make anything
-    out, can you tell me again?"* — and a team that has recorded and told nothing back no longer
-    reaches it: their recording is a current part with nothing over it, which the untold errand
-    below answers first and answers truly, because nothing was said for the room to fail to hear
-    (ADR 0027). What is left for D is a session carrying no rehearsal take at all, which is the
-    one shape where there is no part to send them to.
+    The answer is never the badge, then: it is the refusal `NOTHING_TRANSLATED`, and the room
+    says nothing over it. Her screen shows «ainda não tem frase traduzida» and voices no line;
+    the D family stood here and told the team the room could not hear them, when nothing had
+    been said for it to fail to hear. It is the last refusal asked, as hers is
+    (`bt/check/route.ts:78`).
 
     Only the stretches the team actually explained are read. A stretch whose mother-tongue
     recording was replaced is waiting to be told again and carries nothing they said, so it
@@ -226,35 +250,21 @@ async def finish(
     Worse, a subset that reads clean is indistinguishable from a whole one that reads clean,
     and `checked` is what strikes the passage off the wheel for good.
 
-    The H family says so out loud rather than leaving the team with silence. Deliberately not
-    the D family below: that one says the room could not hear, which is false here — it heard
-    everything — and it asks the team to repeat what they already told instead of telling what
-    they have not.
+    That refusal is `FRASE_AWAITING`, asked first as hers is (`bt/check/route.ts:68`), and it
+    names the stretch on `untold_segment_id` so the tablet opens it. The room says nothing over
+    it: the H family it used to speak here is ours, not hers, and no line of hers says it.
 
-    It is the one line of that file the room speaks rather than the app plays. The fail-safes
-    are shipped as audio because they have to work when nothing else does — no network, no
-    model — and this is not that: the gate fires with the server answering normally, before
-    the analyst is called, and the verdict a few lines below is already synthesized. Shipping
-    it would have meant a new app release before the team could hear anything at all.
+    A **Part** no stretch is a slice of refuses nothing. Her check runs with it, and her analyst
+    names what the passage is missing; the room used to send the team back to it with the H
+    family first, which no line of hers says.
 
-    The same errand is owed over a **Part** no stretch is a slice of, and it is asked second.
-    A part recorded again arrives carrying nobody's words — its predecessor's stretches went
-    with the recording they explained (ADR 0023) — so the reading above finds nothing waiting
-    and the passage could be conferred with a scene nobody had told back in it. The question
-    is the takes' to answer and not the stretches': which recording is current is the number
-    the tablet sent, which is why this is asked of `current_parts` and not of `first_untold`.
-    It sits between the stretch and the listening, the order the release gate lists the three
-    blockers in, because a part nobody told is owed a telling before it is owed a playing, and
-    it spends what the stretch spends — the same family of lines, the same turn of the waiting
-    ladder — because in the room it is the same errand said over different ground.
-
-    Told back is not the same as heard, and the third errand is asked after the other two.
+    Told back is not the same as heard, and the listening is asked after the stretch.
     While any current part of the rehearsal is unheard, the analyst is not asked either: what it
     would answer is a list of what is missing from the passage, and over a part nobody played
     that sentence is about audio the team never listened to — the room would voice it as if
     the work were done, on a reading of a passage they were still walking through. So the
-    refusal names the parts, says her P-unheard line, and spends nothing: no reading, no turn
-    on the waiting ladder, which belongs to the untold errand, and no line in the conversation.
+    refusal names the parts, says her P-unheard line, and spends nothing: no reading and no line
+    in the conversation.
     Nothing is saved either, because nothing changed: the report above is already stored.
 
     Pressed again over the same stretches, the room serves the verdict it already reached and
@@ -262,19 +272,124 @@ async def finish(
     and a spoken synthesis every time and wrote the room into the conversation as having spoken
     twice — a false record of the room in front of the team, which outlives the bill. The reply
     is byte-for-byte the first one: the app is not told which press it made, because a second
-    shape would be a contract change to say something no caller asked about.
+    shape would be a contract change to say something no caller asked about. The one exception
+    is a verdict voiced in a voice the room no longer has: its words are voiced again in the
+    room's voice, so the clip's address changes and the rest of the reply does not. A verdict
+    that fell to the fail-safe is not served at all: it conferred nothing, so the press is a
+    check of its own on the reading already made, as every press of hers is.
+
+    Nor is a verdict whose nuance the team has since heard to its end. Served, it would name
+    that nuance again, which a nuance once said must never be (acceptance 5 of ENG-1198). The
+    press is a new round on the same reading instead: it names the next nuance not yet said,
+    or speaks the clean verdict when none is left. Falling through only while an unsaid nuance
+    remains would replay the heard one in exactly the case where nothing is left to name.
 
     What counts as the same question is `already_analysed`, the record the analyst was already
     guarded by — one signal, so the four steps of a press can never disagree about whether the
-    team told back anything new. A press that reached the analyst and then failed saves nothing
-    at all, so the press after it does the whole turn rather than serving a verdict the team
-    never heard.
+    team told back anything new. A press that reached the analyst and then failed saves no
+    verdict, so the press after it does the whole turn rather than serving one the team never
+    heard.
+
+    That failure — the analyst, the Speaker or the verdict's voice unavailable — answers the
+    refusal `CHECK_UNAVAILABLE`, never a 502 the tablet reads as a lost connection. Her check
+    saves nothing on it either (`bt/check/route.ts:90-97`), her screen says «não deu para
+    conferir agora — tentem de novo», and `terminei` again is the retry.
     """
     with stopwatch("[bt-timing]", session_id):
         session = await room.session_for_room_caller(db, session_id, project_id)
+        refuse_a_panorama(session.pericope)
         verdict = await _finished(session, payload, db)
     nudge(session.project_id, "verdict")
     return verdict
+
+
+@router.post(
+    "/sessions/{session_id}/back-translation/heard",
+    response_model=VerdictHeardResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def verdict_heard(
+    session_id: str,
+    payload: VerdictHeardRequest,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> VerdictHeardResponse:
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    return VerdictHeardResponse(marked=await room.mark_the_verdict_heard(db, session, payload.at))
+
+
+@router.post(
+    "/sessions/{session_id}/back-translation/listened-whole",
+    response_model=ListenedWholeResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def listened_whole(
+    session_id: str,
+    payload: FinishBackTranslationRequest | None = None,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> ListenedWholeResponse:
+    """What the team listened to: which parts are still unheard, and whether the room checks.
+
+    Her joined recording is checked once with no tap after its first full listen
+    (`ensaioFinal.ts:431-455` at her freeze), and the voice says so first — her N-2, «Ouvimos
+    tudo. Agora vou conferir as traduções que vocês já me fizeram. Um momento.» — while
+    «terminei» reads «conferindo…». So this door decides and says, and checks nothing: the
+    check is the finish's, which the tablet calls next as «terminei» would. Run here, the
+    check would hand back the line that announces it only after the half minute it announces.
+
+    The body is the same report of what the tablet played as the finish's, stored the same
+    way, so the listen it describes is the one the finish then finds. It is also where the
+    tablet reports as each part ends, and every answer names the parts still unheard, so the
+    tablet never counts by itself (ADR 0074).
+    """
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    state = room.back_translation_of(session)
+    if payload is not None and payload.played_by_take:
+        state = await room.report_playback(
+            db,
+            session,
+            state,
+            played_by_take=payload.played_by_take,
+            played_ranges=payload.played_ranges,
+            clip_duration_ms=payload.clip_duration_ms,
+        )
+    final = await room.final_segments(db, session.id)
+    told = room.told_back(final)
+    parts = current_parts(await takes_of(db, session.id))
+    unheard = room.unheard_parts(state, parts, final)
+    if (
+        await the_sentence_awaiting(db, session) is not None
+        or room.first_untold(final) is not None
+        or unheard
+        or not is_joined(parts)
+        or not told
+    ):
+        return ListenedWholeResponse(session_id=session.id, unheard_take_ids=unheard)
+    untranslated = untranslated_parts(parts, told, state.played_by_take)
+    if untranslated:
+        return ListenedWholeResponse(
+            session_id=session.id,
+            fixed_line=UNTRANSLATED_LINE,
+            refusal=CheckRefusal.STRETCH_UNTRANSLATED,
+            untranslated=untranslated,
+        )
+    if state.checks:
+        return ListenedWholeResponse(session_id=session.id)
+    return ListenedWholeResponse(
+        session_id=session.id, automatic_check=True, fixed_line=CHECKING_LINE
+    )
+
+
+async def _without_the_whole_set_aside(
+    db: AsyncSession, session: IRSession, state: room.BackTranslationState, takes: list[IRTake]
+) -> room.BackTranslationState:
+    """The state as the team is told of it: findings on a set-aside whole are only stored."""
+    aside = await room.set_aside_segment_ids(db, session.id, takes)
+    return state.model_copy(
+        update={"findings": [f for f in state.findings if f.segment_id not in aside]}
+    )
 
 
 async def _finished(
@@ -283,7 +398,8 @@ async def _finished(
     db: AsyncSession,
 ) -> BackTranslationVerdictResponse:
     state = room.back_translation_of(session)
-    final = await room.final_segments(db, session.id)
+    takes = await takes_of(db, session.id)
+    final = await room.final_segments(db, session.id, takes)
     told = room.told_back(final)
     if payload is not None and (
         payload.played_by_take or payload.played_ranges or payload.clip_duration_ms
@@ -297,83 +413,106 @@ async def _finished(
             clip_duration_ms=payload.clip_duration_ms,
         )
 
-    untold = room.first_untold(final)
-    if untold is not None:
-        return await _the_untold_errand(db, session, state, segment_id=untold.id)
-
-    rehearsed = room.rehearsed_parts(final)
-    takes = await takes_of(db, session.id)
-    untold_ground = room.untold_parts(current_parts(takes), rehearsed)
-    if untold_ground:
-        return await _the_untold_errand(
-            db, session, state, take_ids=[part.id for part in untold_ground]
-        )
-
-    unheard = room.unheard_parts(state, rehearsed)
-    if unheard:
-        line, _ = process_line("P", "unheard", session.language)
-        with stage("db_let_go"):
-            await db.commit()
-        spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
+    awaiting = await the_sentence_awaiting(db, session)
+    if awaiting is not None:
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(spoken.key),
-            fixed_line="",
+            fixed_line=awaiting.line,
+            checked=False,
+            untold_segment_id=awaiting.segment_id,
+            refusal=CheckRefusal.FRASE_AWAITING,
+        )
+
+    untold = room.first_untold(final)
+    if untold is not None:
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            checked=False,
+            untold_segment_id=untold.id,
+            refusal=CheckRefusal.FRASE_AWAITING,
+        )
+
+    unheard = room.unheard_parts(state, current_parts(takes), final)
+    if unheard:
+        _, line = process_line("P", "unheard", session.language)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            fixed_line=line,
             checked=False,
             unheard_take_ids=unheard,
             findings_remaining=0,
+            refusal=CheckRefusal.PART_UNHEARD,
         )
+
+    parts = current_parts(takes)
+    if is_joined(parts):
+        untranslated = untranslated_parts(parts, told)
+        if untranslated:
+            return BackTranslationVerdictResponse(
+                session_id=session.id,
+                fixed_line=UNTRANSLATED_LINE,
+                checked=False,
+                untranslated=untranslated,
+                refusal=CheckRefusal.STRETCH_UNTRANSLATED,
+            )
 
     if not told:
-        # An analyst asked to compare nothing against the map answers with no findings,
-        # and no findings is what `checked` is made of — so pressing `terminei` over an
-        # empty back translation blessed the passage and the app struck it off the wheel
-        # for good, on a telling-back that never happened. The room says it did not hear
-        # anything, which is the line family written for exactly this.
-        _, line = choose(
-            FailSafe.INAUDIBLE,
-            session.language,
-            turn=len(session.messages or []),
-        )
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url="",
-            fixed_line=line,
             checked=False,
-            findings_remaining=0,
+            refusal=CheckRefusal.NOTHING_TRANSLATED,
         )
 
-    if state.already_analysed(told) and state.verdict is not None:
+    stored = state.the_verdict_to_serve(told)
+    if stored is not None:
+        state = await _without_the_whole_set_aside(db, session, state, takes)
         finding = room.the_finding_that_leads(state)
+        with stage("db_let_go"):
+            await db.commit()
+        clip = await room.the_stored_verdicts_clip(session, stored)
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
-            fixed_line=state.verdict.fixed_line,
+            audio_url=clip_url(clip) if clip else "",
+            fixed_line=stored.fixed_line,
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
+            findings=finding_views(
+                state.findings, state.analysed_segment_ids, room.frase_numbers(told)
+            ),
             findings_remaining=room.findings_remaining(state.findings),
-            used_fail_safe=state.verdict.used_fail_safe,
+            used_fail_safe=stored.used_fail_safe,
+            check_at=state.checks[-1].at if state.checks else None,
+            named_nuance=named_nuance_view(state),
         )
 
-    retired = await room.retired_segments(db, session.id)
     with stage("db_let_go"):
         await db.commit()
-    verdict = await room.check_the_telling_back(
-        session,
-        state=state,
-        told=told,
-        retired=retired,
-        takes=takes,
-        settings=get_settings(),
-    )
-    with stage("voice"):
-        voiced = (
-            None
-            if verdict.outcome.fixed_line
-            else (
-                await room.synthesize_facilitator_speech(verdict.said, language=session.language)
-            )[0]
+    try:
+        with reading_the_canon_of(session.canon_pin):
+            verdict = await room.check_the_telling_back(
+                session,
+                state=state,
+                told=told,
+                takes=takes,
+                settings=get_settings(),
+            )
+        with stage("voice"):
+            voiced = (
+                None
+                if verdict.outcome.fixed_line
+                else (
+                    await room.synthesize_facilitator_speech(
+                        verdict.said, language=session.language
+                    )
+                )[0]
+            )
+    except UpstreamServiceError as failure:
+        logger.warning("Upstream service failure: %s", failure)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            checked=False,
+            refusal=CheckRefusal.CHECK_UNAVAILABLE,
         )
     with stage("db_write"):
         session = await room.save_the_spoken_verdict(
@@ -386,13 +525,22 @@ async def _finished(
             told_back=verdict.told_back,
         )
 
+    shown = await _without_the_whole_set_aside(db, session, state, takes)
+    standing = await room.final_segments(db, session.id)
     return BackTranslationVerdictResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=verdict.outcome.fixed_line,
-        checked=verdict.checked,
+        checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
+        findings=finding_views(
+            shown.findings,
+            shown.analysed_segment_ids,
+            room.frase_numbers(room.told_back(standing)),
+        ),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
+        check_at=state.checks[-1].at if state.checks else None,
+        named_nuance=named_nuance_view(state),
     )

@@ -1,4 +1,4 @@
-"""One round of the telling-back check: from the correction to the words the Speaker says.
+"""One round of the telling-back check: from the reading to the words the Speaker says.
 
 The route pressed `terminei` and the text seam plays a round of frases; they are the same
 question asked from two places, and this is the one answer. It was the body of the route, so
@@ -14,41 +14,54 @@ first, so a voice that fails leaves no verdict behind claiming to have been spok
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.exceptions import UnreadableReply, UpstreamServiceError
+from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
+    THE_WHOLE_PASSAGE,
     BackTranslationState,
+    CheckRound,
     Finding,
+    Nuance,
     VoicedVerdict,
     analyse_telling_back,
-    closing_block,
-    correction_to_verify,
     current_findings,
-    findings_after_correction,
     findings_block,
     findings_on_stretches_that_count,
     findings_remaining,
+    nuances_said,
+    said_before,
     segments_block,
     the_finding_that_leads,
-    verify_correction,
-    with_the_whole_stretch_asked_for,
 )
-from app.services.internalization_room.background import the_correction_ahead, the_reading_ahead
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.background import the_reading_ahead
+from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import final_segments, set_aside_segment_ids
 from app.services.internalization_room.segments import told_back as stretches_told_back
-from app.services.internalization_room.sessions import append_exchange, save_back_translation
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    back_translation_of,
+    save_back_translation,
+)
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    in_a_voice_the_room_has,
+)
 from app.services.internalization_room.takes import current_parts
-from app.services.internalization_room.validated_turn import TurnOutcome
+from app.services.internalization_room.validated_turn import Attempt, TurnOutcome, outcome_tag
 from app.services.internalization_room.verdict_turn import run_verdict_turn
+
+UNREADABLE_ANALYSIS_NOTE = "The Analyst's reply could not be read, so there was no verdict."
 
 
 @dataclass(frozen=True)
@@ -56,17 +69,15 @@ class TellingBackVerdict:
     """What one round decided, and what the room is about to say about it.
 
     `finding` is the half that carries the address — the one finding, or the addition of a
-    **Swap** — and `current` is everything this turn is allowed to voice. `said` already
-    carries the request for the whole stretch where there is one, so the caller synthesizes
-    it as it stands.
+    **Swap** — and `current` is everything this turn is allowed to voice. `said` is the verdict
+    the Speaker voiced, so the caller synthesizes it as it stands.
     """
 
     finding: Finding | None
     current: list[Finding]
-    #: What the model answered *this* round — the whole reading, or what the Correction check
-    #: raised. Distinct from the standing list, which carries findings forward across rounds:
-    #: a measurement of this round's reply read off the standing list counts an earlier round's
-    #: answer again every time.
+    #: What the model answered *this* round. Distinct from the standing list, which carries
+    #: findings forward across rounds: a measurement of this round's reply read off the standing
+    #: list counts an earlier round's answer again every time.
     read_this_round: list[Finding]
     said: str
     outcome: TurnOutcome
@@ -81,21 +92,15 @@ async def check_the_telling_back(
     *,
     state: BackTranslationState,
     told: list[IRSegment],
-    retired: list[IRSegment],
     takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
     """Read what the team told back, settle the findings, and voice one of them.
 
-    Three readings are possible and exactly one runs. A retelling that answers the standing
-    finding is a **Correction check** about one stretch. A telling-back with something new in
-    it is a whole reading. And a list the verifications alone emptied gets the closing reading
-    that decides `checked`, because a verification answers the finding it was shown and has
-    never measured the set.
-
-    Nothing is saved on a reading that could not be made: `checked` strikes the passage off
-    the wheel for good, so a passage blessed because the analyst was unreachable would be
-    finished by an outage.
+    Nothing is saved as a verdict on a reading that could not be made: `checked` strikes the
+    passage off the wheel for good, so a passage blessed because the analyst was unreachable
+    would be finished by an outage. A reply the analyst gave and the room could not read is
+    heard as her first D line and kept as a turn, with no verdict behind it.
 
     `takes` is the session's recordings in reading order, which is where the address the voice
     says comes from: a finding names a stretch, a stretch is a slice of a **Part**, and only the
@@ -107,97 +112,102 @@ async def check_the_telling_back(
     else it decides.
     """
     read_this_round: list[Finding] = []
+    language = room_language(session.language)
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
-        session.language,
-        superseded=retired,
+        language,
     )
-    correction = correction_to_verify(state, told, retired)
-    if correction is not None:
-        verified = await the_correction_ahead(session.id, state, told) or await verify_correction(
-            findings=correction.findings,
-            earlier=correction.earlier,
-            corrected=correction.corrected,
-            chunk=correction.chunk,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
-            session_language=LANGUAGE_NAMES[session.language],
-            addresses=addresses,
-            settings=settings,
-            session_id=session.id,
-        )
-        if verified is None:
-            raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
-        read_this_round = verified.findings
-        state.findings = findings_after_correction(state.findings, verified, correction.corrected)
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = True
-    elif not state.already_analysed(told):
+    told_back = segments_block(told, addresses, language)
+    if not state.already_analysed(told):
         read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
-            scope=state.scope or session.pericope,
+            scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
+            addresses=addresses,
+            session_language=LANGUAGE_NAMES[language],
+            language_code=language,
             settings=settings,
             session_id=session.id,
         )
         if read is None:
-            raise UnreadableReply("a resposta do analista não pôde ser lida")
+            line, name = choose(FailSafe.INAUDIBLE, language)
+            state.checks.append(
+                CheckRound(at=datetime.now(UTC), spoken=line, outcome="fail_safe", conferida=False)
+            )
+            return TellingBackVerdict(
+                finding=None,
+                current=[],
+                read_this_round=[],
+                said=line,
+                outcome=TurnOutcome(
+                    speech=line,
+                    transcript="",
+                    used_fail_safe=True,
+                    degraded=True,
+                    fixed_line=name,
+                    attempts=[Attempt(attempt=1, draft="", note=UNREADABLE_ANALYSIS_NOTE).stored()],
+                ),
+                checked=False,
+                findings_remaining=findings_remaining(
+                    findings_on_stretches_that_count(state.findings, (one.id for one in told))
+                ),
+                told_back=told_back,
+            )
         read_this_round = read.findings
+        state.nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = False
 
     state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
 
-    if not state.findings and state.verified_since_whole_reading:
-        closing = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
-            segments=told,
-            scope=state.scope or session.pericope,
+    current = current_findings(state)
+    finding = the_finding_that_leads(state)
+    at = datetime.now(UTC)
+    state.checked_at = at
+
+    async def speak(handed: list[Finding] | list[Nuance]) -> TurnOutcome:
+        return await run_verdict_turn(
+            findings_text=findings_block(handed, addresses),
+            scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
-            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
+            messages=session.messages or [],
+            telling_back=told_back,
+            speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
+            validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+            session_language=LANGUAGE_NAMES[language],
+            language_code=language,
             settings=settings,
             session_id=session.id,
         )
-        if closing is None:
-            raise UpstreamServiceError("a leitura final da tradução não pôde ser feita agora")
-        read_this_round = closing.findings
-        state.findings = closing.findings
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = False
 
-    current = current_findings(state)
-    finding = the_finding_that_leads(state)
-    state.checked = finding is None
-    state.checked_at = datetime.now(UTC)
+    said_already = nuances_said(state.checks)
+    nuances = [
+        one.model_copy(
+            update={"voiced": "before" if said_before(one, said_already, told) else None}
+        )
+        for one in state.nuances
+    ]
+    offered = None if current else next((one for one in nuances if one.voiced is None), None)
+    outcome = await speak(current or ([offered] if offered else []))
+    if outcome.used_fail_safe and offered is not None:
+        outcome = await speak([])
+    elif offered is not None and re.search(rf"frase\s+{offered.chunk}(?!\d)", outcome.speech, re.I):
+        offered.voiced = "now"
 
-    told_back = segments_block(told)
-    outcome = await run_verdict_turn(
-        findings_text=findings_block(current, addresses),
-        closing=closing_block(finding, checked=state.checked),
-        scope=state.scope or session.pericope,
-        pericope_num=session.pericope,
-        messages=session.messages or [],
-        telling_back=told_back,
-        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
-        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-        session_language=LANGUAGE_NAMES[session.language],
-        language_code=session.language,
-        settings=settings,
-        session_id=session.id,
-    )
-
-    said = with_the_whole_stretch_asked_for(
-        outcome.speech,
-        finding,
-        session.language,
-        used_fail_safe=outcome.used_fail_safe,
+    said = outcome.speech
+    state.checked = finding is None and not outcome.used_fail_safe
+    state.checks.append(
+        CheckRound(
+            at=at,
+            findings=list(state.findings),
+            spoken=said,
+            outcome=outcome_tag(outcome),
+            conferida=state.checked,
+            nuances=nuances,
+        )
     )
     return TellingBackVerdict(
         finding=finding,
@@ -232,20 +242,102 @@ async def save_the_spoken_verdict(
     back for a passage the team has since recorded again. It is stored as the upload left it —
     not checked, no verdict — and carries only findings on stretches that count.
     """
-    standing = await final_segments(db, session.id)
-    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in standing))
-    read_as_it_stands = state.already_analysed(stretches_told_back(standing))
-    if not read_as_it_stands:
-        state.checked = False
-    session = await append_exchange(
-        db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
+    session_id = session.id
+    base = back_translation_of(session)
+
+    async def as_it_stands(read: BackTranslationState) -> None:
+        standing = await final_segments(db, session_id)
+        aside = await set_aside_segment_ids(db, session_id)
+        read.findings = [
+            *findings_on_stretches_that_count(read.findings, (one.id for one in standing)),
+            *(f for f in base.findings if f.segment_id in aside),
+        ]
+        if len(read.sentences) > len(base.sentences) or not read.already_analysed(
+            stretches_told_back(standing)
+        ):
+            read.checked = False
+            read.verdict = None
+        if len(read.superseded) > len(base.superseded):
+            stored = BackTranslationState.model_validate(
+                await db.scalar(
+                    select(IRSession.back_translation).where(IRSession.id == session_id)
+                )
+                or {}
+            )
+            ours = {one.at for one in state.checks} - {one.at for one in base.checks}
+            archive = read.superseded[len(base.superseded)]
+            archive.findings = [
+                *archive.findings,
+                *(one for one in state.findings if one not in archive.findings),
+            ]
+            archive.checks = [*archive.checks, *(one for one in state.checks if one.at in ours)]
+            read.findings = stored.findings
+            read.nuances = stored.nuances
+            read.checks = stored.checks
+            read.checked = stored.checked
+            read.checked_at = stored.checked_at
+            read.verdict = stored.verdict
+            read.analysed_segment_ids = stored.analysed_segment_ids
+
+    state.verdict = VoicedVerdict(
+        clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
     )
-    state.verdict = (
-        VoicedVerdict(
-            clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
+    await as_it_stands(state)
+    with reading_the_canon_of(session.canon_pin):
+        session = await append_exchange(
+            db,
+            session,
+            team_utterance="",
+            guide_response=said,
+            outcome=outcome,
+            told_back=told_back,
         )
-        if read_as_it_stands
-        else None
-    )
-    await save_back_translation(db, session, state)
+    await save_back_translation(db, session, state, rule=as_it_stands)
     return session
+
+
+def the_round_is_heard_at_once(state: BackTranslationState) -> None:
+    state.checks[-1].heard_at = datetime.now(UTC)
+
+
+def _to_the_millisecond(moment: datetime) -> datetime:
+    return moment.replace(microsecond=moment.microsecond // 1000 * 1000)
+
+
+async def mark_the_verdict_heard(db: AsyncSession, session: IRSession, at: datetime) -> bool:
+    state = back_translation_of(session)
+    heard = next(
+        (one for one in state.checks if _to_the_millisecond(one.at) == _to_the_millisecond(at)),
+        None,
+    )
+    if heard is None:
+        raise NotFoundError("No check round carries this stamp")
+    if heard.heard_at is not None:
+        return False
+    heard.heard_at = datetime.now(UTC)
+    await save_back_translation(db, session, state)
+    return True
+
+
+async def the_stored_verdicts_clip(session: IRSession, verdict: VoicedVerdict) -> str:
+    """The clip a repeat press hands back: the stored one, in a voice the room still has.
+
+    The verdict keeps its clip and not its words. The words are the guide's side of the
+    conversation's last telling-back exchange, which `save_the_spoken_verdict` wrote with it.
+    A row written before that exchange carried its `told_back` stamp keeps no words this can
+    find, and is answered with its stored clip as before: one clip the tablet cannot play is a
+    lesser harm than a press that fails every time and never says `checked` again.
+    """
+    if not verdict.clip_key:
+        return ""
+    said = next(
+        (
+            message.get("text", "")
+            for message in reversed(session.messages or [])
+            if message.get("role") == "guide" and message.get("told_back")
+        ),
+        "",
+    )
+    if not said:
+        return verdict.clip_key
+    return await in_a_voice_the_room_has(verdict.clip_key, said, language=session.language)

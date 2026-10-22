@@ -7,13 +7,16 @@ from datetime import datetime
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.internalization_room import IRCoverageEvent, IRSession
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     initial_state,
     is_panorama,
     ranks,
 )
+from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import as_utc
 
 _RANK_OF = ranks()
@@ -68,12 +71,11 @@ async def necklace_with_touches(
 ) -> dict[str, BeadHistory]:
     """Where a team's whole necklace stands, and who moved each bead last. One statement.
 
-    This is the reading a *team's* coverage comes from, and since ENG-803 it is also what a
-    session opens on: ``create_session`` seeds ``coverage_state`` from this, so Wednesday's
-    tracker starts where Tuesday left the beads instead of at ``initial_state``. Laying the
-    team's events over the spine is what makes the necklace outlive the conversations that
-    strung it, and it is answered here rather than read off a row because the row is one
-    session's and this is the team's.
+    This is the reading a *team's* coverage comes from, for the Desk. A session no longer
+    opens on it: from ENG-1237 every new session starts at ``initial_state``, as hers does,
+    and from ENG-803 until then ``create_session`` seeded ``coverage_state`` from this. It is
+    answered here rather than read off a row because the row is one session's and this is the
+    team's.
 
     One window function over one pass picks the row that answers both halves: the events of a
     bead are ordered by how far each took it, ties broken by which came first, and the winner
@@ -81,21 +83,18 @@ async def necklace_with_touches(
     thirty-four round trips for the same rows.
 
     Ordering by rank rather than by recency is the whole point, and it answers the rows that
-    are already written. Before ENG-803 every session opened at ``initial_state``, so a bead
-    the team engaged on Tuesday earned a fresh ``surfaced`` event the moment Wednesday's Guide
-    mentioned it again — against Wednesday's own tracker it really did move, and at team level
-    it moved nowhere. Taking the most recent event instead would answer ``engaged`` beside
-    Wednesday's session, and tell a facilitator that a conversation which only surfaced the
-    bead is where it was worked. Seeding stops those rows being written from here on, because
-    the mention is now compared against ``engaged`` and is no transition at all; every such
-    row already in the table is still read correctly by this ordering, which is why it stays.
+    are written. Every new session opens at ``initial_state``, so a bead the team engaged on
+    Tuesday earns a fresh ``surfaced`` event the moment a new session's Guide mentions it again:
+    against that session's own tracker it really did move, and at team level it moved nowhere.
+    Taking the most recent event would answer ``engaged`` beside the newer session, and tell a
+    facilitator that a conversation which only surfaced the bead is where it was worked.
 
     The tie is broken towards the *earliest* of the events that reached the standing status.
     Once a bead is engaged it has nowhere further to go, so a later session reaching ``engaged``
     again moved nothing; the session named is the one the bead last actually moved in.
 
     Scoped by project **and** passage. An element key belongs to the canon, not to a team —
-    two teams working Ruth both carry ``being:B3``, and Naomi appears in several passages —
+    two teams working Ruth both carry ``being:S1:B3``, and Naomi appears in several passages —
     so neither half alone names a bead. A session that never said whose it was carries a null
     ``project_id`` and is nobody's work rather than everybody's; it is filtered out by the
     same equality, which is the intended answer here and not a row lost in silence.
@@ -105,6 +104,10 @@ async def necklace_with_touches(
     then routed the array it does produce through a table holding two of its three statuses
     (ENG-615), so a bead the team worked on the Guide's terms was logged and thrown away.
     Both are fixed. This answers the events that were written, which is all it ever claimed.
+
+    Live events only, and on live sessions only (ADR 0047): a settle still running when a
+    Zerar landed writes an unstamped bead on an archived session, and the session's own stamp
+    is what keeps that bead out of the next session's necklace.
     """
     standing = func.row_number().over(
         partition_by=IRCoverageEvent.element_key,
@@ -122,9 +125,12 @@ async def necklace_with_touches(
             IRCoverageEvent.status,
             standing.label("standing"),
         )
+        .join(IRSession, IRSession.id == IRCoverageEvent.session_id)
         .where(
             IRCoverageEvent.project_id == project_id,
             IRCoverageEvent.pericope == pericope,
+            live(IRCoverageEvent),
+            live(),
         )
         .subquery()
     )
@@ -220,10 +226,11 @@ async def furthest_by_passage(
 async def necklace_of(db: AsyncSession, session: IRSession) -> dict[str, str]:
     """Where every bead of a session's spine stood when that session ended.
 
-    A session's own spine, which since ENG-803 is not what ``coverage_state`` holds: that
-    column is seeded from the team's whole history at the open, so for a session that returned
-    to a passage the two differ by exactly the beads it was handed. Read the column for what
-    the room is working against; read this for what this conversation itself did.
+    A session's own spine. A session opened from ENG-803 until ENG-1237 had its
+    ``coverage_state`` seeded from the team's whole history, so for such a session the two
+    differ by exactly the beads it was handed; a session opened since starts at the spine and
+    the two agree. Read the column for what the room is working against; read this for what
+    this conversation itself did.
 
     One statement. The furthest status per element is taken by the database — the scale lives
     in ``coverage.ranks()`` and is handed to SQL as the case that orders it, because a status
@@ -248,8 +255,7 @@ async def necklaces_of(
 
     **A different question from ``necklace_of`` above, not a better answer to the same one.**
     That one answers a *session's* spine — its own steps laid over the canon's, which is what
-    that conversation itself did, and no longer what ``coverage_state`` holds now that a
-    session is seeded from the team's history. This answers the *team's* passage. RF-06 asks a
+    that conversation itself did. This answers the *team's* passage. RF-06 asks a
     card for the portrait at that moment and the acceptance criterion is that it match what the
     necklace showed then — and the necklace is the team's, folded across every conversation
     that strung it. A card drawn
@@ -258,25 +264,29 @@ async def necklaces_of(
     enough to be mistaken for one another, which is why this paragraph is here.
 
     The fold is ``necklace_with_touches``'s, deliberately: furthest rank per bead, never most
-    recent. Before ENG-803 every session opened at ``initial_state``, so a bead engaged on
-    Tuesday earned a fresh ``surfaced`` step the moment Wednesday's Guide mentioned it — against
-    Wednesday's own tracker it moved, and at team level it moved nowhere. Taking the latest step
-    instead would walk a bead backwards on the newer card. Seeding stops such a step being
-    written from here on; the ones already in the table are read correctly by this ordering.
+    recent. Every new session opens at ``initial_state``, so a bead engaged on Tuesday earns a
+    fresh ``surfaced`` step the moment a new session's Guide mentions it: against that
+    session's own tracker it moved, and at team level it moved nowhere. Taking the latest step
+    would walk a bead backwards on the newer card.
 
     Scoped by project **and** passage, for the reason an element key is the canon's: two teams
-    working Ruth both carry ``being:B3``. Both scopes come free here — the caller hands over
-    one team's sessions and each carries its own pericope — which is also why this needs no
-    query beyond the one it already makes.
+    working Ruth both carry ``being:S1:B3``. Both scopes come free here — each session carries its
+    own team and its own pericope, so one call folds one team's history or a page spanning many
+    teams alike — which is also why this needs no query beyond the one it already makes.
 
     A panorama has no spine and no coverage: it prepares the team to enter the book and asks
     no retelling of them. It is answered with nothing rather than refused, because a panorama
     is a conversation the team really held and dropping it would hide it from their history.
     """
-    spines = {
-        session.id: ({} if is_panorama(session.pericope) else initial_state(session.pericope))
-        for session in sessions
-    }
+    spines: dict[str, dict[str, str]] = {}
+    for session in sessions:
+        try:
+            with reading_the_canon_of(session.canon_pin):
+                spines[session.id] = (
+                    {} if is_panorama(session.pericope) else initial_state(session.pericope)
+                )
+        except CanonNotKept:
+            spines[session.id] = {}
     if not spines:
         return {}
 
@@ -297,7 +307,7 @@ async def necklaces_of(
         stamped = as_utc(at)
         ended[session_id] = max(ended.get(session_id, stamped), stamped)
 
-    for pericope, conversations in _by_passage(sessions).items():
+    for (_team, pericope), conversations in _by_passage(sessions).items():
         if is_panorama(pericope):
             continue
         standing: dict[str, int] = {}
@@ -327,16 +337,16 @@ def _last_word(session: IRSession, ended: dict[str, datetime]) -> tuple[datetime
     return (ended.get(session.id, as_utc(session.created_at)), session.id)
 
 
-def _by_passage(sessions: Sequence[IRSession]) -> dict[str, list[IRSession]]:
-    """One team's conversations, grouped by the passage they were about.
+def _by_passage(sessions: Sequence[IRSession]) -> dict[tuple[str | None, str], list[IRSession]]:
+    """Conversations grouped by the team and the passage they were about.
 
-    The accumulation is a running maximum per passage, so each group is ordered on its own by
-    `_last_word`; the caller hands these over newest first, which is the order the Desk reads
-    them in and not the order they can be folded in.
+    The accumulation is a running maximum per team's passage, so each group is ordered on its
+    own by `_last_word`; the caller hands these over newest first, which is the order the Desk
+    reads them in and not the order they can be folded in.
     """
-    passages: dict[str, list[IRSession]] = {}
+    passages: dict[tuple[str | None, str], list[IRSession]] = {}
     for session in sessions:
-        passages.setdefault(session.pericope, []).append(session)
+        passages.setdefault((session.project_id, session.pericope), []).append(session)
     return passages
 
 
@@ -370,7 +380,7 @@ async def last_session_to_touch(
     """Which session last moved one bead, or nothing if none ever did.
 
     Scoped by project and passage because an element key is the canon's, not a project's:
-    two teams working Ruth carry the same ``being:B3``, and answering without saying whose
+    two teams working Ruth carry the same ``being:S1:B3``, and answering without saying whose
     bead it is hands one team the other team's session.
     """
     result = await db.execute(

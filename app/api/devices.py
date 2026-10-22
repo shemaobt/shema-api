@@ -6,9 +6,8 @@ until ENG-622 to settle — the one minted at claim went to the Desk, which neve
 the tablet collects its own from the room's third device route. The app-side polling and
 display is ENG-454.
 
-Nothing here touches ``X-Room-Key`` or ``X-Room-Device``. The room's own routes accept
-this credential as of ENG-448; retiring the shared key beside it is the half of that issue
-that waits on the app (ENG-455).
+Nothing here touches ``X-Room-Device``. The room's own team doors open to the credential
+the tablet collected and to nothing else (ADR 0057).
 
 Rotation lives here rather than on a facilitator route because the device is the only party
 that must not lose the answer, and it is the one holding the credential that pays for it.

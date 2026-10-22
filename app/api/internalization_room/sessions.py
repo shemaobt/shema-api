@@ -3,21 +3,25 @@ import logging
 import re
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import (
     device_project_dep,
-    require_room_caller,
-    room_caller_dep,
+    include_stale_dep,
+    linked_tablet_dep,
 )
-from app.api.internalization_room.segments import segment_view
+from app.api.internalization_room.back_translation import finding_views
+from app.api.internalization_room.release import approval_of
+from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import NotFoundError, UpstreamServiceError, ValidationError
 from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -30,19 +34,32 @@ from app.models.internalization_room import (
     HardStretchView,
     NeedsPersonResponse,
     PersonArrivedResponse,
+    RerecordedSentenceView,
     SessionStateResponse,
-    SpokenSegment,
     TurnResponse,
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
-from app.services.internalization_room import halt
-from app.services.internalization_room.background import settle_coverage
+from app.services.internalization_room import halt, turn_claim
+from app.services.internalization_room.back_translation import findings_on_stretches_that_count
+from app.services.internalization_room.background import (
+    HeardTake,
+    read_the_earlier_passages_again,
+    settle_coverage,
+)
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
-from app.services.internalization_room.hearing import HeardSpeech, heard_speech
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.earlier_passages import earlier_passages_due
+from app.services.internalization_room.hearing import (
+    HeardSpeech,
+    SentSceneRehearsal,
+    heard_speech,
+    stop_hearing,
+)
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
+from app.services.internalization_room.moment import moment_view
+from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
@@ -51,16 +68,25 @@ from app.services.internalization_room.prepare_opening import (
     take_prepared,
 )
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
-from app.services.internalization_room.sessions import book_of, is_panorama
+from app.services.internalization_room.sentences import the_sentence_awaiting
+from app.services.internalization_room.session_takes import kept_takes_of
+from app.services.internalization_room.session_turns import last_turn_number
+from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_key,
+)
+from app.services.internalization_room.takes import AUDIO_MIME
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
+    in_flight,
     remember_turn,
 )
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SpeechKey, Upload
-from app.services.project.facilitated_scope import facilitated_project_ids
+from app.services.project.facilitated_scope import readable_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
 
@@ -68,113 +94,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_SEGMENT_ROLES = ("panorama", "scene")
-
-
-async def _clip_or_none(text: str, *, language: str, uploads: list[Upload]) -> str | None:
-    try:
-        entry, _ = await room.synthesize_facilitator_speech(
-            text, language=language, uploads=uploads
-        )
-    except Exception:
-        logger.warning("A movement of the opening could not be voiced; sending it whole")
-        return None
-    return entry.key
-
 
 async def _voice_the_turn(
     outcome: room.TurnOutcome,
     *,
     language: str,
     uploads: list[Upload],
-) -> tuple[SpeechKey | None, list[SpokenSegment]]:
-    """The turn's audio: the opening's two movements, or the whole line on its own.
-
-    An opening synthesizes its whole line exactly once, always: started beside its two
-    movements, awaited on the reply's path only when a movement will not synthesize — it
-    then stands in for both, with no segments — and otherwise left to finish in the
-    background, so `_say_it_again` finds it in the bucket. A refused movement so costs the
-    slowest of the three syntheses, not the movements and then the whole line in a row. A
-    turn without movements speaks only its whole line, as it always has.
-    """
+) -> SpeechKey | None:
+    """The turn's audio: its one line, or none when a fixed line names it."""
     if outcome.fixed_line:
-        return None, []
-    if not outcome.movements:
-        entry, _ = await room.synthesize_facilitator_speech(
-            outcome.speech, language=language, uploads=uploads
-        )
-        return entry, []
-
-    whole = _start_the_whole_line(outcome.speech, language)
-    parts = await asyncio.gather(
-        *(_clip_or_none(part, language=language, uploads=uploads) for part in outcome.movements)
+        return None
+    entry, _ = await room.synthesize_facilitator_speech(
+        outcome.speech, language=language, uploads=uploads
     )
-    keys = [key for key in parts if key is not None]
-    if len(keys) != len(_SEGMENT_ROLES):
-        return await whole, []
-
-    whole.add_done_callback(_log_a_whole_line_left_uncached)
-    return SpeechKey(keys[0], cached=False), [
-        SpokenSegment(role=role, audio_url=clip_url(key))
-        for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
-    ]
-
-
-_PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[SpeechKey]] = set()
-
-#: The same tasks as `_PENDING_WHOLE_LINE_TASKS`, keyed by the (text, language) they were
-#: started for — `_say_it_again` needs to find the one task that matches its own turn, and
-#: a bare set cannot answer "which one", only "how many".
-_PENDING_WHOLE_LINE_BY_TEXT: dict[tuple[str, str], asyncio.Task[SpeechKey]] = {}
-
-
-def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
-    """Voice an opening's whole line on a task of its own, beside its two movements.
-
-    Held in `_PENDING_WHOLE_LINE_TASKS` so nothing collects the task mid-flight — an
-    `asyncio.Task` with no other reference is fair game for the garbage collector the
-    moment the event loop looks away, and a reply that got both movements leaves it behind.
-    No `uploads` list: whether the reply will wait for this task is not known when it
-    starts, and the caller's list has already been gathered by the time a task left behind
-    finishes, so appending to it would lose the upload rather than defer it.
-    `synthesize_facilitator_speech` uploads its own clip when it is not given one, which is
-    exactly what lets `_say_it_again` find it later — and while it is still in flight,
-    `_PENDING_WHOLE_LINE_BY_TEXT` is how `_say_it_again` joins it instead of asking
-    ElevenLabs for the same words a second time.
-    """
-    task = asyncio.create_task(_the_whole_line(text, language))
-    _PENDING_WHOLE_LINE_TASKS.add(task)
-    task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
-    key = (text, language)
-    _PENDING_WHOLE_LINE_BY_TEXT[key] = task
-    task.add_done_callback(partial(_forget_the_whole_line, key))
-    return task
-
-
-def _forget_the_whole_line(key: tuple[str, str], task: asyncio.Task[SpeechKey]) -> None:
-    if _PENDING_WHOLE_LINE_BY_TEXT.get(key) is task:
-        del _PENDING_WHOLE_LINE_BY_TEXT[key]
-
-
-async def _the_whole_line(text: str, language: str) -> SpeechKey:
-    entry, _ = await room.synthesize_facilitator_speech(text, language=language)
     return entry
-
-
-def _log_a_whole_line_left_uncached(task: asyncio.Task[SpeechKey]) -> None:
-    """A whole line nobody waits for fails into the log, never into the reply.
-
-    Reading `exception()` also marks the error as retrieved, so asyncio does not report it
-    again, traceback and all, when the task is collected.
-    """
-    if task.cancelled():
-        return
-    error = task.exception()
-    if error is not None:
-        logger.warning(
-            "the opening's whole line could not be cached in the background: %s",
-            type(error).__name__,
-        )
 
 
 async def _write_the_turn(
@@ -182,31 +115,35 @@ async def _write_the_turn(
     session: IRSession,
     *,
     outcome: room.TurnOutcome,
-    turn: room.ComprehensionTurn | None,
     opening: bool,
+    scene_rehearsal: SentSceneRehearsal | None = None,
+    scene_rehearsals: list[str] | None = None,
 ) -> IRSession:
     with stage("db_write"):
         if opening:
-            await room.append_opening(
+            if await room.append_opening(
                 db,
                 session,
                 guide_response=outcome.speech,
                 outcome=outcome,
                 scene=_scene_of(session),
-                state=turn.state if turn is not None else None,
                 commit=False,
-            )
+            ):
+                hear_the_names(db, session, team=stored_opening_note(session), voice=outcome.speech)
             return session
-        return await room.append_exchange(
+        session = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
-            state=turn.state if turn is not None else None,
             commit=False,
+            scene_rehearsal=scene_rehearsal,
+            scene_rehearsals=scene_rehearsals,
         )
+        hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
+        return session
 
 
 async def _upload(uploads: list[Upload]) -> None:
@@ -223,7 +160,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -231,7 +168,7 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+def _remember_language(session_id: str, language: str, project_id: str) -> None:
     _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
@@ -246,31 +183,63 @@ async def _read_capped_audio(file: UploadFile) -> bytes:
     return audio_bytes
 
 
-async def _timed_stt(
-    audio_bytes: bytes, *, filename: str | None, mime_type: str | None, language: str
-) -> HeardSpeech:
-    with stage("stt"):
-        return await heard_speech(
-            audio_bytes, filename=filename, mime_type=mime_type, language=language
+@dataclass(frozen=True)
+class _Cut:
+    """The three multipart fields the tablet sends when the team cut the Guide short."""
+
+    interrupted: bool
+    at_ms: int | None
+    of_ms: int | None
+
+    @classmethod
+    def read(cls, interrupted: str | None, at_ms: str | None, of_ms: str | None) -> "_Cut":
+        """The cut as the tablet sent it: the house's truthy words are a cut, anything else is
+        not, and a position that is not a non-negative decimal number is absent. Nothing here
+        refuses a take.
+        """
+        return cls(
+            (interrupted or "").strip().lower() in _TRUTHY, _position(at_ms), _position(of_ms)
         )
 
 
-async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
-    """Stop a transcription started ahead of the session read and read its outcome.
+_TRUTHY = frozenset({"1", "true", "t", "yes", "y", "on"})
+_DECIMAL = re.compile(r"\s*(?:\d+\.?\d*|\.\d+)?\s*")
 
-    A session the read could not find has nobody left to hear the transcript, so its task
-    is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather than
-    a plain `await`: this runs while unwinding from `get_session`'s own failure, and a plain
-    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
-    at this request itself, arriving at exactly this suspension point — `wait` never raises
-    the waited task's own exception into its caller, so only that task's outcome is being
-    read here, never the caller's. `task.exception()` marks a real failure as read without
-    raising it; skipped when the task ended up cancelled, since reading it then would raise.
+
+def _position(raw: str | None) -> int | None:
+    if raw is None or not _DECIMAL.fullmatch(raw):
+        return None
+    return int(Decimal(raw.strip() or "0").to_integral_value(ROUND_HALF_UP))
+
+
+async def _timed_stt(
+    audio_bytes: bytes,
+    *,
+    filename: str | None,
+    mime_type: str | None,
+    language: str,
+    cut: _Cut,
+) -> HeardSpeech:
+    """What the recognizer heard of the take, stamped with where the team cut the Guide short.
+
+    The cut rides the take on every path that returns, the words and no words heard alike. A
+    take the recognizer refused raises out of `heard_speech` as an outage and is never stamped.
+    A position that is negative or unreadable counts as absent, as in Marcia's route: the cut
+    stays a cut and the take is never refused over it.
     """
-    task.cancel()
-    await asyncio.wait({task})
-    if not task.cancelled():
-        task.exception()
+    with stage("stt"):
+        heard = await heard_speech(
+            audio_bytes, filename=filename, mime_type=mime_type, language=language
+        )
+    if not cut.interrupted:
+        return heard
+    return heard.model_copy(
+        update={
+            "interrupted": True,
+            "interrupted_at_ms": cut.at_ms or 0,
+            "interrupted_of_ms": cut.of_ms,
+        }
+    )
 
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
@@ -305,11 +274,11 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
 
     A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
     said nothing, so what the team said decides rather than the state the room's own turn
-    ended in. What the team said still has to be speech the room took up, which is what
-    `reliable_bridge_speech` means: an uncertain transcript travels forward inside the very
-    fail-safe asking the team to repeat it, and mother-tongue speech inside the one asking
-    for the session's language back. Neither is an answer the room engaged with, and coverage
-    only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
+    ended in. What the team said still has to be in the session's language: a take heard as
+    the mother tongue is a rehearsal the Guide is told about, not an answer to read beads
+    from, and coverage only moves forward and feeds the Guide's next prompt, so a bead
+    settled on it never comes back down. Words the transcriber was unsure of are still the
+    team's answer: the room takes them up, so the classifier reads them too.
 
     The opening used to earn an exception here by being an opening the Guide actually wrote,
     reaching `surfaced` on beads the team had not spoken a word toward. Coverage is
@@ -318,7 +287,7 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
     empty transcript is worth settling any more, opening or not.
     """
     if outcome.transcript.strip():
-        return speech_heard.reliable_bridge_speech
+        return not speech_heard.mother_tongue
     return False
 
 
@@ -329,6 +298,7 @@ def _settle_later(
     turn_id: str,
     team_utterance: str,
     guide_response: str,
+    take: HeardTake | None,
 ) -> bool:
     """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
@@ -348,27 +318,38 @@ def _settle_later(
         settle_coverage,
         session_id=session.id,
         turn_id=turn_id,
+        turn_number=last_turn_number(session),
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,
+        take=take,
     )
     return True
 
 
-async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
+async def _state(
+    db: AsyncSession, session: IRSession, *, include_stale: bool = False
+) -> SessionStateResponse:
+    approved = await approved_draft(db, session)
     return SessionStateResponse(
         session_id=session.id,
         pericope=session.pericope,
         status=str(session.status),
         coverage=coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
-        back_translation=await _progress(db, session),
+        back_translation=await _progress(db, session, include_stale=include_stale),
         language=session.language,
         halt=halt.standing(session),
+        opened=was_opened(session),
+        moment=moment_view(session),
+        kept_takes=await kept_takes_of(session),
+        approved=approval_of(approved) if approved else None,
     )
 
 
-async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProgress:
+async def _progress(
+    db: AsyncSession, session: IRSession, *, include_stale: bool = False
+) -> BackTranslationProgress:
     """What a tablet needs to pick a telling-back back up where it stopped.
 
     All of it was already on the session and none of it had a way out, so an app that
@@ -379,24 +360,44 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     resumes is the same reading the analyst gets.
     """
     state = room.back_translation_of(session)
-    finding = room.the_finding_that_leads(state)
+    stretches = await room.final_segments(db, session.id)
+    findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
+    finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
+    awaiting = await the_sentence_awaiting(db, session)
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[segment_view(one) for one in await room.final_segments(db, session.id)],
+        segments=segment_views(
+            stretches, await room.stale_segments(db, session.id) if include_stale else None
+        ),
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
+        findings=finding_views(
+            findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
+        ),
         superseded_attempts=len(state.superseded),
+        awaiting_segment_id=awaiting.segment_id if awaiting else None,
+        rerecorded_sentences=[
+            RerecordedSentenceView(
+                sentence_id=one.sentence_id,
+                segment_id=one.segment_id,
+                previous_take_id=one.previous_take_id,
+                take_id=one.take_id,
+                starts_ms=one.starts_ms,
+                ends_ms=one.ends_ms,
+            )
+            for one in state.sentences
+        ],
     )
 
 
-@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_caller_dep])
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[linked_tablet_dep])
 async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    project_id: str | None = device_project_dep,
-    caller: Device | None = Depends(require_room_caller),
+    project_id: str = device_project_dep,
+    caller: Device = linked_tablet_dep,
 ) -> SessionStateResponse:
     """Open a session, and end this tablet's halt if it was standing in one.
 
@@ -405,9 +406,8 @@ async def create_session(
     here. The session's halt is the team's: any credentialed tablet of the team that reopens a
     session a call for a person stopped is the room going again, and the room never waits on
     the Desk (ENG-1354), so `open_session` lifts it in the open's own transaction (ADR 0045).
-    Both are gated on `caller`, the gate's own result — the credential is resolved once per
-    request and FastAPI's dependency cache is what makes this and `device_project_dep` one
-    query — so a caller on the shared room key names no device and lifts nothing.
+    `caller` is the gate's own result — the credential is resolved once per request and
+    FastAPI's dependency cache is what makes this and `device_project_dep` one query.
 
     After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
@@ -433,15 +433,12 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
-        chosen=payload.chosen,
-        lifts=caller is not None,
+        after=previous,
     )
-    if caller is not None:
-        await clear_needs_person(db, caller.id)
-        nudge(session.project_id, "halts")
+    await clear_needs_person(db, caller.id)
+    nudge(session.project_id, "halts")
     if previous is not None:
-        if hand_over(previous, session):
-            await db.commit()
+        await hand_over(db, previous, session)
     elif (
         created
         and is_panorama(session.pericope)
@@ -455,20 +452,21 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionStateResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def read_session(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    asking_for_stale: bool = include_stale_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
-    return await _state(db, session)
+    return await _state(db, session, include_stale=asking_for_stale)
 
 
 @router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
 async def facilitator_sessions(
-    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> FacilitatorSessionsResponse:
     """The sessions waiting on a person, for the person they are waiting on.
 
@@ -477,24 +475,24 @@ async def facilitator_sessions(
     The two session-scoped facilitator routes are addressed by an id nobody could obtain,
     so a room that stopped for someone could not reach anyone.
 
-    **Scoped to the caller's own teams**, and the reason the route first gave for needing
+    **Scoped to the teams the caller reads**, and the reason the route first gave for needing
     no scope is worth correcting rather than deleting: it argued that this only makes
     discoverable what was already readable, since an id was never what kept the
     session-addressed routes shut. That was true where it was written. It is not true here
     — `…/{id}/takes` refuses a session of another team through
-    `get_session_for_facilitator`, and `…/{id}/release` has refused one since ENG-563's
+    `get_session_for_reader`, and `…/{id}/release` has refused one since ENG-563's
     composition. An unscoped list would announce the existence, the passage and the moment
     of other teams' sessions, and hand over ids their reader is refused.
 
-    Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
-    is: the app-wide gate it was written against no longer exists.
+    Gated on `ReaderUser` like every other read under `/facilitator`: the app-wide gate it
+    was written against no longer exists, and a consultant reads every team (ADR 0058).
 
     **`devices` is the half a session id cannot reach** (ENG-624). A tablet whose session
     the server has forgotten, or whose build broke before one was opened, halts on itself
     rather than on a session, and that halt would otherwise be readable only from the team's
     devices panel — a screen a facilitator opens about one team they already suspect. This
     is the list they read to find out which team to go to. Scoped by the same rule as the
-    sessions half — `facilitated_project_ids`, the ids in hand rather than `IN (SELECT …)`
+    sessions half — `readable_project_ids`, the ids in hand rather than `IN (SELECT …)`
     the planner cannot use.
 
     **Resolved twice, once per half, and that is the shape rather than an oversight.**
@@ -507,9 +505,9 @@ async def facilitator_sessions(
 
     The moment is bound before it is read because the column is nullable and this list is
     the rows where it is not: the binding is the type system reading what the query already
-    guarantees, not a filter with anything to drop. The team id on the sessions half is bound
+    guarantees, not a filter with anything to drop. The team id on both halves is bound
     the same way and for the same reason — `confined_to` excludes a null project under either
-    of its two shapes, so the `if` there drops nothing either.
+    of its two shapes, so the `if`s there drop nothing either.
 
     **`team_name` costs one more statement, and it is the field that makes the queue
     usable** (ENG-609). This is the one facilitator listing that crosses teams: every other
@@ -522,7 +520,7 @@ async def facilitator_sessions(
     a stopped room from one asking for a witness, nor one nobody has reached from one a
     colleague walked to five minutes ago.
     """
-    scope = await facilitated_project_ids(db, user)
+    scope = await readable_project_ids(db, user)
     waiting = await room.sessions_waiting_on_a_person(db, user)
     named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
     marks = await room.hard_stretches_of(db, [session.id for session in waiting])
@@ -567,6 +565,7 @@ async def facilitator_sessions(
         devices=[
             FacilitatorHaltedDeviceView(
                 device_id=device.id,
+                project_id=team,
                 label=device.label,
                 since=as_utc(halted),
                 attended_at=as_utc(device.attended_at) if device.attended_at else None,
@@ -574,6 +573,7 @@ async def facilitator_sessions(
             )
             for device in await devices_waiting_on_a_person(db, scope)
             if (halted := device.needs_person_since) is not None
+            and (team := device.project_id) is not None
         ],
     )
 
@@ -581,11 +581,11 @@ async def facilitator_sessions(
 @router.post(
     "/sessions/{session_id}/needs-person",
     response_model=NeedsPersonResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def ask_for_a_person(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> NeedsPersonResponse:
     """The room in front of the team decided it cannot go on without a person.
@@ -605,11 +605,11 @@ async def ask_for_a_person(
 @router.post(
     "/sessions/{session_id}/person-arrived",
     response_model=PersonArrivedResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def a_person_arrived(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> PersonArrivedResponse:
     """Somebody long-pressed the halted room to say they are standing in it (ENG-792).
@@ -635,13 +635,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
     The synthesiser is content-addressed, so the very same words usually come straight back
-    out of the bucket — except for an opening whose whole line is still being voiced in the
-    background (`_start_the_whole_line`), where the bucket is empty and a plain lookup would
-    pay ElevenLabs a second time for a clip already on its way. That case joins the pending
-    task in `_PENDING_WHOLE_LINE_BY_TEXT` instead of asking again — shielded, because an
-    `await` on another task ties this task's own cancellation to it: a team that gives up
-    on "say it again" must not reach back and cancel the opening's background synthesis,
-    which belongs to a different request and is still wanted there.
+    out of the bucket.
     """
     last = next(
         (
@@ -653,37 +647,32 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
     )
     voiced: SpeechKey | None = None
     if last:
-        joining = _PENDING_WHOLE_LINE_BY_TEXT.get((last, session.language))
-        if joining is not None:
-            try:
-                voiced = await asyncio.shield(joining)
-            except asyncio.CancelledError:
-                # The shield only guards one way. A whole line cancelled by its own opening
-                # (dropped mid-flight) reaches us as CancelledError too; that one falls back
-                # to the synthesis below. Our own cancellation still propagates.
-                current = asyncio.current_task()
-                if not joining.cancelled() or (current is not None and current.cancelling()):
-                    raise
-                voiced = None
-            except Exception:
-                voiced = None
-        if voiced is None:
+        try:
             voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
+        except Exception as error:
+            logger.warning("a stored line could not be voiced again: %s", type(error).__name__)
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
-        transcript="",
+        audio_url=(
+            clip_url(
+                voiced.key if voiced else facilitator_speech_key(last, language=session.language),
+                session_id=session.id,
+            )
+            if last
+            else ""
+        ),
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         turn_id=turn_id or "",
+        moment=moment_view(session),
     )
 
 
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def take_turn(
     session_id: str,
@@ -692,7 +681,10 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
     client_timing: str | None = Form(default=None),
-    project_id: str | None = device_project_dep,
+    interrupted: str | None = Form(default=None),
+    interrupted_at_ms: str | None = Form(default=None),
+    interrupted_of_ms: str | None = Form(default=None),
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -702,13 +694,6 @@ async def take_turn(
     as an opening had the Guide introduce itself and lay the whole passage out a second time —
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
-
-    The turn is voiced before any of it is written down. A probe is the room's authorization
-    to assess the answer that comes next, so committing one for a turn whose synthesis then
-    failed points that authorization at a question the team was never asked, and leaves the
-    ledger holding evidence for an exchange that was never recorded. Speaking first costs
-    nothing in the other direction: a clip reaches the team only as the handle in this
-    response, so a request that fails after synthesis hands the app nothing to play.
 
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
@@ -722,6 +707,7 @@ async def take_turn(
         file=file,
         turn_id=turn_id,
         project_id=project_id,
+        cut=_Cut.read(interrupted, interrupted_at_ms, interrupted_of_ms),
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
@@ -734,6 +720,44 @@ async def take_turn(
     return reply
 
 
+@router.get(
+    "/sessions/{session_id}/turns/{turn_id}",
+    response_model=TurnResponse,
+    responses={202: {"description": "The turn is still in flight; nothing to read yet."}},
+    dependencies=[linked_tablet_dep],
+)
+async def look_at_turn(
+    session_id: str,
+    turn_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TurnResponse | Response:
+    """The tablet's one look at a turn it gave up on, without sending the turn again.
+
+    Posting the same `turn_id` again runs the turn when a file is attached and falls into
+    the "say it again" line when none is, so nothing could ask whether a turn landed
+    without doing it. This door exists for the "one look" the tablet takes after giving up
+    on a turn, which ENG-1369 builds on top of it; this route is ENG-1445's. It answers 200
+    with what the turn door answered, 202 with no body while the turn is still in flight in
+    this process, and 404 for an id nothing answered — and for another team's session, the
+    way the session read refuses it.
+    Reading writes nothing and calls no model.
+
+    The stored answer is read again when the turn is neither stored nor in flight: a turn
+    commits its row and only then leaves the in-flight registry, so it can land between the
+    two reads and would otherwise be reported lost the moment it arrived.
+    """
+    await room.session_for_room_caller(db, session_id, project_id)
+    stored = await answered_turn(db, session_id, turn_id, project_id)
+    if stored is None and in_flight(session_id, turn_id, project_id):
+        return Response(status_code=202)
+    if stored is None:
+        stored = await answered_turn(db, session_id, turn_id, project_id)
+    if stored is not None:
+        return TurnResponse(**stored)
+    raise NotFoundError(f"Turn {turn_id} of session {session_id} not found")
+
+
 async def _answer_the_turn(
     db: AsyncSession,
     *,
@@ -741,7 +765,8 @@ async def _answer_the_turn(
     background: BackgroundTasks,
     file: UploadFile | None,
     turn_id: str | None,
-    project_id: str | None,
+    project_id: str,
+    cut: _Cut,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
@@ -763,75 +788,189 @@ async def _answer_the_turn(
                     filename=file.filename,
                     mime_type=file.content_type,
                     language=known[0],
+                    cut=cut,
                 )
             )
 
     try:
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
-        team_id, halted = session.project_id, session.status is IRSessionStatus.NEEDS_PERSON
-        opening = file is None and not (session.messages or [])
+        halted = session.status is IRSessionStatus.NEEDS_PERSON
+        opening = file is None and not was_opened(session)
         if not opening:
             with stage("db_let_go"):
                 await db.commit()
     except BaseException:
         if stt is not None:
-            await _cancelled(stt)
+            await stop_hearing(stt)
         raise
-    _remember_language(session_id, session.language, project_id)
+    _remember_language(session_id, room_language(session.language), project_id)
 
-    speech_heard = HeardSpeech()
-    if stt is not None:
-        speech_heard = await stt
-    elif file is not None:
+    if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
-        speech_heard = await _timed_stt(
-            audio_bytes,
-            filename=file.filename,
-            mime_type=file.content_type,
-            language=session.language,
+        stt = asyncio.create_task(
+            _timed_stt(
+                audio_bytes,
+                filename=file.filename,
+                mime_type=file.content_type,
+                language=room_language(session.language),
+                cut=cut,
+            )
         )
-    transcript = speech_heard.text
-
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
+    take = None if file is None else HeardTake(audio_bytes, file.content_type or AUDIO_MIME)
 
+    return await turn_claim.answer_under_the_turn_claim(
+        db,
+        session,
+        opening=opening,
+        turn_id=turn_id,
+        project_id=project_id,
+        hearing=stt,
+        deadline=deadline,
+        bound_s=bound_s,
+        draft=partial(
+            draft_the_turn,
+            db,
+            session,
+            background=background,
+            opening=opening,
+            halted=halted,
+            bound_s=bound_s,
+            take=take,
+        ),
+    )
+
+
+async def draft_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    claim: turn_claim.TurnClaim,
+    bound_s: float,
+    take: HeardTake | None = None,
+) -> TurnResponse:
+    reply, outcome, language = await _keep_the_turn(
+        db,
+        session,
+        background=background,
+        turn_id=turn_id,
+        opening=opening,
+        halted=halted,
+        speech_heard=speech_heard,
+        deadline=deadline,
+        claim=claim,
+        bound_s=bound_s,
+        take=take,
+    )
+    if outcome is None:
+        return reply
+    uploads: list[Upload] = []
+    try:
+        with stage("voice"):
+            await _voice_the_turn(outcome, language=language, uploads=uploads)
+    except Exception as error:
+        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
+    try:
+        await _upload(uploads)
+    except Exception as error:
+        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
+    return reply
+
+
+async def draft_the_turn_as_text(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    claim: turn_claim.TurnClaim,
+    bound_s: float,
+    scene_rehearsals: list[str] | None = None,
+) -> TurnResponse:
+    reply, _outcome, _language = await _keep_the_turn(
+        db,
+        session,
+        background=background,
+        turn_id=turn_id,
+        opening=opening,
+        halted=halted,
+        speech_heard=speech_heard,
+        deadline=deadline,
+        claim=claim,
+        bound_s=bound_s,
+        scene_rehearsals=scene_rehearsals,
+    )
+    return reply
+
+
+async def _keep_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    claim: turn_claim.TurnClaim,
+    bound_s: float,
+    scene_rehearsals: list[str] | None = None,
+    take: HeardTake | None = None,
+) -> tuple[TurnResponse, room.TurnOutcome | None, str]:
+    team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
-        speech, audio_key = ready
+        speech, audio_key, attempts = ready
+        audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        await room.append_opening(db, session, guide_response=speech, commit=False)
+        if await room.append_opening(
+            db, session, guide_response=speech, attempts=attempts, commit=False
+        ):
+            hear_the_names(db, session, team=stored_opening_note(session), voice=speech)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
-            transcript="",
             peer_cue=outcome.peer_cue,
             coverage=coverage_view(session),
             done=False,
             turn_id=turn_id or str(uuid.uuid4()),
+            moment=moment_view(session),
         )
         if turn_id:
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        await db.commit()
+        language = session.language
+        await _keep_unless_the_opening_was_passed(db, claim, session.id)
         nudge(team_id, "sessions")
-        return reply
+        return reply, None, language
 
     if opening:
         with stage("db_let_go"):
             await db.commit()
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
-    turn: room.ComprehensionTurn | None = None
     try:
         async with asyncio.timeout_at(deadline):
             if is_panorama(session.pericope):
                 book = book_of(session.pericope)
+                language = room_language(session.language)
                 outcome = await room.run_panorama_turn(
-                    transcript=transcript,
                     messages=session.messages or [],
-                    session_language=LANGUAGE_NAMES[session.language],
-                    language_code=session.language,
+                    session_language=LANGUAGE_NAMES[language],
+                    language_code=language,
                     panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
                     validator_prompt=validator_prompt,
                     book=book,
@@ -839,9 +978,10 @@ async def _answer_the_turn(
                     opening=opening,
                     settings=get_settings(),
                     session_id=session.id,
+                    speech=speech_heard,
                 )
             else:
-                turn = await room.run_comprehension_turn(
+                outcome = await room.run_comprehension_turn(
                     db,
                     session,
                     speech=speech_heard,
@@ -849,24 +989,18 @@ async def _answer_the_turn(
                     guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
                     validator_prompt=validator_prompt,
                     settings=get_settings(),
+                    scene_rehearsals=scene_rehearsals,
                 )
-                outcome = turn.outcome
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            voiced, segments = await _voice_the_turn(
-                outcome, language=session.language, uploads=uploads
-            )
-    except BaseException:
-        if uploads:
-            await _upload(uploads)
-        raise
-    session, _ = await asyncio.gather(
-        _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
-        _upload(uploads),
+    session = await _write_the_turn(
+        db,
+        session,
+        outcome=outcome,
+        opening=opening,
+        scene_rehearsal=speech_heard.scene_rehearsal,
+        scene_rehearsals=scene_rehearsals,
     )
 
     response_turn_id = turn_id or str(uuid.uuid4())
@@ -878,30 +1012,55 @@ async def _answer_the_turn(
             turn_id=response_turn_id,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
+            take=take,
         )
+    if earlier_passages_due(session.earlier_passages):
+        background.add_task(read_the_earlier_passages_again, session_id=session.id)
 
     reply = TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=(
+            ""
+            if outcome.fixed_line
+            else clip_url(
+                facilitator_speech_key(outcome.speech, language=session.language),
+                session_id=session.id,
+            )
+        ),
         fixed_line=outcome.fixed_line,
-        transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        segments=segments,
         turn_id=response_turn_id,
         classification_pending=pending,
+        moment=moment_view(session),
     )
     lifted = halted and session.status is not IRSessionStatus.NEEDS_PERSON
+    language = session.language
     with stage("db_write"):
         if turn_id:
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        await db.commit()
+        if opening:
+            await _keep_unless_the_opening_was_passed(db, claim, session.id)
+        else:
+            await db.commit()
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-    return reply
+    return reply, outcome, language
+
+
+async def _keep_unless_the_opening_was_passed(
+    db: AsyncSession, claim: turn_claim.TurnClaim, session_id: str
+) -> None:
+    """Commit the opening, or drop it whole when a team turn took its claim meanwhile: the
+    team's turn is the session's first line then, and the late opening is heard but never
+    kept (ADR 0053, ADR 0079)."""
+    if await turn_claim.still_holds(db, claim, session_id):
+        await db.commit()
+    else:
+        await db.rollback()

@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.voice_handles import to_handle
 from tests.baker import make_user
+from tests.device_harness import a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 #: Whose the question is. The inbox reaches a question through the team that owns it, so a
 #: hand raised by nobody's tablet reaches nobody — which is the state this file used to be
@@ -56,11 +56,8 @@ async def client(db_session: AsyncSession, facilitator: Any, monkeypatch: pytest
 
     from app.api.internalization_room import router
     from app.core.auth_middleware import get_current_user
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -75,7 +72,10 @@ async def client(db_session: AsyncSession, facilitator: Any, monkeypatch: pytest
     test_app.dependency_overrides[get_db] = _get_db
     test_app.dependency_overrides[get_current_user] = _current_user
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -101,12 +101,12 @@ async def test_the_team_can_fetch_the_reply_it_was_handed(
 
     listed = await client.get(
         f"{PREFIX}/questions/replies",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
     )
     assert listed.status_code == 200, listed.text
     url = listed.json()["replies"][0]["audio_url"]
 
-    fetched = await client.get(url, headers={"X-Room-Key": KEY})
+    fetched = await client.get(url)
 
     assert fetched.status_code == 200, (
         "the reply address the app is handed has to answer — a 404 here is a team told "
@@ -147,8 +147,6 @@ async def test_a_handle_for_something_else_is_refused(
     """A handle is a client-supplied instruction about which object to read."""
     store.objects[key] = b"nao e desta rota"
 
-    fetched = await client.get(
-        f"{PREFIX}/questions/audio/{to_handle(key)}", headers={"X-Room-Key": KEY}
-    )
+    fetched = await client.get(f"{PREFIX}/questions/audio/{to_handle(key)}")
 
     assert fetched.status_code == 404, fetched.text

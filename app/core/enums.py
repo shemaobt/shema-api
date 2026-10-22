@@ -65,6 +65,23 @@ class ReviewFlagOrigin(StrEnum):
     SYSTEM = "system"
 
 
+class RecordingSource(StrEnum):
+    """Where a recording and everything attached to it came from.
+
+    One mark on the recording covers the audio, its classification and the storyteller it
+    points at: those travel together, and a storyteller row is shared by every recording
+    of that person, so it is the recording that knows its provenance.
+
+    The app never sends the field and so gets ``RAW``: audio the team captured in the field.
+    ``EXTERNAL`` is set only by a caller outside the app, importing from a published source
+    such as an archive, and is what tells a reader that the classification on the row was
+    not made by whoever sat with the storyteller.
+    """
+
+    RAW = "raw"
+    EXTERNAL = "external"
+
+
 class AcoustemeStatus(StrEnum):
     PENDING = "pending"
     READY = "ready"
@@ -93,15 +110,12 @@ class OCNotificationEvent(StrEnum):
 class SessionState(StrEnum):
     """How a room conversation reads on the Desk's session card (RF-06, ENG-451).
 
-    Not `IRSessionStatus`, which is the room's own machine and is persisted. This is derived
-    at read time from when the conversation ended, and it is the Desk's vocabulary.
+    Not `IRSessionStatus`, which is the room's own machine and is persisted. This is the
+    Desk's vocabulary, derived at read time from `ended_at`: `complete` once the floor was
+    met, `in_progress` for every other session however long it sat.
 
-    RF-06 names two and there are three. The third arrived with the rule that decides when a
-    conversation is over: a session nobody closed is over, and calling it complete would be a
-    lie a facilitator can check against the necklace drawn beside it, where the beads are
-    plainly unfinished. It is also why this crosses the boundary at all — with two values it
-    was a function of `ended_at` and serving it would have been a second record of one fact,
-    but `COMPLETE` and `ABANDONED` both carry an `ended_at` and no client can tell them apart.
+    `ABANDONED` stays so the wire vocabulary does not shrink under the Desk, and is never
+    emitted: nothing ends a session for being idle (ENG-1263).
     """
 
     IN_PROGRESS = "in_progress"

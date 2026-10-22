@@ -6,6 +6,7 @@ from enum import StrEnum
 #: Re-exported so `_RANK` below reads beside the values it ranks. Defined in `core`
 #: because `app/models` needs it too — see `app/core/room_enums.py`.
 from app.core import room_enums
+from app.core.exceptions import PanoramaRecordsNothing
 from app.core.room_enums import CoverageStatus
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import CoverageView
@@ -16,6 +17,8 @@ from app.services.internalization_room.canon.elements import (
     element_keys,
     elements_for,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.rounding import math_round
 
 PANORAMA_PREFIX = "OV-"
 
@@ -30,6 +33,19 @@ def is_panorama(pericope: str) -> bool:
     reconstruction cannot import the session service without a cycle.
     """
     return pericope.startswith(PANORAMA_PREFIX)
+
+
+def refuse_a_panorama(pericope: str) -> None:
+    """A panorama is spoken, never recorded, told back or checked, so the doors that record,
+    tell back or check are refused here with one code, before anything is read, stored or
+    transcribed.
+
+    The conversation's turns door does not call it: the panorama is a conversation, and the
+    team's voice is transcribed there. The release doors do not either: their answers for a
+    panorama are ENG-954's contract.
+    """
+    if is_panorama(pericope):
+        raise PanoramaRecordsNothing("a panorama records nothing")
 
 
 _RANK = {
@@ -146,13 +162,31 @@ def counts(state: dict[str, str]) -> dict[str, int]:
     return {"engaged": engaged, "surfaced": surfaced, "total": len(state)}
 
 
+#: Her necklace has 12 beads whatever the passage's number of elements (`beadsTotal`,
+#: `app/api/session/route.ts`).
+BEADS_TOTAL = 12
+
+
 def coverage_view(session: IRSession) -> CoverageView:
-    numbers = counts(session.coverage_state or {})
+    """The coverage answer, with her 12 beads filled as `beadsFilled` fills them
+    (`src/session/types.ts`): `engaged` over the elements, 0 read as 1, times 12, rounded half
+    up as `Math.round` rounds and never half to even as Python's `round` does.
+    """
+    stored = session.coverage_state or {}
+    with reading_the_canon_of(session.canon_pin):
+        if is_panorama(session.pericope):
+            numbers, absence = counts(stored), -1
+        else:
+            spine = initial_state(session.pericope)
+            numbers = counts({key: stored.get(key, status) for key, status in spine.items()})
+            absence = absence_index(session.pericope)
     return CoverageView(
         engaged=numbers["engaged"],
         surfaced=numbers["surfaced"],
         total=numbers["total"],
-        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+        absence_index=absence,
+        beads_total=BEADS_TOTAL,
+        beads_filled=math_round(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL),
     )
 
 
@@ -169,28 +203,6 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
         for element in elements_for(pericope_num)
         if merged.get(element.key) != CoverageStatus.ENGAGED
     ]
-
-
-def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
-    """The first scene with a bead still short of `engaged`, once one scene bead is.
-
-    Ledger state, read off which scene-scoped beads the team has worked: none of them
-    engaged is the whole-passage opening, all of them engaged is the whole-passage
-    integration, and both are answered with no scene at all. The pointer the rehearsal is
-    read against lives in `live_turn` and answers to what the team has said, not to this.
-    """
-    merged = {**initial_state(pericope_num), **state}
-    beads = [
-        (element.scene, merged.get(element.key) == CoverageStatus.ENGAGED)
-        for element in elements_for(pericope_num)
-        if element.scene is not None
-    ]
-    if not any(engaged for _, engaged in beads):
-        return None
-    for scene in sorted({scene for scene, _ in beads}):
-        if not all(engaged for at, engaged in beads if at == scene):
-            return f"S{scene}"
-    return None
 
 
 _EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})

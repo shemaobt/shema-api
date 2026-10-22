@@ -25,8 +25,9 @@ from app.services.internalization_room.back_translation import analyse_telling_b
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.languages import LANGUAGE_NAMES, ROOM_LANGUAGES
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_turn
-from tests.turn_harness import the_room_agent_is
+from tests.turn_harness import NOTHING_TOLD_BACK, the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -40,16 +41,21 @@ _EXPECTED_VALIDATOR_OPENING = {
     "es": "(el equipo aún no ha hablado — apertura de la sesión)",
 }
 
+_HER_OPENING_NOTE = {
+    "pt": (
+        "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, pronta para "
+        "começar. Fale primeiro.]"
+    ),
+    "en": (
+        "[The session has just begun. The team opened passage P03 and is at the table, ready to "
+        "begin. Speak first.]"
+    ),
+}
+
 _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
     "pt": "(a equipe ainda não falou)",
     "en": "(the team has not spoken yet)",
     "es": "(el equipo aún no ha hablado)",
-}
-
-_EXPECTED_NOTHING_TOLD_BACK = {
-    "pt": "(a equipe ainda não traduziu nada)",
-    "en": "(the team has not translated anything yet)",
-    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -94,14 +100,9 @@ def _patch_analyst_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
-async def test_the_validator_opens_the_session_in_english_whichever_language_it_is(
+async def test_the_validator_opening_carries_no_placeholder_in_any_language(
     monkeypatch: pytest.MonkeyPatch, language_code: str
 ) -> None:
-    """ENG-822 re-scoped this placeholder: the backend now composes it in English for every
-    session, and only {{SESSION_LANGUAGE}} carries what language the team hears — a `pt`
-    session must see the same English sentence an `en` one does, never its old Portuguese
-    translation.
-    """
     captured = _patch_validator_capture(monkeypatch)
 
     await run_turn(
@@ -118,9 +119,12 @@ async def test_the_validator_opens_the_session_in_english_whichever_language_it_
     )
 
     system = captured["system"]
-    assert _EXPECTED_VALIDATOR_OPENING["en"] in system
-    assert _EXPECTED_VALIDATOR_OPENING["pt"] not in system
-    assert _EXPECTED_VALIDATOR_OPENING["es"] not in system
+    assert (
+        "Referring to these words is not a claim about the passage.\n\n"
+        f"{_HER_OPENING_NOTE[language_code]}"
+    ) in system, "na abertura o Validator não lia a nota dela, que é o lado da equipe no app dela"
+    for placeholder in _EXPECTED_VALIDATOR_OPENING.values():
+        assert placeholder not in system
 
 
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
@@ -158,20 +162,22 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         session_language=LANGUAGE_NAMES[language_code],
         language_code=language_code,
         settings=_settings(),
     )
 
     system = captured["system"]
-    assert _EXPECTED_NOTHING_TOLD_BACK[language_code] in system
-    for other, sentence in _EXPECTED_NOTHING_TOLD_BACK.items():
+    assert NOTHING_TOLD_BACK[language_code] in system
+    for other, sentence in NOTHING_TOLD_BACK.items():
         if other != language_code:
             assert sentence not in system
 
 
-async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(("named", "code"), [("French", "fr"), ("Spanish", "es")])
+async def test_a_language_the_room_does_not_claim_gets_the_portuguese_floor(
+    monkeypatch: pytest.MonkeyPatch, named: str, code: str
 ) -> None:
     captured = _patch_analyst_capture(monkeypatch)
 
@@ -180,11 +186,12 @@ async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        session_language="French",
-        language_code="fr",
+        addresses=Addresses(),
+        session_language=named,
+        language_code=code,
         settings=_settings(),
     )
 
     system = captured["system"]
-    assert _EXPECTED_NOTHING_TOLD_BACK["en"] in system
-    assert _EXPECTED_NOTHING_TOLD_BACK["pt"] not in system
+    assert NOTHING_TOLD_BACK["pt"] in system
+    assert NOTHING_TOLD_BACK["en"] not in system

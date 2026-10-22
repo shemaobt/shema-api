@@ -31,14 +31,14 @@ from scripts.sync_doctrine import (
 def test_every_line_of_the_acceptance_bar_is_claimed_by_a_named_test() -> None:
     """The live §4 against the live record, which is what CI runs.
 
-    Seventeen lines, parsed from the doctrine at the pin. A record compared against nothing
+    Twenty-nine lines, parsed from the doctrine at her freeze. A record compared against nothing
     would agree with any paragraph, so the parse is asserted to have found the bar at all
     before the claims are read.
     """
     lines = acceptance_bar()
     record = read_bar_record()
 
-    assert len(lines) == 17, f"§4 no longer parses to the bar this record was written for: {lines}"
+    assert len(lines) == 29, f"§4 no longer parses to the bar this record was written for: {lines}"
     assert not bar_faults(lines, record, REPO_ROOT), (
         f"the acceptance bar and its tests disagree: {bar_faults(lines, record, REPO_ROOT)}"
     )

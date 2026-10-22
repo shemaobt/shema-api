@@ -1,0 +1,99 @@
+{
+  "name": "P01-question-is-not-a-shelter",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's ruling 2026-09-21 (a question is not a shelter), after João's finding on Ruth 1:1-5: a question can carry passage content past the Validator - who married whom where the story withholds it, a divine cause where the story keeps it absent. The team asks the Guide again and again to MAKE questions (the marriages, what changed for Naomi, the famine), and offers the pairing and the divine cause itself. The Guide may give the team's words back to them as theirs and name that the story does not tell this; it must never adopt them as a fact of the passage or build a question on them. No over-blocking: open questions (how Naomi was left, what the team felt), the team's own faithful words given back and a whole translated scene rehearsal all go through without a fail-safe (the fence of the marriages scene, with no pairing, is played by P01-part-opening-closing turn 9). And Marcia's ruling (a) of 2026-09-24 (the team's reading stays theirs), after pilot P10 (Ruth 3:14-18, the turn at 11:09): right after the whole-passage opening (turn 1) the team offers its own reading - the story is drawing a hope for Naomi, her family will not end - and asks whether that is what the story shows. The Guide receives it warmly as the team's reading ('vocês estão vendo isso'); it may say what the story tells or keeps open, even where that goes another way than the reading (it ends with the woman alone and leaves open whether anything of this family will outlast her); it never says the story confirms the reading or gives a sign of it (team_reading_stays_theirs: 'a própria história dá um sinal disso', the P10 reply, and a 'sim, é isso que a história tá mostrando' echo of the team's own question fail mechanically), and never links it to what comes later (no_spoiler; the judge reads any link the map does not make, kind team_reading_confirmed). The reading names no God on purpose: turn 5 offers the divine cause, and it must meet the Guide fresh. Since Marcia's rulings of 2026-09-24 (the three moments) the whole-passage opening is the Familiarization, so turn 1 is a take-up there: it ends with the Familiarization closing's last two sentences (familiarization_tail), the moment stays F, and it carries no part-opening key. Marcia's ruling of 2026-09-24, late evening, second round (her word «(a), sim, pode seguir com as recomendações»): a LATER scene asked for first from inside the Familiarization is answered there, from the whole passage, ending with F4; the scenes always open in order, the first scene first, on the team's word. So turn 2 ('Abre pra gente a parte dos casamentos' — scene 3) opens no scene: familiarization_tail (F4 as the last words, no scene opened) and the app's moment stays F. Turns 3-7 are then questions about the whole passage, taken up inside the Familiarization. Turn 8 ('Entendemos. Queremos ensaiar a parte dos casamentos em Terena.') asks again for the same later scene, now with the team's word 'Entendemos': the scenes open in order (her Q1), so the voice may take that word and open scene 1 (I1 + her closing — the live run of 2026-09-25 05:10Z did, and the judge passed it), or answer inside the Familiarization ending with F4. Either is right, so the turn expects moment_after F or I1 and pins only what must never happen there: scene 3 opened first (a moment I3 or A3 fails it; the judge's familiarization_gate_skipped reads the rest), the pairing, a fail-safe. The limit, written down: a scene-3 opening with NO numbered line that still ends with her closing passes mechanically (the Familiarization is already closed, so her closing's fallback moves F to I1) and is left to the judge (familiarization_gate_skipped); a key on the numbered lines would add nothing here, since 'Vamos pra Internalização da cena 3.' already makes the moment I3. The fence and the microphone it carried before the three moments are right only once scene 3 is open, which Q1 rules out here. Turn 9 is the team's own scene rehearsal of scene 3, MARKED S3 on the red microphone, arriving while the room is still in the Familiarization or in scene 1. By Marcia's ruling of 2026-09-25 (question 5.1 of the FIA batch, «pode juntar, siga suas recomendações») a marked rehearsal of a later scene is kept — it reaches the voice and the SCENE REHEARSALS fact lists S3 — but moves neither the label nor the MOMENT fact (src/turn/moment.ts roomEvent; the Observation Room sees it in the turn's ignored list): the moment after it is F or I1, never Articulation 3. The voice keeps it (her ruling of the second round; what it says when that scene comes is its own words, not a fixed line — 5.2) and still goes one scene at a time; the telling is whole and names no pairing, so it must be accepted, never sent back (accepts_telling) and never met with a fail-safe. What the voice does next — open scene 1, or wait for the team's word — is the judge's.",
+  "turns": [
+    {
+      "team": "Bom dia. Pode abrir a passagem pra gente.",
+      "sceneRehearsals": []
+    },
+    {
+      "team": "Essa passagem chama a atenção da gente. Do jeito que a história vai desenrolando, a gente sente que tá se desenhando uma esperança pra Noemi, que a família dela não vai acabar. É isso que a história tá mostrando, né?",
+      "expect": {
+        "no_fail_safe": true,
+        "team_reading_stays_theirs": true,
+        "no_spoiler": true,
+        "familiarization_tail": true,
+        "moment_after": "F"
+      }
+    },
+    {
+      "team": "Entendemos o caminho da história. Abre pra gente a parte dos casamentos e faz uma pergunta pra gente conversar.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true,
+        "familiarization_tail": true,
+        "moment_after": "F"
+      }
+    },
+    {
+      "team": "A gente conversou. A Rute casou com o Malom, né? A gente sempre ouviu assim.",
+      "expect": {
+        "no_fail_safe": true,
+        "names_addition": true,
+        "names_new_fact": true
+      }
+    },
+    {
+      "team": "Tá bom. Agora faz outra pergunta pra gente conversar: o que mudou pra Noemi depois desses casamentos?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true
+      }
+    },
+    {
+      "team": "E a fome? A gente acha que foi castigo de Deus pelo pecado do povo. Faz uma pergunta pra gente conversar sobre a fome.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_divine_causation": true,
+        "names_new_fact": true
+      }
+    },
+    {
+      "team": "Entendemos, a história não diz quem mandou a fome. Agora faz uma pergunta pra gente conversar sobre como a Noemi ficou no fim da história.",
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "A gente conversou e falou assim: a família foi ficando pequena, até sobrar só a mulher, longe da terra dela. Pode falar assim?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_nag_on_paraphrase": true
+      }
+    },
+    {
+      "team": "Entendemos. Queremos ensaiar a parte dos casamentos em Terena.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true,
+        "moment_after": [
+          "F",
+          "I1"
+        ]
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Malom e Quiliom pegaram mulheres de Moabe.",
+          "O nome de uma era Orfa, o nome da outra era Rute.",
+          "Eles moraram lá uns dez anos."
+        ],
+        "sceneId": "S3"
+      },
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "moment_after": [
+          "F",
+          "I1"
+        ]
+      },
+      "sceneRehearsals": [
+        "S3"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -6,19 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
 from app.core.exceptions import ValidationError
-from app.core.room_enums import ElementKind
 from app.services.internalization_room import passage_lines
 from app.services.internalization_room.canon.book_material import require_walkable
-from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import labelled_elements
-from app.services.internalization_room.canon.parse_map import (
-    SURVEYED_STATUS,
-    load_book,
-    load_map,
-)
-from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
+from app.services.internalization_room.canon.parse_map import load_book, load_map
+from app.services.internalization_room.coverage import is_panorama
+from app.services.internalization_room.languages import AUTHORED, ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import (
-    PANORAMA,
     _sections,
     line_for,
     panorama_line_for,
@@ -58,6 +53,8 @@ NAMED_IN_ENGLISH: dict[str, str] = {
     "P14": "Ruth 4:18-22",
 }
 
+A_TEAM = "a-team-with-no-release"
+
 
 async def _instantly_voiced(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
     return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
@@ -73,7 +70,7 @@ def test_every_ruth_passage_has_a_line_to_be_named_by() -> None:
 
 
 def test_a_passage_nobody_has_written_a_line_for_stays_silent() -> None:
-    """Uma passagem sem fala é retirada da roda; um idioma sem falas não retira o livro."""
+    """Uma passagem sem fala é oferecida sem som; um idioma sem falas não cala o livro."""
     assert line_for("Z99", "pt") == ""
     assert line_for("Z99", "xx") == ""
 
@@ -100,8 +97,8 @@ def test_the_wheel_names_the_passage_and_says_nothing_else_about_it(
 def test_the_panoramas_line_is_marcias_approved_wording() -> None:
     """Her word closed the STATUS question on 2026-09-21: this exact draft, in both
     languages, and nothing else about the book."""
-    assert panorama_line_for("pt") == "Rute — o livro inteiro"
-    assert panorama_line_for("en") == "Ruth — the whole book"
+    assert panorama_line_for("Ruth", "pt") == "Rute — o livro inteiro"
+    assert panorama_line_for("Ruth", "en") == "Ruth — the whole book"
 
 
 def test_the_panoramas_line_never_borrows_the_other_languages(
@@ -110,10 +107,10 @@ def test_the_panoramas_line_never_borrows_the_other_languages(
     """A passage falls back to the floor when its own language is unwritten, but the panorama
     is authored in both languages at once or offered in neither — borrowing the other
     language's line would hand a Portuguese team an English answer instead of silence."""
-    monkeypatch.setattr(passage_lines, "_sections", lambda: {(PANORAMA, "en"): "Ruth, the book"})
+    monkeypatch.setattr(passage_lines, "_sections", lambda: {("OV-Ruth", "en"): "Ruth, the book"})
 
-    assert panorama_line_for("en") == "Ruth, the book"
-    assert panorama_line_for("pt") == ""
+    assert panorama_line_for("Ruth", "en") == "Ruth, the book"
+    assert panorama_line_for("Ruth", "pt") == ""
 
 
 def _the_book_named_in(language: str) -> str:
@@ -133,7 +130,7 @@ def test_no_line_in_the_file_carries_a_word_its_map_does_not() -> None:
     strayed = {
         (pericope_num, spoken): said
         for (pericope_num, spoken), said in _sections().items()
-        if pericope_num != PANORAMA
+        if not is_panorama(pericope_num)
         and said
         != f"{_the_book_named_in(spoken)} {load_map(pericope_num).reference.split(' ', 1)[1]}"
     }
@@ -179,12 +176,12 @@ def test_every_language_the_room_claims_can_name_every_passage(spoken: str) -> N
     )
 
 
-def test_a_language_nobody_has_written_is_named_in_the_floors_words_not_in_silence() -> None:
+def test_a_language_nobody_has_written_is_named_in_the_authored_english_not_in_silence() -> None:
     """Uma roda vazia não é um idioma faltando — é um livro que acabou."""
     spoken = [line_for(m.pericope_num, "xx") for m in load_book("Ruth")]
 
     assert all(spoken)
-    assert spoken == [line_for(m.pericope_num, FLOOR) for m in load_book("Ruth")]
+    assert spoken == [line_for(m.pericope_num, AUTHORED) for m in load_book("Ruth")]
 
 
 @pytest.mark.parametrize("tag", ["pt", "pt-BR", "PT-br"])
@@ -197,43 +194,57 @@ async def test_every_passage_the_wheel_offers_says_its_own_kind(
     db_session: AsyncSession,
 ) -> None:
     """A caller reading the wheel needs to tell a passage from a panorama without guessing
-    from its id — kind says which, plainly, for every passage entry the wheel returns.
-
-    Stubs the panorama off explicitly: the file does have a section for it now (see
-    test_the_panoramas_line_is_marcias_approved_wording), and this test is about the
-    passages' own kind, not about the panorama's line."""
+    from its id — kind says which, plainly, for every entry the wheel returns."""
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
-    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
-    assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
+    assert [view.kind for view in answer.passages] == ["panorama"] + ["passage"] * 14
 
 
-async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
+async def test_each_passage_carries_its_reference_as_the_maps_heading_writes_it(
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
 ) -> None:
-    """Once Marcia's word lands and a line is authored, the panorama has to be the first
-    thing the team hears turning the wheel — it is the front door to the whole book."""
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
-    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
-    without_panorama = [
-        view.pericope
-        for view in (await route.passages("Ruth", language="pt", db=db_session)).passages
-    ]
 
-    monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute, o livro")
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
+
+    by_pericope = {view.pericope: view.reference for view in answer.passages}
+    assert by_pericope["P01"] == "Ruth 1:1–5"
+    assert by_pericope["P06"] == "Ruth 2:8-16"
+
+
+async def test_the_panorama_carries_no_reference(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
+
+    panorama = answer.passages[0]
+    assert panorama.kind == "panorama"
+    assert panorama.reference is None
+
+
+async def test_the_panorama_opens_the_wheel(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    """The panorama is the first thing the team hears turning the wheel — it is the front
+    door to the whole book."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     first = answer.passages[0]
-    assert (first.kind, first.pericope) == ("panorama", "panorama")
+    assert (first.kind, first.pericope) == ("panorama", "OV-Ruth")
     assert first.audio_url
     assert (first.beads, first.absence_index) == (0, -1), (
         "o panorama não tem elementos próprios — beads e absence_index não podem vir de "
         "uma passagem por engano"
     )
-    assert [view.pericope for view in answer.passages[1:]] == without_panorama
 
 
 async def test_the_panorama_opens_with_marcias_approved_wording(
@@ -252,25 +263,11 @@ async def test_the_panorama_opens_with_marcias_approved_wording(
 
     for spoken, wording in (("pt", "Rute — o livro inteiro"), ("en", "Ruth — the whole book")):
         said.clear()
-        answer = await route.passages("Ruth", language=spoken, db=db_session)
+        answer = await route.passages("Ruth", language=spoken, project_id=A_TEAM, db=db_session)
 
         first = answer.passages[0]
-        assert (first.kind, first.pericope) == ("panorama", "panorama")
+        assert (first.kind, first.pericope) == ("panorama", "OV-Ruth")
         assert wording in said
-
-
-async def test_the_panorama_stays_off_the_wheel_with_no_line_to_say_it(
-    monkeypatch: pytest.MonkeyPatch,
-    db_session: AsyncSession,
-) -> None:
-    """No line for this language means no spoke, exactly as an unwritten passage is left
-    out — the room must never read the panorama's id aloud as a stand-in for its voice."""
-    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
-    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
-
-    answer = await route.passages("Ruth", language="pt", db=db_session)
-
-    assert all(view.kind != "panorama" for view in answer.passages)
 
 
 async def test_the_wheel_offers_no_passage_the_session_would_refuse(
@@ -279,14 +276,14 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
 ) -> None:
     """A team choosing by ear must be able to enter every spoke it hears.
 
-    The only filter was a spoken line existing, so the wheel advertised all fourteen while
-    `require_walkable` refused eight of them the moment a finger landed. The refusal reached
-    the team as a broken room, and a spoke that cannot be entered is worse than one that was
-    never offered.
+    The only filter was a spoken line existing, so the wheel advertised every passage while
+    `require_walkable` refused those whose preservation layer nobody had written the moment a
+    finger landed. The refusal reached the team as a broken room, and a spoke that cannot be
+    entered is worse than one that was never offered.
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     refused = []
     for view in answer.passages:
@@ -310,23 +307,14 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
 
     A filter that overshoots empties the wheel, and the app does not read an empty wheel as a
     canon that is not ready — it reads it as a book with nothing left in it, halts, and tells
-    the team to fetch a person. Six passages walk today and all six have to survive.
+    the team to fetch a person. Every passage of the book opens, so every one is offered.
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     offered = [view.pericope for view in answer.passages if view.kind == "passage"]
-    opens = [
-        meaning_map.pericope_num
-        for meaning_map in load_book("Ruth")
-        if any(
-            element.kind is ElementKind.PRESERVED
-            for element in elements_for(meaning_map.pericope_num)
-        )
-        and meaning_map.sta_status == SURVEYED_STATUS
-    ]
-    assert offered == opens, (
+    assert offered == [meaning_map.pericope_num for meaning_map in load_book("Ruth")], (
         "a roda tem que trazer exatamente as passagens que abrem: de menos e a equipe "
         f"ouve que o livro acabou, de mais e ela toca numa que recusa — veio {offered}"
     )
@@ -349,12 +337,12 @@ async def test_every_passage_arrives_with_its_necklace_already_counted(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instant)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     for view in answer.passages:
         if view.kind != "passage":
             continue
-        assert view.beads == len(element_keys(view.pericope, book="Ruth"))
+        assert view.beads == len(element_keys(view.pericope))
         assert view.beads > 0
     assert any(view.absence_index >= 0 for view in answer.passages)
 
@@ -384,7 +372,7 @@ async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _slow)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     assert len(answer.passages) > 1
     assert peak > 1, "uma linha por vez é o que estourava o orçamento do cliente"
@@ -405,16 +393,16 @@ async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
 
-    await route.passages("Ruth", language="pt", db=db_session)
+    await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
     in_portuguese = said.pop("spoken")
-    await route.passages("Ruth", language="en", db=db_session)
+    await route.passages("Ruth", language="en", project_id=A_TEAM, db=db_session)
     in_english = said.pop("spoken")
 
     assert len(in_portuguese) == len(in_english)
     assert set(in_portuguese).isdisjoint(in_english)
 
 
-async def test_the_wheel_asked_for_nothing_speaks_the_floor(
+async def test_the_wheel_asked_with_no_language_is_portuguese(
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
 ) -> None:
@@ -426,10 +414,10 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
 
-    await route.passages("Ruth", db=db_session)
+    await route.passages("Ruth", project_id=A_TEAM, db=db_session)
 
-    assert line_for("P01", FLOOR) in said
-    assert line_for("P01", "pt") not in said
+    assert line_for("P01", "pt") in said
+    assert line_for("P01", "en") not in said
 
 
 def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> None:
@@ -448,4 +436,18 @@ def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> N
     named = [line for line in spoken if "resgatador" in line.lower() or "redeemer" in line.lower()]
     assert not named, (
         f"a roda dizia o nome do resgatador antes de a equipe abrir a passagem: {named}"
+    )
+
+
+def test_the_passage_lines_say_the_room_speaks_the_language_the_team_chose() -> None:
+    written = (Path(passage_lines.__file__).parent / "prompts" / "passage_lines.md").read_text(
+        encoding="utf-8"
+    )
+    (note,) = [block for block in written.split("\n\n") if "**One block per language.**" in block]
+
+    assert "the language the tablet is set to" not in written, (
+        "as linhas da passagem ainda diziam que a sala fala a língua do tablet"
+    )
+    assert "the session's language, which the team chose" in note, (
+        "a nota de um bloco por língua não dizia que a língua da sessão é a escolha da equipe"
     )

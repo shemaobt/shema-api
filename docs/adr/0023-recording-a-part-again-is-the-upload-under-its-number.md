@@ -100,3 +100,48 @@ through the packet by the same rule as any other take.
 Two uploads of one part carrying the *same* pass, drained out of order, still pick the one that
 landed last: the pass separates a recording from the one it replaced, and cannot separate two the
 app counted alike.
+
+**The rehearsal told whole is a part of its own, and recording it whole again is that part
+again** (ENG-1583). The first reading of this decision left a take with no number alone, because
+the only numberless take the room knew besides the passage in one go was the per-stretch
+correction above, and under the verb it would have retired the stretch it was about to replace.
+That fragment is gone, so the reason is gone, and the cost of keeping the exception was the
+other half of the rule: the stretches told on the first whole recording stood beside the ones
+told on the second, read together by the analyst and the Validator with no part to name them.
+`current_parts` already keys the numberless take as one part, so the verb does too: a second take
+with no number retires the stretches of the earlier ones with no number, the findings that
+pointed at them, and the check, exactly as a second take under a number does. It touches no
+numbered part. Marcia's app reads the same
+way: a re-recorded clip stales the frases told on the old one and the check leaves them out,
+keeping them in the record (`src/backtranslation/store.ts` `buildPassageTelling`, frozen at
+18fa7c4).
+
+**The whole steps aside once a numbered part exists** (ENG-1406). A take with no number is a part
+of its own only while the session holds no numbered one; the moment the team records by scene it is
+history. Its stretches and findings are only stored: they leave *terminei*'s reading, the untold
+check and the packet's segments, and the take is no longer asked for or carried by the release.
+
+**Amended on 21 October 2026 (ENG-1739): the retired stretches of a part recorded again can be
+served, marked stale, to a tablet that asks.** Her app keeps a re-recorded part's frases listed,
+marked, and out of the check, and the room had retired them and served nothing in their place.
+The retirement is unchanged — the check, the release gate, the findings, the **Packet** and the
+**Retroverification file** read what they read — and each row it stamps now also carries `stale`
+(`ir_segments.stale`, migration `20261021_stale01`), the one fact a derivation from the takes
+cannot give: a stretch a replacement retired or a telling-back started over abandoned is never
+one to be told again, and a restart followed by a re-recording would bring its stretches back.
+
+`GET /sessions/{id}` and the answers of the divide, replace and sentence doors take
+`include_stale=true`. With it the stretch list holds the stretches that count, each
+`stale: false`, then the stale leaves in the order the passage is read, each `stale: true` with no
+`frase`; a divided stretch is not served, its pieces are. Without it every answer is what it was
+and no entry carries the key, because a tablet that predates the mark lists every entry of that
+list as a stretch to show. A stale stretch is told again through the replace door, by its id,
+over the recording its part stands on now and at any slice that does not fall over a standing
+frase: the stretch it replaces stops being stale and stays an Abandoned row naming no successor, so
+the file and the hard-stretch marks read it as they did, and the new one is a root stretch at the
+next position, a first telling of a chain of its own. A whole that stepped aside serves nothing, and a translation started
+over clears every mark.
+
+Rejected: serving them from `final_segments`, which is the one rule every count reads and would
+have counted them; and a list of their own beside `segments`, which the ticket did not ask for
+and which the tablet would have had to join to the other.

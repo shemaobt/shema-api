@@ -34,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import PassageClosed
 from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
-from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
@@ -47,7 +46,6 @@ from app.services.internalization_room.progression import (
     team_standing,
 )
 from tests.baker import (
-    fully_supported_comprehension,
     having_finished_the_passage,
     keep_a_take,
     make_language,
@@ -63,14 +61,6 @@ ENGAGED = CoverageStatus.ENGAGED.value
 #: naming fourteen would keep passing on the day a fifteenth is vendored.
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
-
-#: The passages a team can actually be standing on. The rest are vendored but unwalkable, and
-#: the resolution steps over them — so the boundary cases below are about the last passage
-#: that opens rather than the last one in the folder.
-WALKABLE = [
-    meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
-]
-LAST = WALKABLE[-1]
 
 
 def at_the_floor(pericope: str) -> dict[str, str]:
@@ -116,23 +106,6 @@ def test_a_team_that_closed_every_passage_stands_on_none() -> None:
     assert resolve(set(CANON)) is None
 
 
-def test_a_team_that_closed_everything_it_can_walk_is_at_the_end_of_the_book() -> None:
-    """The end a team can actually reach, which is earlier than the last vendored passage.
-
-    The passages past the canon's edge carry no preservation layer, so no session can open
-    on them and their floor can never be met. The resolution walked them anyway and answered
-    the first of them forever: the team closed the last passage that opens and was sent, on
-    every touch after that, to one that refuses to open. `None` here is what makes the
-    end-of-book branch reachable at all.
-    """
-    assert resolve(set(WALKABLE)) is None
-
-
-def test_the_last_passage_still_being_worked_is_where_the_team_is() -> None:
-    """The boundary beside the case above, so `None` cannot come from an off-by-one."""
-    assert resolve(set(CANON[:-1]) - {LAST}) == LAST
-
-
 def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_book() -> None:
     """The end of the book moved because the canon moved, and no line of the resolution did.
 
@@ -156,7 +129,7 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
 
 
 def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> None:
-    positions = standing(set())
+    positions = standing(set(), releases={}, findings={})
 
     assert [entry.pericope for entry in positions] == CANON
     assert positions[0].reference and positions[0].title
@@ -164,7 +137,9 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
 
 def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
     """`closed · current · future` resolved here, so no screen decides where a team stands."""
-    positions = {entry.pericope: entry.position for entry in standing({FIRST})}
+    positions = {
+        entry.pericope: entry.position for entry in standing({FIRST}, releases={}, findings={})
+    }
 
     assert positions[FIRST] is PericopePosition.CLOSED
     assert positions[SECOND] is PericopePosition.CURRENT
@@ -177,7 +152,10 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
     `closed` is a session the team finished; `current` is where the team is. A team on P02
     with P03 already finished has both, and exactly one `current`.
     """
-    positions = {entry.pericope: entry.position for entry in standing({FIRST, THIRD})}
+    positions = {
+        entry.pericope: entry.position
+        for entry in standing({FIRST, THIRD}, releases={}, findings={})
+    }
 
     assert positions[SECOND] is PericopePosition.CURRENT
     assert positions[THIRD] is PericopePosition.CLOSED
@@ -185,7 +163,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
 
 def test_a_finished_team_has_no_current_passage() -> None:
     """ENG-469's criterion: a complete team shows its last passage as closed, not current."""
-    positions = standing(set(CANON))
+    positions = standing(set(CANON), releases={}, findings={})
 
     assert all(entry.position is PericopePosition.CLOSED for entry in positions)
 
@@ -299,13 +277,12 @@ async def test_a_session_that_reached_the_rehearsal_and_never_recorded_leaves_th
     """`done` and `closed` are two facts, and this is the case that separates them.
 
     `session_is_done` is the signal the room reads to send a team to the recording — the
-    floor, the evidence, the practice, the consent. Reaching it is not having recorded, and
+    floor. Reaching it is not having recorded, and
     the passage stays the team's until they do. A rule reading the session's own `done` would
     close the passage on the invitation.
     """
     team = await a_team(db_session, name="Chegou ao ensaio e parou")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
 
     settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
 
@@ -324,8 +301,7 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     finished Ruth 1:1-5 and then struggled to tell one stretch back would be handed the
     passage again, with their recording sitting in the bucket.
 
-    Which is why the mark read is `ended_at` and not the status: the close is stamped there
-    at the same instant and no halt writes over it.
+    Which is why the passage reads `done` from the status: the refused halt leaves it as it was.
     """
     team = await a_team(db_session, name="Gravou e depois a sala parou")
     session = await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
@@ -361,7 +337,6 @@ async def test_a_stretch_told_back_is_not_the_rehearsal_and_closes_nothing(
     """A retro is the team explaining one stretch to the room. The passage is still theirs."""
     team = await a_team(db_session, name="Contou de volta")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
     settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
 
     await keep_a_take(db_session, settled, kind=IRTakeKind.RETRO)

@@ -27,8 +27,8 @@ from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession
 from app.services.internalization_room import questions as service
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
@@ -86,7 +86,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 async def a_facilitator(db: AsyncSession, *, email: str):
     """A facilitator with the app role and one team of their own."""
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)
@@ -279,3 +279,19 @@ async def test_a_question_with_no_team_is_refused_rather_than_open_to_everyone(c
     assert refused.status_code == 404
     await db_session.refresh(orphan)
     assert orphan.status is IRQuestionStatus.OPEN
+
+
+async def test_a_reply_moves_one_from_open_total_to_answered_total_on_the_next_read(
+    client, db_session
+):
+    mine, headers = await a_facilitator(db_session, email="a@example.com")
+    question = await a_question_of(db_session, mine.id, tag="minha")
+    inbox = f"{IR}/facilitator/questions"
+
+    before = (await client.get(inbox, headers=headers)).json()
+    replied = await client.post(reply_url(question.id), headers=headers, **REPLY_FILE)
+    assert replied.status_code == 200
+    after = (await client.get(inbox, headers=headers)).json()
+
+    assert (before["open_total"], before["answered_total"]) == (1, 0)
+    assert (after["open_total"], after["answered_total"]) == (0, 1)

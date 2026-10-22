@@ -24,14 +24,6 @@ async def _get_recording(db: AsyncSession, recording_id: str) -> OC_Recording:
     return recording
 
 
-def _original_blob_name(blob_name: str) -> str:
-
-    dot_idx = blob_name.rfind(".")
-    if dot_idx == -1:
-        return f"{blob_name}_original"
-    return f"{blob_name[:dot_idx]}_original{blob_name[dot_idx:]}"
-
-
 async def trigger_cleaning(db: AsyncSession, recording_id: str, user_id: str) -> OC_Recording:
     recording = await _get_recording(db, recording_id)
     await require_project_manager(

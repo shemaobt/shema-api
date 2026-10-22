@@ -1,20 +1,22 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.facilitator._deps import FacilitatorUser, ReaderUser
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
-from app.core.exceptions import NothingToForce, ReleaseWithoutProject
-from app.db.models.internalization_room import IRSession
+from app.core.exceptions import NothingToForce
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.models.internalization_room import (
+    ApprovedDraftView,
     ForcedReleaseResponse,
     ForceReleaseRequest,
     TeamReleaseResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.passage_force import force_passage
 from app.services.internalization_room.release import (
     GROUNDED_BLOCKERS,
     InternalizationReleaseBlocked,
@@ -28,9 +30,29 @@ from app.utils.stored_time import as_utc
 router = APIRouter()
 
 
+def forced_answer(release: IRRelease) -> ForcedReleaseResponse:
+    return ForcedReleaseResponse(
+        release_id=release.packet["release_id"],
+        session_id=release.session_id,
+        version=release.version,
+        package_sha256=release.package_sha256,
+        approved_at=as_utc(release.approved_at).isoformat(),
+        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
+    )
+
+
+def approval_of(release: IRRelease) -> ApprovedDraftView:
+    return ApprovedDraftView(
+        version=release.version,
+        release_id=release.packet["release_id"],
+        approved_at=as_utc(release.approved_at).isoformat(),
+        forced=release.forced_by is not None,
+    )
+
+
 @router.get("/facilitator/sessions/{session_id}/release")
 async def internalization_release(
-    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """The Refine handoff artifact for one finished session, built fail-closed.
 
@@ -39,27 +61,27 @@ async def internalization_release(
     session that is not ready answers 409 with the blockers named — a partial artifact
     would look downstream exactly like a finished one.
 
-    Gated on ``FacilitatorUser`` and not on the app-wide gate it arrived with. It was
+    Gated on ``ReaderUser`` and not on the app-wide gate it arrived with. It was
     written against a ``CurrentUser`` that ENG-438 had already retired — the route is
     newer than that slice, so the slice never saw it — and there was no leaving it as it
     was: the name is gone, so this either tightens or re-introduces the loose gate for
-    one route. Tightening is what the rest of ``/facilitator`` already does, and what the
-    docstring above says this route is.
+    one route. Tightening is what the rest of ``/facilitator`` already does, and since ENG-1213
+    every read there admits a consultant too (ADR 0058).
 
-    Scoped with ``get_session_for_facilitator`` and not ``get_session``, which is what it
+    Scoped with ``get_session_for_reader`` and not ``get_session``, which is what it
     arrived with. That is a defect this composition created rather than inherited: on
     ``main`` there was no per-team scoping to violate, and on this branch the route did not
     exist, so neither side was wrong and their intersection had no reviewer. Resolving the
     session by id alone handed a facilitator of one team the handoff artifact of another —
     every finding, every quote, the whole of what that team recorded.
     """
-    session = await room.get_session_for_facilitator(db, user, session_id)
+    session = await room.get_session_for_reader(db, user, session_id)
     return await build_internalization_release(db, session)
 
 
 @router.get("/facilitator/sessions/{session_id}/releases/{version}")
 async def facilitator_release_by_version(
-    session_id: str, version: int, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    session_id: str, version: int, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """One approved draft of this session's passage, exactly as it was approved.
 
@@ -74,7 +96,7 @@ async def facilitator_release_by_version(
     facilitate: the scoping is the same one the read beside it does, and a release carries
     the whole of what a team recorded.
     """
-    session = await room.get_session_for_facilitator(db, user, session_id)
+    session = await room.get_session_for_reader(db, user, session_id)
     release = await release_by_version(db, session, version)
     return release.packet
 
@@ -89,7 +111,7 @@ async def force_internalization_release(
     user: FacilitatorUser,
     db: AsyncSession = Depends(get_db),
 ) -> ForcedReleaseResponse:
-    """A facilitator mints this release past an open finding or an unheard part.
+    """A facilitator mints this release past every blocker but a missing recording.
 
     The road for a team that disagrees with a finding is the raised hand, and it ends here:
     a person answered it, agreed with the team, and this is that person's code. So it is a
@@ -100,9 +122,10 @@ async def force_internalization_release(
     whose only purpose is to overrule the gate has nothing to say to a caller who did not ask
     it to, and answering about the session would mean deciding what that caller meant.
 
-    Only the two codes of ``FORCEABLE_BLOCKERS`` are set aside; the rest refuse the force with
-    the same 409 naming them the Desk's own routes always answer a refusal with. The team's own
-    route answers those with a 200 now (ENG-954); this one is a person's, and stays a 409.
+    Every blocker but ``no_rehearsal_audio`` is set aside (ADR 0075); that one refuses the
+    force with the same 409 naming it the Desk's own routes always answer a refusal with. The
+    team's own route answers its refusals with a 200 now (ENG-954); this one is a person's, and
+    stays a 409.
     """
     if not payload.force:
         raise NothingToForce(
@@ -111,14 +134,34 @@ async def force_internalization_release(
     session = await room.get_session_for_facilitator(db, user, session_id)
     release = await approve_release(db, session, forced_by=user.id)
     nudge(session.project_id, "release")
-    return ForcedReleaseResponse(
-        release_id=release.id,
-        session_id=release.session_id,
-        version=release.version,
-        package_sha256=release.package_sha256,
-        approved_at=as_utc(release.approved_at).isoformat(),
-        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
-    )
+    return forced_answer(release)
+
+
+@router.post(
+    "/facilitator/projects/{project_id}/passages/{pericope}/release",
+    response_model=ForcedReleaseResponse,
+)
+async def force_passage_release(
+    project_id: str,
+    payload: ForceReleaseRequest,
+    user: FacilitatorUser,
+    pericope: str = Path(max_length=120),
+    db: AsyncSession = Depends(get_db),
+) -> ForcedReleaseResponse:
+    """«Aprovar mesmo assim (forçar)», addressed to the passage like the Zerar (ADR 0075).
+
+    The room picks the passage's live session that holds rehearsal takes, so the Desk names
+    the team and the pericope and never a session. A team the caller does not facilitate is
+    refused as one that does not exist; a body that does not ask for a force is refused as on
+    the route above.
+    """
+    if not payload.force:
+        raise NothingToForce(
+            "this route only mints a release past the gate, and nothing asked it to"
+        )
+    release = await force_passage(db, user, project_id=project_id, pericope=pericope)
+    nudge(project_id, "release")
+    return forced_answer(release)
 
 
 async def _team_release_blocked(
@@ -126,38 +169,30 @@ async def _team_release_blocked(
 ) -> TeamReleaseResponse:
     """The refused half of the team's answer, its ground derived the finish route's way.
 
-    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` land only where their own
-    blocker fired — but that is the gate's rule, not this function's:
-    `compose_internalization_release` appends `untold_stretch` exactly when `first_untold`
-    finds one, `untold_part` exactly when `untold_parts` is non-empty, and
-    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over a
-    rehearsed part. Asking the same service helpers `terminei` already reads its own answer
-    from (`app/api/internalization_room/back_translation.py`), unconditionally once inside the
-    one short-circuit below, answers exactly the body the gate's own append order already
-    promises; the one guard left is there only to skip the `takes_of` query when nothing needs
-    it. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
+    `unheard_take_ids` and `untold_segment_id` land only where their own blocker fired — but
+    that is the gate's rule, not this function's: `compose_internalization_release` appends
+    `untold_stretch` exactly when `first_untold` finds one, and
+    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over the current
+    parts of a rehearsed session. Asking the same service helpers `terminei` already reads its
+    own answer from (`app/api/internalization_room/back_translation.py`), unconditionally once
+    inside the one short-circuit below, answers exactly the body the gate's own append order
+    already promises; the one guard left is there only to skip the reads when nothing needs
+    them. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
     and re-deriving the ground after the refusal keeps
     `compose_internalization_release`'s return type untouched.
     """
-    untold_take_ids: list[str] = []
     unheard_take_ids: list[str] = []
     untold_segment_id: str | None = None
     if GROUNDED_BLOCKERS & set(blockers):
         final = await room.final_segments(db, session.id)
         untold = room.first_untold(final)
         untold_segment_id = untold.id if untold else None
-        rehearsed = room.rehearsed_parts(final)
-        if "untold_part" in blockers:
-            takes = await takes_of(db, session.id)
-            untold_take_ids = [
-                part.id for part in room.untold_parts(current_parts(takes), rehearsed)
-            ]
+        takes = await takes_of(db, session.id)
         state = room.back_translation_of(session)
-        unheard_take_ids = room.unheard_parts(state, rehearsed)
+        unheard_take_ids = room.unheard_parts(state, current_parts(takes), final)
     return TeamReleaseResponse(
         session_id=session.id,
         blockers=blockers,
-        untold_take_ids=untold_take_ids,
         unheard_take_ids=unheard_take_ids,
         untold_segment_id=untold_segment_id,
     )
@@ -166,11 +201,11 @@ async def _team_release_blocked(
 @router.post(
     "/sessions/{session_id}/release",
     response_model=TeamReleaseResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def approve_internalization_release(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TeamReleaseResponse:
@@ -186,36 +221,32 @@ async def approve_internalization_release(
     not, which left the act that numbers a draft for the external check as the only thing a
     team does with nothing saying which tablet did it.
 
-    Scoped with `get_session_for_room_caller`, which the other team routes do not use: what
-    this one writes is named by the team, and resolving the session by id alone would let
-    one tablet mint a release on another team's passage.
+    Scoped to the tablet's team like every team door: what this one writes is named by the
+    team, and resolving the session by id alone would let one tablet mint a release on
+    another team's passage.
 
     Every refusal the gate raises is a 200 naming its blockers, not a 409 (ENG-954): the
     tablet is the client that reads it, and a client that throws on a 409 learns nothing about
     which door is shut. ``InternalizationReleaseBlocked`` answers with its codes as they
-    stand; a session on the shared key answers ``["no_project"]``, a literal here because the
-    fact is the route's own and the gate never sees a project-less session (``approve_release``
-    refuses it first). The facilitator's own routes keep their 409: a person reads those, not
-    the tablet.
+    stand. The facilitator's own routes keep their 409: a person reads those, not the tablet.
 
     The version race is not a refusal and keeps the generic 409 `approve_release` already
-    raises on a lost `IntegrityError`: it is not one of the two exceptions this route catches,
+    raises on a lost `IntegrityError`: it is not the exception this route catches,
     and answering it as a blocker would tell the tablet to stop asking about a passage it is
     entitled to ask about again. That 409 is a retry signal, not a gate.
     """
-    session = await room.get_session_for_room_caller(db, session_id, project_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     try:
         release = await approve_release(db, session, device_id=device_id)
-    except ReleaseWithoutProject:
-        return TeamReleaseResponse(session_id=session_id, blockers=["no_project"])
     except InternalizationReleaseBlocked as exc:
         return await _team_release_blocked(db, session, exc.blockers)
     nudge(session.project_id, "release")
+    approval = approval_of(release)
     return TeamReleaseResponse(
         session_id=session_id,
-        release_id=release.id,
-        version=release.version,
+        release_id=approval.release_id,
+        version=approval.version,
         package_sha256=release.package_sha256,
-        approved_at=as_utc(release.approved_at).isoformat(),
+        approved_at=approval.approved_at,
         blockers=[],
     )

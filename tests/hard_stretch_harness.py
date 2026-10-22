@@ -13,6 +13,7 @@ module keeps its own three-line fixtures and calls what is here.
 from __future__ import annotations
 
 import base64
+import itertools
 from typing import Any
 
 import httpx
@@ -24,6 +25,7 @@ from app.db.models.internalization_room import (
     IRHardStretch,
     IRSegment,
     IRSession,
+    IRTake,
     IRTakeKind,
 )
 from app.models.internalization_room import PlayedTake
@@ -34,14 +36,19 @@ from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import supported_comprehension
+from tests.device_harness import TABLET_TEAM
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
-ROOM_KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 P = "P01"
 AUDIO = b"a equipe explicou este trecho em portugues"
+_RECORDINGS = itertools.count(1)
+
+
+def a_new_recording() -> bytes:
+    return AUDIO + b"-%d" % next(_RECORDINGS)
+
 
 #: The stretches the helpers below tell, as slices of the one rehearsal recording.
 SLICES = [(0, 9000), (9000, 18000), (18000, 27000)]
@@ -93,9 +100,17 @@ class Facilitator:
         self.headers = headers
 
 
-async def a_session(db: AsyncSession, *, team_id: str | None = None) -> str:
+async def a_session(
+    db: AsyncSession,
+    *,
+    team_id: str | None = TABLET_TEAM,
+    language: str | None = None,
+    pericope: str = P,
+) -> str:
     """A session, named by its id: the reads below expire the identity map."""
-    session = await room.create_session(db, pericope=P, project_id=team_id)
+    session = await room.create_session(
+        db, pericope=pericope, project_id=team_id, language=language
+    )
     return str(session.id)
 
 
@@ -112,7 +127,7 @@ async def rehearse(client: httpx.AsyncClient, session_id: str, *, part: int | No
         data["chunk_index"] = str(part)
     kept = await client.post(
         f"{IR}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data=data,
         files={"file": ("ensaio.m4a", b"a equipe ensaiou a passagem inteira", "audio/mp4")},
     )
@@ -128,22 +143,45 @@ async def tell(
     *,
     again: bool = False,
     saying: str | None = None,
+    queued: bool = True,
+    audio: bytes | None = None,
 ) -> httpx.Response:
     """Tell stretch `stretch` (1-based) back, as a first telling or as one more.
 
     `saying=None` is the transcriber coming back with nothing, which is the shape of an
-    outage and the case Marcia named by name.
+    outage and the case Marcia named by name. `queued=False` is for a client whose transcriber
+    is played at the provider, so nothing is queued on it.
     """
     starts, ends = SLICES[stretch - 1]
-    client.said.append(saying if saying is not None else "")  # type: ignore[attr-defined]
+    if queued:
+        client.said.append(saying if saying is not None else "")  # type: ignore[attr-defined]
     data = {"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)}
     if again:
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data=data,
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("trecho.m4a", audio or a_new_recording(), "audio/mp4")},
+    )
+
+
+async def correct(
+    client: httpx.AsyncClient,
+    session_id: str,
+    segment_id: str,
+    take_id: str,
+    *,
+    stretch: int = 1,
+    audio: bytes = AUDIO,
+) -> httpx.Response:
+    """Send one **Correction** of the stretch over slice `stretch` (1-based) to the replace door."""
+    starts, ends = SLICES[stretch - 1]
+    return await client.post(
+        f"{IR}/sessions/{session_id}/segments/{segment_id}/replace",
+        headers={"X-Room-Device": DEVICE},
+        data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
+        files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
 
 
@@ -171,6 +209,13 @@ async def current(db: AsyncSession, session_id: str) -> list[IRSegment]:
     return list(result.scalars().all())
 
 
+async def retro_takes(db: AsyncSession, session_id: str) -> list[IRTake]:
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO)
+    )
+    return list(result.scalars().all())
+
+
 async def marks(db: AsyncSession, session_id: str) -> list[IRHardStretch]:
     result = await db.execute(
         select(IRHardStretch)
@@ -190,8 +235,8 @@ async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -
 async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Everything `build_internalization_release` asks for besides the telling-back itself.
 
-    What the caller told back is left exactly as they told it: only comprehension, coverage
-    and the playback report are added here, and none of them is what these cases are about —
+    What the caller told back is left exactly as they told it: only coverage and the
+    playback report are added here, and none of them is what these cases are about —
     they are about which takes the packet lists, and under which numbers.
 
     The analyst is stood in for rather than run, which is what `analysed_segment_ids` below has
@@ -202,7 +247,6 @@ async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, A
     them on a gate they are not watching (ENG-882).
     """
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await full_room.save_comprehension(db, session, supported_comprehension(P))
 
     told_back = await full_room.final_segments(db, session.id)
     state = full_room.back_translation_of(session)

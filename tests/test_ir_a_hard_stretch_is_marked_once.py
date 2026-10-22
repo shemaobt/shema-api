@@ -40,13 +40,13 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     AUDIO,
     DESK,
     DEVICE,
     FROM_THE_DATABASE,
     IR,
-    ROOM_KEY,
     Facilitator,
     P,
 )
@@ -104,12 +104,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import segments as segments_api
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
 
@@ -133,7 +131,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -176,7 +177,7 @@ async def facilitator(db_session: AsyncSession) -> Facilitator:
 
 
 async def _units(client: httpx.AsyncClient, session_id: str) -> list[dict[str, Any]]:
-    state = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    state = await client.get(f"{IR}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     return list(state.json()["back_translation"]["segments"])
 
@@ -206,6 +207,8 @@ async def test_the_third_telling_of_one_stretch_asks_for_a_person_once(
     on every call — so the room deleted the record that somebody had already walked over.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
 
@@ -247,6 +250,8 @@ async def test_a_second_hard_stretch_asks_again(
 ) -> None:
     """Once per stretch, not once per session: a different stretch is a different ask."""
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
 
@@ -284,6 +289,8 @@ async def test_the_mark_survives_everything_that_follows(
     the notice — not `terminei`, but the next thing the team said, whatever it was.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
     for saying in ("de novo", "e outra vez"):
@@ -309,7 +316,6 @@ async def test_the_mark_survives_everything_that_follows(
 
     finished = await client.post(
         f"{IR}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": ROOM_KEY},
         json={},
     )
     assert finished.status_code == 200, finished.text
@@ -333,6 +339,8 @@ async def test_a_blocking_halt_after_a_warning_still_clears_the_stamps(
     facilitator reading a stamp that answered a halt nobody has been to.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
     for saying in ("de novo", "e outra vez"):
@@ -341,9 +349,7 @@ async def test_a_blocking_halt_after_a_warning_still_clears_the_stamps(
     attended = await _row(db_session, session_id)
     assert attended.attended_at is not None
 
-    stopped = await client.post(
-        f"{IR}/sessions/{session_id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
-    )
+    stopped = await client.post(f"{IR}/sessions/{session_id}/needs-person")
     assert stopped.status_code == 200, stopped.text
 
     blocked = await _row(db_session, session_id)
@@ -363,6 +369,8 @@ async def test_the_facilitator_queue_lists_the_marks_and_the_tablet_does_not(
 ) -> None:
     """Facilitator-only, explicitly. The team never hears that the room counted."""
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
     first_of_the_chain = (await _current(db_session, session_id))[1].id
@@ -379,7 +387,7 @@ async def test_the_facilitator_queue_lists_the_marks_and_the_tablet_does_not(
     assert listed["tellings"] == RETELLS_BEFORE_A_WARNING
     assert listed["crossed_at"]
 
-    state = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    state = await client.get(f"{IR}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     body = state.json()
     assert "hard_stretches" not in body
@@ -412,7 +420,12 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
 
     async def _analyst(**kwargs: Any) -> BtAnalysis:
         readings.append(
-            {**kwargs, "segments": bt_api.room.segments_block(kwargs["segments"]), "session_id": ""}
+            {
+                **kwargs,
+                "segments": bt_api.room.segments_block(kwargs["segments"], kwargs["addresses"]),
+                "addresses": "",
+                "session_id": "",
+            }
         )
         return BtAnalysis(findings=[])
 
@@ -427,12 +440,11 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
         session_id = await _a_session(db_session)
         take_id = await _rehearse(client, session_id)
         await _told(client, session_id, take_id, 2)
-        if with_a_mark:
-            # Word for word what stretch 2 already said, so the only difference between the
-            # twins is the mark itself and never the telling-back the analyst reads.
-            for _ in range(2):
-                await _tell(client, session_id, take_id, 2, again=True, saying="o trecho 2")
-            assert await _marks(db_session, session_id), "o gêmeo marcado não foi marcado"
+        # Word for word what stretch 2 already said, so the only difference between the
+        # twins is the mark itself and never the telling-back the analyst reads.
+        for _ in range(2 if with_a_mark else 1):
+            await _tell(client, session_id, take_id, 2, again=True, saying="o trecho 2")
+        assert bool(await _marks(db_session, session_id)) is with_a_mark
         answered = await press_terminei(
             client, session_id, report=await heard_every_part(db_session, session_id)
         )
@@ -463,7 +475,6 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
     that makes a hard stretch. Nothing about the crossing may reach either prompt.
     """
     from app.services.internalization_room import back_translation as service
-    from app.services.internalization_room.back_translation import Finding, FindingKind
     from app.services.internalization_room.prompts import get_prompt_text
     from app.services.internalization_room.segments import capture_segment
 
@@ -494,7 +505,6 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
         bridge_take_id="retro-2",
         transcript="e Rute foi com ela",
     )
-    finding = Finding(kind=FindingKind.MISSING, note="a colheita da cevada", segment_id=earlier.id)
 
     async def _both_prompts() -> list[tuple[str, str]]:
         said.clear()
@@ -503,21 +513,12 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             scope=P,
             pericope_num=P,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-        )
-        await service.verify_correction(
-            findings=[finding],
-            earlier=earlier,
-            corrected=corrected,
-            chunk=1,
-            scope=P,
-            pericope_num=P,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
             addresses=Addresses(),
         )
         return list(said)
 
     plain = await _both_prompts()
-    assert len(plain) == 2, "o analista e a verificação da correção, um prompt cada"
+    assert len(plain) == 1, "o analista, um prompt"
 
     earlier.tellings = RETELLS_BEFORE_A_WARNING
     corrected.tellings = RETELLS_BEFORE_A_WARNING
@@ -600,11 +601,7 @@ async def test_a_count_left_past_the_number_by_a_lost_mark_is_recovered(
 async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_counts(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """A retry that lands on a retired row must not spend a telling on it.
-
-    The captured branch is refused by `capture_segment`; counting had no such guard, so an
-    unheard retry counted on a row nothing can ever replace — and could mark it hard.
-    """
+    """A retry that lands on a retired row must not spend a telling on it."""
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 1)
@@ -614,7 +611,7 @@ async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_coun
     client.said.append("")  # type: ignore[attr-defined]
     refused = await client.post(
         f"{IR}/sessions/{session_id}/segments/{retired['segment_id']}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={
             "take_id": retired["take_id"],
             "starts_ms": str(retired["starts_ms"]),
@@ -641,7 +638,7 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
     parent = (await _units(client, session_id))[0]
     divided = await client.post(
         f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/divide",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         json={"at_ms": 4000},
     )
     assert divided.status_code == 200, divided.text
@@ -649,7 +646,7 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
     client.said.append("")  # type: ignore[attr-defined]
     refused = await client.post(
         f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={
             "take_id": parent["take_id"],
             "starts_ms": str(parent["starts_ms"]),
@@ -659,6 +656,7 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
     )
 
     assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
     db_session.expire_all()
     stood = await _current(db_session, session_id)
     assert [one.tellings for one in stood] == [1, 1, 1], "nem o pai nem os pedaços contaram"
@@ -742,36 +740,6 @@ async def test_an_empty_retelling_is_refused_and_counts_nothing(
     assert await _marks(db_session, session_id) == []
 
 
-async def test_an_empty_re_recording_counts_in_place(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """The same rule on the route the team corrects by."""
-    session_id = await _a_session(db_session)
-    take_id = await _rehearse(client, session_id)
-    await _told(client, session_id, take_id, 1)
-    stretch = (await _units(client, session_id))[0]
-
-    for _ in range(2):
-        client.said.append("")  # type: ignore[attr-defined]
-        answered = await client.post(
-            f"{IR}/sessions/{session_id}/segments/{stretch['segment_id']}/replace",
-            headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-            data={
-                "take_id": stretch["take_id"],
-                "starts_ms": str(stretch["starts_ms"]),
-                "ends_ms": str(stretch["ends_ms"]),
-            },
-            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-        )
-        assert answered.status_code == 200, answered.text
-        assert answered.json()["captured"] is False
-
-    assert answered.json()["needs_person"] is True
-    standing = await _current(db_session, session_id)
-    assert [one.tellings for one in standing] == [RETELLS_BEFORE_A_WARNING]
-    assert len(await _marks(db_session, session_id)) == 1
-
-
 # ---------------------------------------------------------------------------
 # 9. A retelling supersedes the stretch it retells
 # ---------------------------------------------------------------------------
@@ -794,13 +762,12 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     again = await _tell(client, session_id, take_id, 1, again=True, saying="o primeiro de novo")
 
     assert again.status_code == 200, again.text
-    assert again.json()["chunks"] == 2, "contar de novo não acrescenta um trecho à passagem"
     standing = await _current(db_session, session_id)
     assert len(standing) == 2
     current = standing[0]
     assert current.id != replaced.id
     assert current.ordinal == replaced.ordinal
-    assert current.pass_number == 2
+    assert current.pass_number == 1, "nenhuma conferência tinha lido a equipe ainda"
     assert current.tellings == 2
 
     retired = (
@@ -814,15 +781,9 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     assert retired.superseded_by_id == current.id
 
 
-async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
+async def test_a_chunk_over_a_divided_stretchs_slice_is_refused_not_told_over_its_pieces(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """A stretch that was divided is no longer a unit, so nothing retells it.
-
-    Looked up among every current row rather than among the leaves, the chunk would find the
-    divided parent and `capture_segment` would refuse it — a refusal where the room used to
-    take the team's work.
-    """
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 1)
@@ -830,7 +791,7 @@ async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
 
     divided = await client.post(
         f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/divide",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         json={"at_ms": 4000},
     )
     assert divided.status_code == 200, divided.text
@@ -839,10 +800,12 @@ async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
         client, session_id, take_id, 1, again=True, saying="sobre a fatia inteira"
     )
 
-    assert over_the_parent.status_code == 200, over_the_parent.text
-    assert over_the_parent.json()["captured"] is True
-    born = [one for one in await _current(db_session, session_id) if one.parent_id is None]
-    assert [one.tellings for one in born] == [1, 1], (
-        "nada foi substituído, então a fatia inteira é uma stretch que ninguém contou ainda"
-    )
-    assert born[-1].ordinal == 2, "e ela toma a posição seguinte, como qualquer primeira contagem"
+    assert over_the_parent.status_code == 400, over_the_parent.text
+    assert over_the_parent.json()["code"] == "OVERLAPS_A_STANDING_FRASE"
+    standing = await _current(db_session, session_id)
+    assert [(one.starts_ms, one.ends_ms) for one in standing if one.parent_id is None] == [
+        (0, 9000)
+    ], "a fatia inteira virava uma frase nova por cima das duas metades"
+    assert sorted(
+        (one.starts_ms, one.ends_ms) for one in standing if one.parent_id is not None
+    ) == [(0, 4000), (4000, 9000)]

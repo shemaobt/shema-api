@@ -17,8 +17,9 @@ from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRTake, IRTakeKind
 from app.services.internalization_room.voice_handles import facilitator_audio_url
 from tests.baker import (
+    a_language,
+    an_email,
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
@@ -49,9 +50,10 @@ async def client(db_session: AsyncSession):
         yield c
 
 
-async def a_facilitator(db: AsyncSession, *, email: str = "fac@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
+    email = email or an_email()
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)
@@ -182,4 +184,34 @@ async def test_a_questions_address_is_signed_for_the_facilitator_with_the_scope_
     assert answered.status_code == 200, answered.text
     assert held == {"sign": False}, (
         "a leitura da pergunta pela facilitadora ficava aberta enquanto o endereço era assinado"
+    )
+
+
+async def test_a_replys_address_is_signed_for_the_facilitator_with_the_scope_read_let_go(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import get_settings
+    from app.services.internalization_room import questions as questions_service
+
+    project, headers = await a_facilitator(db_session)
+    question = await a_recorded_question(db_session, project.id, tag="resposta")
+    question.reply_audio_key = f"internalization-room/questions/{question.id}/resposta-1.m4a"
+    question.status = IRQuestionStatus.ANSWERED
+    await db_session.commit()
+    held: dict[str, bool] = {}
+
+    async def signs(bucket: str, key: str, **_: object) -> str:
+        held["sign"] = db_session.in_transaction()
+        return f"https://armazenamento.exemplo/{bucket}/{key}?assinado"
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    monkeypatch.setattr(questions_service, "generate_signed_download_url", signs)
+
+    answered = await client.get(
+        f"{IR}/facilitator/questions/{question.id}/reply/audio", headers=headers
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert held == {"sign": False}, (
+        "a leitura da resposta pela facilitadora ficava aberta enquanto o endereço era assinado"
     )

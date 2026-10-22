@@ -22,6 +22,8 @@ def _parse_verdict(raw: str) -> tuple[dict[str, Any], str | None]:
         return {}, "not a JSON object"
     if "verdict" not in verdict:
         return verdict, "verdict reply has no 'verdict' key"
+    if verdict["verdict"] not in ("pass", "correct", "regenerate"):
+        return verdict, "verdict is not one of pass, correct or regenerate"
     if verdict["verdict"] == "correct" and not str(verdict.get("corrected_response") or "").strip():
         return verdict, "correct verdict has an empty corrected_response"
     return verdict, None

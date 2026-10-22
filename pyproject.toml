@@ -80,6 +80,7 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 "scripts/doctrine_allowlist.py" = ["E501"]
 "tests/test_internalization_room_passages.py" = ["RUF001"]
+"tests/test_ir_every_line_the_voice_can_receive_is_pinned_by_passage_and_scene.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

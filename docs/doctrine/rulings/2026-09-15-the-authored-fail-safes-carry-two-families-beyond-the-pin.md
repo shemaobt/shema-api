@@ -4,6 +4,7 @@ pin: 533b6e3f338f1a0077c025a8de0edd89f5a4f4cd
 governs: the authored fail-safe utterances, against the vendored copy at the pin
 word: as the authored file cites her — "Ruled by Marcia 2026-09-04 late evening — the Portuguese texts are hers, verbatim." Her sentence is not at the pin; what is recorded here is the citation.
 written: the §X block of the authored fail_safe_utterances.md, carrying her dates of 2026-09-04 and 2026-09-08
+superseded: by the byte-for-byte vendoring of her fail-safe file at her freeze (`FREEZE_PIN`, 18fa7c4; commit 97ac7de9). The vendored copy at 533b6e3 that this ruling compares against is gone and the file the room reads is hers, so the two divergences described below no longer exist: X is in the file she froze, and G is retired (ruling of 2026-09-16). Her words above and the account below stand as written.
 
 The authored file and the vendored one differ in exactly two places, both additions: **G**
 (confidently detected speech outside the bridge language) and **X** (the process lines of the

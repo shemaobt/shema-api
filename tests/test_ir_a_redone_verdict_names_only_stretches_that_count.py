@@ -130,12 +130,8 @@ async def test_a_part_recorded_again_leaves_no_finding_on_the_stretch_it_retired
     assert await _addressed(db_session, session) == [told_again.id]
 
 
-@pytest.mark.parametrize("resolved", [True, False], ids=["resolved", "unresolved"])
 async def test_a_correction_leaves_no_finding_on_the_stretch_it_replaced(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    analyst: ScriptedAnalyst,
-    resolved: bool,
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
 ) -> None:
     """T2. Two findings on frase 2 that are not a swap; frase 2 is retold; finish.
 
@@ -144,8 +140,7 @@ async def test_a_correction_leaves_no_finding_on_the_stretch_it_replaced(
     retelling answered is either gone (resolved) or now on the new stretch (unresolved).
     """
     session, _parts = await rehearsed_in_parts(db_session, 3)
-    analyst.readings = [{"findings": [_addition(2), _unclear(2)]}]
-    analyst.verification = {"resolved": resolved, "findings": []}
+    analyst.readings = [{"findings": [_addition(2), _unclear(2)]}, {"findings": [_addition(2)]}]
     await _finish(client, db_session, session.id)
     replaced = (await _standing(db_session, session.id))[1]
 
@@ -154,29 +149,10 @@ async def test_a_correction_leaves_no_finding_on_the_stretch_it_replaced(
 
     assert verdict["finding_segment_id"] != replaced.id
     assert replaced.id not in await _addressed(db_session, session)
-    assert await _addressed(db_session, session) == ([] if resolved else [retold.id])
+    assert await _addressed(db_session, session) == [retold.id]
 
 
-async def test_a_list_the_replacement_emptied_still_gets_the_closing_reading(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
-) -> None:
-    """The retelling answers the leading finding; the one left stood on the replaced stretch.
-
-    Empty by a verification, it is not measured until the closing reading has looked at the
-    whole passage: the verdict carries what that reading raises and does not bless the passage.
-    """
-    session, _parts = await rehearsed_in_parts(db_session, 3)
-    analyst.readings = [{"findings": [_addition(2), _unclear(2)]}, {"findings": [_addition(3)]}]
-    await _finish(client, db_session, session.id)
-    await _retell(db_session, session, (await _standing(db_session, session.id))[1])
-
-    verdict = await _finish(client, db_session, session.id)
-
-    assert verdict["checked"] is False
-    assert verdict["finding_kind"] == "addition"
-
-
-@pytest.mark.parametrize("reading", ["whole", "closing", "correction check"])
+@pytest.mark.parametrize("reading", ["whole", "closing"])
 async def test_whichever_reading_ran_every_saved_finding_addresses_a_stretch_that_counts(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst, reading: str
 ) -> None:
@@ -188,14 +164,7 @@ async def test_whichever_reading_ran_every_saved_finding_addresses_a_stretch_tha
         analyst.readings = [{"findings": [_addition(1), _unclear(3)]}]
         await _finish(client, db_session, session.id)
     else:
-        analyst.readings = [{"findings": [_addition(2)]}]
-        if reading == "closing":
-            analyst.readings.append({"findings": [_unclear(2)]})
-        else:
-            analyst.verification = {
-                "resolved": True,
-                "findings": [{"kind": "unclear", "note": THE_UNCLEAR}],
-            }
+        analyst.readings = [{"findings": [_addition(2)]}, {"findings": [_unclear(2)]}]
         await _finish(client, db_session, session.id)
         await _retell(db_session, session, (await _standing(db_session, session.id))[1])
         await _finish(client, db_session, session.id)

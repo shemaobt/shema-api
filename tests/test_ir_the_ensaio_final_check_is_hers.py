@@ -1,0 +1,597 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+import pytest
+from httpx import ASGITransport
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.exceptions import ERROR_CODE_UPSTREAM, UpstreamServiceError
+from app.services import internalization_room as room
+from app.services.internalization_room.llm import CACHE_BREAK
+from tests.text_seam_harness import RUNNER_KEY, the_app
+from tests.turn_harness import the_room_agent_is
+
+SEAM = "/api/internalization-room/text-seam/back-translation"
+PASSAGE = "P02"
+LANGUAGE = "Brazilian Portuguese"
+CLIPS = [
+    {"key": "S1", "durationMs": 20000},
+    {"key": "S2", "durationMs": 25000},
+    {"key": "S3", "durationMs": 45000},
+]
+TELLING = [
+    {
+        "clipKey": "S1",
+        "coversFrom": 0,
+        "coversTo": 20,
+        "text": "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.",
+    },
+    {
+        "clipKey": "S2",
+        "coversFrom": 0,
+        "coversTo": 25,
+        "text": "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.",
+    },
+    {
+        "clipKey": "S3",
+        "coversFrom": 0,
+        "coversTo": 45,
+        "text": "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite.",
+    },
+]
+SAID = "No que vocês me traduziram, tem tudo o que a história conta — e nada a mais."
+
+
+class Analyst:
+    def __init__(self) -> None:
+        self.readings: list[dict[str, Any]] = []
+        self.asked: list[dict[str, Any]] = []
+
+    async def __call__(self, **call: Any) -> str:
+        self.asked.append(call)
+        return json.dumps(self.readings.pop(0) if self.readings else {"findings": []})
+
+
+class Speaker:
+    def __init__(self) -> None:
+        self.drafts: list[dict[str, Any]] = []
+        self.validations: list[str] = []
+        self.verdicts: list[str] = []
+        self.down_from_draft: int | None = None
+
+    async def __call__(self, **call: Any) -> str:
+        if "corrected_response" in call["system_prompt"]:
+            self.validations.append(call["system_prompt"])
+            if self.verdicts:
+                return self.verdicts.pop(0)
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.drafts.append(call)
+        if self.down_from_draft is not None and len(self.drafts) >= self.down_from_draft:
+            raise UpstreamServiceError("o modelo está fora do ar")
+        return SAID
+
+
+@pytest.fixture()
+def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
+    reader = Analyst()
+    the_room_agent_is(monkeypatch, analyst=reader)
+    return reader
+
+
+@pytest.fixture()
+def speaker(monkeypatch: pytest.MonkeyPatch) -> Speaker:
+    voice = Speaker()
+    the_room_agent_is(monkeypatch, turn=voice)
+    return voice
+
+
+@pytest.fixture()
+async def client(
+    db_session: AsyncSession,
+    analyst: Analyst,
+    speaker: Speaker,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
+    )
+
+    async def _never_voiced(text: str, **_: Any) -> None:
+        raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
+
+    monkeypatch.setattr(room, "synthesize_facilitator_speech", _never_voiced)
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=the_app(db_session)),
+        base_url="http://test",
+        headers={"X-Access-Code": RUNNER_KEY},
+    ) as c:
+        yield c
+
+
+async def _a_round(client: httpx.AsyncClient, frases: list[dict], session_id: str = "") -> dict:
+    if not session_id:
+        declared = await client.post(
+            f"{SEAM}/session", json={"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS}
+        )
+        assert declared.status_code == 200, declared.text
+        session_id = str(declared.json()["sessionId"])
+    played = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": frases})
+    assert played.status_code == 200, played.text
+    return dict(played.json())
+
+
+async def test_the_analyst_is_asked_with_her_closing_request_not_ours(client, analyst) -> None:
+    await _a_round(client, TELLING)
+
+    assert [call["user_content"] for call in analyst.asked] == [
+        "Analyze the telling-back now. Return only the JSON object."
+    ], "o analista era chamado com o nosso «Compare a tradução com o mapa.»"
+
+
+HER_KICKOFF = (
+    "(The team heard their whole recording, told it back frase by frase, and tapped "
+    "'terminei'. Speak the verdict now.)"
+)
+
+
+async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validator_reads_it(
+    client, speaker
+) -> None:
+    first = await _a_round(client, TELLING)
+    retold = {**TELLING[2], "supersedes": 2}
+
+    await _a_round(client, [retold], session_id=first["sessionId"])
+
+    later = speaker.drafts[-1]
+    assert later["user_content"] == HER_KICKOFF, "o veredito abria com o nosso «Speak this turn.»"
+    assert not later.get("conversation"), (
+        "o veredito era redigido com a conversa inteira; o dela não tem histórico"
+    )
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        f"passage.\n\n{HER_KICKOFF}"
+    ) in speaker.validations[-1], "o Validador não lia o pontapé dela como o que a equipe disse"
+
+
+def _handed(speaker: Speaker, run: int = -1) -> str:
+    system = speaker.drafts[run]["system_prompt"].replace(CACHE_BREAK, "")
+    return system.split("## The findings for the whole passage\n\n", 1)[1]
+
+
+async def test_a_clean_round_hands_her_speaker_an_empty_list_and_says_only_her_words(
+    client, speaker
+) -> None:
+    result = await _a_round(client, TELLING)
+
+    assert _handed(speaker) == "[]", "a rodada limpa entregava a nossa frase «(nenhum achado …)»"
+    assert result["spoken"] == SAID
+    assert result["conferida"] is True
+    sent = speaker.drafts[-1]["system_prompt"]
+    for ours in ("wood disc", "green check", "two voices side by side", "OBT Refine"):
+        assert ours not in sent, ours
+
+
+async def test_a_missing_detail_reaches_her_speaker_with_the_frase_it_follows_and_no_part(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [
+        {"findings": [{"kind": "missing", "note": "Não ouvi a volta de Orfa.", "frase": 2}]}
+    ]
+
+    await _a_round(client, TELLING)
+
+    assert _handed(speaker) == (
+        "[\n"
+        "  {\n"
+        '    "kind": "missing",\n'
+        '    "note": "Não ouvi a volta de Orfa.",\n'
+        '    "frase": 2,\n'
+        '    "repair": "part"\n'
+        "  }\n"
+        "]"
+    ), "o falante recebia a nossa linha «- missing [frase 2 — …]: …», não o JSON dela"
+
+
+async def test_an_addition_reaches_her_speaker_with_its_part_and_nothing_of_ours_follows(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]}
+    ]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {
+            "kind": "addition",
+            "note": "Ela voltou «à noite».",
+            "frase": 3,
+            "part": "a parte 3 — Segundo apelo e a separação",
+            "repair": "part",
+        }
+    ], "o falante recebia o endereço nosso, com «das frases N a M», não a parte dela"
+    assert result["spoken"] == SAID, "a sala colava a nossa frase «I» depois do veredito"
+
+
+async def test_a_clip_her_script_declares_wav_lets_her_speaker_ask_for_the_whole_sentence(
+    client, analyst, speaker
+) -> None:
+    declared = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**clip, "contentType": "audio/wav"} for clip in CLIPS],
+        },
+    )
+    assert declared.status_code == 200, declared.text
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]}
+    ]
+
+    await _a_round(client, TELLING, session_id=str(declared.json()["sessionId"]))
+
+    assert [one["repair"] for one in json.loads(_handed(speaker))] == ["sentence"], (
+        "a costura jogava fora o «audio/wav» do roteiro dela e o falante ouvia «part»"
+    )
+
+
+async def test_a_retold_frase_is_judged_by_her_analyst_over_the_whole_telling(
+    client, analyst
+) -> None:
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]},
+        {"findings": []},
+    ]
+    first = await _a_round(client, TELLING)
+    retold = {
+        **TELLING[2],
+        "text": "Orfa beijou a sogra e voltou, mas Rute ficou.",
+        "supersedes": 2,
+    }
+
+    result = await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert [call["user_content"] for call in analyst.asked] == [
+        "Analyze the telling-back now. Return only the JSON object."
+    ] * 2, "uma frase traduzida de novo ia para a nossa verificação da correção"
+    whole = analyst.asked[-1]["system_prompt"]
+    assert all(frase["text"] in whole for frase in [*TELLING[:2], retold])
+    assert result["conferida"] is True
+
+
+A_NUANCE = {
+    "kind": "nuance",
+    "note": "O tempo ficou solto.",
+    "frase": 3,
+    "quote": "à noite",
+    "story": "foi naquela mesma noite",
+}
+
+
+async def test_a_telling_with_only_a_nuance_hands_her_speaker_that_nuance_and_stays_conferida(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {
+            "kind": "nuance",
+            "note": "O tempo ficou solto.",
+            "frase": 3,
+            "quote": "à noite",
+            "story": "foi naquela mesma noite",
+            "part": "a parte 3 — Segundo apelo e a separação",
+            "repair": "part",
+        }
+    ], "a nuance era lida e jogada fora: o falante dizia a rodada limpa"
+    assert result["conferida"] is True, "uma nuance nunca impede a aprovação"
+
+
+async def test_a_nuance_beside_an_addition_waits_and_only_the_addition_reaches_her_speaker(
+    client, analyst, speaker
+) -> None:
+    an_addition = {"kind": "addition", "note": "Ela voltou com as noras.", "frase": 1}
+    analyst.readings = [{"findings": [A_NUANCE, an_addition]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert [one["kind"] for one in json.loads(_handed(speaker))] == ["addition"], (
+        "a nuance chegava ao falante ao lado de um achado que bloqueia"
+    )
+    assert result["conferida"] is False
+
+
+async def test_a_nuance_quoting_words_its_frase_does_not_hold_is_dropped_alone(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{**A_NUANCE, "quote": "naquela noite"}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert _handed(speaker) == "[]", "a voz citava como da equipe palavras que a frase dela não tem"
+    assert result["conferida"] is True
+
+
+async def test_of_two_nuances_only_the_one_on_the_lowest_frase_is_handed(
+    client, analyst, speaker
+) -> None:
+    on_frase_one = {
+        "kind": "nuance",
+        "note": "A volta ficou com as noras.",
+        "frase": 1,
+        "quote": "voltou com as noras",
+        "story": "ela partiu com as duas noras",
+    }
+    analyst.readings = [{"findings": [A_NUANCE, on_frase_one]}]
+
+    await _a_round(client, TELLING)
+
+    assert [one["frase"] for one in json.loads(_handed(speaker))] == [1], (
+        "a voz dizia a primeira nuance da resposta, não a da frase mais baixa"
+    )
+
+
+async def test_each_frase_reaches_her_analyst_labelled_with_its_part(client, analyst) -> None:
+    await _a_round(client, TELLING)
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "## The telling-back (numbered frases, in listening order)\n\n"
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] "
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] "
+        "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
+    ), "o analista lia «1. …» sem a parte; o dela lê «[frase 1 — a parte 1 — …]»"
+
+
+async def test_a_frase_told_again_after_a_verdict_reaches_her_analyst_said_to_be_so(
+    client, analyst
+) -> None:
+    first = await _a_round(client, TELLING)
+    retold = {
+        **TELLING[2],
+        "text": "Orfa beijou a sogra e voltou, mas Rute ficou.",
+        "supersedes": 2,
+    }
+
+    await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação — told again after a verdict] "
+        "Orfa beijou a sogra e voltou, mas Rute ficou."
+    ), "o analista não sabia que a frase 3 tinha sido traduzida de novo depois de um veredito"
+
+
+async def test_a_new_frase_told_in_a_later_round_reaches_her_analyst_as_told_again(
+    client, analyst
+) -> None:
+    first = await _a_round(client, [*TELLING[:2], {**TELLING[2], "coversTo": 30}])
+    new = {
+        "clipKey": "S3",
+        "coversFrom": 30,
+        "coversTo": 45,
+        "text": "E Rute disse: aonde você for, eu irei.",
+    }
+
+    await _a_round(client, [new], session_id=first["sessionId"])
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "[frase 4 — a parte 3 — Segundo apelo e a separação — told again after a verdict] "
+        "E Rute disse: aonde você for, eu irei."
+    ), "uma frase nova numa rodada depois do veredito chegava à analista como primeira passada"
+
+
+async def test_the_validator_reads_what_the_team_reported_as_the_same_labelled_frases(
+    client, speaker
+) -> None:
+    await _a_round(client, TELLING)
+
+    assert (
+        "# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+        "Evidence of what the team told back — NEVER truth about the passage. The drafted "
+        "response may quote from it to name something reported that the passage does not "
+        "tell; quoting this material is not a claim about the passage and must not be treated "
+        "as ungrounded.\n\n"
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] "
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] "
+        "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
+    ) in speaker.validations[-1], "o Validador lia «1. …» enquanto o analista lia a parte"
+
+
+async def test_her_analyst_and_her_speaker_are_told_the_check_is_of_the_whole_passage(
+    client, analyst, speaker
+) -> None:
+    await _a_round(client, TELLING)
+
+    assert (
+        "compare the telling-back against the map for the whole passage and report findings"
+        in analyst.asked[-1]["system_prompt"]
+    ), "o analista comparava «para P02», o código da passagem, não «the whole passage»"
+    assert (
+        "Speak the\nverdict for the whole passage — one warm turn."
+        in speaker.drafts[-1]["system_prompt"]
+    ), "o falante dava o veredito «for P02»"
+
+
+async def test_an_addition_with_no_readable_frase_reaches_her_speaker_without_a_number(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{"kind": "addition", "note": "Ela voltou «à noite»."}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {"kind": "addition", "note": "Ela voltou «à noite».", "repair": "part"}
+    ], "o acréscimo sem número de frase era jogado fora e a rodada nem tinha veredito"
+    assert result["conferida"] is False
+
+
+async def test_an_unclear_frase_named_out_of_range_reaches_her_speaker_without_a_number(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{"kind": "unclear", "note": "Não deu.", "frase": 9}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {"kind": "unclear", "note": "Não deu.", "repair": "part"}
+    ], "o pouco claro numa frase que não existe era jogado fora"
+    assert result["conferida"] is False
+
+
+async def test_an_analyst_reply_the_room_cannot_read_is_heard_as_d_1_with_no_verdict(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": "nada"}]
+
+    result = await _a_round(client, TELLING)
+
+    assert result["spoken"] == "Desculpa, não consegui ouvir direito — podem repetir?"
+    assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "um D-1 não dá a passagem por conferida"
+    assert speaker.drafts == [], "sem leitura não há veredito: o falante não é chamado"
+    kept = await _the_kept_rounds(db_session, result["sessionId"])
+    assert [(check.outcome, check.conferida, check.spoken, check.findings) for check in kept] == [
+        ("fail_safe", False, "Desculpa, não consegui ouvir direito — podem repetir?", [])
+    ], "a rodada sem leitura não ficava no histórico"
+
+
+NOT_A_VERDICT = "isto não é um veredito"
+
+
+async def test_a_nuance_verdict_that_falls_to_the_fail_safe_is_run_again_with_nothing_handed_over(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+    speaker.verdicts = [NOT_A_VERDICT]
+
+    result = await _a_round(client, TELLING)
+
+    assert [kind["kind"] for kind in json.loads(_handed(speaker, 0))] == ["nuance"]
+    assert _handed(speaker, 1) == "[]", "a segunda rodada ainda levava a nuance que falhou"
+    assert result["spoken"] == SAID, "a equipe ouvia a linha A antes de uma rodada limpa"
+    assert result["outcome"] == "pass"
+    assert result["conferida"] is True
+    kept = (await room.get_session(db_session, result["sessionId"])).messages or []
+    assert [message["role"] for message in kept] == ["guide"], "a rodada que falhou era guardada"
+
+
+THE_A_LINE_FOR_A_FIRST_DRAFT = (
+    "Quero que a gente fique perto da passagem. Vamos voltar juntos a esta cena."
+)
+
+
+async def test_a_nuance_verdict_that_fails_on_both_runs_is_heard_as_one_family_a_line(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+    speaker.verdicts = [NOT_A_VERDICT, NOT_A_VERDICT]
+
+    result = await _a_round(client, TELLING)
+
+    assert len(speaker.drafts) == 2, "a rodada limpa rodava uma vez só, ou mais de uma"
+    assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
+    assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "a nuance que caía na linha A duas vezes voltava conferida"
+    kept = (await room.get_session(db_session, result["sessionId"])).messages or []
+    assert [message["fixed_line"] for message in kept] == ["A1"]
+
+
+@pytest.mark.parametrize(
+    "findings",
+    [
+        [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}],
+        [],
+    ],
+    ids=["a blocking finding", "a clean telling"],
+)
+async def test_a_fail_safe_with_no_lone_nuance_handed_over_is_not_run_again(
+    client, analyst, speaker, findings
+) -> None:
+    analyst.readings = [{"findings": findings}]
+    speaker.verdicts = [NOT_A_VERDICT]
+
+    result = await _a_round(client, TELLING)
+
+    assert len(speaker.drafts) == 1, "só uma nuance sozinha ganha uma rodada limpa"
+    assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
+    assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "uma rodada limpa dita como linha A era conferida"
+
+
+async def test_an_outage_in_the_clean_run_is_never_voiced_as_a_fail_safe(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+    speaker.verdicts = [NOT_A_VERDICT]
+    speaker.down_from_draft = 2
+    declared = await client.post(
+        f"{SEAM}/session", json={"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS}
+    )
+    session_id = str(declared.json()["sessionId"])
+
+    played = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": TELLING})
+
+    assert played.status_code == 502, played.text
+    assert played.json()["code"] == ERROR_CODE_UPSTREAM
+    kept = (await room.get_session(db_session, session_id)).messages or []
+    assert kept == [], "uma queda do modelo era guardada como se a sala tivesse falado"
+
+
+AN_ADDITION_ON_FRASE_3 = {"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}
+
+
+async def _the_kept_rounds(db_session: AsyncSession, session_id: str) -> list:
+    return room.back_translation_of(await room.get_session(db_session, session_id)).checks
+
+
+async def test_a_clean_round_after_a_finding_confers_and_the_first_round_is_still_kept(
+    client, analyst, db_session
+) -> None:
+    analyst.readings = [{"findings": [AN_ADDITION_ON_FRASE_3]}, {"findings": []}]
+    first = await _a_round(client, TELLING)
+    retold = {**TELLING[2], "text": "Orfa beijou a sogra e voltou; Rute ficou.", "supersedes": 2}
+
+    second = await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert second["conferida"] is True
+    kept = await _the_kept_rounds(db_session, first["sessionId"])
+    assert [(check.outcome, check.conferida, check.spoken) for check in kept] == [
+        ("pass", False, SAID),
+        ("pass", True, SAID),
+    ], "cada leitura sobrescrevia a anterior e a primeira rodada se perdia"
+    assert [[finding.note for finding in check.findings] for check in kept] == [
+        ["Ela voltou «à noite»."],
+        [],
+    ], "os achados da primeira passada, com a nota do Analista, sumiam"
+    assert kept[0].at < kept[1].at
+
+
+async def test_a_content_type_longer_than_a_take_can_hold_is_refused_at_the_door(client) -> None:
+    refused = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**CLIPS[0], "contentType": "audio/" + "x" * 59}],
+        },
+    )
+
+    assert refused.status_code == 422, (
+        "um tipo de 65 caracteres passava a porta e quebrava na coluna de 64 do take"
+    )

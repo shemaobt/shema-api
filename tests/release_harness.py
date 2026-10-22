@@ -1,6 +1,6 @@
 """The rows a release case needs before it can ask the packet anything.
 
-A session the room would let the team approve — comprehension supported, coverage met, a
+A session the room would let the team approve — coverage met, a
 rehearsal recorded, a stretch told back and read, the playback reported — assembled through
 the room's own write paths so every case starts from state the field could produce.
 
@@ -30,39 +30,29 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.project import Project
 from app.models.internalization_room import PlayedTake
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     FindingKind,
 )
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
     report_playback,
-    save_comprehension,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
-    make_language,
+    a_language,
+    an_email,
     make_project,
     make_project_user_access,
     make_user,
     make_user_app_role,
 )
+from tests.device_harness import TABLET_TEAM, LinkedTablet, a_linked_tablet
 
 P = "P03"
 
@@ -72,7 +62,6 @@ P02 = "P02"
 CLIP_MS = 61000
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 APP_KEY = "internalization-room"
 
 #: What the team said on frase 1, and what the story says instead. Scene 1 of
@@ -96,25 +85,36 @@ TABLET = "tablet-da-sala"
 def team_headers(credential: str) -> dict[str, str]:
     """What a tablet calls the room's own routes with."""
     return {
-        "X-Room-Key": KEY,
         DEVICE_CREDENTIAL_HEADER: credential,
         "X-Room-Device": TABLET,
     }
 
 
 async def a_claimed_device(
-    db: AsyncSession, *, email: str = "fac@example.com"
+    db: AsyncSession, *, email: str | None = None, language_name: str | None = None
 ) -> tuple[Project, str]:
-    """A device linked to a project, and the credential it calls the room with."""
+    """A device linked to a project, and the credential it calls the room with.
+
+    `language_name` is the team's mother tongue.
+    """
+    project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
+        db, email=email or an_email(), language_name=language_name, tablets=1
+    )
+    return project, tablet.credential
+
+
+async def claimed_tablets_of_one_team(
+    db: AsyncSession, *, email: str, tablets: int, language_name: str | None = None
+) -> tuple[Project, User, list[LinkedTablet]]:
+    """A team, the facilitator who claimed its tablets, and that many tablets claimed to it."""
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=language_name or f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=project.id
-    )
-    return project, claimed.credential
+    claimed = [
+        await a_linked_tablet(db, team_id=project.id, facilitator=user) for _ in range(tablets)
+    ]
+    return project, user, claimed
 
 
 async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
@@ -123,30 +123,6 @@ async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
         select(IRRelease).where(IRRelease.session_id == session_id).order_by(IRRelease.version)
     )
     return list(rows.scalars().all())
-
-
-def supported_comprehension(pericope: str, *, carry_one: bool = False) -> ComprehensionState:
-    checkpoints = list(checkpoints_for(pericope))
-    ledger = []
-    for index, checkpoint in enumerate(checkpoints):
-        result = (
-            EvidenceResult.CARRY_TO_REFINE
-            if carry_one and index == 0
-            else EvidenceResult.DEMONSTRATED
-        )
-        ledger.append(
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=result,
-            )
-        )
-    return ComprehensionState(
-        ledger=list(ledger),
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
 
 
 async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
@@ -178,7 +154,7 @@ async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi v
 async def checked_telling_back(db: AsyncSession, session: IRSession) -> BackTranslationState:
     told = await one_stretch(db, session)
     return BackTranslationState(
-        scope=P,
+        scope=session.pericope,
         findings=[],
         checked=True,
         analysed_segment_ids=[told.id],
@@ -228,6 +204,7 @@ async def never_analysed_telling_back(db: AsyncSession, session: IRSession) -> B
 def ensaio_take(
     session_id: str,
     *,
+    pericope: str = P,
     scope: str = "passagem-inteira",
     pass_number: int | None = None,
     ordinal: int | None = None,
@@ -245,7 +222,7 @@ def ensaio_take(
         session_id=session_id,
         project_id=project_id,
         device_id="tablet-1",
-        pericope=P,
+        pericope=pericope,
         kind=IRTakeKind.ENSAIO,
         scope=scope,
         pass_number=pass_number,
@@ -331,14 +308,14 @@ async def reported_playback(
 async def rehearsed_session(
     db: AsyncSession,
     *,
-    project_id: str | None = None,
+    pericope: str = P,
+    project_id: str | None = TABLET_TEAM,
     language: str | None = None,
     ordinal: int | None = None,
-    **comprehension_kwargs,
 ) -> tuple[IRSession, IRTake]:
     """A session that has done everything a release needs except tell the passage back.
 
-    Comprehension supported, coverage satisfied, the passage rehearsed. The take comes back
+    Coverage satisfied, the passage rehearsed. The take comes back
     beside the session because the stage after this one is told *about* a recording, and a
     case that has to name the part it played cannot find it by guessing.
 
@@ -347,13 +324,17 @@ async def rehearsed_session(
     that under a case would change what the room answers rather than what it is asked.
 
     ``ordinal`` is the number the tablet sends beside a part, and none is the passage recorded
-    in one go. A case about recording that part again names one, because the verb for *this
-    part again* reads the number and nothing else (ADR 0023).
+    in one go. A case about recording a numbered part again names one, because the verb for
+    *this part again* reads the number, and the passage told whole is the part that has none
+    (ADR 0023).
     """
-    session = await create_session(db, pericope=P, project_id=project_id, language=language)
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
-    take = ensaio_take(session.id, ordinal=ordinal, project_id=session.project_id)
+    session = await create_session(db, pericope=pericope, project_id=project_id, language=language)
+    session.coverage_state = merge(
+        initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
+    )
+    take = ensaio_take(
+        session.id, pericope=pericope, ordinal=ordinal, project_id=session.project_id
+    )
     db.add(take)
     await db.commit()
     return session, take
@@ -362,10 +343,10 @@ async def rehearsed_session(
 async def ready_session(
     db: AsyncSession,
     *,
-    project_id: str | None = None,
+    pericope: str = P,
+    project_id: str | None = TABLET_TEAM,
     ordinal: int | None = None,
     tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
-    **comprehension_kwargs,
 ):
     """A session carrying everything the packet refuses to travel without.
 
@@ -382,7 +363,7 @@ async def ready_session(
     rebuilding it, which is the only part of this that ever differs.
     """
     session, _take = await rehearsed_session(
-        db, project_id=project_id, ordinal=ordinal, **comprehension_kwargs
+        db, pericope=pericope, project_id=project_id, ordinal=ordinal
     )
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session
@@ -392,13 +373,11 @@ async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Projec
     """A P02 session ready in every way but one: frase 1 swapped who caused the return.
 
     Everything the gate asks for is here — a rehearsal recorded, one stretch told back and
-    read by the analyst, the whole part played through — with comprehension supported and the
-    floor met besides. The only thing between this session and Refine is the finding the team
-    stopped answering.
+    read by the analyst, the whole part played through — with the floor met besides. The only
+    thing between this session and Refine is the finding the team stopped answering.
     """
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
-    await save_comprehension(db, session, supported_comprehension(P02))
     rehearsal = IRTake(
         session_id=session.id,
         project_id=project.id,
@@ -459,6 +438,7 @@ async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRS
     state = back_translation_of(session)
     state.checked = True
     state.findings = []
+    state.played_by_take = []
     part = await the_one_part_of(db, session)
     await report_playback(
         db,
@@ -501,6 +481,10 @@ def team_release(session_id: str) -> str:
 
 def desk_release(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/release"
+
+
+def desk_passage_release(project_id: str, pericope: str) -> str:
+    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{pericope}/release"
 
 
 def desk_release_at(session_id: str, version: int) -> str:

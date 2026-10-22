@@ -27,9 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
@@ -39,7 +39,6 @@ from tests.room_harness import (
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
@@ -139,11 +138,8 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     said: list[str] = []
 
@@ -161,7 +157,10 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -169,7 +168,6 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 async def _open_session(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": PASSAGE, "language": "pt"},
     )
     assert created.status_code == 200, created.text
@@ -179,7 +177,7 @@ async def _open_session(client: httpx.AsyncClient) -> str:
 async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
@@ -198,7 +196,7 @@ async def _tell_back(
 ) -> None:
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -269,84 +267,6 @@ async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     )
 
 
-async def test_the_room_tells_the_team_instead_of_going_quiet(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
-) -> None:
-    """Scenario 2 of the gate, and scenario 1 of the speaking: the team hears something.
-
-    Written against playable audio rather than the name of a file, which is what this path
-    used to answer with. Naming a line the tablet may not carry is not the same as being
-    heard, and that is the whole of what changed.
-    """
-    session_id, _ = await _two_stretches_told(client)
-    await _leave_it_waiting_to_be_told(db_session, session_id)
-
-    answered = await _finish(client, db_session, session_id)
-    body = answered.json()
-
-    assert body["audio_url"], "a equipe tem de ter o que tocar, sem depender do pacote do app"
-    assert body["fixed_line"] == "", "endereço e fala pré-aprovada nunca vêm juntos"
-    assert spoken, "e alguma coisa tem de ter sido dita para haver endereço"
-
-
-async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
-) -> None:
-    """Scenario 2. The words, not just the fact that there were words.
-
-    The D family is the one this must never be: it says the room could not hear, which is
-    false — it heard everything — and it asks the team to repeat what they already told.
-    """
-    session_id, _ = await _two_stretches_told(client)
-    await _leave_it_waiting_to_be_told(db_session, session_id)
-
-    await _finish(client, db_session, session_id)
-
-    assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE)
-    assert spoken[-1] not in utterances(FailSafe.INAUDIBLE, LANGUAGE)
-
-
-async def test_the_room_does_not_say_the_same_thing_twice_running(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
-) -> None:
-    """Scenario 3, and the reason three lines were written instead of one.
-
-    Nothing about the session changes between two presses in this state — no exchange is
-    appended, because the gate answers before the turn loop — so a rotation keyed on the
-    conversation stands still and the room repeats itself word for word.
-    """
-    session_id, _ = await _two_stretches_told(client)
-    await _leave_it_waiting_to_be_told(db_session, session_id)
-
-    await _finish(client, db_session, session_id)
-    await _finish(client, db_session, session_id)
-
-    assert len(spoken) == 2
-    assert spoken[0] != spoken[1], (
-        "uma sala que responde duas vezes seguidas com a mesma frase soa como máquina "
-        "travada, que é a impressão que as três linhas existem para evitar"
-    )
-    assert set(spoken) <= set(utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE))
-
-
-async def test_the_other_families_are_still_played_from_the_app(
-    client: httpx.AsyncClient, analyst: Analyst, spoken: list[str], db_session: AsyncSession
-) -> None:
-    """Scenario 5. Only this one line moved; the fail-safes stay where they belong.
-
-    They exist to work when the rest does not — no network, no model — so a slice that
-    quietly dragged them onto the synthesis path would take away the one property they
-    are for.
-    """
-    session_id = await _open_session(client)
-
-    body = (await _finish(client, db_session, session_id)).json()
-
-    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))
-    assert body["audio_url"] == ""
-    assert spoken == [], "nada foi sintetizado no caminho de 'não ouvi nada'"
-
-
 async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -362,7 +282,7 @@ async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained
     answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["checked"] is False
-    standing = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    standing = await client.get(f"{PREFIX}/sessions/{session_id}")
     assert standing.json()["back_translation"]["checked"] is False, (
         "e não pode ter avançado no estado que o tablet retoma depois"
     )
@@ -395,21 +315,3 @@ async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
     assert analyst.readings == 1
     assert body["checked"] is True
     assert body["fixed_line"] == "", "o caminho normal fala pela síntese, não por fala fixa"
-
-
-async def test_a_telling_back_with_no_stretch_at_all_answers_as_before(
-    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
-) -> None:
-    """Scenario 6. There is already a path for this one, and it is not this one.
-
-    Nothing was told back, so the honest thing is that the room heard nothing — not that a
-    stretch is waiting, because there is no stretch.
-    """
-    session_id = await _open_session(client)
-
-    answered = await _finish(client, db_session, session_id)
-    body = answered.json()
-
-    assert analyst.readings == 0
-    assert body["checked"] is False
-    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))

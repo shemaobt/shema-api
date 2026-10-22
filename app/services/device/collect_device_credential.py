@@ -1,10 +1,8 @@
 """The one moment a tablet takes a credential of its own, and the three refusals around it.
 
-Every other room route a tablet calls is opened by ``X-Room-Key``: one string, identical in
-every installation, naming nobody and revocable only by shipping a new bundle. The claim
-already mints the credential that replaces it — and hands it to the Desk, which
-``git grep credential`` says has never read it. So the credential exists and the one party
-that needs it has no way to reach it. This is the reach.
+Every team door the tablet calls opens to the credential collected here and to nothing else
+(ADR 0057). The claim mints a credential too, and hands it to the Desk, which never reads it;
+that copy opens no team door. This is how the one party that needs a credential gets one.
 
 **It mints a fresh one rather than handing back the claim's.** Not a choice: the row keeps
 only a hash, so the claim-time plaintext is gone the moment that response is written. What

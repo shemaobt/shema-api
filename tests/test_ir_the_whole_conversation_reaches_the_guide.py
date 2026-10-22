@@ -16,12 +16,11 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
-from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
+from app.services.internalization_room.run_turn import run_turn
 from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
-VERDICT_SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 P = "P03"
 
 #: The Portuguese literal the flat conversation block served to every session.
@@ -102,30 +101,4 @@ async def test_the_opening_asks_in_the_sessions_own_language_with_nothing_behind
     assert asked["conversation"] == []
     assert OPENING_PLACEHOLDER not in asked["user_content"], (
         f"o literal em português continuava servido a toda sessão: {asked['user_content']}"
-    )
-
-
-async def test_a_turn_nobody_spoke_in_still_ends_on_a_user_message(
-    recording: _Recording,
-) -> None:
-    """The verdict turn: the API refuses a request that ends on the Guide's own last speech."""
-    await run_verdict_turn(
-        findings_text="(nenhum achado)",
-        closing="\nPeça o próximo trecho.",
-        scope=P,
-        pericope_num=P,
-        messages=_exchanges(5),
-        speaker_prompt=VERDICT_SPEAKER,
-        validator_prompt=VALIDATOR,
-        telling_back="a fome chegou e eles partiram",
-        language_code="pt",
-        settings=_settings(),
-    )
-
-    asked = recording.guide[0]
-    assert asked["conversation"][-1]["role"] == "assistant", (
-        "uma sessão termina na fala do Guia, que é onde o turno de veredito a encontra"
-    )
-    assert asked["user_content"].strip() != "", (
-        "sem uma última mensagem user a chamada volta 400 e a equipe ouve uma linha enlatada"
     )

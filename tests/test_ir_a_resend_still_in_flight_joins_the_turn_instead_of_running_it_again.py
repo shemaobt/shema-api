@@ -19,19 +19,22 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRTurn
 from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.opening_harness import NOTE_PT_OV_RUTH, NOTE_PT_P03, ask_for_the_opening
+from tests.release_harness import P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
-VOICED_AS = "tts/voice/abertura.mp3"
+VOICED_AS = facilitator_speech_key(OPENING, language="pt")
 
 
 class _GuideStillThinking:
@@ -63,23 +66,10 @@ class _CountingVoice:
         return entry, False
 
 
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
-
-
-async def _ask_for_the_opening(client, session_id: str):
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
-        data={"turn_id": "abertura"},
-    )
-
-
 async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer_alike(
     db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _GuideStillThinking()
     voice = _CountingVoice()
     the_room_agent_is(monkeypatch, turn=guide)
@@ -91,9 +81,9 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
         room_client(one, monkeypatch) as first_tablet,
         room_client(two, monkeypatch) as resending_tablet,
     ):
-        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id))
+        first = asyncio.create_task(ask_for_the_opening(first_tablet, session.id))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        second = asyncio.create_task(_ask_for_the_opening(resending_tablet, session.id))
+        second = asyncio.create_task(ask_for_the_opening(resending_tablet, session.id))
         await asyncio.wait({second}, timeout=0.2)
         assert guide.asked == 1, "o Guia foi chamado duas vezes para um só turn_id"
         guide.answer.set()
@@ -106,7 +96,7 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
-    assert [message["text"] for message in reread.messages] == [OPENING], (
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_P03, OPENING], (
         "a sessão gravou a mesma abertura duas vezes"
     )
 
@@ -114,7 +104,9 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
 async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_once_not_twice(
     db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV-Ruth", language="pt"
+    )
     guide = _GuideStillThinking()
     voice = _CountingVoice()
     the_room_agent_is(monkeypatch, turn=guide)
@@ -126,9 +118,9 @@ async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_
         room_client(one, monkeypatch) as first_tablet,
         room_client(two, monkeypatch) as resending_tablet,
     ):
-        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id))
+        first = asyncio.create_task(ask_for_the_opening(first_tablet, session.id))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        second = asyncio.create_task(_ask_for_the_opening(resending_tablet, session.id))
+        second = asyncio.create_task(ask_for_the_opening(resending_tablet, session.id))
         await asyncio.wait({second}, timeout=0.2)
         guide.answer.set()
         landed, resent = await asyncio.gather(first, second)
@@ -142,7 +134,7 @@ async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
         remembered = (await fresh_db.execute(select(IRTurn))).scalars().all()
-    assert [message["text"] for message in reread.messages] == [OPENING]
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_OV_RUTH, OPENING]
     assert [turn.turn_id for turn in remembered] == ["abertura"]
 
 
@@ -154,15 +146,15 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
     Whether the deployed server cancels a handler when its client hangs up is the server's
     business and has changed across releases; the turn in flight must not depend on it.
     """
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _GuideStillThinking()
     the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _CountingVoice())
 
     async with room_client(db_session, monkeypatch, per_request=rival_factory) as tablet:
-        first = asyncio.create_task(_ask_for_the_opening(tablet, session.id))
+        first = asyncio.create_task(ask_for_the_opening(tablet, session.id))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        second = asyncio.create_task(_ask_for_the_opening(tablet, session.id))
+        second = asyncio.create_task(ask_for_the_opening(tablet, session.id))
         await asyncio.wait({second}, timeout=0.2)
         first.cancel()
         await asyncio.wait({first})
@@ -171,11 +163,11 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
 
     assert first.cancelled()
     assert resent.status_code == 200, resent.text[:300]
-    assert resent.json()["audio_url"] == clip_url(VOICED_AS)
+    assert resent.json()["audio_url"] == clip_url(VOICED_AS, session_id=session.id)
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
-    assert [message["text"] for message in reread.messages] == [OPENING], (
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_P03, OPENING], (
         "o turno em voo escrevia pela sessão do request que desistiu, já fechada"
     )
 
@@ -192,7 +184,7 @@ async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_no
         )
         return entry, False
 
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _GuideStillThinking()
     the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)
@@ -203,9 +195,9 @@ async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_no
         room_client(one, monkeypatch) as first_tablet,
         room_client(two, monkeypatch) as resending_tablet,
     ):
-        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id))
+        first = asyncio.create_task(ask_for_the_opening(first_tablet, session.id))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        second = asyncio.create_task(_ask_for_the_opening(resending_tablet, session.id))
+        second = asyncio.create_task(ask_for_the_opening(resending_tablet, session.id))
         await asyncio.wait({second}, timeout=0.2)
         guide.answer.set()
         _, resent = await asyncio.gather(first, second)
