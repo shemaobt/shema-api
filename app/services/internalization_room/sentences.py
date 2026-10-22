@@ -191,7 +191,7 @@ async def lay_in_a_sentence(
         raise SentenceRefused(
             409,
             ERROR_CODE_PART_CHANGED,
-            f"The part of frase {segment.id} changed while its sentence was laid in; send it again",
+            "The frase's part changed while its sentence was laid in; send it again",
         )
     now = datetime.now(UTC)
     take = IRTake(

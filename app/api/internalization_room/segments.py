@@ -330,7 +330,7 @@ async def re_record_the_sentence(
     `frases: [n]`) while another frase awaits its translation, one sentence at a time — the
     awaiting frase itself may be recorded again; `PART_CHANGED` (409) when the frase's part or
     its span changed while the sentence was spliced and stored, where nothing is written and the
-    tablet sends the same sentence again.
+    tablet offers to send the same sentence again.
     """
     audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
     refuse_a_sentence_too_long(audio)
