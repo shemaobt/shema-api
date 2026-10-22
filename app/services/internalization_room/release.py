@@ -840,8 +840,8 @@ async def approve_release(
 
     A force with nothing to waive is an ordinary approval: no who, no when, no findings and no
     blockers passed, and the check block's ``forced`` false. Her finalize records a force only
-    when the gate was shut (route.ts:58-70 at 18fa7c4), and a clean passage that read as forced
-    would tell the consultant a check was overruled that never was (ADR 0080).
+    when the gate was shut, and a clean passage that read as forced would tell the consultant a
+    check was overruled that never was (ADR 0080).
 
     What is open at that moment is dumped from the state the packet was composed from and not
     copied out of the packet's own list, which is what lets the two differ by the analyst's
@@ -905,19 +905,19 @@ async def approve_release(
         return latest
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
-    forced_by = forced_by if blockers else None
-    passed = sorted(set(blockers)) if forced_by else None
+    forced = forced_by is not None and bool(blockers)
+    signed_by = forced_by if forced else None
+    passed = sorted(set(blockers)) if forced else None
 
     row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
-    forced = forced_by is not None
     forced_at = datetime.now(UTC) if forced else None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
-    packet["check"]["forcedBy"] = forced_by
+    packet["check"]["forcedBy"] = signed_by
     packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
     packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
@@ -929,7 +929,7 @@ async def approve_release(
         package_sha256=packet["package_sha256"],
         packet=packet,
         device_id=device_id,
-        forced_by=forced_by,
+        forced_by=signed_by,
         forced_at=forced_at,
         forced_blockers=passed,
         forced_open_findings=(
@@ -939,7 +939,7 @@ async def approve_release(
                     await _standing(db, session, await takes_of(db, session.id))
                 ).findings
             ]
-            if forced_by
+            if forced
             else None
         ),
     )
