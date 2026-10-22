@@ -840,8 +840,8 @@ async def apply_coverage(
 def was_opened(session: IRSession) -> bool:
     """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
 
-    The tablet asks a session's Opening only while it is not opened, so a session that already
-    holds the Guide's line is not asked for a second one.
+    Every reader asks this: the session state, the turn door, the Opening's write and the
+    hand-over of a prepared one.
     """
     return any(line.get("role") == "guide" for line in session.messages or [])
 
@@ -863,21 +863,23 @@ async def append_opening(
     scene: str | None = None,
     commit: bool = True,
 ) -> bool:
-    """The opening written as the session's first line, or dropped when the team spoke first.
+    """The opening written as the Guide's first line, or dropped when the Guide has spoken first.
 
     The opening is read off an empty session and only comes back to be written after the
     Guide has answered, which in the room has taken eleven minutes: long enough for the
-    tablet to give up, the team to speak, and their turn to be stored first. Written then,
-    it stood behind the team's turn as a line the Guide never said in that order; refused by
-    the row's version instead, it was gone and the tablet was never told. So the session is
-    read again here, and an opening that is no longer the first thing said is dropped from
-    the record and logged — the tablet still hears the line it asked for.
+    tablet to give up, the team to speak, and the Guide's answer to their turn to be stored
+    first. Written then, it stood behind that answer as a line the Guide never said in that
+    order; refused by the row's version instead, it was gone and the tablet was never told. So
+    the session is read again here, and an opening that finds the Guide's line already stored
+    is dropped from the record and logged — the tablet still hears the line it asked for. A
+    team entry with no Guide line does not open the session, so the opening is written behind
+    it.
     """
     await db.refresh(session, ["messages", "version"])
-    if session.messages:
+    if was_opened(session):
         await db.refresh(session)
         logger.warning(
-            "The opening of session %s landed after the team's first turn; dropped, not appended",
+            "The opening of session %s landed after the session was opened; dropped, not appended",
             session.id,
         )
         return False

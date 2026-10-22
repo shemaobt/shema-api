@@ -327,7 +327,7 @@ The Guide's first line of a session, spoken before the team has said anything, d
 _Avoid_: kickoff, abertura, first turn
 
 **Opened** (`opened`):
-A session that holds a Guide line, its **Opening** at least. A room note or a team entry alone does not open it. The session state says so, and the tablet asks a session's Opening only while it is not opened. Not to be confused with **Opening a session**, the open door.
+A session that holds a Guide line, its **Opening** at least. A room note or a team entry alone does not open it. The session state says so, and every reader on the server, the turn door, the Opening's wait and its write, asks this same question; the tablet asks a session's Opening only while it is not opened. Not to be confused with **Opening a session**, the open door.
 _Avoid_: started, begun, aberta
 
 **Turn claim** (`opening_claim_turn_id`, `opening_claimed_at`, `claimed_for_the_opening`; the first two keep the opening's names):

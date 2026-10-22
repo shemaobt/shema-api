@@ -51,7 +51,7 @@ from app.services.internalization_room.name_check import hear_the_names, stored_
 from app.services.internalization_room.passage_turn import accepted_send_backs
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.session_turns import last_turn_number
-from app.services.internalization_room.sessions import the_opening_note
+from app.services.internalization_room.sessions import the_opening_note, was_opened
 from app.services.internalization_room.turn.speech import mother_tongue_note
 
 router = APIRouter()
@@ -219,7 +219,7 @@ async def play_golden_turn(
     """
     session = await room.get_session(db, payload.sessionId)
     opening = payload.roomNote == "session_start"
-    if opening and session.messages:
+    if opening and was_opened(session):
         raise ConflictError("session already open")
     heard = _heard(payload, language=session.language)
     with reading_the_canon_of(session.canon_pin):
