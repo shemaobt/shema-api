@@ -31,6 +31,10 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # current_version these routes do not have, and SESSION_LOCKED promises a holder that no
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
+#: A turn that waited the whole opening wait behind another turn of its session. Its own code
+#: because nothing about this turn is stale and no version reloads it: the server could not
+#: place it after the other reply, so nothing was stored and nothing was voiced (ADR 0079).
+ERROR_CODE_TURN_COLLISION: Final = "TURN_COLLISION"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: A force asked for without the word that makes it one. Its own code because nothing about
 #: the passage is wrong and retrying changes nothing — the Desk arms the force
@@ -136,6 +140,15 @@ class SessionLockChanged(ConflictError):
     Its own exception rather than a bare ConflictError because the handler is what puts
     the code on the wire, and the generic one says CONFLICT — which this API defines as
     a stale version carrying a current_version to reload from.
+    """
+
+
+class TurnCollision(ConflictError):
+    """A turn still waiting, at the end of the opening wait, on another turn of its session.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code promises
+    a version to reload from, and there is none. The turn was neither stored nor voiced, and
+    the tablet that sent it calls a person (ADR 0079).
     """
 
 
@@ -483,6 +496,13 @@ async def handle_session_lock_changed(_request: Request, exc: SessionLockChanged
     )
 
 
+async def handle_turn_collision(_request: Request, exc: TurnCollision) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_TURN_COLLISION),
+    )
+
+
 async def handle_project_granularity_locked(
     _request: Request, exc: ProjectGranularityLocked
 ) -> JSONResponse:
@@ -785,6 +805,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     # Starlette walks the raised class's MRO, so the subclass wins over ConflictError
     # above regardless of the order these are registered in.
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
+    app.add_exception_handler(TurnCollision, handle_turn_collision)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]

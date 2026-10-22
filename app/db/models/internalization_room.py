@@ -167,15 +167,22 @@ class IRSession(Base):
     #: room's doors that pick or list a team's work read live rows only; the facilitator's
     #: by-id doors still read a stamped one, because the work stays for the consultant.
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    #: The turn id under which the request drafting this session's opening will store its
-    #: answer, null until an opening is claimed (ADR 0053). Written once by a conditional
-    #: update while no live claim stands, so two tablets with different turn ids draft one
-    #: opening between them, whichever instance each request reached.
+    #: The **Turn claim**: the turn id under which the request answering a turn of this
+    #: session will store its answer, null until a turn is claimed. Written by a conditional
+    #: update while no live claim stands, so one turn of the session is answered at a time,
+    #: whichever instance each request reached. Named for the opening, the first turn that
+    #: took it (ADR 0053, ADR 0079).
     opening_claim_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    #: When the opening was claimed. A claim older than the turn bound plus thirty seconds
+    #: When the turn was claimed. A claim older than the turn bound plus thirty seconds
     #: belongs to a request that can no longer be running, and the next request takes it over.
     opening_claimed_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
+    )
+    #: Whether the turn claim was taken for the session's **Opening**: true only for the
+    #: request drafting it, false for a team turn's claim and for one taken over from the
+    #: opening, so every waiter reads from the row which of the two it waits on (ADR 0079).
+    claimed_for_the_opening: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
 

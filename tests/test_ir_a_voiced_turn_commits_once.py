@@ -148,6 +148,7 @@ def _in_a_transaction_while_thinking(
         return any(each.in_transaction() for each in (db, *of_their_own))
 
     async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
+        await asyncio.sleep(0.2)
         held["stt"] = in_a_transaction()
         return await _heard(audio, **kwargs)
 
@@ -167,15 +168,15 @@ def _in_a_transaction_while_thinking(
     return held
 
 
-async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
+async def test_a_voiced_turn_reaches_the_database_in_one_commit_after_its_claim(
     client: httpx.AsyncClient, waiting_room: IRSession, commits: list[object]
 ) -> None:
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert len(commits) == 1, (
+    assert len(commits) == 2, (
         "o turno gravava a comprehension e as mensagens em dois commits, cada um com o seu"
-        " refresh da linha inteira"
+        " refresh da linha inteira, além da reivindicação do turno (ADR 0079)"
     )
 
 
@@ -281,7 +282,10 @@ async def test_a_turn_with_its_id_is_remembered_in_the_same_commit_as_its_exchan
     answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
     assert answered.status_code == 200, answered.text[:300]
-    assert len(commits) == 1, "a resposta lembrada do turno era gravada num commit a mais"
+    assert len(commits) == 2, (
+        "a resposta lembrada do turno era gravada num commit a mais, além da reivindicação do"
+        " turno (ADR 0079)"
+    )
 
 
 async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exchange(
@@ -409,12 +413,13 @@ async def test_a_turn_whose_row_moved_while_the_guide_thought_is_refused_not_wri
             )
 
     models.while_the_guide_thinks = another_turn_lands_first
+    session_id = waiting_room.id
 
-    answered = await _the_team_answers(client, waiting_room.id)
+    answered = await _the_team_answers(client, session_id)
 
     assert answered.status_code == 409, answered.text[:300]
     async with rival_factory() as fresh:
-        after = await get_session(fresh, waiting_room.id)
+        after = await get_session(fresh, session_id)
     assert [m["text"] for m in after.messages] == [FIRST_QUESTION, "Rute ficou", "E depois?"], (
         "com a transação solta antes do Guia, o turno escrevia por cima da troca que chegou antes"
     )
