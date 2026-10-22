@@ -17,9 +17,12 @@ the translation is not conferida, and the ticket's acceptance 8 asks for her rul
 Decided by the Definer on 2026-10-22 (recorded on ENG-1259):
 
 - A team turn whose guarded write matches nothing reads the row as stored now. When the
-  conversation it read is still the conversation stored, whatever moved the version moved
-  nothing the turn writes over, and the turn lands once more on the stored version. When the
-  conversation moved, or the second write also matches nothing, the turn is refused as before.
+  session is still live and the conversation it read is still the conversation stored,
+  whatever moved the version moved nothing the turn writes over, and the turn lands once more
+  on the stored version. When a Zerar archived the session it is answered as gone (ADR 0052);
+  when the conversation moved, or the second write also matches nothing, it is refused as
+  before. The archive and the conversation are read in one statement, so a Zerar that lands
+  between the first write and that read is never taken for an approval.
   One more write at most. Only a turn takes the second landing: an approval that loses its
   version to a turn is still refused (ADR 0066). The Turn claim is untouched (ADR 0079): it
   orders turns among themselves, and the approval does not take it.

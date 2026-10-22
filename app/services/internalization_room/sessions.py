@@ -508,16 +508,8 @@ async def _land(
     """
     await db.flush()
     landed = await _write_at_the_version_read(db, session, values)
-    if landed is None and again_if_unmoved:
-        await refuse_if_archived(db, session)
-        stored = (
-            await db.execute(
-                select(IRSession.version, IRSession.messages).where(IRSession.id == session.id)
-            )
-        ).one()
-        if stored.messages == session.messages:
-            set_committed_value(session, "version", stored.version)
-            landed = await _write_at_the_version_read(db, session, values)
+    if landed is None and again_if_unmoved and await _took_the_version_if_unmoved(db, session):
+        landed = await _write_at_the_version_read(db, session, values)
     if landed is None:
         await refuse_if_archived(db, session)
         # Nothing matched, so nothing is pending: leave the transaction to the caller's
@@ -548,6 +540,22 @@ async def _write_at_the_version_read(
         .execution_options(synchronize_session=False)
     )
     return (await db.execute(stmt)).one_or_none()
+
+
+async def _took_the_version_if_unmoved(db: AsyncSession, session: IRSession) -> bool:
+    """Take the version stored now when the session is live and its conversation is the one
+    ``session`` read; read in one statement, so a Zerar landing in between is never missed."""
+    stored = (
+        await db.execute(
+            select(IRSession.version, IRSession.messages, IRSession.archive_id).where(
+                IRSession.id == session.id
+            )
+        )
+    ).one()
+    if stored.archive_id is not None or stored.messages != session.messages:
+        return False
+    set_committed_value(session, "version", stored.version)
+    return True
 
 
 async def claim_the_version(db: AsyncSession, session: IRSession) -> None:

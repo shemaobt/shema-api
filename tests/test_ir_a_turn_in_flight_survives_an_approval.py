@@ -12,12 +12,15 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import get_settings
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.release import approve_release
 from app.services.internalization_room.sessions import append_exchange, get_session
+from app.services.internalization_room.voice_handles import from_handle
 from tests.release_harness import (
     PREFIX,
     TABLET,
@@ -98,6 +101,15 @@ def _another_turn_lands_meanwhile(per_request, session_id: str) -> Meanwhile:
     return speak
 
 
+async def _a_turn(client, tablet: str, session_id: str) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        headers=team_headers(tablet),
+        data={"turn_id": "turno-1"},
+        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
+    )
+
+
 async def _stored_messages(per_request, session_id: str) -> list[dict[str, Any]]:
     async with per_request() as fresh:
         return list((await get_session(fresh, session_id)).messages or [])
@@ -118,18 +130,16 @@ async def test_a_team_turn_whose_guide_is_answering_when_the_teams_approval_land
     tablet, session_id = await _a_session_ready_for_release(db_session)
     while_the_guide_answers.append(_the_team_approves_meanwhile(per_request, session_id))
 
-    answered = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(tablet),
-        data={"turn_id": "turno-1"},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
-    )
+    answered = await _a_turn(client, tablet, session_id)
 
     assert answered.status_code == 200, (
         f"a aprovação levou a versão e o turno em voo perdeu a fala do Guia: {answered.text[:300]}"
     )
     messages = await _stored_messages(per_request, session_id)
     assert [(m["role"], m["text"]) for m in messages[-2:]] == [("team", WORDS), ("guide", REPLY)]
+    handle = httpx.URL(answered.json()["audio_url"]).path.rsplit("/", 1)[-1]
+    served = from_handle(handle, settings=get_settings())
+    assert served == messages[-1]["voice_key"], "a equipe não ouve a resposta que ficou guardada"
     assert [row.version for row in await releases_of(db_session, session_id)] == [1], (
         "a aprovação não gravou, e o turno não correu contra nada"
     )
@@ -156,12 +166,7 @@ async def test_a_team_turn_whose_conversation_another_turn_moved_is_still_refuse
     tablet, session_id = await _a_session_ready_for_release(db_session)
     while_the_guide_answers.append(_another_turn_lands_meanwhile(per_request, session_id))
 
-    refused = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(tablet),
-        data={"turn_id": "turno-1"},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
-    )
+    refused = await _a_turn(client, tablet, session_id)
 
     assert refused.status_code == 409, refused.text[:300]
     assert refused.json()["code"] == "CONFLICT"
