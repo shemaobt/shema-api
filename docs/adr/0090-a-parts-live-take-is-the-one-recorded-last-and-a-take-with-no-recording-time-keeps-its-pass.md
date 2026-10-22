@@ -40,7 +40,9 @@ it, would become the part again.
 
 Consequences: tablet clocks are now compared with each other and with the server's. A tablet
 whose clock runs ahead by more than the time between its recording and a later join or splice
-keeps its own take as the part; the **Clock offset** is noted only for joined parts. A session
+keeps its own take as the part; the **Clock offset** is noted only for joined parts. A joined
+part's Recording time is its arrival (ADR 0072), so a join that drains late from a tablet's
+outbox reads after a take another tablet recorded in between, and is the part. A session
 whose pass order and time order disagree changes its part once, so its packet's hash moves once
 and an approved draft reads un-approved until approved again. `superseded_at` stays "when the
 take that replaced it reached the server", which can now be earlier than the superseded take's
