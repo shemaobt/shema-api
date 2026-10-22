@@ -84,11 +84,11 @@ def test_a_team_with_no_history_stands_on_the_first_passage_of_the_book() -> Non
     P01 is what the canon's first entry happens to be called. This is resolution arriving
     there because nothing is finished, which is why the expectation is read off the book.
     """
-    assert resolve(set()) == FIRST
+    assert resolve(set(), book=ROOM_BOOK) == FIRST
 
 
 def test_a_finished_passage_moves_the_team_to_the_next_one() -> None:
-    assert resolve({FIRST}) == SECOND
+    assert resolve({FIRST}, book=ROOM_BOOK) == SECOND
 
 
 def test_a_gap_earlier_in_the_book_outranks_a_later_passage_already_closed() -> None:
@@ -98,12 +98,12 @@ def test_a_gap_earlier_in_the_book_outranks_a_later_passage_already_closed() -> 
     lets them skip, but the data can hold it — a session can be opened naming a passage —
     and the resolution has to answer the book's order rather than their history's.
     """
-    assert resolve({FIRST, THIRD}) == SECOND
+    assert resolve({FIRST, THIRD}, book=ROOM_BOOK) == SECOND
 
 
 def test_a_team_that_closed_every_passage_stands_on_none() -> None:
     """The end of the book is a defined state and not a wrap-around."""
-    assert resolve(set(CANON)) is None
+    assert resolve(set(CANON), book=ROOM_BOOK) is None
 
 
 def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_book() -> None:
@@ -120,7 +120,7 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
     }
     field, gleaning = filed_under["Ruth 2:8-16"], filed_under["Ruth 2:17-23"]
 
-    assert resolve(set(CANON[: CANON.index(field) + 1])) == gleaning, (
+    assert resolve(set(CANON[: CANON.index(field) + 1]), book=ROOM_BOOK) == gleaning, (
         "quem fechou 2:8-16 ouvia que o livro tinha acabado, com sete passagens ainda na pasta"
     )
 
@@ -129,7 +129,13 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
 
 
 def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> None:
-    positions = standing(set(), releases={}, findings={})
+    positions = standing(
+        set(),
+        book=ROOM_BOOK,
+        here=resolve(set(), book=ROOM_BOOK),
+        releases={},
+        findings={},
+    )
 
     assert [entry.pericope for entry in positions] == CANON
     assert positions[0].reference and positions[0].title
@@ -138,7 +144,14 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
 def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
     """`closed · current · future` resolved here, so no screen decides where a team stands."""
     positions = {
-        entry.pericope: entry.position for entry in standing({FIRST}, releases={}, findings={})
+        entry.pericope: entry.position
+        for entry in standing(
+            {FIRST},
+            book=ROOM_BOOK,
+            here=resolve({FIRST}, book=ROOM_BOOK),
+            releases={},
+            findings={},
+        )
     }
 
     assert positions[FIRST] is PericopePosition.CLOSED
@@ -154,7 +167,13 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
     """
     positions = {
         entry.pericope: entry.position
-        for entry in standing({FIRST, THIRD}, releases={}, findings={})
+        for entry in standing(
+            {FIRST, THIRD},
+            book=ROOM_BOOK,
+            here=resolve({FIRST, THIRD}, book=ROOM_BOOK),
+            releases={},
+            findings={},
+        )
     }
 
     assert positions[SECOND] is PericopePosition.CURRENT
@@ -163,7 +182,13 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
 
 def test_a_finished_team_has_no_current_passage() -> None:
     """ENG-469's criterion: a complete team shows its last passage as closed, not current."""
-    positions = standing(set(CANON), releases={}, findings={})
+    positions = standing(
+        set(CANON),
+        book=ROOM_BOOK,
+        here=resolve(set(CANON), book=ROOM_BOOK),
+        releases={},
+        findings={},
+    )
 
     assert all(entry.position is PericopePosition.CLOSED for entry in positions)
 
@@ -390,7 +415,7 @@ async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
     """Fourteen teams is the Desk's own screen, and it opens first, every time.
 
     The resolution is derived rather than stored, so the cost of deriving it is the cost of
-    the screen. One statement for the roll, not one per team.
+    the screen. Two statements for the roll, not two per team.
     """
     from sqlalchemy import event
 
@@ -410,7 +435,7 @@ async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
         event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
 
     assert set(resolved.values()) == {SECOND}
-    assert len(read) == 1, f"a resolucao custou {len(read)} statements para 14 equipes: {read}"
+    assert len(read) == 2, f"a resolucao custou {len(read)} statements para 14 equipes: {read}"
 
 
 async def test_the_standing_of_a_real_team_comes_from_its_own_finished_sessions(

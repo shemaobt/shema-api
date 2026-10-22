@@ -52,7 +52,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
-from app.services.internalization_room.progression import active_passages
+from app.services.internalization_room.progression import where_teams_stand
 from app.services.internalization_room.team_sessions import canon_pins_of
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.facilitated_scope import within as _within
@@ -180,17 +180,17 @@ async def list_facilitator_teams(
     is the common case today rather than the exception: the room's app does not send its
     device credential yet, so sessions and questions are written with no project at all.
 
-    The passage each team is on is resolved in a second statement rather than joined into the
+    The passage each team is on is resolved in two more statements rather than joined into the
     one above, because whether a passage is finished is the canon's question and not SQL's.
     It is handed the ids these rows already name — why that matters is on ``furthest_by_passage``
-    — and it is one statement for the roll rather than one per card.
+    — and it is two statements for the roll rather than two per card.
     """
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
-    here = await active_passages(db, project_ids=[row.id for row in rows])
+    here = await where_teams_stand(db, project_ids=[row.id for row in rows])
     pins = await canon_pins_of(
-        db, [(row.id, pericope) for row in rows if (pericope := here[row.id]) is not None]
+        db, [(row.id, pericope) for row in rows if (pericope := here[row.id].passage) is not None]
     )
     facilitated = await writable_project_ids(db, user)
 
@@ -199,9 +199,9 @@ async def list_facilitator_teams(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(row.id, here[row.id], pins),
+            active_passage=_passage(row.id, here[row.id].passage, pins),
             state=team_state(
-                book_closed=here[row.id] is None,
+                every_book_closed=here[row.id].complete,
                 last_activity_at=row.last_activity_at,
                 now=moment,
             ),
@@ -223,9 +223,10 @@ async def list_facilitator_teams(
 def _passage(
     team_id: str, pericope: str | None, pins: Mapping[tuple[str, str], str | None]
 ) -> ActivePassageView | None:
-    """The passage by both its names, or nothing at all at the end of the book.
+    """The passage by both its names, or nothing at all at the end of every served book.
 
-    `None` is the answer for a team that has closed every passage, and it is a position rather
+    `None` is the answer for a team that has closed every passage of every served book, and it
+    is a position rather
     than a missing value: there is no passage they are on. A card drawn for such a team shows
     its last one closed, which is ENG-469's criterion and is only sayable if `active_passage`
     can be absent.

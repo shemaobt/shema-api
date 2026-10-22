@@ -1,4 +1,4 @@
-"""Where a team stands in the book, resolved from its own history.
+"""Where a team stands in the served books, resolved from its own history.
 
 The team walks the book on its own, in canonical order, without a facilitator convening
 anything (D-03). Choosing the passage is therefore the server's, and until this module
@@ -36,6 +36,13 @@ conversation's tracker, and what outlives the conversations is which of them are
 worked over two evenings closes on the evening the team finished it, whichever session that
 was; one worked over two evenings and never finished stays open.
 
+**A team stands in one book, its Current book** (ADR 0094). It is the book of the team's
+latest live session, a Panorama included, in the order the Desk reads a team's sessions, while
+that book still has a passage left; otherwise it is the first of Ruth, Esther and Jonah that
+has one. Only the Current book has a current passage, and every reader of where a team stands
+reads that book. A team is complete only when every served book is closed. Passage ids are
+qualified by book (E01, J01, P01), so the closed fact needs no key of its own.
+
 ## What this does not fix, and saying so is the point
 
 **This module was stationary for its first two releases, and the reason has moved twice.**
@@ -72,14 +79,27 @@ still below the floor. Turning that into someone being *told* is ENG-482 (CS-06)
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
-from app.models.internalization_room import PassageRelease, PericopePosition, PericopeStanding
+from app.models.internalization_room import (
+    BookStanding,
+    PassageRelease,
+    PericopePosition,
+    PericopeStanding,
+)
 from app.services.internalization_room.canon.book_material import unwalkable
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import (
+    ROOM_BOOK,
+    load_book,
+    served_books,
+    served_maps,
+)
+from app.services.internalization_room.coverage import PANORAMA_PREFIX
+from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
 from app.services.internalization_room.live import live
 
@@ -88,7 +108,18 @@ from app.services.internalization_room.live import live
 Finished = set[str]
 
 
-def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
+@dataclass(frozen=True)
+class TeamWhereabouts:
+    """Where one team stands: its Current book, its passage there, what it closed, and whether
+    every served book is closed."""
+
+    book: str
+    passage: str | None
+    finished: Finished
+    complete: bool
+
+
+def resolve(finished: Collection[str], *, book: str) -> str | None:
     """The team's next unfinished passage, in the book's order, or `None` at the end of it.
 
     Canonical order and not "the furthest passage touched": a team that somehow reached P03
@@ -116,19 +147,24 @@ def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
 def standing(
     finished: Collection[str],
     *,
+    book: str,
+    here: str | None,
     releases: Mapping[str, PassageRelease],
     findings: Mapping[str, int],
-    book: str = ROOM_BOOK,
 ) -> list[PericopeStanding]:
-    """All fourteen with their position already resolved — closed, current, or future.
+    """Every passage of one served book with its position already resolved — closed, current,
+    or future.
 
     Resolved here rather than left to be derived from the active passage, because a screen
     working it out from `active_passage` and a state would be a second place deciding where a
     team stands, and the two would disagree on exactly the cases that matter.
 
+    `here` is the team's passage in its Current book, so a book the team is not in has no
+    `current`: a team is in one place, and there is still exactly one `current` across them.
+
     `closed` and `current` are different facts and are not collapsed: `closed` is a session
     the team finished on the passage, `current` is where the team is. A team on P02 with P03
-    already finished has both, and there is still exactly one `current`.
+    already finished has both.
 
     Closed reads the same fact the resolution reads, and it has to: a passage the resolution
     still offers and this panel calls closed is one screen telling a facilitator the team is
@@ -138,7 +174,6 @@ def standing(
     without one approves nothing, so `closed` and `approved` are both served and never derived
     from each other.
     """
-    here = resolve(finished, book=book)
     return [
         PericopeStanding(
             pericope=meaning_map.pericope_num,
@@ -153,6 +188,24 @@ def standing(
     ]
 
 
+def book_standings(
+    finished: Collection[str], *, releases: Mapping[str, PassageRelease]
+) -> list[BookStanding]:
+    """Each served book's count, in the order GET /books serves them: «N de 14», «N de 18»,
+    «N de 5». Complete means closed, the fact the resolution reads, never approved."""
+    return [
+        BookStanding(
+            book=book,
+            passage_total=len(load_book(book)),
+            approved_total=sum(
+                1 for meaning_map in load_book(book) if meaning_map.pericope_num in releases
+            ),
+            complete=resolve(finished, book=book) is None,
+        )
+        for book in served_books()
+    ]
+
+
 def _position(pericope: str, finished: Collection[str], here: str | None) -> PericopePosition:
     if pericope == here:
         return PericopePosition.CURRENT
@@ -162,34 +215,88 @@ def _position(pericope: str, finished: Collection[str], here: str | None) -> Per
 
 
 async def active_passage(
-    db: AsyncSession, *, project_id: str | None, book: str = ROOM_BOOK
+    db: AsyncSession, *, project_id: str | None, book: str | None = None
 ) -> str | None:
-    """Where one team stands. A session that names no team stands at the beginning.
+    """Where one team stands, in `book` or, when none is named, in its Current book.
 
     `project_id` is nullable because the runner's doors open sessions that belong to no team.
     Work with no team belongs to nobody rather than to everybody, so there is no history to
     read and the honest answer is the one a team that has not started gets.
     """
     if project_id is None:
-        return resolve(set(), book=book)
-    resolved = await active_passages(db, project_ids=[project_id], book=book)
-    return resolved[project_id]
+        return resolve(set(), book=book or ROOM_BOOK)
+    if book is None:
+        return (await where_teams_stand(db, project_ids=[project_id]))[project_id].passage
+    finished = await finished_passages(db, project_ids=[project_id])
+    return resolve(finished.get(project_id, set()), book=book)
 
 
-async def active_passages(
-    db: AsyncSession, *, project_ids: Sequence[str], book: str = ROOM_BOOK
-) -> dict[str, str | None]:
-    """The whole roll resolved in one statement, because the roll is a screen.
+async def active_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> dict[str, str | None]:
+    """Each team's passage in its Current book."""
+    return {
+        project_id: whereabouts.passage
+        for project_id, whereabouts in (
+            await where_teams_stand(db, project_ids=project_ids)
+        ).items()
+    }
+
+
+async def where_teams_stand(
+    db: AsyncSession, *, project_ids: Sequence[str]
+) -> dict[str, TeamWhereabouts]:
+    """The whole roll resolved in two statements, because the roll is a screen.
 
     The work queue opens first and opens every time, and a facilitator with fourteen teams
     would otherwise pay fourteen round trips for a position that is derived rather than
-    stored. Deriving it is the cost of that screen, so it is paid once.
+    stored. Deriving it is the cost of that screen, so it is paid once: what each team closed,
+    and the books of its live sessions.
     """
     finished = await finished_passages(db, project_ids=project_ids)
-    return {
-        project_id: resolve(finished.get(project_id, set()), book=book)
-        for project_id in project_ids
-    }
+    latest = await _latest_books(db, project_ids=project_ids)
+    whereabouts = {}
+    for project_id in project_ids:
+        closed = finished.get(project_id, set())
+        book = _current_book(closed, latest.get(project_id))
+        whereabouts[project_id] = TeamWhereabouts(
+            book=book,
+            passage=resolve(closed, book=book),
+            finished=closed,
+            complete=all(resolve(closed, book=each) is None for each in served_books()),
+        )
+    return whereabouts
+
+
+def _current_book(finished: Collection[str], latest: str | None) -> str:
+    if latest is not None and resolve(finished, book=latest) is not None:
+        return latest
+    walking_order = [ROOM_BOOK, *(book for book in served_books() if book != ROOM_BOOK)]
+    for book in walking_order:
+        if resolve(finished, book=book) is not None:
+            return book
+    return latest or ROOM_BOOK
+
+
+async def _latest_books(db: AsyncSession, *, project_ids: Sequence[str]) -> dict[str, str]:
+    """The book of each team's latest live session, read in the Desk's order.
+
+    A session whose pericope no served book holds is passed over for the next one: the book is
+    looked up, never loaded, so a passage the canon no longer serves cannot raise on the queue.
+    The ids are passed in hand, for the reason `finished_passages` gives.
+    """
+    if not project_ids:
+        return {}
+    books = {meaning_map.pericope_num: meaning_map.book for meaning_map in served_maps()}
+    books |= {PANORAMA_PREFIX + book: book for book in served_books()}
+    result = await db.execute(
+        select(IRSession.project_id, IRSession.pericope)
+        .where(IRSession.project_id.in_(project_ids), live())
+        .order_by(IRSession.project_id, *latest_entered_first())
+    )
+    latest: dict[str, str] = {}
+    for project_id, pericope in result.all():
+        if project_id not in latest and pericope in books:
+            latest[project_id] = books[pericope]
+    return latest
 
 
 async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> dict[str, Finished]:
@@ -248,14 +355,14 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     return closed
 
 
-async def team_standing(
-    db: AsyncSession, project_id: str, *, book: str = ROOM_BOOK
-) -> list[PericopeStanding]:
-    """The fourteen as this team stands on them, each with its latest release and open findings."""
-    finished = await finished_passages(db, project_ids=[project_id])
+async def team_standing(db: AsyncSession, project_id: str) -> list[PericopeStanding]:
+    """The Current book's passages as this team stands on them, each with its latest release
+    and open findings."""
+    whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
     return standing(
-        finished.get(project_id, set()),
+        whereabouts.finished,
+        book=whereabouts.book,
+        here=whereabouts.passage,
         releases=await latest_releases(db, project_id),
         findings=await open_findings(db, project_id),
-        book=book,
     )

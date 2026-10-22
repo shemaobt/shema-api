@@ -169,7 +169,7 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        book=ROOM_BOOK,
+        book=None,
     )
     session = await _minted(
         db,
@@ -221,7 +221,8 @@ async def open_session(
     stands, because a facilitator's visit is its only exit (ADR 0039).
 
     An open that names no passage lands on the team's next passage of the book of the session
-    it came from, ``after``, and of Ruth when it came from none (ADR 0066).
+    it came from, ``after``, and of the team's Current book when it came from none (ADR 0066,
+    ADR 0094).
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -229,7 +230,7 @@ async def open_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        book=book_of(after.pericope) if after is not None else ROOM_BOOK,
+        book=book_of(after.pericope) if after is not None else None,
     )
     session = await _pointed(db, project_id, pericope, spoken)
     created = False
@@ -347,7 +348,7 @@ async def _resolved(
     after_panorama: bool,
     project_id: str | None,
     language: str | None,
-    book: str,
+    book: str | None,
 ) -> tuple[str, bool, str]:
     """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
