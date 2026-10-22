@@ -34,6 +34,7 @@ from app.services.internalization_room.back_translation import (
     Nuance,
 )
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from tests.baker import make_app, make_role
@@ -682,8 +683,9 @@ async def test_one_draft_under_two_schema_versions_is_one_approved_draft(
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_clean_draft_approved(client, db_session, project, credential)
     await stored_under_v08(db_session, session)
-    desk, _user = await at_the_desk(db_session, room_app, project)
-    composed = (await client.get(desk_release(session.id), headers=desk)).json()
+    composed, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
     [row] = await releases_of(db_session, session.id)
     assert composed["package_sha256"] != row.package_sha256, "the control: the hashes differ"
 

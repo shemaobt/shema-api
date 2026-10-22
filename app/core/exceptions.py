@@ -40,6 +40,9 @@ ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
+#: A manifest asked of a passage whose draft is not approved as it stands. Its own code
+#: because there is no version to reload and no blocker to name: the passage is approved first.
+ERROR_CODE_DRAFT_NOT_APPROVED: Final = "DRAFT_NOT_APPROVED"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: A heard mark on a question nobody has answered. Its own code for the reason above: there is
 #: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
@@ -169,6 +172,15 @@ class NothingToForce(ConflictError):
     CONFLICT code promises a blocker or a version to reload from, and there is neither. The
     session was not even looked at — a route whose only purpose is to overrule the gate has
     nothing to say about a caller who did not ask it to.
+    """
+
+
+class DraftNotApproved(ConflictError):
+    """A manifest was asked of a session whose draft is not approved as it stands.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is no version to reload; approve the
+    passage first.
     """
 
 
@@ -519,6 +531,13 @@ async def handle_nothing_to_force(_request: Request, exc: NothingToForce) -> JSO
     )
 
 
+async def handle_draft_not_approved(_request: Request, exc: DraftNotApproved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_DRAFT_NOT_APPROVED),
+    )
+
+
 async def handle_reply_moved_on(_request: Request, exc: ReplyMovedOn) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -808,6 +827,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(TurnCollision, handle_turn_collision)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
+    app.add_exception_handler(DraftNotApproved, handle_draft_not_approved)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]

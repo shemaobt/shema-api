@@ -43,7 +43,7 @@ def _with_bytes(take: IRTake) -> bool:
     return take.kind is IRTakeKind.ENSAIO and not is_declared(take)
 
 
-def _link(take: IRTake, filename: str) -> Awaitable[str]:
+def download_link(take: IRTake, filename: str) -> Awaitable[str]:
     return signed_url(
         take.storage_key,
         take.content_type,
@@ -88,7 +88,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
 
     names = [filename(take) for take in rehearsals]
     links = await asyncio.gather(
-        *(_link(take, name) for take, name in zip(rehearsals, names, strict=True))
+        *(download_link(take, name) for take, name in zip(rehearsals, names, strict=True))
     )
     live: list[TakeDownload] = []
     superseded: list[SupersededTakeDownload] = []
