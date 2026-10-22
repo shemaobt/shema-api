@@ -796,7 +796,7 @@ async def _answer_the_turn(
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
         halted = session.status is IRSessionStatus.NEEDS_PERSON
-        opening = file is None and not (session.messages or [])
+        opening = file is None and not was_opened(session)
         if not opening:
             with stage("db_let_go"):
                 await db.commit()

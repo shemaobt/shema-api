@@ -840,8 +840,8 @@ async def apply_coverage(
 def was_opened(session: IRSession) -> bool:
     """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
 
-    The tablet asks a session's Opening only while it is not opened, so a session that already
-    holds the Guide's line is not asked for a second one.
+    Every reader asks this: the session state, the turn door, the Opening's write and the
+    hand-over of a prepared one.
     """
     return any(line.get("role") == "guide" for line in session.messages or [])
 
@@ -874,7 +874,7 @@ async def append_opening(
     the record and logged — the tablet still hears the line it asked for.
     """
     await db.refresh(session, ["messages", "version"])
-    if session.messages:
+    if was_opened(session):
         await db.refresh(session)
         logger.warning(
             "The opening of session %s landed after the team's first turn; dropped, not appended",

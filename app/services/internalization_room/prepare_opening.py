@@ -15,7 +15,7 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import run_turn
-from app.services.internalization_room.sessions import book_of, get_session, is_panorama
+from app.services.internalization_room.sessions import book_of, get_session, is_panorama, was_opened
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -191,7 +191,7 @@ async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -
         return False
     if prepared.canon_pin != opening.canon_pin:
         return False
-    if opening.messages:
+    if was_opened(opening):
         return False
     await db.execute(
         update(IRSession)
