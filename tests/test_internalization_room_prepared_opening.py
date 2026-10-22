@@ -426,3 +426,24 @@ async def test_a_team_turn_moves_the_sessions_updated_at(client, db_session: Asy
     await room.append_exchange(db_session, session, team_utterance="oi", guide_response="ok")
 
     assert await _updated_at(db_session, panorama) > OLD
+
+
+async def test_a_ready_line_is_handed_to_a_session_holding_only_a_room_note_and_a_team_entry(
+    db_session: AsyncSession,
+) -> None:
+    panorama = await _session(
+        db_session,
+        pericope="OV-Ruth",
+        prepared_speech="Olá.",
+        prepared_audio_key="tts/x.mp3",
+        prepared_pericope="P01",
+    )
+    passage = await _session(
+        db_session,
+        messages=[
+            {"role": "room", "text": "[a sessão acabou de começar]"},
+            {"role": "team", "text": "Noemi voltou para Belém"},
+        ],
+    )
+
+    assert await hand_over(db_session, panorama, passage) is True
