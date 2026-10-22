@@ -838,9 +838,10 @@ async def approve_release(
     ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
     together: a force comes from the Desk, where there is a person and no device.
 
-    A force with nothing to waive is still a force and is still recorded as one, with empty
-    lists of findings and of blockers passed. The act was the facilitator's, and a row that
-    hid that would say the team approved a draft the team did not approve.
+    A force with nothing to waive is an ordinary approval: no who, no when, no findings and no
+    blockers passed, and the check block's ``forced`` false. Her finalize records a force only
+    when the gate was shut (route.ts:58-70 at 18fa7c4), and a clean passage that read as forced
+    would tell the consultant a check was overruled that never was (ADR 0080).
 
     What is open at that moment is dumped from the state the packet was composed from and not
     copied out of the packet's own list, which is what lets the two differ by the analyst's
@@ -904,6 +905,7 @@ async def approve_release(
         return latest
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
+    forced_by = forced_by if blockers else None
     passed = sorted(set(blockers)) if forced_by else None
 
     row_id = str(uuid.uuid4())
