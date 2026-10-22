@@ -91,8 +91,8 @@ async def before_the_migration(tmp_path) -> str:
     await _execute(
         url,
         (
-            "INSERT INTO apps (id, app_key, name, platform, is_active)"
-            " VALUES ('app-room', :key, 'Internalization Room', 'web', 1)",
+            "INSERT INTO apps (id, app_key, name, platforms, is_active)"
+            " VALUES ('app-room', :key, 'Internalization Room', '[\"web\"]', 1)",
             {"key": APP_KEY},
         ),
         (

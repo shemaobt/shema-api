@@ -120,7 +120,9 @@ THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT: tuple[str, ...] = (
 
 THE_CACHES_THAT_READ_NO_CANON: tuple[str, ...] = (
     "app.core.config.get_settings",
+    "app.services.common.email.render_email._environment",
     "app.services.internalization_room.passage_lines._sections",
+    "app.utils.resource_request_vocabularies.section_field_keys",
 )
 
 
