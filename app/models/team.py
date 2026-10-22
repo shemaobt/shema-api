@@ -127,7 +127,7 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
     #: finished session without one approves nothing. It pairs with ``/pericopes``, which
     #: answers the same book.
     #:
-    #: **The count Marcia's page shows, «N de 14 aprovadas».** Decided with Jonatas on
+    #: **The count Marcia's page shows, «N de 14 aprovadas» for Ruth.** Decided with Jonatas on
     #: 2026-10-13 (ENG-1228, Q5) to replace ``closed_total`` as the one count the Desk draws.
     approved_total: int
 

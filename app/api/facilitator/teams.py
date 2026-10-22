@@ -1,7 +1,7 @@
 """The Desk's entry screen and the panels behind it, all addressed by team.
 
 Three reads and no writes. The work queue, the team's necklace for one passage, and the
-book's fourteen passages with this team's position on each. Where a team stands is answered
+passages of the book the team is in with its position on each. Where a team stands is answered
 by one resolution (`services/internalization_room/progression.py`) rather than by each route
 working it out, which is what "one source of truth for where is this team" costs in practice:
 the queue used to read the most recent session that named a passage and the necklace used to

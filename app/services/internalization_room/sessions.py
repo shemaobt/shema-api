@@ -151,11 +151,12 @@ async def create_session(
     heard the book's panorama and asks for it again is opened the panorama (ENG-1237, folded
     from ENG-1282). Only a silence is filled, never a request overruled.
 
-    Raises ``ConflictError`` when the team has closed every passage that opens and none was
-    named. That is the end of the book, and it is a defined state rather than a wrap-around:
-    the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
-    a passage is the way back in. The end it names is the end of the walkable book, which is
-    the only end a team can reach — a passage `require_walkable` refuses can never be closed.
+    Raises ``ConflictError`` when the team has closed every passage that opens in every served
+    book and none was named. That is the end of the walk, and it is a defined state rather than
+    a wrap-around: the request is well formed and the team exists, so 409 rather than 400 or
+    404, and naming a passage is the way back in. The end it names is the end of the walkable
+    books, the only end a team can reach — a passage `require_walkable` refuses can never be
+    closed.
 
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A

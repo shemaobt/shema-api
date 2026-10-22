@@ -349,6 +349,7 @@ async def test_a_teams_ruth_work_still_counts_in_ruths_entry_while_it_is_in_jona
     listed = await the_pericopes(desk_client, desk, team.id)
 
     assert the_book(detail, "Ruth")["approved_total"] == 2
+    assert detail["approved_total"] == 0
     assert [entry["pericope"] for entry in listed] == JONAH
 
 
