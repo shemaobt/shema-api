@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0076: one visit ends the warning and leaves a blocking halt over it to the team's return
 date: 2026-09-29
 ---
 

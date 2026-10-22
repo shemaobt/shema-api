@@ -60,12 +60,14 @@ async def test_a_halt_raised_while_the_floor_was_settling_stands_and_its_lift_re
         "o fechamento recusado largava o carimbo do piso junto com o status, e nada mais "
         "dizia que a passagem tinha sido terminada"
     )
-    async with rival_factory() as visit_db:
-        visited = await service.get_session(visit_db, session.id)
-        lifted = await service.attend(visit_db, visited, by="facilitator")
+    async with rival_factory() as return_db:
+        returned = await service.get_session(return_db, session.id)
+        lifted = await service.append_exchange(
+            return_db, returned, team_utterance="voltamos", guide_response="ok"
+        )
     assert (lifted.status, lifted.ended_at) == (IRSessionStatus.DONE, halted.ended_at), (
-        "a visita levantava o pedido para em andamento, e a passagem terminada nunca entrava "
-        "nas concluídas"
+        "a volta da equipe levantava o pedido para em andamento, e a passagem terminada nunca "
+        "entrava nas concluídas"
     )
 
 
@@ -89,24 +91,6 @@ async def test_two_settles_meeting_the_floor_together_keep_the_first_end_not_a_s
         "o segundo settle carimbava outro fim por cima do primeiro, e a conversa crescia "
         "depois que a equipe tinha terminado"
     )
-
-
-async def test_a_visit_undone_while_the_floor_was_settling_brings_the_halt_back_not_done(
-    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession], monkeypatch
-) -> None:
-    session = await service.create_session(db_session, pericope=P)
-    session = await service.mark_needs_person(db_session, session)
-    session = await service.attend(db_session, session, by="facilitator")
-    assert session.status is IRSessionStatus.IN_PROGRESS
-    _a_rival_lands_after_the_read(monkeypatch, rival_factory, service.unattend)
-
-    await service.apply_coverage(db_session, session.id, _the_whole_floor())
-
-    stored = await _stored(rival_factory, session.id)
-    assert stored.status is IRSessionStatus.NEEDS_PERSON, (
-        "a visita desfeita devolvia o pedido de pessoa, e o fechamento gravava done por cima dele"
-    )
-    assert stored.ended_at is not None, "o fechamento recusado largava o carimbo do piso"
 
 
 async def test_a_room_already_halted_when_the_floor_is_met_keeps_the_halt_and_the_stamp(

@@ -139,15 +139,8 @@ class IRSession(Base):
     #: on the day of the visit.
     attended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     attended_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    #: Which halt the visit above lifted, null when it lifted none — a facilitator may mark a
-    #: room that is running perfectly well, and most marks lift nothing.
-    #:
-    #: **Not derivable from ``halt_kind``, which is why it is a column.** That one is never
-    #: cleared, so it says "this session was halted at some point, ever"; undoing a visit has
-    #: to know whether *this* visit was the thing that lifted a halt. Without the distinction
-    #: an undo re-halts a conversation that the team had already restarted themselves — the
-    #: room stops, the queue reopens, and the kind it announces belongs to a halt somebody
-    #: cleared an hour earlier.
+    #: Read and written by nothing since a visit stopped lifting halts (ADR 0076); older rows
+    #: keep their values.
     lifted_halt: Mapped[str | None] = mapped_column(String(16), nullable=True)
     #: When somebody long-pressed this halted room to say they had arrived (ENG-792). Null
     #: until the first press, and cleared by every new halt — the moment belongs to the halt

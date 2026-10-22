@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0076: the demo team's halts are stamped, not lifted
 date: 2026-10-16
 ---
 
