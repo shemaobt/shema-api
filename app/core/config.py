@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     env: str = "development"
     #: The git SHA the image was built from, baked in as `GIT_SHA` at build time.
     build_id: str = Field("unknown", validation_alias="GIT_SHA")
+    cloud_run_service: str = Field("", validation_alias="K_SERVICE")
     port: int = 8000
 
     database_url: str
