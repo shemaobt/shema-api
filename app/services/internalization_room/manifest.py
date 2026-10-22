@@ -87,7 +87,8 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     laid = {sentence.take_id: sentence for sentence in back_translation_of(session).sentences}
     chains = {part.id: _chain(part.id, laid) for part in clips}
     by_id = {take.id: take for take in takes}
-    origins = await _origins(db, clips, {part.id: by_id[chains[part.id][-1]] for part in clips})
+    joined_as = {part.id: by_id[chains[part.id][-1]] for part in clips if part.origin}
+    origins = await _origins(db, clips, joined_as)
     with reading_the_canon_of(session.canon_pin):
         reference = load_map(session.pericope).reference
         meaning_map = meaning_map_ref(session.pericope)
