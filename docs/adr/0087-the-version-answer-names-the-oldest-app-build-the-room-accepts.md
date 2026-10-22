@@ -18,5 +18,6 @@ The two numbers come from the settings `internalization_room_minimum_app_ios` an
 ## Consequences
 
 - The field is a contract with installed builds and cannot be removed while any build reads it.
-- Staging names neither setting, so it serves 0.
+- Staging names neither setting, so it serves 0 once `dev` is promoted. Until then `dev` has no `minimum_app` at all, and the app reads that as a failed read, which changes nothing.
+- The next deploy puts a minimum raised by hand on the service back to the deploy file's value.
 - There is no migration.
