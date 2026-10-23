@@ -80,11 +80,11 @@ An audio file recorded by the team, of one of three kinds: a conversation turn's
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
 **Recording time** (`recorded_at`):
-When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined part keeps the tablet's clock at the moment the team chose it. A spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. A take that was not joined and was sent with no time or stored before ENG-1273, and a part spliced into one of these, have none of its own: the arrival stands in where it is served, and it is never what makes a take the part. Such takes keep their pass order among themselves and come before every take that has one (ENG-1760).
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. A take sent with no time, a take stored before ENG-1273 that was not joined, and a part spliced into one of these have none of its own: the arrival stands in where it is served, and it is never what makes a take the part. Such takes keep their pass order among themselves and come before every take that has one (ENG-1760).
 _Avoid_: upload time, created_at (when the upload landed), timestamp
 
 **Clock offset** (`device_clock_offset_ms`):
-How far the tablet's clock was from the server's when it sent a joined part, read from the moment that send was built, in milliseconds, negative when behind. Kept only at five minutes or more; the consultant reads it as one line, the team never sees it and the packet never carries it.
+How far the tablet's clock was from the server's when it sent a joined part, in milliseconds, negative when behind. Kept only at five minutes or more; the consultant reads it as one line, the team never sees it and the packet never carries it.
 _Avoid_: skew, drift
 
 **Mother tongue**:

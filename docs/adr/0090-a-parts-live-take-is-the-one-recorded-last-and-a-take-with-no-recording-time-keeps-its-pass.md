@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ADR 0085: a joined part's Recording time is the moment the team chose it, not its arrival
+status: accepted
 date: 2026-10-22
 ---
 

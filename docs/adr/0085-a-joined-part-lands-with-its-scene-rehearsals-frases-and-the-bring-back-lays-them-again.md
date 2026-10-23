@@ -39,11 +39,6 @@ Decided (ENG-1405):
   it. The telling-back state is written through `save_back_translation`'s compare-and-set.
 - **Stretches waiting to be told again on the part's earlier takes stop waiting** once frases
   are laid on it. They stay retired, as history.
-- **ADR 0072's two bullets on a joined part are amended** (Definer Q67). A joined part's
-  Recording time is the tablet's `recorded_at` as for any take (none sent → its arrival): the
-  moment the team chose it, raw, on the tablet's clock. The **Clock offset** is read from a new
-  form field, `sent_at`, the tablet's clock as it built that send, so it measures a clock and not
-  a queue's delay. Five minutes or more is still one line for the consultant alone.
 
 Rejected: **copying the frases' audio through the store**, because it puts bucket reads and
 writes inside two doors and lets a part land without its frases; **a stored mark on laid
@@ -51,8 +46,7 @@ stretches**, a migration, where the place and the words already tell; **the sess
 which ENG-1754 keeps to one writer; **laying on every resend**, which would undo a restart
 without anybody asking; **laying another language session's frases**, because they would sit
 under a check in another language (Definer Q46); **a `DRAFT_APPROVED` guard on the Bring-back**,
-which has its own armed text, as the Restart does; **the server's arrival as a joined part's
-Recording time**, because the join and the hand take would then be ordered on two clocks (Q67).
+which has its own armed text, as the Restart does.
 
 Consequences: ENG-1407's swap lands through the same lay. Over an approved draft a Bring-back, like the Restart, makes the draft no longer
 the approved one (ADR 0071). A team that corrected every laid frase one by one is offered the

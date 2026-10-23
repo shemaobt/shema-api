@@ -5,15 +5,12 @@ A part that lands with `origin` from a scene rehearsal of its own session, with 
 rehearsal's own bytes, comes with the rehearsal's current frases as its told stretches: one per
 frase, at its place, with its words, telling the frase's own audio. A resend lays nothing over
 what the team did since, so a restart is only undone by «trazer de volta as traduções do ensaio
-desta cena», which keeps the stretches told here as history. A join's Recording time is the
-moment the team chose it, on the tablet's clock, and the clock offset is read from the moment
-each send was built (Definer Q67).
+desta cena», which keeps the stretches told here as history.
 """
 
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -476,69 +473,6 @@ async def test_a_joined_part_laid_over_a_part_recorded_again_leaves_nothing_wait
     ]
 
 
-async def test_a_join_from_a_tablet_ten_minutes_fast_keeps_the_moment_the_team_chose_it_and_one_clock_line_for_the_consultant(  # noqa: E501
-    room: Room, db_session: AsyncSession
-) -> None:
-    session_id = await a_session(db_session, language="pt")
-    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
-    await sent(db_session, rehearsal_id)
-    tablet_now = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=10)
-    chosen = tablet_now - timedelta(minutes=4)
-
-    answer = await join(
-        room,
-        session_id,
-        rehearsal_id,
-        scene,
-        recorded_at=chosen.isoformat(),
-        sent_at=tablet_now.isoformat(),
-    )
-
-    assert answer.status_code == 200, answer.text
-    assert datetime.fromisoformat(answer.json()["recorded_at"]) == chosen, (
-        "a junção perdia o momento em que a equipe a escolheu"
-    )
-    read = await room.client.get(
-        f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", headers=room.desk
-    )
-    assert read.status_code == 200, read.text
-    (observed,) = [
-        one for one in read.json()["takes"] if one["take_id"] == answer.json()["take_id"]
-    ]
-    assert abs(observed["device_clock_offset_ms"] - 600_000) <= 5_000, (
-        "a linha do relógio media a espera da fila e não o relógio do tablet"
-    )
-    assert "device_clock_offset_ms" not in answer.json()
-    listed = await room.client.get(f"{IR}/sessions/{session_id}/takes")
-    assert all("device_clock_offset_ms" not in one for one in listed.json()["takes"])
-
-
-async def test_a_join_from_a_tablet_two_minutes_off_has_no_clock_line(
-    room: Room, db_session: AsyncSession
-) -> None:
-    session_id = await a_session(db_session, language="pt")
-    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
-    await sent(db_session, rehearsal_id)
-    tablet_now = datetime.now(UTC) + timedelta(minutes=2)
-
-    answer = await join(
-        room,
-        session_id,
-        rehearsal_id,
-        scene,
-        recorded_at=(tablet_now - timedelta(minutes=8)).isoformat(),
-        sent_at=tablet_now.isoformat(),
-    )
-
-    assert answer.status_code == 200, answer.text
-    read = await room.client.get(
-        f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", headers=room.desk
-    )
-    assert read.status_code == 200, read.text
-    (observed,) = read.json()["takes"]
-    assert observed["device_clock_offset_ms"] is None
-
-
 async def test_a_bring_back_under_a_number_with_no_part_is_not_found(
     room: Room, db_session: AsyncSession
 ) -> None:
@@ -653,37 +587,3 @@ async def test_a_tablet_of_another_team_cannot_bring_this_teams_frases_back(
     assert (await the_session(room, session_id))["segments"] == [], (
         "um tablet de outra equipe trazia de volta as frases desta"
     )
-
-
-async def test_a_hand_take_recorded_after_the_join_was_chosen_stays_the_part_when_the_join_lands_late(  # noqa: E501
-    room: Room, db_session: AsyncSession
-) -> None:
-    session_id = await a_session(db_session, language="pt")
-    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
-    await sent(db_session, rehearsal_id)
-    chosen = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=390)
-    by_hand = await recorded_as_itself(
-        room,
-        session_id,
-        recording(SCENE_MS / 1000, 50),
-        recorded_at=(chosen + timedelta(seconds=90)).isoformat(),
-    )
-
-    late = await joined(
-        room,
-        session_id,
-        rehearsal_id,
-        scene,
-        recorded_at=chosen.isoformat(),
-        sent_at=datetime.now(UTC).isoformat(),
-    )
-
-    read = await room.client.get(
-        f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", headers=room.desk
-    )
-    assert read.status_code == 200, read.text
-    assert [one["take_id"] for one in read.json()["takes"]] == [by_hand], (
-        "a junção que chegou atrasada tomava o lugar da gravação que a equipe fez depois dela"
-    )
-    assert await places_on(room, session_id, late) == []
-    assert await offered(room, session_id) == []
