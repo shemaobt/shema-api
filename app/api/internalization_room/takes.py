@@ -14,8 +14,9 @@ from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.db.models.internalization_room import IRGrain, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
+    GrainSwitchRequest,
     MotherTongueTakesResponse,
     SentRecordingTime,
     TakeDownloadsResponse,
@@ -37,8 +38,12 @@ from app.services.internalization_room.take_downloads import take_downloads_of
 from app.services.internalization_room.takes import (
     LONGEST_TAKE_MS,
     TakeStore,
+    current_parts,
+    grain_in_force,
     listen_url,
+    of_the_grain_left_behind,
     refuse_a_join_over_a_moved_part,
+    set_aside_moment,
     store_take,
     take_for_reader,
     take_in_session,
@@ -65,6 +70,17 @@ def _view(take: IRTake) -> TakeResponse:
         pericope=take.pericope,
         recorded_at=as_utc(take.recorded_at).isoformat(),
         duration_ms=take.duration_ms,
+        set_aside_at=set_aside_moment(take),
+    )
+
+
+async def _listing(db: AsyncSession, session: IRSession) -> TakesResponse:
+    takes = await takes_of(db, session.id)
+    grain = grain_in_force(session, current_parts(takes))
+    return TakesResponse(
+        session_id=session.id,
+        takes=[_view(take) for take in takes],
+        grain=None if grain is None else grain.value,
     )
 
 
@@ -176,6 +192,11 @@ async def keep_take(
     it are refused `DRAFT_APPROVED` (409) with nothing stored. A part recorded on the recording
     screen carries no origin and takes one tap, as hers does, and a take already kept brings
     nothing new, so neither is ever refused.
+
+    A rehearsal take of the other grain than the one a **Grain switch** put in force is kept and
+    set aside at once, and never refused over an approved draft: it never becomes a part, so it
+    changes no draft. A take a switch set aside is never the answer to a keep at the grain in
+    force: the same bytes kept again are a new take that stands (ADR 0096).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -186,7 +207,9 @@ async def keep_take(
         await refuse_a_join_over_a_moved_part(
             db, session.id, ordinal=chunk_index, over_take=over_take, audio=audio
         )
-    if not reopens_the_approved_draft:
+    ordinal = None if take_kind is IRTakeKind.RETRO else chunk_index
+    left_behind = of_the_grain_left_behind(session, take_kind, ordinal)
+    if not reopens_the_approved_draft and not left_behind:
         await refuse_a_keep_that_reopens_the_approved_draft(
             db, session, kind=take_kind, origin=origin, chunk_index=chunk_index, audio=audio
         )
@@ -200,18 +223,61 @@ async def keep_take(
         scope=scope,
         audio=audio,
         pass_number=pass_number,
-        ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
+        ordinal=ordinal,
         content_type=file.content_type or "audio/mp4",
         origin=origin,
         sent_sha256=sha256,
         sent_duration_ms=duration_ms,
         sent_recorded_at=recorded_at,
+        past_the_set_aside=not left_behind,
     )
+    await room.set_aside_by_the_grain_in_force(db, session, take)
     await room.retire_the_part_recorded_again(db, session, take)
     if origin is not None:
         await lay_the_rehearsals_frases(db, session, take)
     nudge(session.project_id, "takes")
     return _view(take)
+
+
+@router.post(
+    "/sessions/{session_id}/grain",
+    response_model=TakesResponse,
+    dependencies=[linked_tablet_dep],
+    responses={
+        409: {
+            "description": "`DRAFT_APPROVED`: the draft stands approved and the request did not "
+            "carry reopens_the_approved_draft (ADR 0081, ADR 0096)"
+        }
+    },
+)
+async def switch_grain(
+    session_id: str,
+    payload: GrainSwitchRequest,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TakesResponse:
+    """The team records the passage whole or scene by scene from now on.
+
+    A switch sets every rehearsal take the session holds aside, stamped with its time and never
+    deleted, and from then on the parts are only the new grain's takes recorded after it. The
+    telling-back starts over, so the passage has no check. A switch to the grain in force
+    changes nothing; over an approved draft it takes the team's armed tap
+    (`reopens_the_approved_draft`) and is otherwise refused `DRAFT_APPROVED` (409, ADR 0096).
+
+    It answers the takes listing, so the tablet sees at once what was set aside.
+    """
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    switched = await room.switch_the_grain(
+        db,
+        session,
+        IRGrain(payload.grain),
+        reopens_the_approved_draft=payload.reopens_the_approved_draft,
+    )
+    if switched:
+        nudge(session.project_id, "takes")
+        nudge(session.project_id, "stretches")
+    return await _listing(db, session)
 
 
 @router.get(
@@ -225,10 +291,7 @@ async def list_takes(
     db: AsyncSession = Depends(get_db),
 ) -> TakesResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
-    return TakesResponse(
-        session_id=session.id,
-        takes=[_view(take) for take in await takes_of(db, session.id)],
-    )
+    return await _listing(db, session)
 
 
 @router.get(
@@ -273,10 +336,7 @@ async def facilitator_takes(
     two audiences never share a route.
     """
     session = await room.get_session_for_reader(db, user, session_id)
-    return TakesResponse(
-        session_id=session.id,
-        takes=[_view(take) for take in await takes_of(db, session.id)],
-    )
+    return await _listing(db, session)
 
 
 @router.get(

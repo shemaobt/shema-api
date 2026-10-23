@@ -388,6 +388,19 @@ class DivideSegmentRequest(BaseModel):
     at_ms: int
 
 
+class GrainSwitchRequest(BaseModel):
+    """The grain the team chose: the passage told whole, or scene by scene."""
+
+    grain: Literal["whole", "scene"]
+    reopens_the_approved_draft: bool = Field(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, a switch is refused DRAFT_APPROVED."
+        ),
+    )
+
+
 class SegmentsResponse(BaseModel):
     """Every stretch that counts after a division or a replacement, for the tablet to redraw.
 
@@ -1222,11 +1235,16 @@ class TakeResponse(BaseModel):
     pericope: str = ""
     recorded_at: str = ""
     duration_ms: int | None = None
+    #: When a grain switch set this take aside; the tablet never shows such a take as a part.
+    set_aside_at: str | None = None
 
 
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+    #: The grain in force: the last switch's, else read off the current parts; null with no part
+    #: and no switch.
+    grain: Literal["whole", "scene"] | None = None
 
 
 class MotherTongueTake(BaseModel):
@@ -1277,6 +1295,8 @@ class SupersededTakeDownload(TakeDownload):
     """A **Superseded take**, with when the take that replaced it reached the server."""
 
     superseded_at: str
+    #: When a grain switch set it aside; its `superseded_at` too when no take replaced it.
+    set_aside_at: str | None = None
 
 
 class TakeDownloadsResponse(BaseModel):
@@ -1658,6 +1678,8 @@ class RetroverificationTake(BaseModel):
     #: ISO-8601 with an offset, like every other instant this module serves.
     recorded_at: str | None = None
     url: str
+    #: ISO-8601 with an offset: when a grain switch set this take aside, null while none has.
+    set_aside_at: str | None = None
 
 
 class RetroverificationFile(BaseModel):

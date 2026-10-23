@@ -161,6 +161,9 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/segments/{{segment_id}}/sentence"): (
         "test_ir_a_team_re_records_one_whole_sentence.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/grain"): (
+        "test_ir_a_grain_switch_sets_the_earlier_grains_takes_aside.py"
+    ),
 }
 
 

@@ -37,6 +37,7 @@ from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
+    IRGrain,
     IRSession,
     IRSessionStatus,
     IRTake,
@@ -46,6 +47,7 @@ from app.db.models.internalization_room import (
 from app.models.internalization_room import PlayedTake
 from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room import halt, turn_instructions
+from app.services.internalization_room.approved_draft import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     CheckRound,
@@ -76,6 +78,7 @@ from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
+    current_segments,
     final_segments,
     retire_every_segment,
     retire_the_segments_of,
@@ -83,7 +86,12 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
 )
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    grain_in_force,
+    of_the_grain_left_behind,
+    takes_of,
+)
 from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
 from app.services.project.facilitated_scope import confined_to, readable_project_ids
 from app.services.project.facilitates_project import facilitates_project
@@ -1504,3 +1512,77 @@ async def start_the_translation_over(db: AsyncSession, session: IRSession) -> No
     await started_over(state)
     await retire_every_segment(db, session.id)
     await save_back_translation(db, session, state, rule=started_over)
+
+
+async def switch_the_grain(
+    db: AsyncSession, session: IRSession, grain: IRGrain, *, reopens_the_approved_draft: bool
+) -> bool:
+    """The team moves between the passage told whole and scene by scene, and says whether it did.
+
+    A switch to the grain in force changes nothing and asks nothing, not even whether the draft
+    stands approved. A real one records the grain and its time on the session and stamps every
+    rehearsal take the session holds with that time: the earlier grain's parts, their superseded
+    takes and a whole that had already stepped aside, since none was recorded after the switch.
+    The stamp is set once and never cleared, so a switch back restores nothing (ADR 0096).
+
+    It stamps rather than comparing **Recording times** with the switch, because a joined part
+    keeps the server's clock and a tablet take its own, and a drifting clock would put a take on
+    the wrong side.
+
+    The telling-back starts over as «recomeçar a tradução» does, but only when there is one to
+    start over: her switch restarts only over frases or checks, and an empty attempt would show
+    the consultant one nobody made.
+
+    The session's row is held through the helper the approval holds it with, and the grain and
+    the approved draft are read under it: an approval composing while the switch waits lands
+    first and the switch then refuses it without the armed tap, and a rival switch to the same
+    grain finds it in force. Nothing inside reaches the bucket (ADR 0081, ADR 0089).
+
+    It sweeps the earlier grain once more after its commit: a keep whose take committed while
+    the stamp ran, and which read the session before the switch committed, stamped nothing.
+    """
+    await hold_the_session_row(db, session)
+    if grain_in_force(session, current_parts(await takes_of(db, session.id))) is grain:
+        await db.commit()
+        return False
+    if not reopens_the_approved_draft:
+        await refuse_to_reopen_the_approved_draft(db, session)
+    at = datetime.now(UTC)
+    session.grain = grain
+    session.grain_switched_at = at
+
+    unstamped = (
+        IRTake.session_id == session.id,
+        IRTake.kind == IRTakeKind.ENSAIO,
+        IRTake.set_aside_at.is_(None),
+    )
+    await db.execute(update(IRTake).where(*unstamped).values(set_aside_at=at))
+    state = back_translation_of(session)
+    if state.checks or state.checked or await current_segments(db, session.id):
+        await start_the_translation_over(db, session)
+    else:
+        await db.commit()
+
+    earlier = IRTake.ordinal.is_not(None) if grain is IRGrain.WHOLE else IRTake.ordinal.is_(None)
+    await db.execute(update(IRTake).where(*unstamped, earlier).values(set_aside_at=at))
+    await db.commit()
+    await db.refresh(session)
+    return True
+
+
+async def set_aside_by_the_grain_in_force(
+    db: AsyncSession, session: IRSession, take: IRTake
+) -> None:
+    """A rehearsal take of the grain a **Grain switch** left behind is kept and set aside at once.
+
+    The Outbox drains one part's recordings at a time, so a take recorded before the switch can
+    land after it. It is set aside and never refused, because the tablet would hold a refused
+    row forever. It carries the time of the switch that made its grain the earlier one, which is
+    the latest (ADR 0096).
+    """
+    if take.set_aside_at is not None:
+        return
+    await db.refresh(session, ["grain", "grain_switched_at"])
+    if of_the_grain_left_behind(session, take.kind, take.ordinal):
+        take.set_aside_at = session.grain_switched_at
+        await db.commit()
