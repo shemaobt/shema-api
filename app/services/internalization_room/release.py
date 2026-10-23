@@ -153,6 +153,11 @@ def release_name(language: str | None, pericope: str, version: int) -> str:
     return f"internalize-{_slug(language)}-{pericope.lower()}-v{version}"
 
 
+def released_as(release: IRRelease) -> str:
+    """The name a stored release goes by: its own, or its row id when stored before ADR 0048."""
+    return str(release.packet.get("release_id") or release.id)
+
+
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -685,9 +690,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         forced=False,
     )
     approved = await _release_of(db, session, {**artifact, "check": check})
-    artifact["release_id"] = (
-        str(approved.packet.get("release_id") or approved.id) if approved else None
-    )
+    artifact["release_id"] = released_as(approved) if approved else None
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     artifact["check"] = check

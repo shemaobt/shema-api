@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -31,7 +32,9 @@ from app.core.config import get_settings
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRRelease, IRSceneRehearsal, IRSession
 from app.db.models.project import Project
+from app.services.internalization_room import manifest as manifest_service
 from app.services.internalization_room import takes as takes_service
+from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -795,14 +798,17 @@ async def test_the_sessions_are_the_teams_sessions_of_the_passage_sorted(
     client, db_session, room_app
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    await create_session(db_session, pericope=P01, project_id=project.id, language="pt")
+    await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P01)
     in_portuguese = await ready_p01(db_session, project.id, language="pt")
     in_english = await create_session(
         db_session, pericope=P01, project_id=project.id, language="en"
     )
+    await create_session(db_session, pericope="P02", project_id=project.id, language="pt")
     other_team, _other = await a_claimed_device(db_session, language_name="Kaiowá")
     await create_session(db_session, pericope=P01, project_id=other_team.id, language="pt")
     await approved(client, credential, in_portuguese)
-    desk, _user = await at_the_desk(db_session, room_app, project)
 
     manifest = await manifest_of(client, desk, in_portuguese)
 
@@ -863,3 +869,44 @@ async def test_a_release_stored_before_adr_0048_names_the_manifest_and_its_files
     assert manifest["language"] == "Terena"
     assert {clip["takeId"]: clip["filename"] for clip in manifest["clips"]} == listed
     assert all(clip["filename"].startswith(f"{legacy_id}-") for clip in manifest["clips"])
+
+
+async def test_a_passage_whose_canon_is_gone_is_refused_by_its_canon_and_not_as_unapproved(
+    client, db_session, room_app, monkeypatch, tmp_path: Path
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN))
+
+    read = await client.get(desk_release(session.id), headers=desk)
+
+    assert read.status_code == 409, read.text
+    assert read.json()["code"] == "CANON_NOT_KEPT"
+    assert session.canon_pin in read.json()["detail"]
+
+
+async def test_a_take_that_lands_after_the_approval_is_judged_is_never_listed_as_approved(
+    client, db_session, room_app, monkeypatch
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, parts = await rehearsed_in_parts(db_session, 2, project_id=project.id)
+    await a_checked_telling(db_session, session)
+    await approved(client, credential, session)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    landed = []
+    judged = manifest_service.approved_draft
+
+    async def and_then_a_take_lands(db: AsyncSession, judging: IRSession) -> IRRelease | None:
+        release = await judged(db, judging)
+        landed.append(await record_the_part_again(db, judging, parts[0], sha256="d" * 64))
+        return release
+
+    monkeypatch.setattr(manifest_service, "approved_draft", and_then_a_take_lands)
+
+    read = await client.get(desk_release(session.id), headers=desk)
+
+    assert read.status_code == 409, read.text
+    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert landed[0].id not in read.text

@@ -20,17 +20,15 @@ from app.services.internalization_room.release import (
     _mother_tongue,
     _recording_grain,
     approved_draft,
+    released_as,
 )
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.take_downloads import download_link
-from app.services.internalization_room.takes import (
-    current_parts,
-    extension,
-    is_declared,
-    is_wav,
-    part_keys,
-    takes_of,
+from app.services.internalization_room.take_downloads import (
+    download_link,
+    file_name,
+    part_keys_by_number,
 )
+from app.services.internalization_room.takes import current_parts, is_declared, is_wav, takes_of
 from app.utils.stored_time import as_utc
 
 #: Her audio format, in her keys: what the tablet records when it records WAV.
@@ -71,27 +69,27 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     take, nobody who forced it, no order clock and no clock offset: those are the consultant's,
     in the **Retroverification file**, and the stored **Packet** stays the record.
     """
+    with reading_the_canon_of(session.canon_pin):
+        meaning_map = meaning_map_ref(session.pericope)
+        reference = load_map(session.pericope).reference
     release = await approved_draft(db, session)
-    if release is None:
-        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
-    packet = release.packet
-    release_id = str(packet.get("release_id") or release.id)
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    keys = part_keys(parts)
+    if release is None or not _judged(parts, release.packet):
+        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
+    packet = release.packet
+    release_id = released_as(release)
+    keys = part_keys_by_number(parts)
     clips = [part for part in parts if not is_declared(part)]
-    names = [f"{release_id}-{keys[part.id]}.{extension(part.content_type)}" for part in clips]
+    names = [file_name(release_id, keys[part.ordinal], part) for part in clips]
     links = await asyncio.gather(
         *(download_link(part, name) for part, name in zip(clips, names, strict=True))
     )
     laid = {sentence.take_id: sentence for sentence in back_translation_of(session).sentences}
     chains = {part.id: _chain(part.id, laid) for part in clips}
     by_id = {take.id: take for take in takes}
-    joined_as = {part.id: by_id[chains[part.id][-1]] for part in clips if part.origin}
-    origins = await _origins(db, clips, joined_as)
-    with reading_the_canon_of(session.canon_pin):
-        reference = load_map(session.pericope).reference
-        meaning_map = meaning_map_ref(session.pericope)
+    first_take_of_chain = {part.id: by_id[chains[part.id][-1]] for part in clips if part.origin}
+    origins = await _origins(db, clips, first_take_of_chain)
 
     warnings = []
     if meaning_map is None:
@@ -115,7 +113,9 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
         "meaningMap": meaning_map,
         "grain": "scene" if _recording_grain(parts) == "parts" else "whole",
         "clips": [
-            _clip(part, keys[part.id], name, link, origins.get(part.id), len(chains[part.id]) - 1)
+            _clip(
+                part, keys[part.ordinal], name, link, origins.get(part.id), len(chains[part.id]) - 1
+            )
             for part, name, link in zip(clips, names, links, strict=True)
         ],
         "finalizedAt": as_utc(release.approved_at).isoformat(),
@@ -161,7 +161,7 @@ def _clip(
 
 
 async def _origins(
-    db: AsyncSession, clips: list[IRTake], joined_as: dict[str, IRTake]
+    db: AsyncSession, clips: list[IRTake], first_take_of_chain: dict[str, IRTake]
 ) -> dict[str, dict[str, Any]]:
     """Her five keys for each joined part whose scene rehearsal is found, by the part's id.
 
@@ -181,11 +181,17 @@ async def _origins(
             "sessionId": rehearsal.session_id,
             "n": rehearsal.n,
             "takeRecordedAt": as_utc(rehearsal.recorded_at).isoformat(),
-            "joinedAt": as_utc(joined_as[part.id].created_at).isoformat(),
+            "joinedAt": as_utc(first_take_of_chain[part.id].created_at).isoformat(),
         }
         for part in joined
         if (rehearsal := rehearsals.get(part.origin or "")) is not None
     }
+
+
+def _judged(parts: list[IRTake], packet: dict[str, Any]) -> bool:
+    """Whether the current parts are exactly the takes the approval judged, digest for digest."""
+    judged = (packet.get("audio") or {}).get("rehearsal_takes", [])
+    return [part.sha256 for part in parts] == [take.get("sha256") for take in judged]
 
 
 def _chain(take_id: str, laid: dict[str, LaidInSentence]) -> list[str]:
