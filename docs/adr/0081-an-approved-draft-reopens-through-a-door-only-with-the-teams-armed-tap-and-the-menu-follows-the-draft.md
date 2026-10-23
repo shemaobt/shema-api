@@ -22,9 +22,12 @@ and leave it approved. This amends ADR 0078, which compared the whole content. W
 are a version's, every door naming it serves its stored packet, hash unchanged, and a verdict
 that lands over it is written into that release's check block, outside the hash (ADR 0020),
 keeping who forced it: every write of the telling-back reaches it in the same transaction, so
-there is one check state for every reader. Asking is a comparison of takes read off the rows,
+there is one check state for every reader, and only on the stretches that version carries, so its
+frase numbers keep naming its own. The approval holds the session's row from before it composes,
+so a verdict landing meanwhile is seen by one or the other. Asking is a comparison of takes read off the rows,
 never a composed packet, and an archived session has no standing version (Q62). A take's file
-names a release only while the draft stands under it, and otherwise the next version.
+names a release only while the draft stands under it, otherwise the next version, and a session
+a Zerar archived keeps the name its takes were approved as.
 
 The book wheel's and the Desk's `approved` mean that the draft stands under the passage's
 latest live release, not that a release exists, so a re-open clears «●» on every tablet on
