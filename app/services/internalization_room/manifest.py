@@ -22,6 +22,7 @@ from app.services.internalization_room.release import (
     _mother_tongue,
     _recording_grain,
     approved_draft,
+    packet_as_read,
     released_as,
 )
 from app.services.internalization_room.sessions import back_translation_of
@@ -81,7 +82,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     parts = current_parts(takes)
     if release is None or not _judged(parts, release.packet):
         raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
-    packet = release.packet
+    packet = packet_as_read(release)
     release_id = released_as(release)
     keys = part_keys_by_number(parts)
     clips = [part for part in parts if not is_declared(part)]

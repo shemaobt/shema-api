@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import back_translation as bt_api
@@ -1061,3 +1062,24 @@ async def test_a_panorama_is_refused_as_a_panorama_before_any_canon_is_read(
     assert read.status_code == 409, read.text
     assert read.json()["code"] == "CONFLICT"
     assert "panorama_sessions_never_release" in read.json()["detail"]
+
+
+async def test_a_release_stored_as_a_force_that_waived_nothing_reads_as_an_ordinary_approval(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    row = await db_session.scalar(select(IRRelease).where(IRRelease.session_id == session.id))
+    assert row is not None
+    row.forced_by = facilitator.id
+    row.forced_at = datetime(2026, 10, 1, 14, 10, tzinfo=UTC)
+    row.forced_blockers = []
+    row.packet = {**row.packet, "check": {**row.packet["check"], "forced": True}}
+    await db_session.commit()
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert (manifest["check"]["forced"], manifest["check"]["status"]) == (False, "conferida")
+    assert facilitator.id not in json.dumps(manifest)
