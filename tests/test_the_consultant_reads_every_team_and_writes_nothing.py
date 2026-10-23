@@ -347,6 +347,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
         f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
         f"{IR}/facilitator/sessions/{session}/takes/downloads",
+        f"{IR}/facilitator/sessions/{session}/external-check/1",
     ]
 
     values = {"session_id": session, "number": 0, "version": 1}
@@ -529,6 +530,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),
         (f"{IR}/facilitator/sessions/{team.session}/releases/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/retroverificacao", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/external-check/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", {}),
