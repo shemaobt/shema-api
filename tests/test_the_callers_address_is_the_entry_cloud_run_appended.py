@@ -137,3 +137,35 @@ async def test_off_cloud_run_the_forwarded_scheme_is_not_taken(off_cloud_run):
 
     assert r.status_code == 307
     assert r.headers["location"].startswith("http://test/api/project-health/reports/team/nope")
+
+
+async def _through_middleware(raw_headers):
+    seen = {}
+
+    async def app(scope, receive, send):
+        seen.update(client=scope["client"], scheme=scope["scheme"])
+
+    scope = {
+        "type": "http",
+        "scheme": "http",
+        "client": ("127.0.0.1", 123),
+        "headers": [(k.encode(), v.encode()) for k, v in raw_headers],
+    }
+    await CloudRunProxyHeadersMiddleware(app)(scope, None, None)
+    return seen
+
+
+async def test_on_cloud_run_a_request_with_two_forwarded_for_lines_keeps_the_socket_as_the_caller():
+    seen = await _through_middleware(
+        [("x-forwarded-for", "192.0.2.1, 203.0.113.7"), ("x-forwarded-for", "192.0.2.2")]
+    )
+
+    assert seen["client"] == ("127.0.0.1", 123)
+
+
+async def test_on_cloud_run_a_request_with_two_forwarded_proto_lines_takes_the_last():
+    seen = await _through_middleware(
+        [("x-forwarded-proto", "http"), ("x-forwarded-proto", "https")]
+    )
+
+    assert seen["scheme"] == "https"
