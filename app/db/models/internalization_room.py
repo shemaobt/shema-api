@@ -420,8 +420,8 @@ class IRTake(Base):
             "session_id",
             "storage_key",
             unique=True,
-            postgresql_where=text("set_aside_at IS NULL"),
-            sqlite_where=text("set_aside_at IS NULL"),
+            postgresql_where=text("origin IS NULL AND set_aside_at IS NULL"),
+            sqlite_where=text("origin IS NULL AND set_aside_at IS NULL"),
         ),
         Index(
             "uq_ir_takes_session_kind_sha256",
@@ -429,8 +429,19 @@ class IRTake(Base):
             "kind",
             "sha256",
             unique=True,
-            postgresql_where=text("sha256 <> '' AND set_aside_at IS NULL"),
-            sqlite_where=text("sha256 <> '' AND set_aside_at IS NULL"),
+            postgresql_where=text("sha256 <> '' AND origin IS NULL AND set_aside_at IS NULL"),
+            sqlite_where=text("sha256 <> '' AND origin IS NULL AND set_aside_at IS NULL"),
+        ),
+        Index(
+            "uq_ir_takes_session_joined_pass",
+            "session_id",
+            "kind",
+            "sha256",
+            text("coalesce(ordinal, -1)"),
+            text("coalesce(pass_number, -1)"),
+            unique=True,
+            postgresql_where=text("origin IS NOT NULL AND sha256 <> '' AND set_aside_at IS NULL"),
+            sqlite_where=text("origin IS NOT NULL AND sha256 <> '' AND set_aside_at IS NULL"),
         ),
     )
 

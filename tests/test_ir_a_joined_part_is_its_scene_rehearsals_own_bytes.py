@@ -375,7 +375,7 @@ async def test_the_take_a_join_is_chosen_over_is_the_one_recorded_last_not_the_h
     assert over_the_last_recorded.status_code == 200, over_the_last_recorded.text
 
 
-async def test_a_join_sent_again_over_the_part_recorded_by_hand_since_answers_the_old_join(
+async def test_a_join_sent_again_over_the_part_recorded_by_hand_since_is_a_new_take_and_the_part(
     room: Room, db_session: AsyncSession
 ) -> None:
     session_id = await a_session(db_session)
@@ -415,6 +415,6 @@ async def test_a_join_sent_again_over_the_part_recorded_by_hand_since_answers_th
     )
 
     assert rejoined.status_code == 200, rejoined.text
-    assert rejoined.json()["take_id"] == joined.json()["take_id"]
+    assert rejoined.json()["take_id"] != joined.json()["take_id"]
     parts = [p for p in await _parts(room, session_id, room.tablet_b) if p["ordinal"] == 2]
-    assert parts[-1]["take_id"] == again_by_hand, "a re-junção tirou a parte gravada à mão"
+    assert parts[-1]["take_id"] == rejoined.json()["take_id"], "a re-junção não virou a parte"

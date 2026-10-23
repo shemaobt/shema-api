@@ -92,6 +92,7 @@ async def refuse_a_keep_that_reopens_the_approved_draft(
     kind: IRTakeKind,
     origin: str | None,
     chunk_index: int | None,
+    pass_number: int | None,
     audio: bytes,
 ) -> None:
     """Refuse a join, a swap or a whole take over a joined recording on an approved draft.
@@ -105,7 +106,18 @@ async def refuse_a_keep_that_reopens_the_approved_draft(
         chunk_index is None
         and any(part.origin for part in current_parts(await takes_of(db, session.id)))
     )
-    if joined and await the_take_already_kept(db, session.id, kind, audio) is None:
+    if joined and (
+        await the_take_already_kept(
+            db,
+            session.id,
+            kind,
+            audio,
+            ordinal=chunk_index,
+            pass_number=pass_number,
+            origin=origin,
+        )
+        is None
+    ):
         await refuse_to_reopen_the_approved_draft(db, session)
 
 

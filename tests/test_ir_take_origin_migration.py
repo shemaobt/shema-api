@@ -1,8 +1,9 @@
 """ENG-1207 — a take keeps the scene rehearsal it was joined from.
 
 Same constraint as the sibling migration tests: Alembic's full chain does not run on SQLite,
-so the schema is built from ``Base.metadata``, stamped at this revision and walked down, and a
-take is written in the shape the previous revision stored it.
+so the schema is built from ``Base.metadata``, stamped at the head and walked down through every
+later revision, whose indexes read the column this one adds, and a take is written in the shape
+the previous revision stored it.
 """
 
 import pytest
@@ -71,7 +72,7 @@ async def before_the_migration(tmp_path) -> str:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
-    stamped = run_alembic(url, "stamp", REVISION)
+    stamped = run_alembic(url, "stamp", "head")
     assert stamped.returncode == 0, stamped.stderr
     down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
