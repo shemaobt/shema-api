@@ -38,6 +38,7 @@ from app.services.internalization_room.takes import (
     LONGEST_TAKE_MS,
     TakeStore,
     listen_url,
+    refuse_a_join_over_a_moved_part,
     store_take,
     take_for_reader,
     take_in_session,
@@ -98,6 +99,14 @@ async def keep_take(
             "when the tablet laid one in as this part. A recording with any current part "
             "carrying one is joined: «terminei» refuses a part with no translated frase on "
             "it, and the listen may check it with no tap. Absent on a part recorded as itself."
+        ),
+    ),
+    over_take: str | None = Form(
+        default=None,
+        description=(
+            "On a join, the part's live take when the team chose the join, absent over an empty "
+            "scene. Refused with TAKE_MOVED when the part's live take is another; nothing is "
+            "stored."
         ),
     ),
     recorded_at: SentRecordingTime | None = Form(
@@ -171,9 +180,12 @@ async def keep_take(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     take_kind = _kind(kind)
+    audio = await file.read()
     if origin is not None:
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
-    audio = await file.read()
+        await refuse_a_join_over_a_moved_part(
+            db, session.id, ordinal=chunk_index, over_take=over_take, audio=audio
+        )
     if not reopens_the_approved_draft:
         await refuse_a_keep_that_reopens_the_approved_draft(
             db, session, kind=take_kind, origin=origin, chunk_index=chunk_index, audio=audio

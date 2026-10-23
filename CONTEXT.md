@@ -76,11 +76,11 @@ The slice of the passage checked in one reading by the analyst, which can be sma
 _Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
-An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The rehearsal take under a part's number recorded last, by its **Recording time**, is that part. The pass breaks a tie, and the earlier ones stay as history.
+An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The rehearsal take under a part's number that the room accepted last is that part, whatever its pass or its **Recording time**, and the earlier ones stay as history.
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
 **Recording time** (`recorded_at`):
-When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. A take sent with no time, a take stored before ENG-1273 that was not joined, and a part spliced into one of these have none of its own: the arrival stands in where it is served, and it is never what makes a take the part. Such takes keep their pass order among themselves and come before every take that has one (ENG-1760).
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. It is the record for the consultant and Refine and orders nothing (ENG-1760).
 _Avoid_: upload time, created_at (when the upload landed), timestamp
 
 **Clock offset** (`device_clock_offset_ms`):
@@ -140,7 +140,7 @@ Whether the rehearsal reaching Refine was told whole or in parts, read off the c
 _Avoid_: granularity, mode, shape, Granularidade
 
 **Joined recording** (`origin`):
-A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A recording no join touched is checked exactly as any other. A part landing with `origin` from a scene rehearsal of its own session comes with that rehearsal's current frases as its told stretches, each telling the frase's own audio (ENG-1405).
+A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A join names the take it was chosen over (none over an empty scene) and is refused as `TAKE_MOVED` when the part's live take is another. A recording no join touched is checked exactly as any other. A part landing with `origin` from a scene rehearsal of its own session comes with that rehearsal's current frases as its told stretches, each telling the frase's own audio (ENG-1405).
 _Avoid_: assembled recording (the server's old composed takes), merged, Junção (in prose)
 
 **Bring-back** («trazer de volta as traduções do ensaio desta cena»):
@@ -487,7 +487,7 @@ The scenes whose recorded and translated scene rehearsal has reached the Guide a
 _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
 
 **Scene rehearsal** (`ir_scene_rehearsals`; ensaio da cena):
-One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, a label the passage lacks kept apart as the team sent it, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, never heard by the recognizer or the voice, and frozen once sent but for its scene label, which no longer changes while the rehearsal is the `origin` of a current **Part**.
+One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, a label the passage lacks kept apart as the team sent it, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, never heard by the recognizer or the voice, and frozen once sent but for its scene label, which no longer changes while the rehearsal is the `origin` of a current **Part**. Its listing names the fingerprint (sha256) of its bytes, so a join can send exactly them.
 _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
 
 **Rehearsal turn** («terminei»):

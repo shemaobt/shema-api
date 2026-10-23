@@ -428,7 +428,6 @@ async def rehearsed_in_parts_of(
             content_type="audio/mp4",
             ordinal=None if whole else numbered,
             created_at=REHEARSED_AT + timedelta(minutes=index),
-            recorded_at=REHEARSED_AT + timedelta(minutes=index),
         )
         db.add(take)
         await db.commit()
@@ -474,14 +473,11 @@ async def the_upload_landed_at(db: AsyncSession, take_id: str, moment: datetime)
     """Move a stored take's arrival back in time, so a case can say which upload came first.
 
     SQLite stamps `now()` to the second and the tablet sends no pass with a rehearsal part, so
-    two uploads of one part inside a case land on the same instant under the same pass — and
-    which of them is the part would be the engine's row order answering, not the rule. A case
-    that records one part twice says so here rather than relying on that. A take sent with no
-    Recording time has its arrival standing in for one, so that moves with it.
+    two uploads of one part inside a case land on the same instant — and which of them is the
+    part would be the toss of their ids answering, not the rule. A case
+    that records one part twice says so here rather than relying on that.
     """
     take = await take_by_id(db, take_id)
-    if take.recorded_at == take.created_at:
-        take.recorded_at = moment
     take.created_at = moment
     await db.commit()
 
@@ -622,6 +618,7 @@ async def upload_a_part(
     content_type: str = "audio/mp4",
     headers: dict[str, str] | None = None,
     origin: str | None = None,
+    over_take: str | None = None,
     reopens_the_approved_draft: bool = False,
 ) -> httpx.Response:
     """Send a rehearsal recording up the way the tablet sends one.
@@ -631,8 +628,9 @@ async def upload_a_part(
     *this part was recorded again* is implicit in this call and lives nowhere else, so a case
     about it has to arrive through this door and not by writing the row.
 
-    `origin` is the scene rehearsal a joined part was laid in from, and
-    `reopens_the_approved_draft` the team's armed tap (ADR 0081).
+    `origin` is the scene rehearsal a joined part was laid in from, `over_take` the part's live
+    take the team chose the join over, and `reopens_the_approved_draft` the team's armed tap
+    (ADR 0081).
     """
     data = {
         "kind": "ensaio",
@@ -642,6 +640,8 @@ async def upload_a_part(
         data["chunk_index"] = str(part)
     if origin is not None:
         data["origin"] = origin
+    if over_take is not None:
+        data["over_take"] = over_take
     if reopens_the_approved_draft:
         data["reopens_the_approved_draft"] = "true"
     return await client.post(
