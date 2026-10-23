@@ -227,8 +227,15 @@ async def marks(db: AsyncSession, session_id: str) -> list[IRHardStretch]:
 
 
 async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -> httpx.Response:
+    """A visit naming the halt on the room's queue row: its count and its warning."""
+    listed = await client.get(f"{IR}/facilitator/sessions", headers=who.headers)
+    assert listed.status_code == 200, listed.text[:300]
+    (row,) = (row for row in listed.json()["sessions"] if row["session_id"] == session_id)
+    named = {"halt": row["halts_raised"]}
+    if row["warned_at"] is not None:
+        named["warning"] = row["warned_at"]
     return await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=who.headers
+        f"{IR}/facilitator/sessions/{session_id}/attended", params=named, headers=who.headers
     )
 
 

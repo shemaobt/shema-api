@@ -129,7 +129,10 @@ async def _undo_the_visit(url: str, session_id: str) -> tuple[IRSessionStatus, H
     engine = create_async_engine(url)
     try:
         async with async_sessionmaker(engine, class_=AsyncSession)() as db:
-            undone = await unattend(db, await get_session(db, session_id))
+            read = await get_session(db, session_id)
+            undone = await unattend(
+                db, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+            )
             return undone.status, halt.standing(undone)
     finally:
         await engine.dispose()

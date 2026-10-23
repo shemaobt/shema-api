@@ -440,7 +440,7 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
     desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:
     session_id = await a_session(db_session, team)
-    attended = f"{IR}/facilitator/sessions/{session_id}/attended"
+    attended = f"{IR}/facilitator/sessions/{session_id}/attended?halt=0"
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
         marked = await client.post(attended, headers=team.desk)
@@ -450,6 +450,35 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
         undone = await client.delete(attended, headers=team.desk)
         assert undone.status_code == 200, undone.text
         assert await nudges_heard(desk) == ["halts"]
+
+
+async def queued_row(client: httpx.AsyncClient, team: Team, session_id: str) -> dict:
+    listed = await client.get(f"{IR}/facilitator/sessions", headers=team.desk)
+    assert listed.status_code == 200, listed.text
+    return next(row for row in listed.json()["sessions"] if row["session_id"] == session_id)
+
+
+async def test_a_refused_visit_writes_nothing_and_nudges_nothing(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    session_id = await a_session(db_session, team)
+    for _ in range(2):
+        halted = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=team.tablet)
+        assert halted.status_code == 200, halted.text
+    before = await queued_row(client, team, session_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        refused = await client.post(
+            f"{IR}/facilitator/sessions/{session_id}/attended",
+            params={"halt": 1},
+            headers=team.desk,
+        )
+        assert refused.status_code == 409, refused.text
+        assert await nudges_heard(desk) == []
+
+    stamps = ("attended_at", "attended_by", "updated_at")
+    after = await queued_row(client, team, session_id)
+    assert {key: after[key] for key in stamps} == {key: before[key] for key in stamps}
 
 
 async def test_attending_a_tablet_and_undoing_it_nudge_halts(

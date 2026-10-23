@@ -980,6 +980,10 @@ class FacilitatorSessionView(BaseModel):
     project_id: str
     team_name: str
     halt: str | None = None
+    #: The halt count a visit or its undo names (ADR 0091).
+    halts_raised: int
+    #: The standing warning's moment, ISO-8601 with an offset; a visit names it beside the halt
+    #: count (ADR 0091).
     warned_at: str | None = None
     #: ISO-8601 with an offset, like every other instant this module serves.
     attended_at: str | None = None

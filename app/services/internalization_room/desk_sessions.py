@@ -164,6 +164,8 @@ def _item(
         ended_at=end.ended_at,
         attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
         attended_by=session.attended_by,
+        halts_raised=session.halts_raised,
+        warned_at=as_utc(session.warned_at) if session.warned_at is not None else None,
         turns=guide_turns_of(session),
         engaged_elements=None
         if beads is None
