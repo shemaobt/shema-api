@@ -8,6 +8,7 @@ fingerprint; the room keeps exactly those bytes and refuses any others (ADR 0072
 from __future__ import annotations
 
 import hashlib
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -56,7 +57,13 @@ async def _joined(
 
 
 async def _recorded_by_hand(
-    client: httpx.AsyncClient, session_id: str, *, part: int, pass_number: int, audio: bytes
+    client: httpx.AsyncClient,
+    session_id: str,
+    *,
+    part: int,
+    pass_number: int,
+    audio: bytes,
+    recorded_at: datetime | None = None,
 ) -> str:
     kept = await client.post(
         f"{IR}/sessions/{session_id}/takes",
@@ -65,6 +72,7 @@ async def _recorded_by_hand(
             "scope": f"parte-{part}",
             "chunk_index": str(part),
             "pass_number": str(pass_number),
+            **({} if recorded_at is None else {"recorded_at": recorded_at.isoformat()}),
         },
         files={"file": ("parte.wav", audio, "audio/wav")},
     )
@@ -315,3 +323,98 @@ async def test_a_join_sent_again_after_it_landed_answers_the_join_kept(
 
     assert (first.status_code, again.status_code) == (200, 200), (first.text, again.text)
     assert again.json() == first.json(), "o reenvio da mesma junção não achou a que já estava"
+
+
+async def test_the_take_a_join_is_chosen_over_is_the_one_recorded_last_not_the_highest_pass(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 23)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    now = datetime.now(UTC)
+    higher_pass = await _recorded_by_hand(
+        room.client,
+        session_id,
+        part=2,
+        pass_number=2,
+        audio=recording(4, 24),
+        recorded_at=now - timedelta(hours=2),
+    )
+    recorded_last = await _recorded_by_hand(
+        room.client,
+        session_id,
+        part=2,
+        pass_number=1,
+        audio=recording(4, 25),
+        recorded_at=now - timedelta(hours=1),
+    )
+
+    over_the_higher_pass = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=3,
+        over_take=higher_pass,
+    )
+    over_the_last_recorded = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=3,
+        over_take=recorded_last,
+    )
+
+    assert over_the_higher_pass.status_code == 409, over_the_higher_pass.text
+    assert over_the_higher_pass.json()["code"] == "TAKE_MOVED"
+    assert over_the_last_recorded.status_code == 200, over_the_last_recorded.text
+
+
+async def test_a_join_sent_again_over_the_part_recorded_by_hand_since_answers_the_old_join(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 26)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    first_by_hand = await _recorded_by_hand(
+        room.client, session_id, part=2, pass_number=1, audio=recording(4, 27)
+    )
+    joined = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=2,
+        over_take=first_by_hand,
+    )
+    again_by_hand = await _recorded_by_hand(
+        room.client,
+        session_id,
+        part=2,
+        pass_number=3,
+        audio=recording(4, 28),
+        recorded_at=datetime.now(UTC),
+    )
+
+    rejoined = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=4,
+        over_take=again_by_hand,
+    )
+
+    assert rejoined.status_code == 200, rejoined.text
+    assert rejoined.json()["take_id"] == joined.json()["take_id"]
+    parts = [p for p in await _parts(room, session_id, room.tablet_b) if p["ordinal"] == 2]
+    assert parts[-1]["take_id"] == again_by_hand, "a re-junção tirou a parte gravada à mão"
