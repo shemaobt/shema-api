@@ -40,8 +40,9 @@ ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
-#: A manifest asked of a passage whose draft is not approved as it stands. Its own code
-#: because there is no version to reload and no blocker to name: the passage is approved first.
+#: Refine's manifest or the team's Checagem externa asked of a passage whose draft is not
+#: approved as it stands. Its own code because there is no version to reload and no blocker to
+#: name: the passage is approved first.
 ERROR_CODE_DRAFT_NOT_APPROVED: Final = "DRAFT_NOT_APPROVED"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: A heard mark on a question nobody has answered. Its own code for the reason above: there is
@@ -179,7 +180,9 @@ class NothingToForce(ConflictError):
 
 
 class DraftNotApproved(ConflictError):
-    """A manifest was asked of a session whose draft is not approved as it stands.
+    """A door that reads an approved draft was asked of a session whose draft is not approved
+    as it stands: the release read serving Refine her manifest, and the team's open of the
+    Checagem externa.
 
     Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
     promises a version to reload from, and there is no version to reload; approve the

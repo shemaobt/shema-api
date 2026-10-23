@@ -44,6 +44,8 @@ from tests.turn_claim_harness import OPENING, Guide, a_voice, speak, the_guide_i
 
 APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
+#: The open of the Checagem externa takes the row around a read and an insert, with no bucket.
+THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -319,7 +321,7 @@ def _on_the_session_row(call: ast.Call) -> bool:
     return named or (isinstance(first, ast.Name) and first.id == "session")
 
 
-def test_the_session_row_is_taken_for_update_in_one_place_the_sentence_doors_write() -> None:
+def test_the_session_row_is_taken_for_update_only_by_doors_that_hold_no_bucket() -> None:
     locking = sorted(
         str(path.relative_to(APP.parent))
         for path in APP.rglob("*.py")
@@ -327,6 +329,6 @@ def test_the_session_row_is_taken_for_update_in_one_place_the_sentence_doors_wri
         if isinstance(node, ast.Call) and _takes_a_row_lock(node) and _on_the_session_row(node)
     )
 
-    assert locking == [THE_SENTENCE_DOOR], (
-        "a linha da sessão era travada em mais de um lugar, e cada um pode segurá-la pelo bucket"
+    assert locking == sorted([THE_SENTENCE_DOOR, THE_EXTERNAL_CHECK_OPEN]), (
+        "a linha da sessão era travada num lugar novo, que pode segurá-la pelo bucket"
     )

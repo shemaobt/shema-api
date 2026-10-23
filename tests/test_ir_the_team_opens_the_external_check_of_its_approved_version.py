@@ -21,8 +21,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.api.internalization_room import external_check as external_check_api
 from app.db.models.internalization_room import IRExternalCheck, IRSession
 from app.services.internalization_room import external_check as external_check_module
+from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.segments import capture_segment
 from tests.baker import make_app, make_role
@@ -331,6 +333,41 @@ async def test_a_zerar_keeps_the_check_under_the_passages_archive(client, db_ses
     assert kept.id == opened.json()["check_id"]
     assert kept.archive_id == zeroed.json()["archive"]["id"]
     assert after.status_code == 404, after.text
+
+
+async def test_a_zerar_inside_the_opens_window_leaves_no_live_check_under_its_archive(
+    client, db_session, room_app, monkeypatch
+):
+    """The Zerar commits after the open read the session and before it asks for the approval.
+
+    Staged by firing the Zerar, through a database session of its own as the Desk's request
+    would, as the open's session read returns; the read, the approval and the insert after it
+    are real.
+    """
+    team, credential = await a_claimed_device(db_session)
+    session_id = (await ready_session(db_session, project_id=team.id)).id
+    await approved(client, session_id, credential)
+    _desk, facilitator = await at_the_desk(db_session, room_app, team)
+    the_real_read = external_check_api.room.session_for_room_caller
+
+    async def _read_and_then_the_zerar_lands(db, *args, **kwargs):
+        read = await the_real_read(db, *args, **kwargs)
+        async with AsyncSession(db_session.bind, expire_on_commit=False) as the_desks:
+            await archive_pericope(
+                the_desks, await the_desks.merge(facilitator), project_id=team.id, pericope=P
+            )
+        return read
+
+    monkeypatch.setattr(
+        external_check_api.room, "session_for_room_caller", _read_and_then_the_zerar_lands
+    )
+    refused = await client.post(external_check_open(session_id), headers=team_headers(credential))
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert [
+        check for check in await checks_of(db_session, session_id) if check.archive_id is None
+    ] == []
 
 
 async def told_in_two_stretches(db: AsyncSession, session: IRSession) -> BackTranslationState:

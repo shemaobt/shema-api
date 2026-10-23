@@ -24,11 +24,15 @@ async def open_the_external_check(
 ) -> IRExternalCheck:
     """The external check of the version this session's draft stands approved under.
 
-    Refused while the draft does not stand approved (ADR 0071, ADR 0081). Two opens at once
-    leave one record: the loser meets the winner at the unique index and answers it, the way
-    the scene rehearsal's first writer wins. Only the open that creates it writes the log line,
-    and nothing else tells the facilitator.
+    Refused while the draft does not stand approved (ADR 0071, ADR 0081), asked with the
+    session row locked and read again: a Zerar that committed after the door read the session
+    is seen archived, and one that comes after waits for the record and stamps it, so no live
+    check is left under an archived session. Two opens at once leave one record: the loser
+    meets the winner at the unique index and answers it, the way the scene rehearsal's first
+    writer wins. Only the open that creates it writes the log line, and nothing else tells the
+    facilitator.
     """
+    await db.refresh(session, with_for_update=True)
     release = await approved_draft(db, session)
     if release is None:
         raise DraftNotApproved(
