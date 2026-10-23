@@ -18,16 +18,21 @@ Decided (ENG-1274):
   `sessionLanguage`, `meaningMap`, `grain`, `clips`, `finalizedAt`, `finalizeCount`, `sessionIds`,
   `audioFormat`, `whole` (when one exists; never yet), `integrity`, `externalCheck`, `check`,
   `warnings` (when any), `exportedAt`. Its gate and its scoping do not change.
-- **Only for a draft approved as it stands.** "Approved" is ADR 0071's one answer. Otherwise the
-  read is 409 `DRAFT_NOT_APPROVED`, its own code because there is no version to reload and no
-  blocker to name.
+- **Only for a draft approved as it stands.** "Approved" is ADR 0071's one answer, and the
+  parts the manifest lists must be the very takes that approval judged, fingerprint for
+  fingerprint: a part recorded again between the two reads makes the draft unapproved, never a
+  clip. Otherwise the read is 409 `DRAFT_NOT_APPROVED`, its own code because there is no version
+  to reload and no blocker to name. A session whose kept canon is gone is never told it is not
+  approved: the read answers `CANON_NOT_KEPT`, as every reader of that canon does.
 - **The packet is the record.** It is still composed, hashed and stored on the release row, and
   `GET /facilitator/sessions/{id}/releases/{version}` still serves it verbatim. No route serves it
   live any more.
 - **Clips are the current parts** that have bytes, keyed by **Part key**, named
   `<releaseId>-<key>.<ext>` with the stored release id (the uuid on a release stored before ADR
   0048), each with an hour-long link: the download list's names byte for byte (ADR 0073). A joined
-  part carries her five `origin` keys, with `joinedAt` the server's time the part landed. A part
+  part carries her five `origin` keys, with `joinedAt` the server's time the join landed: the
+  first take of the part's chain, which a laid-in sentence keeps, since the take a splice makes
+  lands at its own time and carries the origin forward. A part
   with sentences laid in carries `splices`, counted along its chain from take to take. The
   **Clock offset** and the order clock never enter.
 - **The meaning map is read at the session's pin**, from the sync's own record
@@ -36,6 +41,16 @@ Decided (ENG-1274):
 - **`check` is the stored check block in her keys**: `nuances` only when any stood, `retroUrl`
   always, and never who forced it, when, or what the force passed. Its findings and nuances keep
   ADR 0078's shape.
+- **Her other fields, in our terms.** `grain` is her word: `scene` for a passage in parts,
+  `whole`. `finalizedAt` is when this version was approved and `finalizeCount` is its
+  **Version**, since her release id reads the count as the v-number. `language` is the one the
+  stored packet named, or the team's **Mother tongue** read now for a release stored before ADR
+  0048. `sessionIds` lists this team's sessions of the passage in the same archive: hers lists
+  every session of the pericope, but ours serves many teams, and a Zerar retires a session's
+  work.
+- **The live composition leaves the app.** With no route serving it, the builder that composed
+  and refused at once moves into the test harness; the approval still judges what the composer
+  composes.
 - **`integrity` says what is true here**: every fingerprint is the server's, taken from the stored
   bytes. `externalCheck` is null until the external check reaches it.
 
