@@ -46,6 +46,7 @@ APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
 #: The approval holds the row from before it composes, and touches no bucket (ADR 0081).
 THE_APPROVAL = "app/services/internalization_room/sessions.py"
+THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -331,4 +332,20 @@ def test_the_session_row_is_taken_for_update_only_by_the_sentence_door_and_the_a
 
     assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL]), (
         "a linha da sessão era travada num lugar novo, que ninguém conferiu contra o bucket"
+    )
+
+
+def test_the_session_row_the_approval_holds_is_taken_only_by_the_approval() -> None:
+    """Each caller of the helper that takes the row holds it across no bucket call (ADR 0089)."""
+    holding = sorted(
+        str(path.relative_to(APP.parent))
+        for path in APP.rglob("*.py")
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "hold_the_session_row"
+    )
+
+    assert holding == [THE_APPROVAL_SERVICE], (
+        "a linha da sessão era segurada por um chamador novo, que ninguém conferiu contra o bucket"
     )

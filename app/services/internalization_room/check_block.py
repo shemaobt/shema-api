@@ -172,7 +172,8 @@ async def keep_the_check_on_the_standing_release(
     """The check state a session's telling-back is written with is its standing version's.
 
     Only on the stretches that version carries: a finding or a nuance on a stretch told after
-    it stays on the session, so the version's frase numbers and scenes keep naming its own.
+    it stays on the session, so the version's frase numbers and scenes keep naming its own. A
+    version stored before its stretches or its check block were kept stays as it was stored.
 
     Called by the one funnel every writer of the telling-back goes through, in its transaction,
     so a verdict, a Restart, a report of listening and a reading ahead over a draft that
@@ -181,7 +182,11 @@ async def keep_the_check_on_the_standing_release(
     and what it passed stay as the approval wrote them.
     """
     release = await approved_draft(db, session)
-    if release is None:
+    if (
+        release is None
+        or "check" not in release.packet
+        or "segments" not in (release.packet.get("back_translation") or {})
+    ):
         return
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
