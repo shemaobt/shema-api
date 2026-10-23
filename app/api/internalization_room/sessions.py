@@ -534,6 +534,7 @@ async def facilitator_sessions(
                 project_id=team,
                 team_name=named.get(team, ""),
                 halt=halt.standing(session),
+                halts_raised=session.halts_raised,
                 warned_at=(
                     as_utc(warned).isoformat()
                     if (warned := halt.standing_warning_since(session)) is not None

@@ -24,7 +24,8 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
-from tests.hard_stretch_harness import MemoryStore, a_new_recording, voice
+from tests.halt_harness import queued
+from tests.hard_stretch_harness import Facilitator, MemoryStore, a_new_recording, voice
 from tests.release_harness import ready_session
 from tests.room_harness import nothing_is_read_ahead
 from tests.stream_harness import Listening, listening
@@ -440,7 +441,7 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
     desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:
     session_id = await a_session(db_session, team)
-    attended = f"{IR}/facilitator/sessions/{session_id}/attended"
+    attended = f"{IR}/facilitator/sessions/{session_id}/attended?halt=0"
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
         marked = await client.post(attended, headers=team.desk)
@@ -450,6 +451,35 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
         undone = await client.delete(attended, headers=team.desk)
         assert undone.status_code == 200, undone.text
         assert await nudges_heard(desk) == ["halts"]
+
+
+async def queued_row(client: httpx.AsyncClient, team: Team, session_id: str) -> dict:
+    row = await queued(client, Facilitator("", team.team_id, team.desk), session_id)
+    assert row is not None, "a sala não está na fila"
+    return row
+
+
+async def test_a_refused_visit_writes_nothing_and_nudges_nothing(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    session_id = await a_session(db_session, team)
+    for _ in range(2):
+        halted = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=team.tablet)
+        assert halted.status_code == 200, halted.text
+    before = await queued_row(client, team, session_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        refused = await client.post(
+            f"{IR}/facilitator/sessions/{session_id}/attended",
+            params={"halt": 1},
+            headers=team.desk,
+        )
+        assert refused.status_code == 409, refused.text
+        assert await nudges_heard(desk) == []
+
+    stamps = ("attended_at", "attended_by", "updated_at")
+    after = await queued_row(client, team, session_id)
+    assert {key: after[key] for key in stamps} == {key: before[key] for key in stamps}
 
 
 async def test_attending_a_tablet_and_undoing_it_nudge_halts(

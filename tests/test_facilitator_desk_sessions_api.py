@@ -704,7 +704,13 @@ async def test_a_session_attended_by_a_facilitator_shows_that_time_and_that_faci
     await grant_facilitator_app_role(db_session, user.id)
     headers = await auth_header(db_session, user)
     session = await a_session(db_session, team)
-    attended = await room.attend(db_session, session, by=user.id)
+    attended = await room.attend(
+        db_session,
+        session,
+        by=user.id,
+        halts_raised=session.halts_raised,
+        warned_at=session.warned_at,
+    )
 
     (row,) = (await read(client, headers))["sessions"]
 

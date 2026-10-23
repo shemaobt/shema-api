@@ -38,6 +38,7 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
+from tests.halt_harness import the_halt_of
 from tests.hard_stretch_harness import a_new_recording, marks
 from tests.hard_stretch_harness import row as session_row
 from tests.release_harness import desk_release, ready_session, releases_of, team_release
@@ -549,7 +550,7 @@ async def test_the_desks_undo_on_a_demo_teams_halted_room_is_stamped_again_and_t
     await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
 
     undone = await client.delete(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=configured.desk
+        f"{IR}/facilitator/sessions/{session_id}/attended?halt=1", headers=configured.desk
     )
 
     assert undone.status_code == 200, undone.text[:300]
@@ -573,7 +574,9 @@ async def test_the_desks_undo_on_a_demo_teams_warning_never_brings_it_back_to_th
     await one_stretch_told_until_it_is_hard(client, session_id, tablet, take_id)
 
     undone = await client.delete(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=configured.desk
+        f"{IR}/facilitator/sessions/{session_id}/attended",
+        params=await the_halt_of(db_session, session_id),
+        headers=configured.desk,
     )
 
     assert undone.status_code == 200, undone.text[:300]
@@ -613,7 +616,7 @@ async def test_a_real_teams_undo_still_puts_its_room_and_tablet_back_on_the_queu
     session_id = await a_session_with_one_turn(client, db_session, tablet)
     await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
     await client.post(f"{IR}/devices/{linked.device_id}/needs-person", headers=tablet)
-    room = f"{IR}/facilitator/sessions/{session_id}/attended"
+    room = f"{IR}/facilitator/sessions/{session_id}/attended?halt=1"
     device = f"{DEVICES}/{linked.device_id}/attended"
     assert (await client.post(room, headers=real.desk)).status_code == 200
     assert (await client.post(device, headers=real.desk)).status_code == 200
@@ -638,7 +641,7 @@ async def test_after_the_window_closes_the_desks_undo_on_a_demo_room_is_still_st
     the_demo_team_is("")
 
     undone = await client.delete(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=configured.desk
+        f"{IR}/facilitator/sessions/{session_id}/attended?halt=1", headers=configured.desk
     )
 
     assert undone.status_code == 200, undone.text[:300]
@@ -653,7 +656,7 @@ async def test_the_desks_undo_of_a_mistaken_visit_on_a_demo_room_that_never_halt
 ) -> None:
     tablet = await a_tablet_linked_through_the_page(client)
     session_id = await a_session_with_one_turn(client, db_session, tablet)
-    visit = f"{IR}/facilitator/sessions/{session_id}/attended"
+    visit = f"{IR}/facilitator/sessions/{session_id}/attended?halt=0"
     assert (await client.post(visit, headers=configured.desk)).status_code == 200
 
     undone = await client.delete(visit, headers=configured.desk)
@@ -663,6 +666,56 @@ async def test_the_desks_undo_of_a_mistaken_visit_on_a_demo_room_that_never_halt
     assert undone.json()["attended_by"] is None
     written = await session_row(db_session, session_id)
     assert written.attended_at is None
+
+
+async def test_an_undo_read_before_a_demo_teams_warning_leaves_the_warning_attended(
+    client, configured: Team, db_session: AsyncSession, rival_factory
+) -> None:
+    from app.core.exceptions import HaltMoved
+    from app.services.internalization_room import sessions as room
+
+    tablet = await a_tablet_linked_through_the_page(client)
+    session_id = await a_session_with_one_turn(client, db_session, tablet)
+    await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+    async with rival_factory() as undoing, rival_factory() as warning:
+        read_before_the_warning = await room.get_session(undoing, session_id)
+        await room.raise_a_warning(warning, await room.get_session(warning, session_id))
+
+        with pytest.raises(HaltMoved):
+            await room.unattend(
+                undoing,
+                read_before_the_warning,
+                halts_raised=read_before_the_warning.halts_raised,
+                warned_at=read_before_the_warning.warned_at,
+            )
+
+    written = await session_row(db_session, session_id)
+    assert written.attended_at is not None, "o desfazer lido antes do aviso apagou a visita"
+    assert session_id not in await queued_session_ids(client, configured)
+
+
+async def test_an_undo_read_before_a_demo_teams_return_clears_the_visit_to_the_lifted_halt(
+    client, configured: Team, db_session: AsyncSession, rival_factory
+) -> None:
+    from app.services.internalization_room import sessions as room
+
+    tablet = await a_tablet_linked_through_the_page(client)
+    session_id = await a_session_with_one_turn(client, db_session, tablet)
+    await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=tablet)
+    async with rival_factory() as undoing:
+        read_before_the_return = await room.get_session(undoing, session_id)
+        assert await opens_p01(client, tablet) == session_id
+
+        await room.unattend(
+            undoing,
+            read_before_the_return,
+            halts_raised=read_before_the_return.halts_raised,
+            warned_at=read_before_the_return.warned_at,
+        )
+
+    written = await session_row(db_session, session_id)
+    assert written.status.value == "in_progress"
+    assert written.attended_at is None, "o desfazer carimbou de novo uma parada já levantada"
 
 
 async def test_the_desks_undo_of_a_mistaken_visit_on_a_demo_tablet_that_never_halted_clears_it(
