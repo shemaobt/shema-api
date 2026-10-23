@@ -470,7 +470,7 @@ def has_its_own_recording_time(spliced: Collection[str] = ()) -> ColumnElement[b
     A joined part names its `origin`. A tablet's time is never its arrival, which the server
     stamps from one clock reading for a take sent with none. A spliced part is stamped like a
     take sent with none, so the row cannot say it; the sentence laid into it can, and `spliced`
-    is the takes that sentence makes one (`_spliced_into_a_timed_part`).
+    is the takes that sentence makes one (`_spliced_into_timed_parts`).
     """
     own = or_(IRTake.origin.is_not(None), IRTake.recorded_at != IRTake.created_at)
     return or_(own, IRTake.id.in_(spliced)) if spliced else own
@@ -490,32 +490,56 @@ def reading_order(spliced: Collection[str] = ()) -> tuple[UnaryExpression[Any], 
 READING_ORDER = reading_order()
 
 
-async def _spliced_into_a_timed_part(db: AsyncSession, session_id: str) -> set[str]:
-    """The spliced parts of a session whose part had its own **Recording time**.
+async def _spliced_into_timed_parts(db: AsyncSession, session_ids: Collection[str]) -> set[str]:
+    """The spliced parts of these sessions whose part had its own **Recording time**.
 
     Each sentence laid in names the take it was laid into, and every server that ever spliced
     wrote that, so this is read the same for a splice made before the rule. Walked in the order
-    the sentences were laid, so a sentence laid again over a splice inherits through it.
+    the sentences were laid, so a sentence laid again over a splice inherits through it. A take
+    belongs to one session, so the sessions are read together and walked each on its own.
     """
-    told = await db.scalar(select(IRSession.back_translation).where(IRSession.id == session_id))
-    laid = [(one["previous_take_id"], one["take_id"]) for one in (told or {}).get("sentences", [])]
-    if not laid:
+    told = await db.scalars(
+        select(IRSession.back_translation).where(IRSession.id.in_(list(session_ids)))
+    )
+    sessions = [
+        [(one["previous_take_id"], one["take_id"]) for one in (state or {}).get("sentences", [])]
+        for state in told
+    ]
+    laid_everywhere = [pair for laid in sessions for pair in laid]
+    if not laid_everywhere:
         return set()
     timed = set(
         (
             await db.execute(
                 select(IRTake.id).where(
-                    IRTake.id.in_({previous for previous, _ in laid}),
+                    IRTake.id.in_({previous for previous, _ in laid_everywhere}),
                     has_its_own_recording_time(),
                 )
             )
         ).scalars()
     )
     spliced: set[str] = set()
-    for previous, take_id in laid:
-        if previous in timed or previous in spliced:
-            spliced.add(take_id)
+    for laid in sessions:
+        for previous, take_id in laid:
+            if previous in timed or previous in spliced:
+                spliced.add(take_id)
     return spliced
+
+
+async def takes_of_sessions(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, list[IRTake]]:
+    """`takes_of` for several sessions in the same two reads, each in its own reading order."""
+    held: dict[str, list[IRTake]] = {session_id: [] for session_id in session_ids}
+    if not held:
+        return held
+    spliced = await _spliced_into_timed_parts(db, held)
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id.in_(list(held))).order_by(*reading_order(spliced))
+    )
+    for take in result.scalars():
+        held[take.session_id].append(take)
+    return held
 
 
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
@@ -538,11 +562,7 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     it upside down, which put the oldest recording of a session at the bottom of the packet on
     the only database that serves a real team.
     """
-    spliced = await _spliced_into_a_timed_part(db, session_id)
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*reading_order(spliced))
-    )
-    return list(result.scalars().all())
+    return (await takes_of_sessions(db, [session_id]))[session_id]
 
 
 def current_parts(takes: list[IRTake]) -> list[IRTake]:

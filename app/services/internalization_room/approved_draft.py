@@ -22,9 +22,9 @@ from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.live import live
 from app.services.internalization_room.takes import (
-    READING_ORDER,
     current_parts,
     takes_of,
+    takes_of_sessions,
     the_take_already_kept,
 )
 
@@ -115,9 +115,10 @@ async def standing_approvals(
     """The pericopes whose draft stands approved under the team's latest live release (ADR 0081).
 
     A release stays in the history after a re-open, so having one is not being approved. The
-    question ``approved_draft`` asks one session at a time is asked here for the whole team in
-    three statements, whatever the number of released passages. ``among`` narrows the answer to
-    the passages a caller already knows have a release, and an empty one asks nothing.
+    question ``approved_draft`` asks one session at a time is asked here for the whole team, the
+    takes of each released session read through ``takes_of_sessions``, like every reader of a
+    session's parts. ``among`` narrows the answer to the passages a caller already knows have a
+    release, and an empty one asks nothing.
     """
     if among is not None and not among:
         return set()
@@ -135,11 +136,7 @@ async def standing_approvals(
         latest.setdefault(release.pericope, release)
     if not latest:
         return set()
-    takes: dict[str, list[IRTake]] = {release.session_id: [] for release in latest.values()}
-    for take in await db.scalars(
-        select(IRTake).where(IRTake.session_id.in_(list(takes))).order_by(*READING_ORDER)
-    ):
-        takes[take.session_id].append(take)
+    takes = await takes_of_sessions(db, {release.session_id for release in latest.values()})
     return {
         pericope
         for pericope, release in latest.items()

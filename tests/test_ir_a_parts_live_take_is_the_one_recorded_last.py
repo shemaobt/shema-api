@@ -29,6 +29,7 @@ from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTa
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import report_playback
 from app.services.internalization_room import takes as takes_service
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -39,6 +40,7 @@ from app.services.internalization_room.segments import capture_segment, final_se
 from app.services.internalization_room.sessions import get_session, save_back_translation
 from tests.baker import grant_room_app_role, make_app, make_role, make_user
 from tests.hard_stretch_harness import MemoryStore
+from tests.opening_harness import desk_routes
 from tests.release_harness import (
     APP_KEY,
     PREFIX,
@@ -111,6 +113,12 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, stor
     monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed)
     async with room_client(db_session, monkeypatch) as room:
         yield room
+
+
+@pytest.fixture()
+async def desk_client(db_session: AsyncSession):
+    async with desk_routes(db_session) as c:
+        yield c
 
 
 @pytest.fixture()
@@ -427,6 +435,58 @@ async def test_a_sentence_laid_into_a_part_timed_on_the_tablet_keeps_the_spliced
     assert spliced != part["take_id"]
     assert await the_desks_part(client, db_session, room_app, project, session.id) == spliced
     assert the_tablets_part(await tablet_list(client, credential, session.id)) == spliced
+
+
+async def test_a_spliced_part_timed_on_the_tablet_stands_approved_for_the_team_menu_and_the_desk(
+    client, desk_client, db_session, team, session, room_app
+):
+    project, credential = team
+    part = await send(
+        client, credential, session.id, recording(4, 21), pass_number=1, recorded_at=an_hour_ago()
+    )
+    first = await capture_segment(
+        db_session,
+        session,
+        take_id=part["take_id"],
+        starts_ms=0,
+        ends_ms=4000,
+        bridge_take_id="retro-1",
+        transcript="a primeira frase",
+    )
+    laid = await re_record(
+        client, session.id, first.id, spoken(1.0), headers=team_headers(credential)
+    )
+    assert laid.status_code == 200, laid.text
+    sentence = laid.json()["segments"][0]
+    told = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{first.id}/replace",
+        headers=team_headers(credential),
+        data={
+            "take_id": sentence["take_id"],
+            "starts_ms": str(sentence["starts_ms"]),
+            "ends_ms": str(sentence["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text
+    state = await stored_telling_back(db_session, session)
+    told_stretches = await final_segments(db_session, session.id)
+    state.checked = True
+    state.analysed_segment_ids = [stretch.id for stretch in told_stretches]
+    await reported_playback(db_session, session, state)
+
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["blockers"] == []
+    assert await standing_approvals(db_session, project.id) == {P}
+    menu = await client.get(
+        f"{PREFIX}/books/Ruth/passages?language=pt", headers=team_headers(credential)
+    )
+    assert {entry["pericope"]: entry["approved"] for entry in menu.json()["passages"]}[P] is True
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    detail = await desk_client.get(f"/api/facilitator/teams/{project.id}", headers=desk)
+    assert detail.json()["approved_total"] == 1
 
 
 async def test_a_part_sent_with_no_recording_time_and_spliced_is_still_replaced_by_its_next_pass(
