@@ -756,6 +756,7 @@ async def test_the_desks_refine_artifact_refuses_the_demo_team(
     read = await client.get(desk_release(session.id), headers=configured.desk)
 
     assert read.status_code == 409, read.text[:300]
+    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
 
 
 async def test_after_the_window_closes_the_demo_teams_release_is_still_refused(

@@ -27,7 +27,6 @@ from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
-    build_internalization_release,
 )
 from app.services.internalization_room.sessions import (
     append_exchange,
@@ -35,6 +34,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     session_is_done,
 )
+from tests.release_harness import judged_packet
 from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -139,7 +139,7 @@ async def test_the_refine_package_never_waits_on_a_recording_consent(
     session = await create_session(db_session, language="pt", pericope=P)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert "no_rehearsal_audio" in blocked.value.blockers
     assert "recording_consent_never_given" not in blocked.value.blockers

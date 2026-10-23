@@ -180,9 +180,16 @@ async def named_and_heard(
 
 
 async def laid_in_and_told_again(
-    client: httpx.AsyncClient, session_id: str, segment_id: str, position: int
+    client: httpx.AsyncClient,
+    session_id: str,
+    segment_id: str,
+    position: int,
+    *,
+    sentence_id: str = "sentence-0001",
 ) -> str:
-    laid = (await re_record(client, session_id, segment_id, spoken(1.0))).json()["segments"]
+    laid = (
+        await re_record(client, session_id, segment_id, spoken(1.0), sentence_id=sentence_id)
+    ).json()["segments"]
     new = laid[position]
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",
