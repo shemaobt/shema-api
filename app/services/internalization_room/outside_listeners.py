@@ -60,6 +60,18 @@ async def the_check_of_version(
     return check
 
 
+async def _held_archive(
+    db: AsyncSession, parent: type[IRExternalCheck] | type[IRExternalListener], parent_id: str
+) -> str | None:
+    """The parent row's **Archive**, read under its lock and held to the commit: a Zerar that
+    committed first is seen and copied, and one that comes after waits for the row and then
+    stamps what was written under it, the way a scene frase takes its rehearsal's."""
+    archive_id: str | None = await db.scalar(
+        select(parent.archive_id).where(parent.id == parent_id).with_for_update()
+    )
+    return archive_id
+
+
 async def _last_number(db: AsyncSession, check_id: str) -> int:
     last = await db.scalar(
         select(func.max(IRExternalListener.number)).where(IRExternalListener.check_id == check_id)
@@ -71,9 +83,12 @@ async def a_new_listener(db: AsyncSession, check: IRExternalCheck) -> IRExternal
     """The next number of the check's version. Two tablets asking at once can read the same
     last number: the unique index refuses the second, which walks to the next one."""
     check_id, session_id = check.id, check.session_id
+    archive_id = await _held_archive(db, IRExternalCheck, check_id)
     last = await _last_number(db, check_id)
     for number in range(last + 1, last + 1 + NUMBERING_TRIES):
-        listener = IRExternalListener(check_id=check_id, session_id=session_id, number=number)
+        listener = IRExternalListener(
+            check_id=check_id, session_id=session_id, number=number, archive_id=archive_id
+        )
         try:
             async with db.begin_nested():
                 db.add(listener)
@@ -148,8 +163,9 @@ async def keep_a_listener_recording(
 ) -> IRExternalRecording:
     """Store the bytes, then attach them: a recording that dies in the upload leaves no row.
 
-    The row takes its listener's **Archive** as it stands once the bytes are safe, so a Zerar
-    that lands during the upload stamps it too.
+    The row takes its listener's **Archive** under the listener's lock once the bytes are safe,
+    so a Zerar that lands during the upload stamps it too, and the bucket is never waited on
+    with the row held.
 
     The same bytes sent again by this listener are the recording already kept, whether the
     resend comes after the first landed or meets it at the unique index.
@@ -187,9 +203,7 @@ async def keep_a_listener_recording(
         sha256=stored.sha256,
         crc32c=stored.crc32c,
         verified_at=stored.verified_at,
-        archive_id=await db.scalar(
-            select(IRExternalListener.archive_id).where(IRExternalListener.id == listener_id)
-        ),
+        archive_id=await _held_archive(db, IRExternalListener, listener_id),
     )
     try:
         async with db.begin_nested():
@@ -211,6 +225,7 @@ async def mark_the_frase_good(
         listener_id=listener.id,
         session_id=listener.session_id,
         segment_id=_a_unit_of(check, segment_id),
+        archive_id=await _held_archive(db, IRExternalListener, listener.id),
     )
     try:
         async with db.begin_nested():

@@ -205,8 +205,8 @@ async def read(room: Room, session_id: str, version: int) -> dict[str, Any]:
     return dict(answered.json())
 
 
-def heard_one(listeners: list[dict[str, Any]], number: int) -> dict[str, Any]:
-    (found,) = [heard for heard in listeners if heard["number"] == number]
+def one_listener(listeners: list[dict[str, Any]], number: int) -> dict[str, Any]:
+    (found,) = [each for each in listeners if each["number"] == number]
     return found
 
 
@@ -222,20 +222,17 @@ async def test_an_approved_version_with_no_listeners_gives_listener_one(
     asked = await ask(room, session_id, check["version"])
 
     assert asked.status_code == 200, asked.text
-    body = asked.json()
-    assert body["number"] == 1
-    assert body["finished_at"] is None
-    assert body["completed"] is False
-    assert body == {
+    (listed,) = (await read(room, session_id, 1))["listeners"]
+    assert listed["number"] == 1
+    assert asked.json() == {
         "number": 1,
-        "started_at": body["started_at"],
+        "started_at": listed["started_at"],
         "finished_at": None,
         "completed": False,
         "retold": False,
         "whole": 0,
         "frases": [],
     }
-    assert [heard["number"] for heard in (await read(room, session_id, 1))["listeners"]] == [1]
 
 
 async def test_a_fourth_listener_is_four_and_one_to_three_are_never_given_again(
@@ -246,7 +243,7 @@ async def test_a_fourth_listener_is_four_and_one_to_three_are_never_given_again(
     numbers = [await listener(room, session_id, check["version"]) for _ in range(4)]
 
     assert numbers == [1, 2, 3, 4]
-    assert [heard["number"] for heard in (await read(room, session_id, 1))["listeners"]] == [
+    assert [each["number"] for each in (await read(room, session_id, 1))["listeners"]] == [
         1,
         2,
         3,
@@ -270,9 +267,9 @@ async def test_a_new_version_starts_again_at_one_and_the_old_versions_listeners_
     assert on_two == 1
     assert late_on_one == 3
     old = await read(room, session_id, 1)
-    assert [heard["number"] for heard in old["listeners"]] == [1, 2, 3]
-    assert heard_one(old["listeners"], 2)["retelling"]["recording_id"] == kept["recording_id"]
-    assert [heard["number"] for heard in (await read(room, session_id, 2))["listeners"]] == [1]
+    assert [each["number"] for each in old["listeners"]] == [1, 2, 3]
+    assert one_listener(old["listeners"], 2)["retelling"]["recording_id"] == kept["recording_id"]
+    assert [each["number"] for each in (await read(room, session_id, 2))["listeners"]] == [1]
 
 
 async def test_two_tablets_asking_at_once_get_two_different_numbers(
@@ -313,7 +310,7 @@ async def test_a_tablet_that_read_the_last_number_before_the_other_wrote_it_stil
 
     assert asked.status_code == 200, asked.text
     assert asked.json()["number"] == 2
-    assert [heard["number"] for heard in (await read(room, session_id, 1))["listeners"]] == [1, 2]
+    assert [each["number"] for each in (await read(room, session_id, 1))["listeners"]] == [1, 2]
 
 
 async def test_a_retelling_sent_before_the_tab_closes_is_kept_and_the_listener_reads_started_not_finished(  # noqa: E501
@@ -338,7 +335,7 @@ async def test_a_retelling_sent_before_the_tab_closes_is_kept_and_the_listener_r
     (key,) = [key for key, stored in room.bucket.objects.items() if stored == RETELLING]
     assert key.startswith("internalization-room/external/")
     assert "/2/" in key
-    two = heard_one((await read(room, session_id, check["version"]))["listeners"], 2)
+    two = one_listener((await read(room, session_id, check["version"]))["listeners"], 2)
     assert two["finished_at"] is None
     assert two["completed"] is False
     assert two["retelling"]["recording_id"] == kept["recording_id"]
@@ -358,7 +355,7 @@ async def test_a_frase_only_heard_has_no_entry_and_a_frase_marked_good_with_no_c
     assert marked.json()["frases"] == [
         {"segment_id": by_number[4], "frase": 4, "ok": True, "comments": 0}
     ]
-    assert heard_one((await read(room, session_id, 1))["listeners"], 1)["frases"] == [
+    assert one_listener((await read(room, session_id, 1))["listeners"], 1)["frases"] == [
         {"segment_id": by_number[4], "frase": 4, "ok": True, "comments": []}
     ]
 
@@ -375,7 +372,7 @@ async def test_a_comment_on_a_frase_makes_it_not_ok_before_or_after_the_mark(
     before_the_mark = await sent(room, session_id, 1, 1, recording(2, 22), "frase", by_number[1])
     assert (await mark(room, session_id, 1, 1, by_number[1])).status_code == 200
 
-    frases = heard_one((await read(room, session_id, 1))["listeners"], 1)["frases"]
+    frases = one_listener((await read(room, session_id, 1))["listeners"], 1)["frases"]
     assert [(frase["frase"], frase["ok"]) for frase in frases] == [(1, False), (2, False)]
     assert [comment["recording_id"] for comment in frases[0]["comments"]] == [
         before_the_mark["recording_id"]
@@ -394,7 +391,7 @@ async def test_comments_on_the_whole_passage_are_kept_in_the_order_sent(
     first = await sent(room, session_id, 1, 1, recording(2, 31), "whole")
     second = await sent(room, session_id, 1, 1, recording(2, 32), "whole")
 
-    one = heard_one((await read(room, session_id, 1))["listeners"], 1)
+    one = one_listener((await read(room, session_id, 1))["listeners"], 1)
     assert [comment["recording_id"] for comment in one["whole"]] == [
         first["recording_id"],
         second["recording_id"],
@@ -418,7 +415,7 @@ async def test_a_second_retelling_is_the_listeners_retelling_and_the_same_bytes_
     assert again["recording_id"] == first["recording_id"]
     assert rows_after_the_resend == 1
     assert held_after_the_resend == 1
-    one = heard_one((await read(room, session_id, 1))["listeners"], 1)
+    one = one_listener((await read(room, session_id, 1))["listeners"], 1)
     assert one["retelling"]["recording_id"] == second["recording_id"]
     assert first_bytes in room.bucket.objects.values()
 
@@ -436,7 +433,7 @@ async def test_finishing_now_keeps_everything_and_reads_not_complete_and_finishi
 
     assert (now.status_code, whole.status_code) == (200, 200), (now.text, whole.text)
     listeners = (await read(room, session_id, 1))["listeners"]
-    one, two = heard_one(listeners, 1), heard_one(listeners, 2)
+    one, two = one_listener(listeners, 1), one_listener(listeners, 2)
     assert one["finished_at"] is not None
     assert one["completed"] is False
     assert one["retelling"]["recording_id"] == kept["recording_id"]
@@ -456,7 +453,7 @@ async def test_a_second_finish_keeps_how_the_listener_first_ended(
     assert second.status_code == 200, second.text
     assert second.json()["completed"] is False
     assert second.json()["finished_at"] == first.json()["finished_at"]
-    one = heard_one((await read(room, session_id, 1))["listeners"], 1)
+    one = one_listener((await read(room, session_id, 1))["listeners"], 1)
     assert (one["completed"], one["finished_at"]) == (False, first.json()["finished_at"])
 
 
@@ -473,7 +470,7 @@ async def test_the_bytes_are_in_the_bucket_before_the_recording_is_attached(
     with pytest.raises(ConnectionError):
         await send(room, session_id, 1, 1, RETELLING, "retell")
 
-    assert heard_one((await read(room, session_id, 1))["listeners"], 1)["retelling"] is None
+    assert one_listener((await read(room, session_id, 1))["listeners"], 1)["retelling"] is None
     assert await recordings_of(db_session, session_id) == 0
 
 
@@ -581,11 +578,11 @@ async def test_no_transcriber_and_no_model_hears_a_listener_recording(
     called: list[str] = []
 
     def _recorder(name: str):
-        async def _heard(*_: Any, **__: Any) -> Any:
+        async def _called(*_: Any, **__: Any) -> Any:
             called.append(name)
             raise AssertionError(f"{name} ouviu um ouvinte")
 
-        return _heard
+        return _called
 
     for owner, name in (
         (hearing, "transcribe_audio_detailed"),
@@ -678,7 +675,7 @@ async def test_the_team_reads_a_listeners_facts_and_never_their_audio(
 
     assert answered.status_code == 200, answered.text
     body = answered.json()
-    started_at = heard_one((await read(room, session_id, 1))["listeners"], 1)["started_at"]
+    started_at = one_listener((await read(room, session_id, 1))["listeners"], 1)["started_at"]
     assert body == {
         "number": 1,
         "started_at": started_at,
@@ -725,7 +722,7 @@ async def test_a_finish_that_lands_while_another_is_written_keeps_the_first_endi
     ending = (first[0].json()["completed"], first[0].json()["finished_at"])
     assert ending[0] is False
     assert (second.json()["completed"], second.json()["finished_at"]) == ending
-    one = heard_one((await read(room, session_id, 1))["listeners"], 1)
+    one = one_listener((await read(room, session_id, 1))["listeners"], 1)
     assert (one["completed"], one["finished_at"]) == ending
 
 
@@ -753,3 +750,56 @@ async def test_a_recording_that_lands_while_the_passage_is_zerada_carries_the_ar
         {"v": session_id},
     )
     assert list(stamped.scalars()) == archived
+
+
+def a_zerar_lands_once_the_check_is_read(room: Room, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Staged as the door's read of the check returns, through the Desk's own request; the
+    read and the write after it are real."""
+    the_real_read = outside_listeners_api.the_check_of_version
+    archived: list[str] = []
+
+    async def _read_and_then_the_zerar_lands(*args: Any, **kwargs: Any):
+        read = await the_real_read(*args, **kwargs)
+        if not archived:
+            zerado = await room.client.post(
+                f"{IR}/facilitator/projects/{TABLET_TEAM}/passages/{P}/archive", headers=room.desk
+            )
+            archived.append(zerado.json()["archive"]["id"])
+        return read
+
+    monkeypatch.setattr(
+        outside_listeners_api, "the_check_of_version", _read_and_then_the_zerar_lands
+    )
+    return archived
+
+
+async def stamps_of(db: AsyncSession, table: str, session_id: str) -> list[str | None]:
+    stamped = await db.execute(
+        text(f"SELECT archive_id FROM {table} WHERE session_id = :v"), {"v": session_id}
+    )
+    return list(stamped.scalars())
+
+
+async def test_a_listener_asked_for_while_the_passage_is_zerada_carries_the_archive_stamp(
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id, _check = await an_open_check(room, db_session)
+    archived = a_zerar_lands_once_the_check_is_read(room, monkeypatch)
+
+    await ask(room, session_id, 1)
+
+    assert archived
+    assert await stamps_of(db_session, "ir_external_listeners", session_id) == archived
+
+
+async def test_a_mark_made_while_the_passage_is_zerada_carries_the_archive_stamp(
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id, check = await an_open_check(room, db_session)
+    await listener(room, session_id, 1)
+    archived = a_zerar_lands_once_the_check_is_read(room, monkeypatch)
+
+    await mark(room, session_id, 1, 1, check["frases"][0]["segment_id"])
+
+    assert archived
+    assert await stamps_of(db_session, "ir_external_marks", session_id) == archived

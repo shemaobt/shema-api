@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
+    IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
     IRSession,
@@ -183,7 +184,10 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
         crc32c="AAAAAA==",
         content_type="audio/mp4",
     )
-    db.add_all([question, take])
+    check = IRExternalCheck(
+        release_id=f"r-{tag}", session_id=session.id, version=1, takes=[], frases=[]
+    )
+    db.add_all([question, take, check])
     await db.commit()
     await bucket.put(question.audio_key, b"a equipe perguntou", "audio/mp4")
     await bucket.put(f"voz/{tag}", b"a voz falou", "audio/mpeg")
@@ -370,7 +374,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9]):
+    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9], reads[11]):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
