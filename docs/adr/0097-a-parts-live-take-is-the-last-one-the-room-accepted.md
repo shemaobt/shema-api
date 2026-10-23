@@ -26,13 +26,16 @@ Decided (ENG-1760, the Definer's recon Q69, chosen by Henok on 2026-10-23):
   on a take that stopped being the part are stored and never carried. Rows told and checked
   under the earlier orders are exactly the case where the part changes with nobody recording.
 
-Rejected: **ordering by Recording time** (ADR 0090), for the broken clock above. Her app keeps
-an order clock floored at the live take's plus one millisecond, so the order of acceptance is
-the order she reads, and `created_at` already is it.
+Rejected: **ordering by Recording time** (ADR 0090), for the broken clock above. Marcia's app
+(the recon read its `clockSkew.ts` and `join.ts`) keeps an order clock floored at the live
+take's plus one millisecond, so the order of acceptance is the order her app reads, and
+`created_at` already is it.
 
 Consequences: a take that drains late from a tablet's outbox is the part when it lands, even
-when the team recorded over it meanwhile (ENG-579's case); a join names the take it replaces
-and is refused when that take is no longer live (ENG-1385). A session whose earlier order and
+when the team recorded over it meanwhile (ENG-579's case). A join over a part recorded again
+meanwhile is not settled by this order: ENG-1385 has the join name the take it replaces and be
+refused with `TAKE_MOVED` when that take is no longer live, and that arrives with #902; until
+then a join lands newest like any take. A session whose earlier order and
 arrival disagree changes its part once, so its packet's hash moves once and its stored check
 reads as not checked until the team tells and checks again. `created_at` is stamped when the
 upload reaches the server, before its bytes are stored, so a splice or a second tablet's take
