@@ -126,10 +126,12 @@ async def joined(room: Room, session_id: str, rehearsal_id: str, audio: bytes, *
     return str(answer.json()["take_id"])
 
 
-async def recorded_as_itself(room: Room, session_id: str, audio: bytes, *, part: int = 2) -> str:
+async def recorded_as_itself(
+    room: Room, session_id: str, audio: bytes, *, part: int = 2, **fields: str
+) -> str:
     answer = await room.client.post(
         f"{IR}/sessions/{session_id}/takes",
-        data={"kind": "ensaio", "scope": f"parte-{part}", "chunk_index": str(part)},
+        data={"kind": "ensaio", "scope": f"parte-{part}", "chunk_index": str(part), **fields},
         files={"file": ("parte.wav", audio, "audio/wav")},
     )
     assert answer.status_code == 200, answer.text
@@ -595,6 +597,9 @@ async def test_a_scene_with_a_frase_of_150_ms_joins_and_its_other_frases_become_
     again = await join(room, session_id, rehearsal_id, scene)
 
     assert first.status_code == again.status_code == 200, (first.text, again.text)
+    assert await offered(room, session_id) == [], (
+        "a frase curta sozinha oferecia trazer de volta o que nunca pode ser trecho"
+    )
     assert await words_on(room, session_id, first.json()["take_id"]) == [
         (150, SCENE_MS, "o resto da cena")
     ], "uma frase curta demais para ser trecho travava a junção da cena inteira"
@@ -648,3 +653,37 @@ async def test_a_tablet_of_another_team_cannot_bring_this_teams_frases_back(
     assert (await the_session(room, session_id))["segments"] == [], (
         "um tablet de outra equipe trazia de volta as frases desta"
     )
+
+
+async def test_a_hand_take_recorded_after_the_join_was_chosen_stays_the_part_when_the_join_lands_late(  # noqa: E501
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session, language="pt")
+    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
+    await sent(db_session, rehearsal_id)
+    chosen = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=390)
+    by_hand = await recorded_as_itself(
+        room,
+        session_id,
+        recording(SCENE_MS / 1000, 50),
+        recorded_at=(chosen + timedelta(seconds=90)).isoformat(),
+    )
+
+    late = await joined(
+        room,
+        session_id,
+        rehearsal_id,
+        scene,
+        recorded_at=chosen.isoformat(),
+        sent_at=datetime.now(UTC).isoformat(),
+    )
+
+    read = await room.client.get(
+        f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", headers=room.desk
+    )
+    assert read.status_code == 200, read.text
+    assert [one["take_id"] for one in read.json()["takes"]] == [by_hand], (
+        "a junção que chegou atrasada tomava o lugar da gravação que a equipe fez depois dela"
+    )
+    assert await places_on(room, session_id, late) == []
+    assert await offered(room, session_id) == []

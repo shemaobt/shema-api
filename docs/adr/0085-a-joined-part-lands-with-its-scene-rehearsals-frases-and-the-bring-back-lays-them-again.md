@@ -60,6 +60,8 @@ Bring-back again; taking it keeps their corrections as history. The laid telling
 takes, so the tablet's takes list, the packet's `retro_takes` and Refine's downloads carry them
 under the frase's own audio. A sentence laid into a part between the Bring-back's checks and its
 writes holds the session row while the Bring-back holds the part's: both are one team's taps on
-one part, and the race is left open rather than widening either lock. So is a lay racing a hand
-recording of the same number: the retire of the hand take reads no stretch the uncommitted lay
-wrote.
+one part, and the race is left open rather than widening either lock. A lay racing a hand
+recording of the same number is not locked against either: the retire of the hand take reads no
+stretch the uncommitted lay wrote. Its outcome rests on ENG-1760's order (ADR 0090): the part is
+the take recorded last, and a stretch counts only on the take that is the part now, so the laid
+stretches on a join the hand take outranks read as history.
