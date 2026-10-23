@@ -120,6 +120,12 @@ async def test_the_migration_walks_down_where_no_bytes_are_shared(before_the_mig
     assert indexes["uq_ir_takes_session_kind_sha256"] == (True, ["session_id", "kind", "sha256"])
     assert indexes["uq_ir_takes_session_storage_key"] == (True, ["session_id", "storage_key"])
     assert "uq_ir_takes_session_joined_pass" not in indexes
+    restored = await scalar(
+        url,
+        "SELECT sql FROM sqlite_master WHERE name = :name",
+        {"name": "uq_ir_takes_session_storage_key"},
+    )
+    assert str(restored).endswith("WHERE set_aside_at IS NULL"), restored
     with pytest.raises(IntegrityError):
         await _insert_take(
             url, "b0000000-0000-0000-0000-000000000002", pass_number=2, origin=REHEARSAL

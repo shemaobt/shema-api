@@ -47,6 +47,8 @@ Consequences: two rows can share one stored object, and nothing in the room dele
 objects. The Desk's downloads list each row. A joined take sent with no number or no pass is the
 same take as an earlier one sent the same way, and the race guard reads a missing number or pass
 as one value, so two such deliveries at once still leave one row.
-Two tablets joining the same rehearsal at different passes at the same instant both miss the
-standing part and leave two rows of the same bytes under that number; the newer is the part and
-both hold the same audio. No index can say which take is standing.
+A joined keep takes the session's row after its bytes are stored and asks again which take they
+already are before it writes its row, as a laid-in sentence does (ADR 0089), so two tablets
+joining the same rehearsal at once at different passes leave one take. A pass is the tablet's to
+count: a swap's pass comes from the room's highest pass for that part, read just before the
+send, or a swap back sent at a pass already used answers that earlier take.

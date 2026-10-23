@@ -32,6 +32,7 @@ from tests.room_harness import (
     the_bucket_is_in_memory,
     the_room_speaks,
 )
+from tests.session_row_lock_harness import the_session_row_locks_as_postgres_does
 
 A = b"o ensaio A da cena 2"
 B = b"o ensaio B da cena 2"
@@ -65,19 +66,19 @@ async def _keep(
     client: httpx.AsyncClient,
     session_id: str,
     *,
-    part: int,
+    part: int | None,
     audio: bytes,
-    pass_number: int,
+    pass_number: int | None,
     origin: str | None = None,
     reopens: bool = False,
     headers: dict[str, str] | None = None,
+    kind: str = "ensaio",
 ) -> httpx.Response:
-    data = {
-        "kind": "ensaio",
-        "scope": f"parte-{part}",
-        "chunk_index": str(part),
-        "pass_number": str(pass_number),
-    }
+    data = {"kind": kind, "scope": "passagem-inteira" if part is None else f"parte-{part}"}
+    if part is not None:
+        data["chunk_index"] = str(part)
+    if pass_number is not None:
+        data["pass_number"] = str(pass_number)
     if origin is not None:
         data["origin"] = origin
     if reopens:
@@ -350,3 +351,89 @@ async def test_a_hand_recorded_take_with_a_joined_parts_bytes_is_its_own_take(
 
     assert by_hand != joined, "a tomada feita à mão respondia a parte juntada de outra cena"
     assert [take["origin"] for take in await _takes_of_part(client, session.id, 3)] == [None]
+
+
+async def test_a_second_tablet_joining_while_the_first_stores_its_bytes_leaves_one_take(
+    db_session, monkeypatch: pytest.MonkeyPatch, store, rival_factory
+) -> None:
+    the_session_row_locks_as_postgres_does(monkeypatch)
+    session, ra, _ = await _two_rehearsals(db_session)
+    other = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    tablet_y = other.headers | {"X-Room-Device": "tablet-y"}
+    put = store.put
+    staged: list[str] = []
+
+    async with room_client(db_session, monkeypatch, per_request=rival_factory) as racing:
+
+        async def y_joins_while_x_stores(key: str, data: bytes, content_type: str) -> Any:
+            if not staged:
+                staged.append("")
+                staged[0] = await _kept(
+                    racing,
+                    session.id,
+                    part=2,
+                    audio=A,
+                    pass_number=2,
+                    origin=ra,
+                    headers=tablet_y,
+                )
+            return await put(key, data, content_type)
+
+        monkeypatch.setattr(store, "put", y_joins_while_x_stores)
+
+        from_x = await _kept(racing, session.id, part=2, audio=A, pass_number=1, origin=ra)
+
+        assert from_x == staged[0], "duas tablets juntando ao mesmo tempo deixavam duas tomadas"
+        assert len(await _takes_of_part(racing, session.id, 2)) == 1
+
+
+async def test_a_part_number_below_zero_or_a_pass_below_one_is_refused_at_the_door(
+    client, db_session
+) -> None:
+    session, ra, _ = await _two_rehearsals(db_session)
+
+    below_zero = await _keep(client, session.id, part=-1, audio=A, pass_number=1, origin=ra)
+    pass_zero = await _keep(client, session.id, part=2, audio=A, pass_number=0, origin=ra)
+
+    assert (below_zero.status_code, pass_zero.status_code) == (422, 422)
+    assert (
+        await _keep(client, session.id, part=None, audio=A, pass_number=None, origin=ra)
+    ).status_code == 200
+
+
+async def test_another_rehearsals_join_with_the_standing_parts_bytes_is_its_own_take(
+    client, db_session
+) -> None:
+    session, ra, rb = await _two_rehearsals(db_session)
+    standing = await _kept(client, session.id, part=2, audio=A, pass_number=1, origin=ra)
+
+    other = await _kept(client, session.id, part=2, audio=A, pass_number=2, origin=rb)
+
+    assert other != standing
+    assert [take["origin"] for take in await _takes_of_part(client, session.id, 2)] == [ra, rb]
+
+
+async def test_the_standing_parts_rehearsal_joined_with_other_bytes_is_its_own_take(
+    client, db_session
+) -> None:
+    session, ra, _ = await _two_rehearsals(db_session)
+    standing = await _kept(client, session.id, part=2, audio=A, pass_number=1, origin=ra)
+
+    other = await _kept(client, session.id, part=2, audio=B, pass_number=2, origin=ra)
+
+    assert other != standing
+    assert len(await _takes_of_part(client, session.id, 2)) == 2
+
+
+async def test_a_retro_kept_with_an_origin_never_answers_the_standing_rehearsal_take(
+    client, db_session
+) -> None:
+    session, ra, _ = await _two_rehearsals(db_session)
+    whole = await _kept(client, session.id, part=None, audio=A, pass_number=1, origin=ra)
+
+    retro = await _keep(
+        client, session.id, part=None, audio=A, pass_number=1, origin=ra, kind="retro"
+    )
+
+    assert retro.status_code == 200, retro.text
+    assert (retro.json()["take_id"] == whole, retro.json()["kind"]) == (False, "retro")

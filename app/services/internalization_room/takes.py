@@ -4,9 +4,10 @@ import base64
 import hashlib
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import Protocol
 
 from google_crc32c import Checksum
@@ -242,6 +243,7 @@ async def store_take(
     sent_duration_ms: int | None = None,
     sent_recorded_at: datetime | None = None,
     past_the_set_aside: bool = False,
+    the_same: Callable[[str], Awaitable[IRTake | None]] | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -264,23 +266,29 @@ async def store_take(
 
     `past_the_set_aside` looks past the takes a **Grain switch** set aside: the same bytes kept
     at the grain in force are a new take that stands, sharing the stored object (ADR 0096).
+
+    `the_same` is the caller's question of which take these bytes already are, given their hash;
+    unasked, it is their identity in storage. It is asked before the bytes are stored and, for a
+    joined part, again under the session's row before the row is written, so two tablets joining
+    at once never both write one (ADR 0095).
     """
+    same = the_same or partial(
+        _the_same_take,
+        db,
+        session_id,
+        kind,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=past_the_set_aside,
+    )
     arrived = datetime.now(UTC)
     checked = await checked_recording(
         audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
     )
     key = storage_key(session_id, kind, checked.sha256, content_type)
 
-    already = await _the_same_take(
-        db,
-        session_id,
-        kind,
-        checked.sha256,
-        ordinal=ordinal,
-        pass_number=pass_number,
-        origin=origin,
-        past_the_set_aside=past_the_set_aside,
-    )
+    already = await same(checked.sha256)
     if already is not None:
         return already
     await db.commit()
@@ -288,6 +296,12 @@ async def store_take(
     stored = await store_recording(
         audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
+    if origin is not None:
+        await db.execute(select(IRSession.id).where(IRSession.id == session_id).with_for_update())
+        already = await same(checked.sha256)
+        if already is not None:
+            await db.commit()
+            return already
     offset = (
         noted_clock_offset(sent_recorded_at, arrived)
         if origin is not None and sent_recorded_at is not None
@@ -321,16 +335,7 @@ async def store_take(
         async with db.begin_nested():
             db.add(take)
     except IntegrityError:
-        winner = await _the_same_take(
-            db,
-            session_id,
-            kind,
-            checked.sha256,
-            ordinal=ordinal,
-            pass_number=pass_number,
-            origin=origin,
-            past_the_set_aside=past_the_set_aside,
-        )
+        winner = await same(checked.sha256)
         if winner is None:
             raise
         return winner
@@ -348,7 +353,7 @@ async def the_take_already_kept(
     pass_number: int | None = None,
     origin: str | None = None,
 ) -> IRTake | None:
-    return await _the_same_take(
+    return await the_take_this_keep_already_is(
         db,
         session_id,
         kind,
@@ -371,22 +376,12 @@ async def _the_same_take(
     origin: str | None = None,
     past_the_set_aside: bool = False,
 ) -> IRTake | None:
-    """The take these bytes already are: a resend, or a second tablet's same join.
+    """The take these bytes are in storage: a resend, or a second tablet's same join.
 
-    A part laid in from a scene rehearsal is the part standing under its number when that part
-    is already this rehearsal's bytes, whatever pass the tablet counted, so a second tablet's
-    join lands on it. Otherwise it is that take only under the same number and pass as well,
-    because a swap back to an earlier rehearsal sends bytes the session already holds and is a
-    new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
+    A part laid in from a scene rehearsal is that take only under the same number and pass as
+    well, because a swap back to an earlier rehearsal sends bytes the session already holds and
+    is a new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
     """
-    if origin is not None:
-        standing = [
-            part
-            for part in current_parts(await takes_of(db, session_id))
-            if part.ordinal == ordinal
-        ]
-        if standing and (standing[0].origin, standing[0].sha256) == (origin, sha256):
-            return standing[0]
     same = (
         (
             IRTake.origin.is_not(None),
@@ -597,6 +592,44 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
         newest.pop(None, None)
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
+
+
+async def the_take_this_keep_already_is(
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    ordinal: int | None,
+    pass_number: int | None,
+    origin: str | None,
+    past_the_set_aside: bool,
+) -> IRTake | None:
+    """The take a keep's bytes already are, as the room reads its parts.
+
+    A part joined from the rehearsal already standing under its number, with that part's bytes,
+    is that part whatever pass the tablet counted: a second tablet joins above the pass it last
+    listed and lands on the one part (ADR 0095). Otherwise it is the take its bytes are in
+    storage.
+    """
+    if origin is not None and kind is IRTakeKind.ENSAIO:
+        standing = [
+            part
+            for part in current_parts(await takes_of(db, session_id))
+            if part.ordinal == ordinal
+        ]
+        if standing and (standing[0].origin, standing[0].sha256) == (origin, sha256):
+            return standing[0]
+    return await _the_same_take(
+        db,
+        session_id,
+        kind,
+        sha256,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=past_the_set_aside,
+    )
 
 
 def set_aside_moment(take: IRTake) -> str | None:

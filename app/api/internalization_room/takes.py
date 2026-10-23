@@ -6,6 +6,8 @@ opposite: the recording is the work, and a tablet that breaks with them still on
 session with it.
 """
 
+from functools import partial
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +49,7 @@ from app.services.internalization_room.takes import (
     take_in_session,
     take_store,
     takes_of,
+    the_take_this_keep_already_is,
 )
 from app.utils.stored_time import as_utc
 
@@ -104,8 +107,8 @@ async def keep_take(
     session_id: str,
     kind: str = Form(...),
     scope: str = Form(...),
-    pass_number: int | None = Form(default=None),
-    chunk_index: int | None = Form(default=None),
+    pass_number: int | None = Form(default=None, ge=1),
+    chunk_index: int | None = Form(default=None, ge=0),
     origin: str | None = Form(
         default=None,
         description=(
@@ -222,6 +225,16 @@ async def keep_take(
         sent_duration_ms=duration_ms,
         sent_recorded_at=recorded_at,
         past_the_set_aside=not left_behind,
+        the_same=partial(
+            the_take_this_keep_already_is,
+            db,
+            session.id,
+            take_kind,
+            ordinal=ordinal,
+            pass_number=pass_number,
+            origin=origin,
+            past_the_set_aside=not left_behind,
+        ),
     )
     await room.set_aside_by_the_grain_in_force(db, session, take)
     await room.retire_the_part_recorded_again(db, session, take)
