@@ -26,15 +26,16 @@ the only place its canon still exists once the pin moves. The sync removes no ke
 which pins a live session holds needs a production read, and the sync takes none. A kept tree
 leaves only through `--prune --live-pins <file>`, the file being production's answer to
 `GET /api/internalization-room/facilitator/canon-pins`; the prune keeps every pin the file
-names, the pin production serves and the deployed pin, and drops every other kept tree, never
-through a link (ADR 0088).
+names, the pin production serves and the deployed pin, and drops every other kept tree (ADR
+0088).
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
 compiler's main line, when the pin leaves no consumable passage at all, and when a names
 list's bytes differ from the sha256 her `_spec/pins.json` records for it. `--prune` refuses,
 exits 1 and removes nothing when the checkout has no `VENDOR_PIN`, when it is given no file, a
-file that is not that read's answer or that production (`tripod-backend`) did not serve, or a
-pin that names neither a kept tree nor the deployed pin.
+file that is not that read's answer, that production (`tripod-backend`) did not serve or that
+it answered more than 15 minutes ago, a pin that names neither a kept tree nor the deployed pin,
+or a `kept/` that is a link or holds one.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
@@ -55,7 +56,7 @@ import sys
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.core.canon_pin import pinned_commit
@@ -67,6 +68,7 @@ REPO = "MarciaSuzuki/tripod_compiler"
 VENDOR = Path(__file__).resolve().parents[1] / ("app/services/internalization_room/canon/vendor")
 PIN_FILE = VENDOR / "VENDOR_PIN"
 PRODUCTION = "tripod-backend"
+FRESH_FOR = timedelta(minutes=15)
 MANIFEST = "VENDOR_MANIFEST.json"
 PROVENANCE = "registry/PROVENANCE.md"
 KINDS = {
@@ -255,9 +257,15 @@ def prune(live_pins: Path | None) -> int:
     try:
         answer = json.loads(live_pins.read_text())
         live, serving, environment = answer["pins"], answer["deployed_pin"], answer["environment"]
+        answered = datetime.fromisoformat(answer["answered_at"])
     except (OSError, ValueError, KeyError, TypeError):
-        live = serving = environment = None
-    if not isinstance(live, list) or not all(map(_is_sha, [*live, serving])):
+        live = serving = environment = answered = None
+    if (
+        not isinstance(live, list)
+        or not all(map(_is_sha, [*live, serving]))
+        or answered is None
+        or answered.tzinfo is None
+    ):
         print(
             f"{live_pins} is not the answer of the canon-pins read — refusing to prune",
             file=sys.stderr,
@@ -270,8 +278,22 @@ def prune(live_pins: Path | None) -> int:
             file=sys.stderr,
         )
         return 1
+    if datetime.now(UTC) - answered > FRESH_FOR:
+        print(
+            f"{live_pins} was answered at {answered.isoformat()}, more than 15 minutes ago — "
+            "fetch it again and prune at once",
+            file=sys.stderr,
+        )
+        return 1
     deployed = pinned_commit(PIN_FILE.read_text())
     kept = VENDOR.parent / "kept"
+    links = [kept] if kept.is_symlink() else [path for path in kept.glob("*") if path.is_symlink()]
+    if links:
+        print(
+            f"{', '.join(str(link) for link in links)} is a link — refusing to prune",
+            file=sys.stderr,
+        )
+        return 1
     for pin in [*live, serving]:
         if pin != deployed and not (kept / pin).is_dir():
             print(
@@ -281,8 +303,7 @@ def prune(live_pins: Path | None) -> int:
             return 1
     keep = {*live, serving, deployed}
     if kept.is_dir():
-        trees = (path for path in kept.iterdir() if path.is_dir() and not path.is_symlink())
-        for tree in sorted(trees):
+        for tree in sorted(path for path in kept.iterdir() if path.is_dir()):
             if tree.name in keep:
                 print(f"  kept kept/{tree.name}")
             else:

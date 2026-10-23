@@ -7,6 +7,7 @@ teams and leaves out only the sessions a Zerar archived.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -189,4 +190,18 @@ async def test_the_read_names_the_environment_that_served_it_and_its_deployed_pi
     assert (answer["environment"], answer["deployed_pin"]) == ("tripod-backend", NEW_PIN), (
         "o arquivo não dizia de que ambiente veio nem que pin ele serve, e o prune não tinha "
         "como recusar um arquivo do staging ou guardar o canon que produção serve"
+    )
+
+
+async def test_the_read_names_the_moment_it_answered(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    team = await _a_team(db_session, "x")
+    reader = await _a_reader(db_session, "x@example.com", role="facilitator", facilitates=(team,))
+    before = datetime.now(UTC)
+
+    answer = await _pins(client, reader)
+
+    assert before <= datetime.fromisoformat(answer["answered_at"]) <= datetime.now(UTC), (
+        "o arquivo não dizia quando foi respondido, e o prune não tinha como recusar um velho"
     )

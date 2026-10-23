@@ -96,7 +96,8 @@ beside the copy. It keeps the canon it replaces, with the element labels, under
 `canon/kept/<pin>/`: a session reads the canon it opened with while it is live, until a Zerar
 archives it. The sync never removes a kept tree. Kept trees leave only by hand, through a
 prune (ADR 0088). From an up-to-date main checkout, fetch production's live pins with a Desk
-token, then prune with them and open a pull request with what it removed:
+token, then prune with them at once (a file older than 15 minutes is refused) and open a pull
+request with what it removed:
 
 ```sh
 curl -sf -H "Authorization: Bearer <token>" \
@@ -106,7 +107,8 @@ curl -sf -H "Authorization: Bearer <token>" \
 
 The prune keeps every pin in the file, the pin production serves and the deployed pin. It
 refuses with no file, with a file that is not that read's answer or was not served by production
-(`tripod-backend`), and with a pin it holds no tree for. Never edit vendored
+(`tripod-backend`) or is older than 15 minutes, with a pin it holds no tree for, and when
+`kept/` is a link or holds one. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.

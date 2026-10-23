@@ -1739,4 +1739,5 @@ class SessionCoverageResponse(BaseModel):
 class CanonPinsResponse(BaseModel):
     environment: str
     deployed_pin: str
+    answered_at: datetime
     pins: list[str]

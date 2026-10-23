@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -48,8 +49,19 @@ def _live_pins(tmp_path: Path, body: str) -> Path:
     return file
 
 
-def _the_read_answered(tmp_path: Path, *pins: str, serving: str = SHA) -> Path:
-    answer = {"environment": PRODUCTION, "deployed_pin": serving, "pins": list(pins)}
+def _moment(ago: timedelta = timedelta(minutes=1)) -> str:
+    return (datetime.now(UTC) - ago).isoformat()
+
+
+def _the_read_answered(
+    tmp_path: Path, *pins: str, serving: str = SHA, ago: timedelta = timedelta(minutes=1)
+) -> Path:
+    answer = {
+        "environment": PRODUCTION,
+        "deployed_pin": serving,
+        "answered_at": _moment(ago),
+        "pins": list(pins),
+    }
     return _live_pins(tmp_path, json.dumps(answer))
 
 
@@ -124,8 +136,25 @@ def test_a_prune_without_a_file_refuses_and_removes_nothing(
         json.dumps({"sha": [LIVE]}),
         json.dumps({"pins": LIVE}),
         '{"pins": ["aaaaaaa"]}',
+        json.dumps({"environment": PRODUCTION, "deployed_pin": SHA, "pins": [LIVE]}),
+        json.dumps(
+            {
+                "environment": PRODUCTION,
+                "deployed_pin": SHA,
+                "answered_at": datetime.now().isoformat(),
+                "pins": [LIVE],
+            }
+        ),
     ],
-    ids=["a missing file", "not json", "no pins", "pins not a list", "a short sha"],
+    ids=[
+        "a missing file",
+        "not json",
+        "no pins",
+        "pins not a list",
+        "a short sha",
+        "no moment",
+        "a moment with no zone",
+    ],
 )
 def test_a_prune_whose_file_is_not_the_reads_answer_refuses_and_removes_nothing(
     a_canon_deployed_beside_three_kept_trees: Path,
@@ -214,7 +243,7 @@ def test_a_prune_whose_file_does_not_name_production_refuses_and_removes_nothing
     environment: str | None,
 ) -> None:
     canon_dir = a_canon_deployed_beside_three_kept_trees
-    answer: dict[str, object] = {"deployed_pin": SHA, "pins": [LIVE]}
+    answer: dict[str, object] = {"deployed_pin": SHA, "answered_at": _moment(), "pins": [LIVE]}
     if environment is not None:
         answer["environment"] = environment
     live_pins = _live_pins(canon_dir, json.dumps(answer))
@@ -234,7 +263,10 @@ def test_a_prune_whose_file_carries_no_deployed_pin_refuses_and_removes_nothing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     canon_dir = a_canon_deployed_beside_three_kept_trees
-    live_pins = _live_pins(canon_dir, json.dumps({"environment": PRODUCTION, "pins": [LIVE]}))
+    live_pins = _live_pins(
+        canon_dir,
+        json.dumps({"environment": PRODUCTION, "answered_at": _moment(), "pins": [LIVE]}),
+    )
     before = _everything_under(canon_dir)
 
     assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
@@ -278,22 +310,70 @@ def test_a_prune_with_no_deployed_pin_in_the_checkout_refuses_and_removes_nothin
     assert _everything_under(canon_dir) == before, "um checkout sem VENDOR_PIN apagou canon"
 
 
-def test_a_prune_removes_nothing_through_a_link_under_kept(
-    a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_a_prune_whose_kept_holds_a_link_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     canon_dir = a_canon_deployed_beside_three_kept_trees
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "VENDOR_PIN").write_text("pin_commit: outside\n")
-    (canon_dir / "kept" / ("b" * 40)).symlink_to(outside, target_is_directory=True)
+    shutil.rmtree(canon_dir / "kept" / LIVE)
+    (canon_dir / "kept" / LIVE).symlink_to(canon_dir / "kept" / STALE, target_is_directory=True)
     live_pins = _the_read_answered(canon_dir, LIVE)
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert LIVE in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, (
+        "o prune tomou um link pela árvore de um pin vivo e apagou a árvore para onde ele aponta"
+    )
+
+
+def test_a_prune_whose_kept_is_itself_a_link_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    elsewhere = tmp_path / "elsewhere"
+    (canon_dir / "kept").rename(elsewhere)
+    (canon_dir / "kept").symlink_to(elsewhere, target_is_directory=True)
+    live_pins = _the_read_answered(canon_dir, LIVE)
+    before = _everything_under(elsewhere)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert "kept" in capsys.readouterr().err
+    assert _everything_under(elsewhere) == before, "o prune apagou por um kept/ que é link"
+
+
+def test_a_prune_whose_file_is_older_than_fifteen_minutes_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _the_read_answered(canon_dir, LIVE, ago=timedelta(minutes=16))
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert str(live_pins) in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, (
+        "um arquivo velho, de antes de um deploy, apagou o canon que as sessões novas leem"
+    )
+
+
+def test_a_prune_whose_file_is_a_minute_old_prunes(
+    a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _the_read_answered(canon_dir, LIVE, ago=timedelta(minutes=1))
 
     assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 0
 
-    assert (outside / "VENDOR_PIN").read_text() == "pin_commit: outside\n", (
-        "o prune apagou por um link o que está fora de kept/"
-    )
-    assert STALE not in _kept_trees(canon_dir), "o prune parou no meio, no link"
+    assert _kept_trees(canon_dir) == sorted([LIVE, SHA]), "o prune recusou um arquivo recém-buscado"
 
 
 def test_a_prune_told_every_kept_pin_removes_nothing(
