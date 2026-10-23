@@ -19,7 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Finding,
+    FindingKind,
+)
 from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import get_session
@@ -388,3 +392,51 @@ async def test_a_check_that_comes_back_clean_over_a_forced_v1_is_the_one_check_e
     assert stored["check"]["conferida"] is True
     assert (retro["approved"], retro["checked"]) == (True, True)
     assert retro["releases"][0]["forced_by"] is not None
+
+
+async def test_a_finding_raised_after_the_approval_is_the_standing_versions_check_too(
+    client, db_session, room_app
+) -> None:
+    """One check state: every write of the telling-back reaches the version it stands under."""
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    await checked_heard_and_approved(client, db_session, session.id)
+    told = await final_segments(db_session, session.id)
+    await reported_playback(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[
+                Finding(kind=FindingKind.ADDITION, note="a mais", segment_id=told[0].id, chunk=1)
+            ],
+            checked=False,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+
+    stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+    retro = (await client.get(desk_retro(session.id), headers=desk)).json()
+
+    assert (stored["check"]["conferida"], retro["checked"]) == (False, False)
+    assert [one["idx"] for one in stored["check"]["findings"]] == [told[0].id]
+    assert (await _approval(client, session.id) or {}).get("version") == 1
+
+
+async def test_the_translation_started_over_after_the_approval_is_the_standing_versions_check_too(
+    client, db_session, room_app
+) -> None:
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    await checked_heard_and_approved(client, db_session, session.id)
+
+    restarted = await client.post(f"{PREFIX}/sessions/{session.id}/back-translation/restart")
+    assert restarted.status_code == 200, restarted.text
+
+    stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+    retro = (await client.get(desk_retro(session.id), headers=desk)).json()
+    assert (stored["check"]["conferida"], retro["checked"]) == (False, False)

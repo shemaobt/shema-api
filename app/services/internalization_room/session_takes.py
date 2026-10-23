@@ -5,13 +5,14 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRRelease, IRSession, IRTake
+from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import (
     KeptRehearsal,
     KeptTakeView,
     MotherTongueTake,
     MotherTongueTakesResponse,
 )
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.classify_coverage import KeptRecording, Retelling
 from app.services.internalization_room.release import _recording_grain
 from app.services.internalization_room.session_turns import TeamTurn, team_turn_of
@@ -58,20 +59,13 @@ async def mother_tongue_takes_of(
                 device_clock_offset_ms=take.device_clock_offset_ms,
             )
         )
-    approved_at = (
-        await db.execute(
-            select(IRRelease.approved_at)
-            .where(IRRelease.session_id == session.id)
-            .order_by(IRRelease.version.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    approved = await approved_draft(db, session)
     return MotherTongueTakesResponse(
         session_id=session.id,
         takes=rows,
         kept_rehearsals=await kept_rehearsals_of(db, session),
         recording_grain=_recording_grain(parts) if parts else None,
-        finished_at=None if approved_at is None else as_utc(approved_at).isoformat(),
+        finished_at=None if approved is None else as_utc(approved.approved_at).isoformat(),
     )
 
 

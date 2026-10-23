@@ -26,6 +26,7 @@ from app.core.enums import ProjectRole
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import takes as takes_service
+from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.segments import final_segments
 from tests.baker import (
@@ -369,6 +370,44 @@ async def test_the_name_follows_the_passages_latest_release(client, db_session, 
     every_name = [each["filename"] for each in (*listed["takes"], *listed["superseded_takes"])]
     assert len(every_name) == 2
     assert all(name.startswith(f"{RELEASE_V2}-S1") for name in every_name)
+
+
+async def test_a_draft_re_opened_after_its_approval_names_its_files_by_the_next_version(
+    client, db_session, room_app
+):
+    """ENG-1260: a file names a release only while the draft stands under it (ADR 0081)."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_to_approve(db_session, project.id, ("audio/wav",))
+    await approved(client, credential, session)
+    await record_the_part_again(
+        db_session,
+        session,
+        await the_one_part_of(db_session, session),
+        sha256=hashlib.sha256(recording(1, 9)).hexdigest(),
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    listed = await read_downloads(client, desk, session.id)
+
+    assert listed["release_id"] == RELEASE_V2
+    assert [each["filename"].startswith(f"{RELEASE_V2}-S1") for each in listed["takes"]] == [True]
+
+
+async def test_the_session_after_a_zerar_names_its_files_by_the_next_version_not_the_archived_one(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    zeroed = await ready_to_approve(db_session, project.id, ("audio/wav",))
+    await approved(client, credential, zeroed)
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+    again, _parts = await rehearsed_in_parts(
+        db_session, 1, project_id=project.id, content_types=("audio/wav",)
+    )
+
+    listed = await read_downloads(client, desk, again.id)
+
+    assert listed["release_id"] == RELEASE_V2
 
 
 async def test_a_release_stored_before_adr_0048_names_the_files_by_its_uuid(

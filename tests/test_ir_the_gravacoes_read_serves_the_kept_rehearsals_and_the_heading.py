@@ -569,6 +569,22 @@ async def test_the_finish_is_the_approval_of_the_latest_release_of_the_session(
     assert body["finished_at"] == "2026-10-19T15:30:00+00:00"
 
 
+async def test_a_session_whose_draft_was_re_opened_after_its_release_has_no_finish(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    """ENG-1260: the finish is the approval the draft still stands under (ADR 0081)."""
+    db_session.add(_release(session, 1, datetime(2026, 10, 17, 12, 0, tzinfo=UTC)))
+    db_session.add(ensaio_take(session.id, project_id=session.project_id))
+    await db_session.commit()
+
+    body = await _read(client, consultant, session.id)
+
+    assert body["finished_at"] is None
+
+
 async def test_a_session_with_no_release_of_its_own_has_no_finish_whatever_its_team_approved(
     client: httpx.AsyncClient,
     consultant: dict[str, str],

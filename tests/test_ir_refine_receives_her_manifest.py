@@ -68,9 +68,11 @@ from tests.release_harness import (
     judged_packet,
     one_stretch,
     rehearsed_session,
+    releases_of,
     reported_playback,
     team_headers,
     team_release,
+    told_back_with_an_open_finding,
 )
 from tests.room_harness import (
     heard_every_part,
@@ -774,6 +776,43 @@ async def test_a_frase_told_after_the_approval_leaves_the_manifest_of_the_approv
     manifest = await manifest_of(client, desk, session)
 
     assert manifest["releaseId"] == "internalize-terena-p01-v1"
+
+
+async def test_a_finding_raised_after_the_approval_leaves_the_manifest_of_the_approved_version(
+    client, db_session, room_app
+):
+    """The gate is read only while no version stands: nothing but a take re-opens one."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", headers=team_headers(credential))
+
+    assert manifest["releaseId"] == "internalize-terena-p01-v1"
+    assert read.json()["approved"]["version"] == 1
+
+
+async def test_a_force_over_a_standing_version_answers_it_and_records_no_force(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    answer = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+
+    assert answer.status_code == 200, answer.text
+    assert (answer.json()["version"], answer.json()["forced_at"]) == (1, None)
+    assert len(await releases_of(db_session, session.id)) == 1
 
 
 async def test_a_passage_the_gate_refuses_has_no_manifest(client, db_session, room_app):

@@ -16,9 +16,9 @@ from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.canon.book_material import meaning_map_ref
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.check_block import RETRO_ROUTE
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.release import (
-    RETRO_ROUTE,
     InternalizationReleaseBlocked,
     _mother_tongue,
     _recording_grain,

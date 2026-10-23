@@ -51,6 +51,7 @@ from app.services.internalization_room.canon.book_material import require_walkab
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map, not_served
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.check_block import keep_the_check_on_the_standing_release
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -1247,6 +1248,8 @@ async def save_back_translation(
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
+
+    The state written is the standing version's check too, in the same transaction (ADR 0081).
     """
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
@@ -1270,6 +1273,7 @@ async def save_back_translation(
     for name, value in vars(BackTranslationState.model_validate(written)).items():
         if getattr(state, name) != value:
             setattr(state, name, value)
+    await keep_the_check_on_the_standing_release(db, session, state)
     if commit:
         await db.commit()
         await db.refresh(session)

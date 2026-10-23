@@ -400,9 +400,8 @@ async def test_the_check_block_sits_outside_the_hash(
     Two reads of an unchanged session carry one hash and one block, `lastCheckAt` included —
     it is the moment of the verdict and not of the read, so the session is one a verdict
     really stamped rather than one built with the field empty. And a forced row's stored
-    packet and the live view of that very session are one packet with one check while its
-    takes stand (ADR 0081), which is the case ADR 0020 was written for: inside the hash, a
-    force would mint a version for nothing the next time the team approved.
+    packet and the live view of that very session carry one hash and one check while its takes
+    stand (ADR 0081): the block is the version's, kept beside the content and outside its hash.
     """
     the_room_speaks(monkeypatch)
     the_analyst_reads(monkeypatch)

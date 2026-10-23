@@ -11,7 +11,7 @@ from app.models.internalization_room import (
     TakeDownload,
     TakeDownloadsResponse,
 )
-from app.services.internalization_room.approved_draft import latest_release
+from app.services.internalization_room.approved_draft import approved_draft, latest_release
 from app.services.internalization_room.release import (
     _mother_tongue,
     release_name,
@@ -30,14 +30,21 @@ from app.utils.stored_time import as_utc
 
 
 async def _release_id(db: AsyncSession, session: IRSession) -> str:
+    """The id of the version this draft stands approved under, or the name the next will have.
+
+    A file names a release only while the draft stands under it (ADR 0081): after a re-open or
+    a Zerar the takes are the next version's draft, numbered on from the passage's last.
+    """
+    standing = await approved_draft(db, session)
+    if standing is not None:
+        return released_as(standing)
     latest = (
         None
         if session.project_id is None
         else await latest_release(db, session.project_id, session.pericope)
     )
-    if latest is not None:
-        return released_as(latest)
-    return release_name(await _mother_tongue(db, session), session.pericope, 1)
+    version = latest.version + 1 if latest is not None else 1
+    return release_name(await _mother_tongue(db, session), session.pericope, version)
 
 
 def part_keys_by_number(parts: list[IRTake]) -> dict[int | None, str]:
