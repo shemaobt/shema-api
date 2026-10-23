@@ -18,6 +18,7 @@ from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.release import (
     RETRO_ROUTE,
+    InternalizationReleaseBlocked,
     _mother_tongue,
     _recording_grain,
     approved_draft,
@@ -71,7 +72,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     in the **Retroverification file**, and the stored **Packet** stays the record.
     """
     if is_panorama(session.pericope):
-        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
+        raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
     with reading_the_canon_of(session.canon_pin):
         meaning_map = meaning_map_ref(session.pericope)
         reference = load_map(session.pericope).reference

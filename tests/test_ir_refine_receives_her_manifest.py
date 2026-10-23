@@ -1049,7 +1049,9 @@ async def test_a_zerar_retires_the_approval_until_the_new_session_approves(
     assert manifest["finalizeCount"] == 2
 
 
-async def test_a_panorama_is_refused_before_any_canon_is_read(client, db_session, room_app):
+async def test_a_panorama_is_refused_as_a_panorama_before_any_canon_is_read(
+    client, db_session, room_app
+):
     project, _credential = await a_claimed_device(db_session, language_name="Terena")
     panorama = await create_session(db_session, pericope="OV", project_id=project.id)
     desk, _user = await at_the_desk(db_session, room_app, project)
@@ -1057,4 +1059,5 @@ async def test_a_panorama_is_refused_before_any_canon_is_read(client, db_session
     read = await client.get(desk_release(panorama.id), headers=desk)
 
     assert read.status_code == 409, read.text
-    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert read.json()["code"] == "CONFLICT"
+    assert "panorama_sessions_never_release" in read.json()["detail"]
