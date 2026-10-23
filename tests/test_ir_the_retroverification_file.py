@@ -339,7 +339,7 @@ async def test_a_version_another_session_minted_does_not_take_this_ones_numbers(
 
     assert [one["version"] for one in file["releases"]] == [1, 2]
     assert file["numbering"] == "frozen"
-    assert file["approved"] is True
+    assert file["approved"] is False, "a v2 da outra conversa é o rascunho aprovado agora"
     assert [one["frase"] for one in file["stretches"]] == [1]
     assert file["notices"] == []
 

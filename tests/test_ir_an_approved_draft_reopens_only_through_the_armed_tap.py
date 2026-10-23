@@ -17,20 +17,37 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import segments as segments_api
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession
+from app.db.models.internalization_room import IRSession
+from app.db.models.project import Project
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.segments import capture_segment, final_segments
+from tests.baker import make_app, make_role
+from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import PREFIX, P, reported_playback, team_release
+from tests.release_harness import (
+    APP_KEY,
+    PREFIX,
+    P,
+    at_the_desk,
+    checked_heard_and_approved,
+    desk_release,
+    desk_release_at,
+    desk_retro,
+    reported_playback,
+    team_release,
+)
 from tests.room_harness import (
     PART_MS,
-    TABLET,
+    a_scene_rehearsal,
+    heard_every_part,
     nothing_is_read_ahead,
+    press_terminei,
     rehearsed_in_parts,
     room_client,
     the_analyst_reads,
     the_bucket_is_in_memory,
     the_room_speaks,
+    upload_a_part,
 )
 from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
 
@@ -60,46 +77,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, stor
         yield door
 
 
-async def _a_scene_rehearsal(db: AsyncSession, session: IRSession, n: int) -> IRSceneRehearsal:
-    rehearsal = IRSceneRehearsal(
-        session_id=session.id,
-        project_id=session.project_id,
-        pericope=session.pericope,
-        n=n,
-        device_id=TABLET,
-        storage_key=f"scene-rehearsals/{session.id}/{n}",
-        size_bytes=2048,
-        sha256=chr(ord("p") + n) * 64,
-        crc32c="AAAAAAA=",
-        content_type="audio/wav",
-        duration_ms=4000,
-        scene=f"S{n}",
-    )
-    db.add(rehearsal)
-    await db.commit()
-    return rehearsal
-
-
-async def _kept(
-    client: httpx.AsyncClient,
-    session_id: str,
-    *,
-    audio: bytes,
-    part: int | None,
-    origin: str | None = None,
-    reopens: bool = False,
-) -> httpx.Response:
-    data = {"kind": "ensaio", "scope": "passagem-inteira" if part is None else f"parte-{part}"}
-    if part is not None:
-        data["chunk_index"] = str(part)
-    if origin is not None:
-        data["origin"] = origin
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Device": TABLET},
-        data=data | (REOPENS if reopens else {}),
-        files={"file": ("cena.wav", audio, "audio/wav")},
-    )
+@pytest.fixture()
+async def room_app(db_session: AsyncSession):
+    app = await make_app(db_session, app_key=APP_KEY, name="Internalization Room")
+    await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
+    return app
 
 
 async def _recorded(
@@ -113,8 +95,8 @@ async def _recorded(
     session, _ = await rehearsed_in_parts(db, 0)
     origins = []
     for part in (1, 2):
-        origin = (await _a_scene_rehearsal(db, session, part)).id if joined else None
-        kept = await _kept(
+        origin = (await a_scene_rehearsal(db, session, part)).id if joined else None
+        kept = await upload_a_part(
             client, session.id, audio=f"cena {part}".encode(), part=part, origin=origin
         )
         assert kept.status_code == 200, kept.text
@@ -129,24 +111,6 @@ async def _recorded(
         )
         origins.append(origin)
     return session, origins
-
-
-async def _approved(client: httpx.AsyncClient, db: AsyncSession, session: IRSession) -> None:
-    """The team checks the telling-back clean, hears every part, and approves."""
-    told = await final_segments(db, session.id)
-    await reported_playback(
-        db,
-        session,
-        BackTranslationState(
-            scope=session.pericope,
-            findings=[],
-            checked=True,
-            analysed_segment_ids=[one.id for one in told],
-        ),
-    )
-    answered = await client.post(team_release(session.id))
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["version"] is not None, answered.text
 
 
 async def _approval(client: httpx.AsyncClient, session_id: str) -> dict[str, Any] | None:
@@ -174,7 +138,7 @@ async def _a_frase_of_an_approved_draft(
     client: httpx.AsyncClient, db: AsyncSession, store: MemoryStore
 ) -> tuple[IRSession, str]:
     session, _parts, frases = await rehearsed_in_wav(db, store, [[(0, 1000), (1000, 2000)]])
-    await _approved(client, db, session)
+    await checked_heard_and_approved(client, db, session.id)
     return session, frases[0][0].id
 
 
@@ -219,12 +183,14 @@ async def test_a_join_of_a_new_take_over_an_approved_draft_without_the_armed_tap
     client, db_session, store
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=False)
-    await _approved(client, db_session, session)
-    rehearsal = await _a_scene_rehearsal(db_session, session, 3)
+    await checked_heard_and_approved(client, db_session, session.id)
+    rehearsal = await a_scene_rehearsal(db_session, session, 3)
     takes_before = await _takes(client, session.id)
     stored_before = dict(store.objects)
 
-    refused = await _kept(client, session.id, audio=b"cena nova", part=1, origin=rehearsal.id)
+    refused = await upload_a_part(
+        client, session.id, audio=b"cena nova", part=1, origin=rehearsal.id
+    )
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "DRAFT_APPROVED"
@@ -237,11 +203,16 @@ async def test_the_same_join_with_the_armed_tap_lands_and_re_opens_the_draft(
     client, db_session
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=False)
-    await _approved(client, db_session, session)
-    rehearsal = await _a_scene_rehearsal(db_session, session, 3)
+    await checked_heard_and_approved(client, db_session, session.id)
+    rehearsal = await a_scene_rehearsal(db_session, session, 3)
 
-    kept = await _kept(
-        client, session.id, audio=b"cena nova", part=1, origin=rehearsal.id, reopens=True
+    kept = await upload_a_part(
+        client,
+        session.id,
+        audio=b"cena nova",
+        part=1,
+        origin=rehearsal.id,
+        reopens_the_approved_draft=True,
     )
 
     assert kept.status_code == 200, kept.text
@@ -256,10 +227,10 @@ async def test_a_join_that_finds_the_same_take_already_kept_brings_nothing_new_a
     client, db_session
 ) -> None:
     session, origins = await _recorded(client, db_session, joined=True)
-    await _approved(client, db_session, session)
+    await checked_heard_and_approved(client, db_session, session.id)
     (first,) = [one for one in await _takes(client, session.id) if one["ordinal"] == 1]
 
-    again = await _kept(client, session.id, audio=b"cena 1", part=1, origin=origins[0])
+    again = await upload_a_part(client, session.id, audio=b"cena 1", part=1, origin=origins[0])
 
     assert again.status_code == 200, again.text
     assert again.json()["take_id"] == first["take_id"]
@@ -271,11 +242,11 @@ async def test_a_whole_take_over_a_joined_recording_without_the_armed_tap_is_ref
     client, db_session, store
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=True)
-    await _approved(client, db_session, session)
+    await checked_heard_and_approved(client, db_session, session.id)
     takes_before = await _takes(client, session.id)
     stored_before = dict(store.objects)
 
-    refused = await _kept(client, session.id, audio=b"a passagem inteira", part=None)
+    refused = await upload_a_part(client, session.id, audio=b"a passagem inteira", part=None)
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "DRAFT_APPROVED"
@@ -288,9 +259,11 @@ async def test_a_whole_take_over_a_joined_recording_with_the_armed_tap_is_kept(
     client, db_session
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=True)
-    await _approved(client, db_session, session)
+    await checked_heard_and_approved(client, db_session, session.id)
 
-    kept = await _kept(client, session.id, audio=b"a passagem inteira", part=None, reopens=True)
+    kept = await upload_a_part(
+        client, session.id, audio=b"a passagem inteira", part=None, reopens_the_approved_draft=True
+    )
 
     assert kept.status_code == 200, kept.text
     assert kept.json()["take_id"] in [one["take_id"] for one in await _takes(client, session.id)]
@@ -300,9 +273,9 @@ async def test_a_part_recorded_on_the_recording_screen_over_an_approved_draft_ta
     client, db_session
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=False)
-    await _approved(client, db_session, session)
+    await checked_heard_and_approved(client, db_session, session.id)
 
-    kept = await _kept(client, session.id, audio=b"a parte 1 de novo", part=1)
+    kept = await upload_a_part(client, session.id, audio=b"a parte 1 de novo", part=1)
 
     assert kept.status_code == 200, kept.text
     assert await _approval(client, session.id) is None
@@ -312,9 +285,9 @@ async def test_a_whole_take_recorded_on_the_recording_screen_over_an_approved_dr
     client, db_session
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=False)
-    await _approved(client, db_session, session)
+    await checked_heard_and_approved(client, db_session, session.id)
 
-    kept = await _kept(client, session.id, audio=b"a passagem inteira", part=None)
+    kept = await upload_a_part(client, session.id, audio=b"a passagem inteira", part=None)
 
     assert kept.status_code == 200, kept.text
     assert kept.json()["take_id"] in [one["take_id"] for one in await _takes(client, session.id)]
@@ -324,12 +297,12 @@ async def test_a_draft_that_no_longer_stands_approved_takes_a_join_without_the_a
     client, db_session
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=False)
-    await _approved(client, db_session, session)
-    reopened = await _kept(client, session.id, audio=b"a parte 1 de novo", part=1)
+    await checked_heard_and_approved(client, db_session, session.id)
+    reopened = await upload_a_part(client, session.id, audio=b"a parte 1 de novo", part=1)
     assert reopened.status_code == 200, reopened.text
-    rehearsal = await _a_scene_rehearsal(db_session, session, 3)
+    rehearsal = await a_scene_rehearsal(db_session, session, 3)
 
-    kept = await _kept(client, session.id, audio=b"cena nova", part=2, origin=rehearsal.id)
+    kept = await upload_a_part(client, session.id, audio=b"cena nova", part=2, origin=rehearsal.id)
 
     assert kept.status_code == 200, kept.text
 
@@ -339,9 +312,75 @@ async def test_the_read_of_an_approved_draft_counts_no_outside_listeners_yet(
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=False)
     assert await _approval(client, session.id) is None
-    await _approved(client, db_session, session)
+    await checked_heard_and_approved(client, db_session, session.id)
 
     approval = await _approval(client, session.id)
 
     assert approval is not None
     assert approval["listeners"] == 0
+
+
+async def test_an_approval_that_lands_while_the_sentence_is_uploaded_refuses_the_sentence(
+    client, db_session, store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The door asks again under the session's row, after the bucket write (ADR 0089)."""
+    session, _parts, frases = await rehearsed_in_wav(db_session, store, [[(0, 1000), (1000, 2000)]])
+    told = await final_segments(db_session, session.id)
+    await reported_playback(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+    takes_before = await _takes(client, session.id)
+    upload = store.put
+    approvals: list[int] = []
+
+    async def the_team_approves_then_upload(*args: Any, **kwargs: Any) -> Any:
+        if not approvals:
+            approved = await client.post(team_release(session.id))
+            approvals.append(approved.json()["version"])
+        return await upload(*args, **kwargs)
+
+    monkeypatch.setattr(store, "put", the_team_approves_then_upload)
+
+    refused = await re_record(client, session.id, frases[0][0].id, spoken(1.0))
+
+    assert approvals == [1]
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "DRAFT_APPROVED"
+    assert await _takes(client, session.id) == takes_before
+    assert (await _approval(client, session.id) or {}).get("version") == 1
+
+
+async def test_a_check_that_comes_back_clean_over_a_forced_v1_is_the_one_check_every_reader_reads(
+    client, db_session, room_app
+) -> None:
+    """A verdict after a release is the approved version's check state (Q60, ADR 0081)."""
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.json()["version"] == 1, forced.text
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    assert pressed.status_code == 200, pressed.text
+
+    read = await _approval(client, session.id)
+    live = (await client.get(desk_release(session.id), headers=desk)).json()
+    stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+    retro = (await client.get(desk_retro(session.id), headers=desk)).json()
+
+    assert read is not None
+    assert (read["version"], read["forced"]) == (1, True)
+    assert live == stored
+    assert (stored["check"]["status"], stored["check"]["forced"]) == ("conferida", True)
+    assert stored["check"]["conferida"] is True
+    assert (retro["approved"], retro["checked"]) == (True, True)
+    assert retro["releases"][0]["forced_by"] is not None

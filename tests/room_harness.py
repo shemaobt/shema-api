@@ -26,7 +26,13 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.database import engine as app_engine
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import (
+    IRSceneRehearsal,
+    IRSegment,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
@@ -582,6 +588,27 @@ async def heard_every_part(
     )
 
 
+async def a_scene_rehearsal(db: AsyncSession, session: IRSession, n: int) -> IRSceneRehearsal:
+    """The team's scene rehearsal number `n` of this passage, as a row a joined part names."""
+    rehearsal = IRSceneRehearsal(
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        n=n,
+        device_id=TABLET,
+        storage_key=f"scene-rehearsals/{session.id}/{n}",
+        size_bytes=2048,
+        sha256=chr(ord("p") + n) * 64,
+        crc32c="AAAAAAA=",
+        content_type="audio/wav",
+        duration_ms=4000,
+        scene=f"S{n}",
+    )
+    db.add(rehearsal)
+    await db.commit()
+    return rehearsal
+
+
 async def upload_a_part(
     client: httpx.AsyncClient,
     session_id: str,
@@ -590,6 +617,8 @@ async def upload_a_part(
     audio: bytes,
     content_type: str = "audio/mp4",
     headers: dict[str, str] | None = None,
+    origin: str | None = None,
+    reopens_the_approved_draft: bool = False,
 ) -> httpx.Response:
     """Send a rehearsal recording up the way the tablet sends one.
 
@@ -597,6 +626,9 @@ async def upload_a_part(
     it — and `None` is the rehearsal told whole, which the app sends with neither. The verb for
     *this part was recorded again* is implicit in this call and lives nowhere else, so a case
     about it has to arrive through this door and not by writing the row.
+
+    `origin` is the scene rehearsal a joined part was laid in from, and
+    `reopens_the_approved_draft` the team's armed tap (ADR 0081).
     """
     data = {
         "kind": "ensaio",
@@ -604,6 +636,10 @@ async def upload_a_part(
     }
     if part is not None:
         data["chunk_index"] = str(part)
+    if origin is not None:
+        data["origin"] = origin
+    if reopens_the_approved_draft:
+        data["reopens_the_approved_draft"] = "true"
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
         headers=headers or {"X-Room-Device": TABLET},

@@ -22,13 +22,13 @@ from app.core.exceptions import (
     StretchNoLongerCounts,
 )
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
+from app.services.internalization_room.approved_draft import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     LaidInSentence,
     frase_numbers,
     unheard_parts,
 )
-from app.services.internalization_room.release import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.segments import current_segments, final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (

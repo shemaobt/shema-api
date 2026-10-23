@@ -39,6 +39,7 @@ from app.models.internalization_room import (
     RetroverificationTake,
     RetroverificationTelling,
 )
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -361,7 +362,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             reading_moved=any(one.frase is None for one in numbered),
             never_analysed=telling_back.never_analysed,
         ),
-        approved=latest is not None,
+        approved=await approved_draft(db, session) is not None,
         analysed=not telling_back.never_analysed,
         checked=telling_back.checked,
         checked_at=_moment(telling_back.checked_at),

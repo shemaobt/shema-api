@@ -290,6 +290,45 @@ async def test_a_passage_whose_draft_was_re_opened_reads_not_approved_and_keeps_
     assert detail.json()["approved_total"] == 1
 
 
+async def statements_of(test_engine, read) -> int:
+    from sqlalchemy import event
+
+    seen: list[str] = []
+
+    def noted(conn, cursor, statement, parameters, context, executemany) -> None:
+        seen.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", noted)
+    try:
+        await read()
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", noted)
+    return len(seen)
+
+
+async def test_whether_each_passage_is_approved_costs_the_same_for_one_release_and_for_ten(
+    room, desk_client, db_session, room_app, test_engine
+) -> None:
+    """Approval is a comparison of takes, read for the whole team at once (ADR 0081)."""
+    counted = []
+    for released in (CANON[:1], CANON[:10]):
+        team, tablet = await a_claimed_device(db_session)
+        desk, _ = await at_the_desk(db_session, room_app, team)
+        for pericope in released:
+            session = await ready_session(db_session, pericope=pericope, project_id=team.id)
+            await approved_by_the_team(room, tablet, session)
+        passages = await listed(desk_client, desk, team.id)
+        assert sum(entry["approved"] for entry in passages.values()) == len(released)
+
+        async def the_two_desk_reads(team_id: str = team.id, headers: dict = desk) -> None:
+            await desk_client.get(f"/api/facilitator/teams/{team_id}", headers=headers)
+            await desk_client.get(f"/api/facilitator/teams/{team_id}/pericopes", headers=headers)
+
+        counted.append(await statements_of(test_engine, the_two_desk_reads))
+
+    assert counted[0] == counted[1], f"uma liberação custou {counted[0]}, dez custaram {counted[1]}"
+
+
 async def stored_release_id(db: AsyncSession, team_id: str, version: int) -> str:
     rows = await db.execute(
         select(IRRelease).where(IRRelease.project_id == team_id, IRRelease.version == version)

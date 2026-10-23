@@ -24,7 +24,6 @@ import json
 import re
 import unicodedata
 import uuid
-from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -32,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CanonNotKept, ConflictError, DraftApproved, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.internalization_room import (
     IRQuestion,
     IRRelease,
@@ -44,6 +43,10 @@ from app.db.models.internalization_room import (
 from app.db.models.language import Language
 from app.db.models.project import Project
 from app.services.device.demo_team import is_the_demo_team
+from app.services.internalization_room.approved_draft import (
+    approved_draft,
+    latest_release,
+)
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -76,7 +79,6 @@ from app.services.internalization_room.takes import (
     is_wav,
     part_keys,
     takes_of,
-    the_take_already_kept,
 )
 from app.utils.stored_time import as_utc
 
@@ -163,26 +165,6 @@ def release_name(language: str | None, pericope: str, version: int) -> str:
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _draft(packet: dict[str, Any]) -> tuple[Any, list[Any]]:
-    takes = (packet.get("audio") or {}).get("rehearsal_takes", [])
-    return packet.get("session_id"), [take.get("sha256") for take in takes]
-
-
-def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
-    """Whether a stored release and a composed packet are one draft: one session's same takes.
-
-    Only a change of takes re-opens an approved draft (Marcia, 1 October; ADR 0081): a part
-    recorded again, joined, swapped or dropped, and a sentence laid in, which is a new take.
-    The telling-back with its findings and verdict, the questions, the nuances and the
-    listening are the approved version's check state, as her store clears `finalizedAt` only
-    when a clip changes. The draft is the session's (ADR 0071), so another language's session
-    or the one after a Zerar is never it, whatever its bytes. The takes are read off both
-    packets by fingerprint, in order, the same way, whatever schema each was written in, never
-    through the stored ``package_sha256``.
-    """
-    return _draft(stored) == _draft(composed)
 
 
 #: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like
@@ -402,8 +384,13 @@ async def compose_internalization_release(
 ) -> tuple[dict[str, Any], list[str]]:
     """The packet this session composes right now, and everything standing in its way.
 
+    **A draft that stands approved is answered with its release's stored packet** (ADR 0081):
+    while the takes are that version's, every door naming it serves exactly the packet it
+    names, its hash unchanged. What stands in its way is judged as for any draft, so a version
+    a person forced over an open finding still reads by its number and nowhere else.
+
     Composing and judging are two acts, and separating them is what lets the approval ask
-    whether the content changed before it asks whether the gate is shut. The hash never
+    whether the takes changed before it asks whether the gate is shut. The hash never
     depended on the gate — a blocker filters the refusal and not a single key of the
     artifact — so a packet composed here is the same packet either caller would have got.
 
@@ -499,15 +486,17 @@ async def compose_internalization_release(
     ``package_sha256`` is taken before ``created_at``, ``release_id``, ``version``, ``check``,
     ``language``, ``session_language`` and ``audio_format`` are written into the returned
     dict, so the hash covers none of the seven. ``created_at`` records when this read happened
-    and not what the session holds; the two after it say which approval this content became;
-    ``check`` is a view of that approval's row, which is written later still and so is derived
-    here with no version and no force (ADR 0020). The last three say whose rehearsal this is
+    and not what the session holds; the two after it are null on a live composition, which is
+    never a release; ``check`` is a view of the approval's row, written later still, and so is
+    derived here with no version and no force (ADR 0020). The last three say whose rehearsal this is
     and in what format it was recorded (ADR 0048). All seven would move without the content
     moving, and two reads of an unchanged session must carry one hash. A consumer verifying
     the fingerprint drops those seven keys and hashes the rest.
     """
     with reading_the_canon_of(session.canon_pin):
-        return await _composed(db, session)
+        artifact, blockers = await _composed(db, session)
+    standing = await approved_draft(db, session)
+    return (dict(standing.packet) if standing is not None else artifact), blockers
 
 
 async def _standing(
@@ -625,9 +614,8 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         version=None,
         forced=False,
     )
-    approved = await _release_of(db, session, {**artifact, "check": check})
-    artifact["release_id"] = approved.packet["release_id"] if approved else None
-    artifact["version"] = approved.version if approved else None
+    artifact["release_id"] = None
+    artifact["version"] = None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     artifact["check"] = check
     artifact["language"] = await _mother_tongue(db, session)
@@ -675,135 +663,39 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     return artifact
 
 
-async def _release_of(
-    db: AsyncSession, session: IRSession, packet: dict[str, Any]
-) -> IRRelease | None:
-    """The release this content *is*, if this content is the approved draft of the passage.
+async def keep_the_check_on_the_standing_release(db: AsyncSession, session: IRSession) -> None:
+    """A verdict over a draft that stands approved is that version's check state (ADR 0081).
 
-    Literally the question the approval asks, over the same row: the last release of this
-    pericope and project, kept only when it is the same draft (``same_draft``). Scoping it to
-    the session instead would let the composer and the approval disagree — after another
-    conversation about the same passage approved a v2, a read of the first session would still
-    name its v1 while approving it would mint a v3, and the packet would name a draft that is no
-    longer the one the passage is on.
-
-    A session that names no project has no release to be: the number is per project.
+    The check block sits outside the hash (ADR 0020), so it is rewritten on the release row and
+    no fingerprint moves; who forced it, when and what it passed stay as the approval wrote
+    them, so every reader of the version reads one check.
     """
-    if session.project_id is None:
-        return None
-    latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is None or not same_draft(latest.packet, packet):
-        return None
-    return latest
-
-
-async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | None:
-    """The release this session's draft stands approved under, or none (ADR 0071).
-
-    Asking is never allowed to fail a read or an open. What the composer would refuse (the
-    panorama, the demo team) is answered none before it runs, as is a session that names no
-    team, and so is one whose kept canon is gone, as every other reader of it degrades. The
-    packet hashes the session's id, so a release another session wrote is never this draft's,
-    and the composer is not run for it: the new session after a Zerar and the session in the
-    other language pay one query on every beat and no more.
-    """
-    if (
-        session.project_id is None
-        or is_panorama(session.pericope)
-        or await is_the_demo_team(db, session.project_id)
-    ):
-        return None
-    latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is None or latest.session_id != session.id:
-        return None
-    try:
-        artifact, _blockers = await compose_internalization_release(db, session)
-    except CanonNotKept:
-        return None
-    return latest if artifact["version"] == latest.version else None
-
-
-async def refuse_to_reopen_the_approved_draft(db: AsyncSession, session: IRSession) -> None:
-    """Refuse a change a door would land on a draft that stands approved (ADR 0081).
-
-    The door asks only when the team did not arm the tap that re-opens it.
-    """
-    if await approved_draft(db, session) is not None:
-        raise DraftApproved("This draft is approved; the team re-opens it with the armed tap")
-
-
-async def refuse_a_keep_that_reopens_the_approved_draft(
-    db: AsyncSession,
-    session: IRSession,
-    *,
-    kind: IRTakeKind,
-    origin: str | None,
-    chunk_index: int | None,
-    audio: bytes,
-) -> None:
-    """Refuse a join, a swap or a whole take over a joined recording on an approved draft.
-
-    A part recorded on the recording screen carries no origin and takes one tap (ADR 0081),
-    and a take already kept brings nothing new, so neither is ever refused.
-    """
-    if kind is not IRTakeKind.ENSAIO:
+    release = await approved_draft(db, session)
+    if release is None:
         return
-    joined = origin is not None or (
-        chunk_index is None
-        and any(part.origin for part in current_parts(await takes_of(db, session.id)))
-    )
-    if joined and await the_take_already_kept(db, session.id, kind, audio) is None:
-        await refuse_to_reopen_the_approved_draft(db, session)
-
-
-async def standing_approvals(
-    db: AsyncSession, project_id: str, *, among: Collection[str] | None = None
-) -> set[str]:
-    """The pericopes whose draft stands approved under the team's latest live release (ADR 0081).
-
-    A release stays in the history after a re-open, so having one is not being approved: each
-    released passage asks ``approved_draft`` of the session that wrote its latest release.
-    ``among`` is the passages a caller already read releases of, so it pays nothing twice.
-    """
-    if among is None:
-        among = set(
-            await db.scalars(
-                select(IRRelease.pericope).where(
-                    IRRelease.project_id == project_id, IRRelease.archive_id.is_(None)
-                )
-            )
-        )
-    standing = set()
-    for pericope in among:
-        latest = await _latest_release(db, project_id, pericope)
-        if latest is None or latest.archive_id is not None:
-            continue
-        session = await db.get(IRSession, latest.session_id)
-        if session is not None and await approved_draft(db, session) is not None:
-            standing.add(pericope)
-    return standing
-
-
-async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
-    """The last release of this passage for this team, whichever session wrote it.
-
-    Scoped to the project and the pericope and not to the session, because that is what the
-    number is per: two conversations about one passage share the sequence, and numbering each
-    session on its own would hand Marcia two drafts both called v1.
-    """
-    result = await db.execute(
-        select(IRRelease)
-        .where(IRRelease.project_id == project_id, IRRelease.pericope == pericope)
-        .order_by(IRRelease.version.desc())
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
+    with reading_the_canon_of(session.canon_pin):
+        live, _blockers = await _composed(db, session)
+    stored = release.packet.get("check") or {}
+    forced = bool(stored.get("forced"))
+    release.packet = {
+        **release.packet,
+        "check": {
+            **live["check"],
+            "version": release.version,
+            "status": _check_status(live["check"]["conferida"], forced),
+            "forced": forced,
+            "forcedBy": stored.get("forcedBy"),
+            "forcedAt": stored.get("forcedAt"),
+            "forcedBlockers": stored.get("forcedBlockers"),
+        },
+    }
+    await db.commit()
 
 
 async def releases_of_passage(db: AsyncSession, project_id: str, pericope: str) -> list[IRRelease]:
     """Every approved draft of this passage for this team, in the order they were numbered.
 
-    Scoped like ``_latest_release`` and for its reason: that is what a **Version** is per, so a
+    Scoped like ``latest_release`` and for its reason: that is what a **Version** is per, so a
     number another conversation about this passage minted is a draft of this passage too, and a
     list scoped to one session would hide it from the consultant reading the history.
     """
@@ -818,7 +710,7 @@ async def releases_of_passage(db: AsyncSession, project_id: str, pericope: str) 
 async def release_by_version(db: AsyncSession, session: IRSession, version: int) -> IRRelease:
     """One approved draft of this session's passage, read back under the number it was given.
 
-    Scoped to the project and the pericope, like ``_latest_release`` and for the same reason:
+    Scoped to the project and the pericope, like ``latest_release`` and for the same reason:
     that is what a **Version** is per, so a number another conversation about this passage
     minted is this session's number too. Whose passage it is was already decided by the
     caller, which resolved the session for the facilitator asking.
@@ -870,18 +762,20 @@ async def approve_release(
     team works; this row answers a facilitator asking what was overruled, which is the
     consultant's question, so it keeps the words the analyst wrote.
 
-    Unchanged content returns the release that already exists rather than minting a version
+    Unchanged takes return the release that already exists rather than minting a version
     beside it: a new **Version** starts with zero listeners on Marcia's external check, so
-    one that means nothing changed is worse than none. "Unchanged" is measured against the
-    last release of this pericope and project — a packet that comes back to an earlier
-    version's content is a later draft, not that version again, and giving its number back
-    would put comments on a draft nobody is looking at.
+    one that means nothing changed is worse than none, and only a change of takes re-opens a
+    draft (ADR 0081). So a team approving again over a fresh open finding is answered with the
+    standing version, and so is a facilitator forcing it, with no force recorded. "Unchanged"
+    is measured against the last release of this pericope and project — a packet that comes
+    back to an earlier version's takes is a later draft, not that version again, and giving
+    its number back would put comments on a draft nobody is looking at.
 
     The comparison happens before the gate is judged, which is what ADR 0019 means by ADR
     0014 holding under force: a draft a facilitator already forced is a draft that exists, so
-    the team asking again about the very same content is answered with it rather than told a
+    the team asking again about the very same takes is answered with it rather than told a
     second time about a finding a person has already overruled. The gate is judged only when
-    the content is not that draft — and then with nothing waived unless this caller is the
+    the takes are not that draft — and then with nothing waived unless this caller is the
     one forcing, so compare-first never becomes a force the team can reach.
 
     It answers an unchanged packet with its release whatever stands, and not only over the
@@ -895,7 +789,7 @@ async def approve_release(
     The number is one past the last, which two approvals arriving together can both read.
     The unique index is what refuses the second, and the refusal is answered rather than
     retried: the tablet asks again and the second ask returns the release the first one
-    wrote, because by then the winner is what ``_latest_release`` reads.
+    wrote, because by then the winner is what ``latest_release`` reads.
 
     The check block is stamped here and nowhere else, from the row this call is writing: the
     composer could not know the version or the force, because neither exists until the number
@@ -920,10 +814,11 @@ async def approve_release(
     await refuse_if_archived(db, session)
 
     packet, blockers = await compose_internalization_release(db, session)
-    latest = await _latest_release(db, session.project_id, session.pericope)
-    if latest is not None and same_draft(latest.packet, packet):
+    standing = await approved_draft(db, session)
+    if standing is not None:
         await refuse_if_archived(db, session)
-        return latest
+        return standing
+    latest = await latest_release(db, session.project_id, session.pericope)
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
     passed = sorted(set(blockers)) if forced_by else None

@@ -23,6 +23,7 @@ from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
 from app.models.internalization_room import PericopePosition, PericopeStanding
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
@@ -31,7 +32,6 @@ from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import finished_passages, resolve, standing
-from app.services.internalization_room.release import standing_approvals
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.list_facilitator_teams import team_cards
 from app.services.project.team_state import team_state

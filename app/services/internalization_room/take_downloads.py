@@ -11,8 +11,8 @@ from app.models.internalization_room import (
     TakeDownload,
     TakeDownloadsResponse,
 )
+from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.release import (
-    _latest_release,
     _mother_tongue,
     release_name,
 )
@@ -32,7 +32,7 @@ async def _release_id(db: AsyncSession, session: IRSession) -> str:
     latest = (
         None
         if session.project_id is None
-        else await _latest_release(db, session.project_id, session.pericope)
+        else await latest_release(db, session.project_id, session.pericope)
     )
     if latest is not None:
         return str(latest.packet.get("release_id") or latest.id)

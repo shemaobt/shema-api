@@ -47,6 +47,7 @@ from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.release import keep_the_check_on_the_standing_release
 from app.services.internalization_room.segments import final_segments, set_aside_segment_ids
 from app.services.internalization_room.segments import told_back as stretches_told_back
 from app.services.internalization_room.sessions import (
@@ -293,6 +294,7 @@ async def save_the_spoken_verdict(
             told_back=told_back,
         )
     await save_back_translation(db, session, state, rule=as_it_stands)
+    await keep_the_check_on_the_standing_release(db, session)
     return session
 
 
@@ -316,6 +318,7 @@ async def mark_the_verdict_heard(db: AsyncSession, session: IRSession, at: datet
         return False
     heard.heard_at = datetime.now(UTC)
     await save_back_translation(db, session, state)
+    await keep_the_check_on_the_standing_release(db, session)
     return True
 
 

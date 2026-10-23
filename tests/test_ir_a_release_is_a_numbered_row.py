@@ -315,7 +315,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
 ):
     """Two approvals read the same last version, and only one of them can write it.
 
-    The race is staged by holding the read still — `_latest_release` answers as it did before
+    The race is staged by holding the read still — `latest_release` answers as it did before
     the winner committed — because that is exactly what the loser of a real race saw, and two
     event loops racing on one SQLite file would prove less about the rule and more about the
     file. Everything after the read is real: the allocation, the insert, and the index that
@@ -337,7 +337,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
     async def _as_it_was_before_the_winner(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(release_module, "_latest_release", _as_it_was_before_the_winner)
+    monkeypatch.setattr(release_module, "latest_release", _as_it_was_before_the_winner)
     refused = await client.post(
         f"{PREFIX}/sessions/{session_id}/release", headers=team_headers(credential)
     )

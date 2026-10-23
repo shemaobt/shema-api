@@ -23,11 +23,11 @@ from app.models.internalization_room import (
     TakesResponse,
 )
 from app.services import internalization_room as room
-from app.services.internalization_room.coverage import refuse_a_panorama
-from app.services.internalization_room.nudge_channel import nudge
-from app.services.internalization_room.release import (
+from app.services.internalization_room.approved_draft import (
     refuse_a_keep_that_reopens_the_approved_draft,
 )
+from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
 )

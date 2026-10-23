@@ -675,11 +675,11 @@ async def test_one_draft_under_two_schema_versions_is_one_approved_draft(
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_clean_draft_approved(client, db_session, project, credential)
-    await stored_under_v08(db_session, session)
-    desk, _user = await at_the_desk(db_session, room_app, project)
-    composed = (await client.get(desk_release(session.id), headers=desk)).json()
     [row] = await releases_of(db_session, session.id)
-    assert composed["package_sha256"] != row.package_sha256, "the control: the hashes differ"
+    approved_under_v09 = row.package_sha256
+    await stored_under_v08(db_session, session)
+    [row] = await releases_of(db_session, session.id)
+    assert row.package_sha256 != approved_under_v09, "the control: the hashes differ"
 
     again = await approved(client, credential, session)
 

@@ -27,10 +27,10 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.db.models.project import Project
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
-from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.segments import final_segments
 from tests.baker import make_app, make_role
 from tests.canon_harness import the_canon_moves_on
@@ -541,16 +541,19 @@ async def test_a_demo_team_that_approved_before_being_marked_still_reads_and_ope
     assert opened.json()["approved"] is None
 
 
-async def test_asking_whether_a_draft_is_approved_answers_none_when_its_kept_canon_is_gone(
+async def test_asking_whether_a_draft_is_approved_reads_no_canon_so_one_that_is_gone_changes_nothing(  # noqa: E501
     client, db_session, monkeypatch, tmp_path: Path
 ) -> None:
+    """The approval is a comparison of takes (ADR 0081): nothing is composed to answer it."""
     team, tablet = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=team.id)
     await approved_by_the_team(client, tablet, session.id)
-    assert await approved_draft(db_session, session) is not None, "the control: it is approved"
     shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, "a" * 40))
 
-    assert await approved_draft(db_session, session) is None
+    approved = await approved_draft(db_session, session)
+
+    assert approved is not None
+    assert approved.version == 1
 
 
 async def test_a_raised_hand_answered_after_approval_leaves_the_draft_approved_as_v1(
@@ -606,5 +609,55 @@ async def test_a_frase_translated_again_after_approval_leaves_the_draft_approved
         files={"file": ("trecho.m4a", b"a equipe traduziu a frase de novo", "audio/mp4")},
     )
     assert told.status_code == 200, told.text[:300]
+
+    assert (await the_tablet_reads(client, tablet, session.id))["approved"]["version"] == 1
+
+
+async def test_the_release_door_serves_v1s_stored_packet_after_a_hand_is_answered(
+    client, db_session, room_app
+) -> None:
+    """A release id names exactly its stored packet while the takes are its own."""
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _parts = await rehearsed_in_parts(db_session, 2, project_id=team.id)
+    hand = IRQuestion(
+        session_id=session.id,
+        device_id="tablet-1",
+        project_id=team.id,
+        pericope=session.pericope,
+        status=IRQuestionStatus.OPEN,
+        audio_key="internalization-room/questions/mao-levantada.m4a",
+    )
+    db_session.add(hand)
+    await db_session.commit()
+    await parts_told_and_played(db_session, session)
+    await approved_by_the_team(client, tablet, session.id)
+    answered = await client.post(f"{PREFIX}/facilitator/questions/{hand.id}/resolve", headers=desk)
+    assert answered.status_code == 200, answered.text[:300]
+
+    live = await client.get(desk_release(session.id), headers=desk)
+    stored = await client.get(
+        f"{PREFIX}/facilitator/sessions/{session.id}/releases/1", headers=desk
+    )
+
+    assert live.status_code == 200, live.text[:300]
+    assert live.json()["version"] == 1
+    assert live.json()["package_sha256"] == stored.json()["package_sha256"]
+    assert live.json()["raised_questions"] == stored.json()["raised_questions"]
+
+
+async def test_the_translation_started_over_after_approval_leaves_the_draft_approved_as_v1(
+    client, db_session
+) -> None:
+    """ENG-1260 (Q64): the Restart changes no take."""
+    team, tablet = await a_claimed_device(db_session)
+    session, _parts = await rehearsed_in_parts(db_session, 2, project_id=team.id)
+    await parts_told_and_played(db_session, session)
+    assert (await approved_by_the_team(client, tablet, session.id))["version"] == 1
+
+    restarted = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/restart", headers=team_headers(tablet)
+    )
+    assert restarted.status_code == 200, restarted.text[:300]
 
     assert (await the_tablet_reads(client, tablet, session.id))["approved"]["version"] == 1

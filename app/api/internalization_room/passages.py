@@ -16,12 +16,12 @@ from app.models.internalization_room import (
     ServedBooksResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_map, served_books
 from app.services.internalization_room.coverage import PANORAMA_PREFIX
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.passage_lines import offered, panorama_line_for
-from app.services.internalization_room.release import standing_approvals
 from app.services.internalization_room.voice_handles import clip_url
 
 logger = logging.getLogger(__name__)
