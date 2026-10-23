@@ -24,7 +24,9 @@ that lands over it is written into that release's check block, outside the hash 
 keeping who forced it: every write of the telling-back reaches it in the same transaction, so
 there is one check state for every reader, and only on the stretches that version carries, so its
 frase numbers keep naming its own. The approval holds the session's row from before it composes,
-so a verdict landing meanwhile is seen by one or the other. Asking is a comparison of takes read off the rows,
+so a verdict landing meanwhile is seen by one or the other; it is the second place the row is
+taken `FOR UPDATE` beside the sentence door's write (ADR 0089), and like it holds the row across
+no bucket. Asking is a comparison of takes read off the rows,
 never a composed packet, and an archived session has no standing version (Q62). A take's file
 names a release only while the draft stands under it, otherwise the next version, and a session
 a Zerar archived keeps the name its takes were approved as.
