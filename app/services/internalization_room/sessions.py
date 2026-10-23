@@ -83,7 +83,7 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
 from app.services.internalization_room.takes import (
     current_parts,
     grain_in_force,
-    grain_of,
+    of_the_grain_left_behind,
     takes_of,
 )
 from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
@@ -1523,9 +1523,9 @@ async def set_aside_by_the_grain_in_force(
     row forever. It carries the time of the switch that made its grain the earlier one, which is
     the latest (ADR 0096).
     """
-    if take.kind is not IRTakeKind.ENSAIO or take.set_aside_at is not None:
+    if take.set_aside_at is not None:
         return
     await db.refresh(session, ["grain", "grain_switched_at"])
-    if session.grain is not None and grain_of(take) is not session.grain:
+    if of_the_grain_left_behind(session, take.kind, take.ordinal):
         take.set_aside_at = session.grain_switched_at
         await db.commit()

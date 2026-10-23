@@ -671,3 +671,20 @@ async def test_a_switch_over_frases_told_but_never_checked_starts_the_telling_ov
     ).all()
     assert len(retired) == 2
     assert None not in retired
+
+
+async def test_a_late_joined_scene_over_a_draft_approved_after_the_switch_is_set_aside_never_refused(  # noqa: E501
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _, whole, _, _ = await _switched_to_the_whole_over_joined_parts(client, db_session)
+    await _told_over(db_session, session, whole, "a passagem contada de volta")
+    await checked_heard_and_approved(client, db_session, session.id)
+    rehearsal = await a_scene_rehearsal(db_session, session, 3)
+
+    late = await _joined_upload(client, session.id, part=3, origin=rehearsal.id)
+
+    assert late.status_code == 200, late.text
+    assert late.json()["set_aside_at"] is not None
+    assert (await _approval(client, session.id) or {}).get("version") == 1, (
+        "a cena atrasada reabriu o rascunho aprovado depois da troca"
+    )

@@ -40,6 +40,7 @@ from app.services.internalization_room.takes import (
     current_parts,
     grain_in_force,
     listen_url,
+    of_the_grain_left_behind,
     store_take,
     take_for_reader,
     take_in_session,
@@ -181,7 +182,8 @@ async def keep_take(
     nothing new, so neither is ever refused.
 
     A rehearsal take of the other grain than the one a **Grain switch** put in force is kept and
-    set aside at once (ADR 0096).
+    set aside at once, and never refused over an approved draft: it never becomes a part, so it
+    changes no draft (ADR 0096).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -189,7 +191,8 @@ async def keep_take(
     if origin is not None:
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
     audio = await file.read()
-    if not reopens_the_approved_draft:
+    ordinal = None if take_kind is IRTakeKind.RETRO else chunk_index
+    if not reopens_the_approved_draft and not of_the_grain_left_behind(session, take_kind, ordinal):
         await refuse_a_keep_that_reopens_the_approved_draft(
             db, session, kind=take_kind, origin=origin, chunk_index=chunk_index, audio=audio
         )
@@ -203,7 +206,7 @@ async def keep_take(
         scope=scope,
         audio=audio,
         pass_number=pass_number,
-        ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
+        ordinal=ordinal,
         content_type=file.content_type or "audio/mp4",
         origin=origin,
         sent_sha256=sha256,

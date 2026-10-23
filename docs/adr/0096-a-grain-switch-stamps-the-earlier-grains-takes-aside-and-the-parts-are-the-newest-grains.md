@@ -25,7 +25,9 @@ Decided (the Definer, 2026-10-22, recorded on the ticket):
   the one part beside numbered takes the switch stamped.
 - A take of the earlier grain that lands after the switch (the Outbox drains by part) is kept
   and stamped with the latest switch's time at once. It is never refused: a refused Outbox row
-  is refused for good on the tablet.
+  is refused for good on the tablet. Over an approved draft ADR 0081's guard refuses only a take
+  that would become a part, so such a take is never refused there either: it changes no draft
+  (the Orchestrator, 2026-10-23).
 - The telling-back starts over as «recomeçar a tradução» does, so the passage has no check and
   the automatic check runs again. A switch over nothing told starts nothing over, so no empty
   attempt is shown to the consultant.

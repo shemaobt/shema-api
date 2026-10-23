@@ -526,8 +526,13 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     return [take for take in takes if take.id in chosen]
 
 
-def grain_of(take: IRTake) -> IRGrain:
-    return IRGrain.WHOLE if take.ordinal is None else IRGrain.SCENE
+def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:
+    """Whether a rehearsal take is of the grain a **Grain switch** left behind: never a part."""
+    return (
+        kind is IRTakeKind.ENSAIO
+        and session.grain is not None
+        and (IRGrain.WHOLE if ordinal is None else IRGrain.SCENE) is not session.grain
+    )
 
 
 def grain_in_force(session: IRSession, parts: list[IRTake]) -> IRGrain | None:
