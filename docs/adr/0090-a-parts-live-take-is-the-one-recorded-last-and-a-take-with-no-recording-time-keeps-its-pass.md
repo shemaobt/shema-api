@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; superseded in part by ADR 0097: a part's live take is the last one the room accepted, and the Recording time orders nothing
 date: 2026-10-22
 ---
 

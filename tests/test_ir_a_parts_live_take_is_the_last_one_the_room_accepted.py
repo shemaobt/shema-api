@@ -1,12 +1,11 @@
-"""ENG-1760 — a part's live take is the one recorded last, so a reinstall never hides it.
+"""ENG-1760 — a part's live take is the last one the room accepted, so a reinstall never hides it.
 
 A reinstalled tablet, or a second one, counts its passes from 1 again, so the pass the tablet
-sends no longer says which recording of a part came last. The **Recording time** does: under one
-part number the take recorded last is the part, the pass breaks a tie, and a take with no
-Recording time of its own keeps the pass order and comes before every take that has one. Every
-case sends real WAV through the room's doors and reads which take is the part where the Desk,
-the tablet, the consultant and the **Packet** read it. Expected values come from the ticket and
-Henok's decision of 2026-10-22.
+sends no longer says which recording of a part came last, and a tablet's clock can read any year.
+Under one part number the take the room accepts last is the part, whatever its pass or its
+**Recording time**. Every case sends real WAV through the room's doors and reads which take is
+the part where the Desk, the tablet, the consultant and the **Packet** read it. Expected values
+come from the ticket as settled on 2026-10-23 (recon Q69).
 """
 
 from __future__ import annotations
@@ -18,14 +17,13 @@ from urllib.parse import quote
 
 import httpx
 import pytest
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
 from app.core.config import get_settings
 from app.db.models.auth import App
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake
+from app.db.models.internalization_room import IRSceneRehearsal, IRSegment, IRSession
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import report_playback
 from app.services.internalization_room import takes as takes_service
@@ -229,8 +227,8 @@ async def a_scene_rehearsal(db: AsyncSession, session: IRSession) -> IRSceneRehe
     return rehearsal
 
 
-async def told_back_whole(db: AsyncSession, session: IRSession, take_id: str) -> None:
-    await capture_segment(
+async def told_back_whole(db: AsyncSession, session: IRSession, take_id: str) -> IRSegment:
+    return await capture_segment(
         db,
         session,
         take_id=take_id,
@@ -241,12 +239,32 @@ async def told_back_whole(db: AsyncSession, session: IRSession, take_id: str) ->
     )
 
 
-async def a_checked_telling(db: AsyncSession, session: IRSession) -> None:
-    told = await final_segments(db, session.id)
+async def checked_over(db: AsyncSession, session: IRSession, told: list[IRSegment]) -> None:
     state = BackTranslationState(
         scope=P, findings=[], checked=True, analysed_segment_ids=[stretch.id for stretch in told]
     )
     await reported_playback(db, session, state)
+
+
+async def a_checked_telling(db: AsyncSession, session: IRSession) -> None:
+    await checked_over(db, session, await final_segments(db, session.id))
+
+
+async def told_while_the_order_was_the_pass(
+    client: httpx.AsyncClient, credential: str, session: IRSession, db: AsyncSession
+) -> tuple[dict[str, Any], IRSegment]:
+    """A part stored before ENG-1760: pass 2, then pass 1 from a reinstall landing after it.
+
+    The pass then chose pass 2 as the part, so it was told back over it, and those rows are
+    still stored when the room starts reading by arrival.
+    """
+    monday = await send(
+        client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
+    )
+    tuesday = await send(
+        client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
+    )
+    return tuesday, await told_back_whole(db, session, monday["take_id"])
 
 
 async def recorded_on_monday(
@@ -304,78 +322,85 @@ async def test_a_part_recorded_again_on_a_reinstalled_tablet_is_the_part_althoug
     ]
 
 
-async def test_a_take_recorded_monday_that_reaches_the_server_after_tuesdays_is_never_the_part(
+async def test_a_take_that_arrives_later_is_the_part_whatever_its_recording_time_or_pass(
     client, db_session, room_app, team, session
 ):
     project, credential = team
-    tuesday = await recorded_again_on_tuesday_after_a_reinstall(client, credential, session)
-    await recorded_on_monday(client, credential, session)
+    await recorded_again_on_tuesday_after_a_reinstall(client, credential, session)
+    monday = await recorded_on_monday(client, credential, session)
+
+    assert (
+        await the_desks_part(client, db_session, room_app, project, session.id) == monday["take_id"]
+    )
+    assert the_tablets_part(await tablet_list(client, credential, session.id)) == monday["take_id"]
+
+
+async def test_of_two_takes_with_the_same_recording_time_the_later_arrival_is_the_part(
+    client, db_session, room_app, team, session
+):
+    project, credential = team
+    await send(client, credential, session.id, recording(2, 1), pass_number=2, recorded_at=TUESDAY)
+    later = await send(
+        client, credential, session.id, recording(2, 2), pass_number=1, recorded_at=TUESDAY
+    )
+
+    assert (
+        await the_desks_part(client, db_session, room_app, project, session.id) == later["take_id"]
+    )
+
+
+async def test_of_two_takes_sent_with_no_recording_time_the_later_arrival_is_the_part(
+    client, db_session, room_app, team, session
+):
+    project, credential = team
+    await send(client, credential, session.id, recording(2, 1), pass_number=2)
+    later = await send(client, credential, session.id, recording(2, 2), pass_number=1)
+
+    assert (
+        await the_desks_part(client, db_session, room_app, project, session.id) == later["take_id"]
+    )
+
+
+async def test_a_live_take_whose_clock_reads_2099_is_replaced_by_the_take_recorded_today(
+    client, db_session, room_app, team, session
+):
+    project, credential = team
+    await send(
+        client, credential, session.id, recording(2, 1), recorded_at="2099-01-01T10:00:00+00:00"
+    )
+    today = await send(client, credential, session.id, recording(2, 2), recorded_at=an_hour_ago())
+
+    listed = await tablet_list(client, credential, session.id)
+    assert (
+        await the_desks_part(client, db_session, room_app, project, session.id) == today["take_id"]
+    )
+    assert the_tablets_part(listed) == today["take_id"]
+    assert [take["recorded_at"] for take in listed] == [
+        "2099-01-01T10:00:00+00:00",
+        today["recorded_at"],
+    ]
+
+
+async def test_a_take_whose_clock_reads_2000_landing_last_is_the_part(
+    client, db_session, room_app, team, session
+):
+    project, credential = team
+    await send(client, credential, session.id, recording(2, 1), recorded_at=an_hour_ago())
+    stale_clock = await send(
+        client, credential, session.id, recording(2, 2), recorded_at="2000-01-01T10:00:00+00:00"
+    )
 
     assert (
         await the_desks_part(client, db_session, room_app, project, session.id)
-        == tuesday["take_id"]
+        == stale_clock["take_id"]
     )
-    assert the_tablets_part(await tablet_list(client, credential, session.id)) == tuesday["take_id"]
-
-
-async def test_the_late_take_recorded_monday_retires_none_of_the_parts_stretches(
-    client, db_session, team, session
-):
-    _project, credential = team
-    tuesday = await recorded_again_on_tuesday_after_a_reinstall(client, credential, session)
-    await told_back_whole(db_session, session, tuesday["take_id"])
-    await a_checked_telling(db_session, session)
-
-    await recorded_on_monday(client, credential, session)
-
-    standing = await final_segments(db_session, session.id)
-    assert [stretch.take_id for stretch in standing] == [tuesday["take_id"]]
-    assert (await stored_telling_back(db_session, session)).checked is True
-
-
-async def test_two_takes_with_the_same_recording_time_the_higher_pass_is_the_part(
-    client, db_session, room_app, team, session
-):
-    project, credential = team
-    second_pass = await send(
-        client, credential, session.id, recording(2, 1), pass_number=2, recorded_at=TUESDAY
-    )
-    await send(client, credential, session.id, recording(2, 2), pass_number=1, recorded_at=TUESDAY)
-
     assert (
-        await the_desks_part(client, db_session, room_app, project, session.id)
-        == second_pass["take_id"]
+        the_tablets_part(await tablet_list(client, credential, session.id))
+        == stale_clock["take_id"]
     )
 
 
-async def test_takes_sent_with_no_recording_time_keep_the_pass_order(
-    client, db_session, room_app, team, session
-):
-    project, credential = team
-    second_pass = await send(client, credential, session.id, recording(2, 1), pass_number=2)
-    await send(client, credential, session.id, recording(2, 2), pass_number=1)
-
-    assert (
-        await the_desks_part(client, db_session, room_app, project, session.id)
-        == second_pass["take_id"]
-    )
-
-
-async def test_a_take_with_a_recording_time_is_the_part_over_one_sent_with_none(
-    client, db_session, room_app, team, session
-):
-    project, credential = team
-    timed = await send(
-        client, credential, session.id, recording(2, 1), pass_number=1, recorded_at=MONDAY
-    )
-    await send(client, credential, session.id, recording(2, 2), pass_number=2)
-
-    assert (
-        await the_desks_part(client, db_session, room_app, project, session.id) == timed["take_id"]
-    )
-
-
-async def test_a_part_joined_from_a_scene_rehearsal_is_the_part_over_a_take_recorded_before_it(
+async def test_a_part_joined_after_a_take_was_recorded_is_the_part(
     client, db_session, room_app, team, session
 ):
     project, credential = team
@@ -398,7 +423,7 @@ async def test_a_part_joined_from_a_scene_rehearsal_is_the_part_over_a_take_reco
     )
 
 
-async def test_a_sentence_laid_into_a_part_timed_on_the_tablet_keeps_the_spliced_part_as_the_part(
+async def test_a_sentence_laid_into_a_part_lands_the_spliced_take_as_the_part(
     client, db_session, room_app, team, session
 ):
     project, credential = team
@@ -435,7 +460,7 @@ async def test_a_sentence_laid_into_a_part_timed_on_the_tablet_keeps_the_spliced
     assert the_tablets_part(await tablet_list(client, credential, session.id)) == spliced
 
 
-async def test_a_part_sent_with_no_recording_time_and_spliced_is_still_replaced_by_its_next_pass(
+async def test_a_part_recorded_again_after_a_splice_is_the_part(
     client, db_session, room_app, team, session
 ):
     project, credential = team
@@ -501,53 +526,70 @@ async def test_the_tablets_list_carries_each_takes_pass_as_sent(client, team, se
     assert passes == {monday["take_id"]: 2, tuesday["take_id"]: 1}
 
 
-async def test_a_take_stored_by_an_earlier_server_reads_by_its_recording_time(
+async def test_takes_stored_before_this_change_keep_their_arrival_order(
     client, db_session, team, session
 ):
     project, credential = team
-    monday = ensaio_take(
+    arrived_first = ensaio_take(
         session.id,
         scope="parte-1",
         ordinal=1,
         pass_number=2,
         sha256="m" * 64,
         project_id=project.id,
+        created_at=datetime(2026, 10, 20, 9, 0, tzinfo=UTC),
     )
-    tuesday = ensaio_take(
+    arrived_first.recorded_at = datetime.fromisoformat(TUESDAY)
+    arrived_last = ensaio_take(
         session.id,
         scope="parte-1",
         ordinal=1,
         pass_number=1,
         sha256="t" * 64,
         project_id=project.id,
+        created_at=datetime(2026, 10, 20, 11, 0, tzinfo=UTC),
     )
-    for take, recorded_at in ((monday, MONDAY), (tuesday, TUESDAY)):
-        take.recorded_at = datetime.fromisoformat(recorded_at)
-        db_session.add(take)
+    arrived_last.recorded_at = datetime.fromisoformat(MONDAY)
+    db_session.add_all([arrived_last, arrived_first])
     await db_session.commit()
 
-    assert the_tablets_part(await tablet_list(client, credential, session.id)) == tuesday.id
+    assert the_tablets_part(await tablet_list(client, credential, session.id)) == arrived_last.id
 
 
-async def test_a_take_that_became_the_part_when_the_order_changed_is_not_told_by_the_one_before(
+async def test_two_takes_stored_at_the_same_instant_are_read_by_their_id(
+    client, db_session, team, session
+):
+    project, credential = team
+    landed = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
+    first_by_id, last_by_id = (
+        ensaio_take(
+            session.id,
+            scope="parte-1",
+            ordinal=1,
+            sha256=sha * 64,
+            project_id=project.id,
+            created_at=landed,
+        )
+        for sha in "ab"
+    )
+    first_by_id.id = "00000000-0000-4000-8000-000000000001"
+    last_by_id.id = "00000000-0000-4000-8000-000000000002"
+    db_session.add(last_by_id)
+    await db_session.commit()
+    db_session.add(first_by_id)
+    await db_session.commit()
+
+    assert the_tablets_part(await tablet_list(client, credential, session.id)) == last_by_id.id
+
+
+async def test_a_part_stored_under_the_pass_order_is_not_told_by_the_take_it_no_longer_is(
     client, db_session, team, session
 ):
     _project, credential = team
-    monday = await send(
-        client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
+    tuesday, over_monday = await told_while_the_order_was_the_pass(
+        client, credential, session, db_session
     )
-    tuesday = await send(
-        client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
-    )
-    await told_back_whole(db_session, session, monday["take_id"])
-    await a_checked_telling(db_session, session)
-    for take_id, recorded_at in ((monday["take_id"], MONDAY), (tuesday["take_id"], TUESDAY)):
-        await db_session.execute(
-            update(IRTake)
-            .where(IRTake.id == take_id)
-            .values(recorded_at=datetime.fromisoformat(recorded_at))
-        )
-    await db_session.commit()
+    await checked_over(db_session, session, [over_monday])
     await report_playback(
         db_session,
         session,
@@ -573,27 +615,16 @@ async def test_a_take_that_became_the_part_when_the_order_changed_is_not_told_by
     assert "no_telling_back" in await release_blockers(db_session, session)
 
 
-async def test_a_check_goes_stale_when_the_order_changes_which_take_is_a_part(
+async def test_a_check_stored_under_the_pass_order_goes_stale_when_arrival_changes_the_part(
     client, db_session, team, session
 ):
     _project, credential = team
-    monday = await send(
-        client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
-    )
-    tuesday = await send(
-        client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
+    tuesday, over_monday = await told_while_the_order_was_the_pass(
+        client, credential, session, db_session
     )
     second = await send(client, credential, session.id, recording(2, 3), part=2, pass_number=1)
-    await told_back_whole(db_session, session, monday["take_id"])
-    await told_back_whole(db_session, session, second["take_id"])
-    await a_checked_telling(db_session, session)
-    for take_id, recorded_at in ((monday["take_id"], MONDAY), (tuesday["take_id"], TUESDAY)):
-        await db_session.execute(
-            update(IRTake)
-            .where(IRTake.id == take_id)
-            .values(recorded_at=datetime.fromisoformat(recorded_at))
-        )
-    await db_session.commit()
+    over_second = await told_back_whole(db_session, session, second["take_id"])
+    await checked_over(db_session, session, [over_monday, over_second])
 
     stale = await client.post(team_release(session.id), headers=team_headers(credential))
     await told_back_whole(db_session, session, tuesday["take_id"])
@@ -657,31 +688,19 @@ async def test_a_sentence_laid_again_over_a_spliced_part_keeps_the_newest_splice
     assert the_tablets_part(await tablet_list(client, credential, session.id)) == spliced_again
 
 
-async def test_a_forced_release_carries_no_finding_on_the_take_that_stopped_being_the_part(
+async def test_a_forced_release_carries_no_finding_on_the_take_that_is_no_longer_the_part(
     client, db_session, team, session
 ):
     _project, credential = team
-    monday = await send(
-        client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
+    _tuesday, over_monday = await told_while_the_order_was_the_pass(
+        client, credential, session, db_session
     )
-    tuesday = await send(
-        client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
-    )
-    await told_back_whole(db_session, session, monday["take_id"])
-    [over_monday] = await final_segments(db_session, session.id)
-    await a_checked_telling(db_session, session)
+    await checked_over(db_session, session, [over_monday])
     state = await stored_telling_back(db_session, session)
     state.findings = [
         Finding(kind=FindingKind.MISSING, note="faltou Moabe", segment_id=over_monday.id, chunk=1)
     ]
     await save_back_translation(db_session, await get_session(db_session, session.id), state)
-    for take_id, recorded_at in ((monday["take_id"], MONDAY), (tuesday["take_id"], TUESDAY)):
-        await db_session.execute(
-            update(IRTake)
-            .where(IRTake.id == take_id)
-            .values(recorded_at=datetime.fromisoformat(recorded_at))
-        )
-    await db_session.commit()
 
     release = await approve_release(
         db_session, await get_session(db_session, session.id), forced_by="a-facilitadora"
