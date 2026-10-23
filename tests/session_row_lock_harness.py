@@ -4,7 +4,8 @@ The room touches the session's row with two statements that lock it: a `SELECT â
 naming `ir_sessions`, and an `UPDATE` of `ir_sessions` (the **Turn claim**'s conditional write and
 every `_written_forward`, both through `execute(update(...))`). Either one, run by a session that
 does not hold the row, waits until the holder commits, rolls back or closes; then it holds the
-row. A wait past `WAITS_AT_MOST_S` raises, as `lock_timeout` does.
+row. A wait past `WAITS_AT_MOST_S` raises, as `lock_timeout` does. A call it is told to note is
+noted as it starts and as it ends, with whether the row was held then.
 
 Only statements run through `execute` and `scalar` are seen: ORM flushes, `get` and `refresh`
 with a lock are not, which the witness that the row is taken in one place covers. The model is
@@ -29,6 +30,7 @@ class SessionRowLock:
         self.holder: AsyncSession | None = None
         self.taken_at = 0.0
         self.spans: list[float] = []
+        self.calls: list[tuple[str, bool]] = []
         self.free = asyncio.Event()
         self.free.set()
 
@@ -43,6 +45,25 @@ class SessionRowLock:
         if self.holder is None:
             self.holder, self.taken_at = by, time.monotonic()
             self.free.clear()
+
+    @property
+    def made_while_held(self) -> list[str]:
+        return [name for name, held in self.calls if held]
+
+    def notes_the_calls(self, monkeypatch: pytest.MonkeyPatch, owner: Any, *names: str) -> None:
+        for name in names:
+            original = getattr(owner, name)
+
+            async def noted(
+                *args: Any, _name: str = name, _original: Any = original, **kwargs: Any
+            ) -> Any:
+                self.calls.append((_name, self.held))
+                try:
+                    return await _original(*args, **kwargs)
+                finally:
+                    self.calls.append((_name, self.held))
+
+            monkeypatch.setattr(owner, name, noted)
 
     def let_go(self, by: AsyncSession) -> None:
         if self.holder is by:

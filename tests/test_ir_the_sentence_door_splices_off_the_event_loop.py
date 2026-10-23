@@ -43,6 +43,7 @@ from tests.sentence_harness import (
     rehearsed_in_wav,
     spoken,
 )
+from tests.session_row_lock_harness import the_session_row_locks_as_postgres_does
 from tests.turn_harness import the_room_agent_is
 
 
@@ -88,34 +89,6 @@ async def client(
         yield door
 
 
-class SessionLock:
-    def __init__(self) -> None:
-        self.held = False
-
-
-def watching_the_session_lock(monkeypatch: pytest.MonkeyPatch) -> SessionLock:
-    lock = SessionLock()
-    execute, commit, rollback = AsyncSession.execute, AsyncSession.commit, AsyncSession.rollback
-
-    async def locking(self: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
-        if getattr(statement, "_for_update_arg", None) is not None:
-            lock.held = True
-        return await execute(self, statement, *args, **kwargs)
-
-    async def committing(self: AsyncSession) -> None:
-        await commit(self)
-        lock.held = False
-
-    async def rolling_back(self: AsyncSession) -> None:
-        await rollback(self)
-        lock.held = False
-
-    monkeypatch.setattr(AsyncSession, "execute", locking)
-    monkeypatch.setattr(AsyncSession, "commit", committing)
-    monkeypatch.setattr(AsyncSession, "rollback", rolling_back)
-    return lock
-
-
 def noting_the_thread(
     ran_on: dict[str, set[int]], name: str, original: Callable[..., Any]
 ) -> Callable[..., Any]:
@@ -156,7 +129,7 @@ async def test_the_session_row_lock_is_let_go_while_the_part_is_spliced(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, _, ((frase,),) = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
-    lock = watching_the_session_lock(monkeypatch)
+    lock = the_session_row_locks_as_postgres_does(monkeypatch)
     held_while_splicing: list[bool] = []
     splice = sentences.splice_sentence
 

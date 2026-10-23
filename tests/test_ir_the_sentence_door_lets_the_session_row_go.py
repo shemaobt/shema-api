@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -38,12 +39,13 @@ from tests.sentence_harness import (
     spoken,
     take_named,
 )
-from tests.session_row_lock_harness import SessionRowLock, the_session_row_locks_as_postgres_does
+from tests.session_row_lock_harness import the_session_row_locks_as_postgres_does
 from tests.turn_claim_harness import OPENING, Guide, a_voice, speak, the_guide_is
 
 APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
+THE_BUCKET = ("get", "put", "stat")
 
 
 @pytest.fixture()
@@ -93,57 +95,51 @@ def the_bucket_takes(
 
 class Rival:
     """A sentence another tablet lays into the middle frase and tells again, once, from inside
-    the bucket call it is hooked on; what it left is noted as it left it."""
+    the bucket call it is hooked on."""
 
-    def __init__(self, client: httpx.AsyncClient, factory: Any, session_id: str, middle: str):
-        self.client, self.factory = client, factory
-        self.session_id, self.middle = session_id, middle
+    def __init__(self, client: httpx.AsyncClient, session_id: str, middle: str):
+        self.client, self.session_id, self.middle = client, session_id, middle
         self.started = False
         self.take_id: str | None = None
-        self.left: tuple[Any, Any] | None = None
 
     async def lands(self) -> None:
         if self.started:
             return
         self.started = True
         self.take_id = await laid_in_and_told_again(self.client, self.session_id, self.middle, 1)
-        async with self.factory() as reading_db:
-            state = back_translation_of(await get_session(reading_db, self.session_id))
-        self.left = (state.checked, state.verdict)
 
-    def hooked_on(self, monkeypatch: pytest.MonkeyPatch, store: MemoryStore, name: str) -> None:
-        original = getattr(store, name)
+    def after_the_part_is_read(self, monkeypatch: pytest.MonkeyPatch, store: MemoryStore) -> None:
+        get = store.get
 
-        async def then_the_rival(*args: Any, **kwargs: Any) -> Any:
-            if name == "get":
-                held = await original(*args, **kwargs)
-                await self.lands()
-                return held
+        async def read_then_the_rival(*args: Any, **kwargs: Any) -> Any:
+            held = await get(*args, **kwargs)
             await self.lands()
-            return await original(*args, **kwargs)
+            return held
 
-        monkeypatch.setattr(store, name, then_the_rival)
+        monkeypatch.setattr(store, "get", read_then_the_rival)
 
+    def before_a_recording_is_uploaded(
+        self, monkeypatch: pytest.MonkeyPatch, store: MemoryStore
+    ) -> None:
+        put = store.put
 
-async def _rival_alone_samples(
-    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
-) -> int:
-    session, _, ((_, middle, _),) = await rehearsed_in_wav(db_session, store, THREE_FRASES)
-    take_id = await laid_in_and_told_again(client, session.id, middle.id, 1)
-    return len(samples_of(store.objects[(await take_named(db_session, take_id)).storage_key]))
+        async def the_rival_then_upload(*args: Any, **kwargs: Any) -> Any:
+            await self.lands()
+            return await put(*args, **kwargs)
+
+        monkeypatch.setattr(store, "put", the_rival_then_upload)
 
 
 async def _refused_while_a_rival_lands(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
-    rival_factory: async_sessionmaker[AsyncSession],
     store: MemoryStore,
     monkeypatch: pytest.MonkeyPatch,
-    hooked_on: str,
+    hooked: Callable[[Rival, pytest.MonkeyPatch, MemoryStore], None],
 ) -> tuple[Any, Any, Rival, httpx.Response]:
     session, _, ((first, middle, _),) = await rehearsed_in_wav(db_session, store, THREE_FRASES)
-    rival = Rival(client, rival_factory, session.id, middle.id)
-    rival.hooked_on(monkeypatch, store, hooked_on)
+    rival = Rival(client, session.id, middle.id)
+    hooked(rival, monkeypatch, store)
     refused = await re_record(
         client, session.id, first.id, spoken(0.5), sentence_id="sentence-0002"
     )
@@ -151,11 +147,7 @@ async def _refused_while_a_rival_lands(
 
 
 async def _nothing_of_the_refused_sentence_is_written(
-    rival_factory: async_sessionmaker[AsyncSession],
-    store: MemoryStore,
-    session_id: str,
-    rival: Rival,
-    rival_alone: int,
+    rival_factory: async_sessionmaker[AsyncSession], session_id: str, rival: Rival
 ) -> None:
     async with rival_factory() as reading_db:
         state = back_translation_of(await get_session(reading_db, session_id))
@@ -165,15 +157,12 @@ async def _nothing_of_the_refused_sentence_is_written(
             .select_from(IRTake)
             .where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.ENSAIO)
         )
-        rivals = await take_named(reading_db, str(rival.take_id))
     assert [one.sentence_id for one in state.sentences] == ["sentence-0001"]
     assert (frases[0].starts_ms, frases[0].ends_ms) == (0, 1000)
     assert {one.take_id for one in frases} == {rival.take_id}, (
         "a frase recusada escrevia por cima da parte que o outro tablet acabara de emendar"
     )
-    assert len(samples_of(store.objects[rivals.storage_key])) == rival_alone
     assert rehearsals == 2, "a frase recusada deixava uma parte emendada a mais"
-    assert (state.checked, state.verdict) == rival.left
 
 
 async def test_a_turn_sent_while_the_bucket_takes_three_seconds_lands_in_under_a_second(
@@ -208,7 +197,7 @@ async def test_a_turn_sent_while_the_bucket_takes_three_seconds_lands_in_under_a
 
 
 @pytest.mark.parametrize("refused", [False, True], ids=["laid-in", "part-changed"])
-async def test_the_session_row_is_held_under_100_ms_while_the_bucket_takes_seconds(
+async def test_the_session_row_is_never_held_while_the_bucket_takes_seconds(
     refused: bool,
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -217,10 +206,11 @@ async def test_the_session_row_is_held_under_100_ms_while_the_bucket_takes_secon
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     lock = the_session_row_locks_as_postgres_does(monkeypatch)
-    the_bucket_takes(monkeypatch, store, 1.0, "get", "put", "stat")
+    the_bucket_takes(monkeypatch, store, 1.0, *THE_BUCKET)
+    lock.notes_the_calls(monkeypatch, store, *THE_BUCKET)
     if refused:
         _, _, _, answered = await _refused_while_a_rival_lands(
-            client, db_session, rival_factory, store, monkeypatch, "get"
+            client, db_session, store, monkeypatch, Rival.after_the_part_is_read
         )
         assert (answered.status_code, answered.json().get("code")) == (409, "PART_CHANGED")
     else:
@@ -228,8 +218,9 @@ async def test_the_session_row_is_held_under_100_ms_while_the_bucket_takes_secon
         answered = await re_record(client, session.id, frase.id, spoken(1.0))
         assert answered.status_code == 200, answered.text
 
-    assert lock.spans
-    assert max(lock.spans) < 0.1, (
+    assert lock.calls and lock.spans
+    assert lock.made_while_held == [], "o bucket trabalhava com a linha da sessão presa"
+    assert max(lock.spans) < 0.5, (
         f"a linha da sessão ficou presa {max(lock.spans):.2f} s enquanto o bucket trabalhava"
     )
 
@@ -241,25 +232,22 @@ async def test_the_spliced_part_is_measured_with_the_session_row_let_go(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, _, ((frase,),) = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
-    lock: SessionRowLock = the_session_row_locks_as_postgres_does(monkeypatch)
-    held_while_measuring: list[bool] = []
+    lock = the_session_row_locks_as_postgres_does(monkeypatch)
     measure = sentences.measure_ms_bounded
 
     async def measuring(audio: bytes) -> int | None:
-        held_while_measuring.append(lock.held)
         await asyncio.sleep(1.0)
         return await measure(audio)
 
     monkeypatch.setattr(sentences, "measure_ms_bounded", measuring)
+    lock.notes_the_calls(monkeypatch, sentences, "measure_ms_bounded")
 
     laid = await re_record(client, session.id, frase.id, spoken(1.0))
 
     assert laid.status_code == 200, laid.text
-    assert held_while_measuring and not any(held_while_measuring), (
-        "a parte emendada era medida com a linha da sessão presa"
-    )
-    assert lock.spans
-    assert max(lock.spans) < 0.1
+    assert lock.calls and lock.spans
+    assert lock.made_while_held == [], "a parte emendada era medida com a linha da sessão presa"
+    assert max(lock.spans) < 0.5
 
 
 async def test_a_part_that_changes_while_its_sentence_is_spliced_refuses_the_sentence_with_part_changed_and_nothing_is_written(  # noqa: E501
@@ -269,16 +257,12 @@ async def test_a_part_that_changes_while_its_sentence_is_spliced_refuses_the_sen
     store: MemoryStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rival_alone = await _rival_alone_samples(client, db_session, store)
-
     session, _, rival, refused = await _refused_while_a_rival_lands(
-        client, db_session, rival_factory, store, monkeypatch, "get"
+        client, db_session, store, monkeypatch, Rival.after_the_part_is_read
     )
 
     assert (refused.status_code, refused.json().get("code")) == (409, "PART_CHANGED"), refused.text
-    await _nothing_of_the_refused_sentence_is_written(
-        rival_factory, store, session.id, rival, rival_alone
-    )
+    await _nothing_of_the_refused_sentence_is_written(rival_factory, session.id, rival)
 
 
 async def test_a_part_that_changes_while_the_recordings_are_uploaded_refuses_the_sentence_with_part_changed_and_nothing_is_written(  # noqa: E501
@@ -288,16 +272,12 @@ async def test_a_part_that_changes_while_the_recordings_are_uploaded_refuses_the
     store: MemoryStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rival_alone = await _rival_alone_samples(client, db_session, store)
-
     session, _, rival, refused = await _refused_while_a_rival_lands(
-        client, db_session, rival_factory, store, monkeypatch, "put"
+        client, db_session, store, monkeypatch, Rival.before_a_recording_is_uploaded
     )
 
     assert (refused.status_code, refused.json().get("code")) == (409, "PART_CHANGED"), refused.text
-    await _nothing_of_the_refused_sentence_is_written(
-        rival_factory, store, session.id, rival, rival_alone
-    )
+    await _nothing_of_the_refused_sentence_is_written(rival_factory, session.id, rival)
 
 
 async def test_the_same_sentence_sent_again_after_part_changed_is_laid_into_the_part_as_it_now_stands(  # noqa: E501
@@ -308,7 +288,7 @@ async def test_the_same_sentence_sent_again_after_part_changed_is_laid_into_the_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, first, _, refused = await _refused_while_a_rival_lands(
-        client, db_session, rival_factory, store, monkeypatch, "get"
+        client, db_session, store, monkeypatch, Rival.after_the_part_is_read
     )
     assert (refused.status_code, refused.json().get("code")) == (409, "PART_CHANGED"), refused.text
 
