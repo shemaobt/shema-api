@@ -24,6 +24,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.joined_parts import lay_the_rehearsals_frases
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
@@ -149,7 +150,8 @@ async def keep_take(
 
     The tablet's fingerprint and length are checked against the bytes and refused when they
     disagree, never corrected. A joined part keeps the server's clock as its recording time,
-    and a resend answers with the row already kept, its time unmoved.
+    and a resend answers with the row already kept, its time unmoved. A joined part lands
+    with its rehearsal's frases as told stretches (ADR 0085).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -178,6 +180,8 @@ async def keep_take(
         sent_recorded_at=recorded_at,
     )
     await room.retire_the_part_recorded_again(db, session, take)
+    if origin is not None:
+        await lay_the_rehearsals_frases(db, session, take)
     nudge(session.project_id, "takes")
     return _view(take)
 
