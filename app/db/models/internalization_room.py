@@ -750,6 +750,36 @@ class IRRelease(Base):
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
+class IRExternalCheck(Base):
+    """The **Checagem externa** of one approved version: one per release, and nothing closes it.
+
+    Created by the team's first open and answered to every later one; a new version opens a new
+    one and leaves this one as it was (ADR 0082). The parts and frases are copied once, at the
+    first open, out of the release's stored packet and never re-derived: what the outside
+    listeners hear and comment on stays pinned to the version they heard. No ``closed_at`` and
+    no gate, because the version does that work (the app's ADR 0111).
+    """
+
+    __tablename__ = "ir_external_checks"
+    __table_args__ = (UniqueConstraint("release_id", name="uq_ir_external_checks_release"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    #: The ``IRRelease`` row's id, never the packet's ``release_id``: two teams of one mother
+    #: tongue share that name.
+    release_id: Mapped[str] = mapped_column(String(36))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    opened_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The tablet that opened it, as ``X-Room-Device`` spells it.
+    device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    takes: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    frases: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
 class IRHardStretch(Base):
     """A stretch the team told three times, kept for the consultant and cleared by nothing.
 

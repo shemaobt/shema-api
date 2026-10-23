@@ -489,6 +489,29 @@ class ApprovedDraftView(BaseModel):
     listeners: int = 0
 
 
+class ExternalCheckPart(BaseModel):
+    take_id: str
+    key: str | None
+
+
+class ExternalCheckFrase(BaseModel):
+    frase: int
+    segment_id: str
+    take_id: str | None
+    starts_ms: int | None
+    ends_ms: int | None
+
+
+class ExternalCheckView(BaseModel):
+    """The **Checagem externa** of one approved version, as its first open copied it."""
+
+    check_id: str
+    version: int
+    opened_at: str
+    takes: list[ExternalCheckPart]
+    frases: list[ExternalCheckFrase]
+
+
 class SessionStateResponse(BaseModel):
     session_id: str
     pericope: str
