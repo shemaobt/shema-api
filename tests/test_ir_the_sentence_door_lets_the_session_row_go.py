@@ -49,6 +49,8 @@ THE_APPROVAL = "app/services/internalization_room/sessions.py"
 #: The open of the Checagem externa holds the row around a read and an insert, with no bucket.
 THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
 THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
+#: The grain door holds the row around a read, a stamp and the restart, with no bucket.
+THE_GRAIN_SWITCH = "app/services/internalization_room/sessions.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -350,6 +352,6 @@ def test_the_session_row_held_through_the_helper_is_held_only_by_doors_that_hold
         and node.func.id == "hold_the_session_row"
     )
 
-    assert holding == sorted([THE_APPROVAL_SERVICE, THE_EXTERNAL_CHECK_OPEN]), (
+    assert holding == sorted([THE_APPROVAL_SERVICE, THE_EXTERNAL_CHECK_OPEN, THE_GRAIN_SWITCH]), (
         "a linha da sessão era segurada por um chamador novo, que ninguém conferiu contra o bucket"
     )

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
-from tests.alembic_harness import indexes_of, run_alembic, scalar, unique_constraints_of
+from tests.alembic_harness import indexes_of, run_alembic, scalar
 
 pytestmark = pytest.mark.migration
 
@@ -118,8 +118,9 @@ async def test_the_migration_walks_down_where_no_bytes_are_shared(before_the_mig
     assert down.returncode == 0, down.stderr
     indexes = await indexes_of(url, "ir_takes")
     assert indexes["uq_ir_takes_session_kind_sha256"] == (True, ["session_id", "kind", "sha256"])
+    assert indexes["uq_ir_takes_session_storage_key"] == (True, ["session_id", "storage_key"])
     assert "uq_ir_takes_session_joined_pass" not in indexes
-    assert (await unique_constraints_of(url, "ir_takes"))["uq_ir_takes_session_storage_key"] == [
-        "session_id",
-        "storage_key",
-    ]
+    with pytest.raises(IntegrityError):
+        await _insert_take(
+            url, "b0000000-0000-0000-0000-000000000002", pass_number=2, origin=REHEARSAL
+        )

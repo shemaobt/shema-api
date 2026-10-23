@@ -1467,32 +1467,23 @@ async def switch_the_grain(
     start over: her switch restarts only over frases or checks, and an empty attempt would show
     the consultant one nobody made.
 
-    The session's row is written by compare-and-set, never held `FOR UPDATE`: the sentence
-    door's write is the only lock on it (ADR 0089). A rival switch landing first is read again
-    once, and a second lost race is refused as every stale write of the row is.
+    The session's row is held through the helper the approval holds it with, and the grain and
+    the approved draft are read under it: an approval composing while the switch waits lands
+    first and the switch then refuses it without the armed tap, and a rival switch to the same
+    grain finds it in force. Nothing inside reaches the bucket (ADR 0081, ADR 0089).
 
     It sweeps the earlier grain once more after its commit: a keep whose take committed while
     the stamp ran, and which read the session before the switch committed, stamped nothing.
     """
-    for tries_left in reversed(range(2)):
-        takes = await takes_of(db, session.id)
-        if grain_in_force(session, current_parts(takes)) is grain:
-            return False
-        if not reopens_the_approved_draft:
-            await refuse_to_reopen_the_approved_draft(db, session)
-        at = datetime.now(UTC)
-        written = await db.execute(
-            update(IRSession)
-            .where(IRSession.id == session.id, IRSession.grain.is_not_distinct_from(session.grain))
-            .values(grain=grain, grain_switched_at=at)
-            .execution_options(synchronize_session=False)
-        )
-        if written.rowcount == 1:
-            break
-        await db.rollback()
-        await db.refresh(session)
-        if not tries_left:
-            raise ConflictError(f"Session {session.id}: the grain kept moving under every try")
+    await hold_the_session_row(db, session)
+    if grain_in_force(session, current_parts(await takes_of(db, session.id))) is grain:
+        await db.commit()
+        return False
+    if not reopens_the_approved_draft:
+        await refuse_to_reopen_the_approved_draft(db, session)
+    at = datetime.now(UTC)
+    session.grain = grain
+    session.grain_switched_at = at
 
     unstamped = (
         IRTake.session_id == session.id,

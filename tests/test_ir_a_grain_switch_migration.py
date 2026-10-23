@@ -20,6 +20,7 @@ PREVIOUS_REVISION = "20261022_listen01"
 
 SESSION = "a0000000-0000-0000-0000-000000000001"
 TAKE = "b0000000-0000-0000-0000-000000000001"
+AGAIN = "b0000000-0000-0000-0000-000000000002"
 STORED_AT = "2026-10-01 08:00:00"
 
 
@@ -81,6 +82,36 @@ async def test_a_stored_session_and_take_read_as_never_switched(before_the_migra
     assert (
         await scalar(url, "SELECT set_aside_at FROM ir_takes WHERE id = :id", {"id": TAKE}) is None
     ), "uma tomada guardada antes nascia deixada de lado por uma troca que não houve"
+
+
+async def test_the_same_bytes_kept_again_beside_their_set_aside_take_are_a_second_row(
+    before_the_migration,
+) -> None:
+    url = before_the_migration
+    up = run_alembic(url, "upgrade", REVISION)
+    assert up.returncode == 0, up.stderr
+    engine = create_async_engine(url)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE ir_takes SET set_aside_at = :stored WHERE id = :id"),
+            {"stored": STORED_AT, "id": TAKE},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO ir_takes (id, session_id, device_id, project_id, pericope, kind,"
+                " scope, ordinal, storage_key, size_bytes, sha256, crc32c, content_type,"
+                " created_at, recorded_at) VALUES (:take, :session, 'tablet-1', 'team-1', 'P03',"
+                " 'ensaio', 'parte-1', 1, 'takes/x', 2048, 'aa', 'AAAAAAA=', 'audio/mp4',"
+                " :stored, :stored)"
+            ),
+            {"take": AGAIN, "session": SESSION, "stored": STORED_AT},
+        )
+    await engine.dispose()
+
+    assert (
+        await scalar(url, "SELECT count(*) FROM ir_takes WHERE session_id = :id", {"id": SESSION})
+        == 2
+    )
 
 
 async def test_the_migration_walks_down(before_the_migration) -> None:

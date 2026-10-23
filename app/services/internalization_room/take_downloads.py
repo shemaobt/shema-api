@@ -29,6 +29,7 @@ from app.services.internalization_room.takes import (
     extension,
     is_declared,
     part_positions,
+    set_aside_moment,
     signed_url,
     takes_of,
 )
@@ -116,9 +117,12 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         if take.kind is IRTakeKind.ENSAIO and take.ordinal is not None
     )
     for take in rehearsals:
-        if take.set_aside_at is not None:
-            replaced_at[take.id] = as_utc(take.set_aside_at).isoformat()
-        elif take.id not in live_ids and take.id not in replaced_at:
+        if take.id in live_ids or take.id in replaced_at:
+            continue
+        aside = set_aside_moment(take)
+        if aside is not None:
+            replaced_at[take.id] = aside
+        else:
             later = [at for at in numbered_at if at > as_utc(take.created_at)]
             replaced_at[take.id] = (later or numbered_at)[0].isoformat()
 
@@ -149,9 +153,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
                 SupersededTakeDownload(
                     **entry.model_dump(),
                     superseded_at=replaced_at[take.id],
-                    set_aside_at=None
-                    if take.set_aside_at is None
-                    else as_utc(take.set_aside_at).isoformat(),
+                    set_aside_at=set_aside_moment(take),
                 )
             )
     return TakeDownloadsResponse(

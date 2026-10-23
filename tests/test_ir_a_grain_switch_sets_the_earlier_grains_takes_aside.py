@@ -17,7 +17,7 @@ from urllib.parse import quote
 import httpx
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
@@ -25,8 +25,12 @@ from app.core.config import get_settings
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRSegment, IRSession
 from app.db.models.project import Project
+from app.services.internalization_room import sessions as sessions_service
 from app.services.internalization_room import takes as takes_service
-from app.services.internalization_room.segments import capture_segment
+from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.release import approve_release
+from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.sessions import get_session
 from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
@@ -39,6 +43,7 @@ from tests.release_harness import (
     checked_heard_and_approved,
     desk_retro,
     ready_session,
+    reported_playback,
     team_headers,
 )
 from tests.room_harness import (
@@ -606,6 +611,11 @@ async def test_a_switch_back_never_restores_the_earlier_takes(
     ]
     listing = _rehearsals(await _listing(client, session.id))
     assert listing[first_whole]["set_aside_at"] == t1, "a volta mexeu na marca da primeira troca"
+    replaced = {take["take_id"]: take for take in downloads["superseded_takes"]}[first_whole]
+    assert _moment(replaced["superseded_at"]) == _moment(listing[second_whole]["recorded_at"]), (
+        "a hora em que a inteira foi substituída virou a hora da troca"
+    )
+    assert replaced["set_aside_at"] == t1
     t2 = {listing[part]["set_aside_at"] for part in parts}
     assert t2 == {back[parts[0]]["set_aside_at"]}
     assert t1 is not None and None not in t2 and t2 != {t1}
@@ -677,15 +687,106 @@ async def test_a_switch_over_frases_told_but_never_checked_starts_the_telling_ov
 async def test_a_late_joined_scene_over_a_draft_approved_after_the_switch_is_set_aside_never_refused(  # noqa: E501
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session, _, whole, _, _ = await _switched_to_the_whole_over_joined_parts(client, db_session)
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    for number, part in enumerate(await _joined_parts(client, db_session, session), start=1):
+        await _told_over(db_session, session, part, f"a cena {number} contada de volta")
+    assert await checked_heard_and_approved(client, db_session, session.id) == 1
+    switched = await _switch(client, session.id, "whole", reopens_the_approved_draft=True)
+    assert switched.status_code == 200, switched.text
+    whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"a passagem inteira"))
     await _told_over(db_session, session, whole, "a passagem contada de volta")
-    await checked_heard_and_approved(client, db_session, session.id)
+    assert await checked_heard_and_approved(client, db_session, session.id) == 2
     rehearsal = await a_scene_rehearsal(db_session, session, 3)
 
     late = await _joined_upload(client, session.id, part=3, origin=rehearsal.id)
 
     assert late.status_code == 200, late.text
     assert late.json()["set_aside_at"] is not None
-    assert (await _approval(client, session.id) or {}).get("version") == 1, (
+    assert (await _approval(client, session.id) or {}).get("version") == 2, (
         "a cena atrasada reabriu o rascunho aprovado depois da troca"
     )
+
+
+async def test_an_approval_that_lands_while_the_switch_takes_the_session_row_refuses_the_switch(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, _ = await _recorded_parts(client, db_session)
+    told = await final_segments(db_session, session.id)
+    await reported_playback(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+    elsewhere = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    holding = sessions_service.hold_the_session_row
+
+    async def the_approval_lands_then_the_row_is_taken(db: AsyncSession, held: IRSession) -> None:
+        async with elsewhere() as other:
+            await approve_release(other, await get_session(other, session.id))
+        await holding(db, held)
+
+    monkeypatch.setattr(
+        sessions_service, "hold_the_session_row", the_approval_lands_then_the_row_is_taken
+    )
+
+    refused = await _switch(client, session.id, "whole")
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "DRAFT_APPROVED"
+    monkeypatch.undo()
+    assert (await _approval(client, session.id) or {}).get("version") == 1, (
+        "a troca reabriu sem o toque armado a versão aprovada enquanto esperava a linha"
+    )
+    assert [
+        take["set_aside_at"] for take in _rehearsals(await _listing(client, session.id)).values()
+    ] == [
+        None,
+        None,
+    ]
+
+
+async def test_scenes_joined_again_after_a_switch_back_are_new_takes_that_stand(
+    client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    rehearsals = [await a_scene_rehearsal(db_session, session, part) for part in (1, 2, 3)]
+    first = [
+        _kept(await _joined_upload(client, session.id, part=part, origin=rehearsal.id))
+        for part, rehearsal in enumerate(rehearsals, start=1)
+    ]
+    await _switched(client, session.id, "whole")
+    resent = await _joined_upload(client, session.id, part=1, origin=rehearsals[0].id)
+    assert _kept(resent) == first[0], "o reenvio de uma cena deixada de lado virou outra tomada"
+    stamps = {
+        take_id: take["set_aside_at"]
+        for take_id, take in _rehearsals(await _listing(client, session.id)).items()
+    }
+    await _switched(client, session.id, "scene")
+
+    again = [
+        await _joined_upload(client, session.id, part=part, origin=rehearsal.id)
+        for part, rehearsal in enumerate(rehearsals, start=1)
+    ]
+
+    for answered in again:
+        assert answered.status_code == 200, answered.text
+        assert answered.json()["take_id"] not in first, (
+            "juntar de novo depois da volta respondeu com a tomada deixada de lado"
+        )
+        assert answered.json()["set_aside_at"] is None
+    downloads = await _downloads(client, desk, session.id)
+    assert [(take["key"], take["take_id"]) for take in downloads["takes"]] == [
+        (f"S{part}", answered.json()["take_id"]) for part, answered in enumerate(again, start=1)
+    ]
+    listing = _rehearsals(await _listing(client, session.id))
+    assert {take_id: listing[take_id]["set_aside_at"] for take_id in first} == {
+        take_id: stamps[take_id] for take_id in first
+    }

@@ -41,6 +41,7 @@ from app.services.internalization_room.takes import (
     grain_in_force,
     listen_url,
     of_the_grain_left_behind,
+    set_aside_moment,
     store_take,
     take_for_reader,
     take_in_session,
@@ -67,7 +68,7 @@ def _view(take: IRTake) -> TakeResponse:
         pericope=take.pericope,
         recorded_at=as_utc(take.recorded_at).isoformat(),
         duration_ms=take.duration_ms,
-        set_aside_at=None if take.set_aside_at is None else as_utc(take.set_aside_at).isoformat(),
+        set_aside_at=set_aside_moment(take),
     )
 
 
@@ -183,7 +184,8 @@ async def keep_take(
 
     A rehearsal take of the other grain than the one a **Grain switch** put in force is kept and
     set aside at once, and never refused over an approved draft: it never becomes a part, so it
-    changes no draft (ADR 0096).
+    changes no draft. A take a switch set aside is never the answer to a keep at the grain in
+    force: the same bytes kept again are a new take that stands (ADR 0096).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -192,7 +194,8 @@ async def keep_take(
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
     audio = await file.read()
     ordinal = None if take_kind is IRTakeKind.RETRO else chunk_index
-    if not reopens_the_approved_draft and not of_the_grain_left_behind(session, take_kind, ordinal):
+    left_behind = of_the_grain_left_behind(session, take_kind, ordinal)
+    if not reopens_the_approved_draft and not left_behind:
         await refuse_a_keep_that_reopens_the_approved_draft(
             db,
             session,
@@ -218,6 +221,7 @@ async def keep_take(
         sent_sha256=sha256,
         sent_duration_ms=duration_ms,
         sent_recorded_at=recorded_at,
+        past_the_set_aside=not left_behind,
     )
     await room.set_aside_by_the_grain_in_force(db, session, take)
     await room.retire_the_part_recorded_again(db, session, take)
