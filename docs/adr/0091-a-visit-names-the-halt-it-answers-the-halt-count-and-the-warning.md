@@ -20,18 +20,19 @@ answer of 2026-10-23:
   `halt`, required, and `warning`, an instant with its offset, absent when the Desk saw no
   warning. A missing or invalid `halt`, or a `warning` with no offset, is the framework's own
   422. No blind write survives.
-- The write is one guarded statement, `WHERE halts_raised = :halt AND warned_at IS NOT
-  DISTINCT FROM :warning`. A visit also requires no stamp, so a second tap writes nothing and
-  keeps the first stamp. An undo also requires a stamp. A write that changed nothing while
-  either value moved answers 409 `HALT_MOVED` with the current `halts_raised` and `warned_at`,
-  and the Desk reads again and draws the newer halt, with no toast.
+- The write reads the room again under its row lock (`SELECT … FOR UPDATE`), compares the
+  two values with what was named, the warning as the instant it is, and writes by id in the
+  same transaction. If either moved it answers 409 `HALT_MOVED` with the current
+  `halts_raised` and `warned_at`, and the Desk reads again and draws the newer halt, with no
+  toast. A second tap keeps the first stamp, and an undo of a visit nobody made changes
+  nothing. A write never answers 200 without writing what it answers.
 - The queue serves the standing warning's moment, which is the room's own on every row the
   Desk can visit: an unattended one. «Sessões» serves the room's own, which is what an undo
   names.
 - The role gate answers first, and a room of another team answers 404 whatever count it
   names, so a count never leaks across teams. A refused write nudges nothing.
-- On a demo team the undo decides whether a halt still stands in the same statement that
-  clears the stamps (ADR 0064). A halt raised or lifted after the undo read the room is the
+- On a demo team the undo decides whether a halt still stands under the same row lock as the
+  clear (ADR 0064). A halt raised or lifted after the undo read the room is the
   one it answers.
 - The server's own visit to a demo team's halt names the halt it has just raised.
 - The tablet's own halt (`/facilitator/devices/{id}/attended`) is not changed.
@@ -44,6 +45,10 @@ Consequences:
   queue. The Desk never visits from that half; an undo of it names what «Sessões» serves.
 
 Rejected:
+
+- A guarded `UPDATE … WHERE warned_at IS NOT DISTINCT FROM :warning`. It compares the stored
+  text, and a row written by SQL (the ADR 0039 migration on SQLite) spells the same instant
+  differently: the write matched nothing and answered 200 having written nothing.
 
 - A guard inside the request on the API alone (Henok, 2026-10-22). It leaves the poll window
   open.

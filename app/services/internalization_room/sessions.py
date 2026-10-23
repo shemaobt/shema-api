@@ -1104,8 +1104,8 @@ async def attend(
 
     **It names the halt it answers** (ADR 0091): ``halts_raised`` and ``warned_at`` as the
     Desk read them. The count moves with a blocking halt only (ADR 0039), and ``warned_at``
-    with a warning. The stamp is written only while both are still the room's, in the same
-    statement, so a halt raised after the read is never hidden by a visit to the one before.
+    with a warning. The stamp is written only while both are still the room's, under the
+    row's lock, so a halt raised after the read is never hidden by a visit to the one before.
 
     **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
     every tap would record when somebody last touched the Desk rather than when they went to
@@ -1116,19 +1116,12 @@ async def attend(
     ``updated_at`` is written its own value: a visit is not the team's act, and the team's
     Current book reads its latest session by that column (ADR 0094).
     """
-    visited = await db.execute(
-        update(IRSession)
-        .where(
-            IRSession.id == session.id,
-            _the_halt_named(halts_raised, warned_at),
-            IRSession.attended_at.is_(None),
-        )
-        .values(attended_at=datetime.now(UTC), attended_by=by, updated_at=IRSession.updated_at)
-        .execution_options(synchronize_session=False)
-    )
-    return await _visit_written(
-        db, session, written=visited.rowcount, halts_raised=halts_raised, warned_at=warned_at
-    )
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
+    _visited(session, by=by)
+    session.updated_at = IRSession.updated_at
+    await db.commit()
+    await db.refresh(session)
+    return session
 
 
 def _visited(session: IRSession, *, by: str | None) -> None:
@@ -1146,66 +1139,47 @@ async def unattend(
     A halted room is back on the queue, and a warning the visit ended stands again: it stands
     while ``warned_at`` is set and nobody is marked as having gone. A demo team's halt is
     stamped again by the server at once, because it never calls a person (ADR 0064); a visit
-    to a demo room that never halted clears like any other. Whether a halt stands is read in
-    the statement that clears, so a halt raised or lifted after ``session`` was read is the
-    one it answers.
+    to a demo room that never halted clears like any other. Whether a halt stands is read
+    under the row's lock, so a halt raised or lifted after ``session`` was read is the one it
+    answers.
 
     Like the visit, it names the halt the Desk read (ADR 0091): an undo of a visit to an older
     halt would clear a colleague's visit to the newer one.
 
     ``updated_at`` is left as it was, as the visit left it (ADR 0094). The demo read comes
-    before the clear, because a read flushes what is pending and the flush would move it.
+    before the stamps clear, because a read flushes what is pending and the flush would move it.
     """
     demo = await is_the_demo_team(db, session.project_id)
-    stamped_again = literal(datetime.now(UTC), IRSession.attended_at.type)
-    cleared = await db.execute(
-        update(IRSession)
-        .where(
-            IRSession.id == session.id,
-            _the_halt_named(halts_raised, warned_at),
-            IRSession.attended_at.is_not(None),
-        )
-        .values(
-            attended_at=case((halt.stands_once_unattended(), stamped_again), else_=None)
-            if demo
-            else None,
-            attended_by=None,
-            updated_at=IRSession.updated_at,
-        )
-        .execution_options(synchronize_session=False)
-    )
-    return await _visit_written(
-        db, session, written=cleared.rowcount, halts_raised=halts_raised, warned_at=warned_at
-    )
-
-
-def _the_halt_named(halts_raised: int, warned_at: datetime | None) -> ColumnElement[bool]:
-    return and_(
-        IRSession.halts_raised == halts_raised,
-        IRSession.warned_at.is_not_distinct_from(warned_at),
-    )
-
-
-async def _visit_written(
-    db: AsyncSession,
-    session: IRSession,
-    *,
-    written: int,
-    halts_raised: int,
-    warned_at: datetime | None,
-) -> IRSession:
-    """Close a visit's or an undo's write; one that wrote nothing is refused if the halt moved.
-
-    Nothing written with the halt unchanged is the second tap, or the undo of a visit nobody
-    made, and answers the row as it stands.
-    """
-    if written == 0:
-        await db.refresh(session, ["halts_raised", "warned_at"])
-        if (session.halts_raised, session.warned_at) != (halts_raised, warned_at):
-            raise HaltMoved(session.halts_raised, session.warned_at)
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
+    if session.attended_at is None:
+        return session
+    session.attended_at = None
+    session.attended_by = None
+    if demo and halt.standing(session) is not None:
+        _visited(session, by=None)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def _the_halt_held(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> None:
+    """Read the room again under its row lock, and refuse a write naming a halt that moved.
+
+    The lock holds until the visit's commit, so nothing raises or lifts a halt between this
+    comparison and the write. ``warned_at`` is compared as the instant it is, never as stored
+    text, which a row written by SQL may spell differently from a bound value.
+    """
+    await db.execute(
+        select(IRSession)
+        .where(IRSession.id == session.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if (session.halts_raised, session.warned_at) != (halts_raised, warned_at):
+        raise HaltMoved(session.halts_raised, session.warned_at)
 
 
 def back_translation_of(session: IRSession) -> BackTranslationState:
