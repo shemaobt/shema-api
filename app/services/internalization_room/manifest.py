@@ -15,6 +15,7 @@ from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.canon.book_material import meaning_map_ref
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.release import (
     RETRO_ROUTE,
     _mother_tongue,
@@ -69,6 +70,8 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     take, nobody who forced it, no order clock and no clock offset: those are the consultant's,
     in the **Retroverification file**, and the stored **Packet** stays the record.
     """
+    if is_panorama(session.pericope):
+        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
     with reading_the_canon_of(session.canon_pin):
         meaning_map = meaning_map_ref(session.pericope)
         reference = load_map(session.pericope).reference

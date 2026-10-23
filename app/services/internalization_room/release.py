@@ -733,13 +733,15 @@ async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | No
 
     Asking is never allowed to fail a read or an open. What the composer would refuse (the
     panorama, the demo team) is answered none before it runs, as is a session that names no
-    team, and so is one whose kept canon is gone, as every other reader of it degrades. The
-    packet hashes the session's id, so a release another session wrote is never this draft's,
-    and the composer is not run for it: the new session after a Zerar and the session in the
-    other language pay one query on every beat and no more.
+    team, a session a Zerar archived (its work is retired, and the passage waits for its new
+    session to approve), and one whose kept canon is gone, as every other reader of it
+    degrades. The packet hashes the session's id, so a release another session wrote is never
+    this draft's, and the composer is not run for it: the new session after a Zerar and the
+    session in the other language pay one query on every beat and no more.
     """
     if (
         session.project_id is None
+        or session.archive_id is not None
         or is_panorama(session.pericope)
         or await is_the_demo_team(db, session.project_id)
     ):

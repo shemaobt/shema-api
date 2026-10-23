@@ -43,6 +43,7 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
 )
 from app.services.internalization_room.canon import kept
+from app.services.internalization_room.earlier_passages import approved_pericopes
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import current_parts, takes_of
@@ -987,3 +988,39 @@ async def test_a_take_that_lands_after_the_approval_is_judged_is_never_listed_as
     assert read.status_code == 409, read.text
     assert read.json()["code"] == "DRAFT_NOT_APPROVED"
     assert landed[0].id not in read.text
+
+
+async def test_a_zerar_retires_the_approval_until_the_new_session_approves(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    zeroed = await ready_p01(db_session, project.id)
+    await approved(client, credential, zeroed)
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P01)
+
+    retired = await client.get(desk_release(zeroed.id), headers=desk)
+
+    assert retired.status_code == 409, retired.text
+    assert retired.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert P01 not in await approved_pericopes(db_session, project_id=project.id)
+    kept = await client.get(desk_release_at(zeroed.id, 1), headers=desk)
+    assert kept.status_code == 200, kept.text
+
+    again = await ready_p01(db_session, project.id)
+    await approved(client, credential, again)
+    manifest = await manifest_of(client, desk, again)
+
+    assert manifest["releaseId"] == "internalize-terena-p01-v2"
+    assert manifest["finalizeCount"] == 2
+
+
+async def test_a_panorama_is_refused_before_any_canon_is_read(client, db_session, room_app):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    panorama = await create_session(db_session, pericope="OV", project_id=project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    read = await client.get(desk_release(panorama.id), headers=desk)
+
+    assert read.status_code == 409, read.text
+    assert read.json()["code"] == "DRAFT_NOT_APPROVED"

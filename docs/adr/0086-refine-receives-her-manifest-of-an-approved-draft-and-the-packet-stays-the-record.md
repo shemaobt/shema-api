@@ -23,13 +23,17 @@ Decided (ENG-1274):
   fingerprint: a part recorded again between the two reads makes the draft unapproved, never a
   clip. Otherwise the read is 409 `DRAFT_NOT_APPROVED`, its own code because there is no version
   to reload and no blocker to name. A session whose kept canon is gone is never told it is not
-  approved: the read answers `CANON_NOT_KEPT`, as every reader of that canon does.
+  approved: the read answers `CANON_NOT_KEPT`.
 - **An approval stored in an older shape stays an approval.** Whether a stored release is this
   draft compares only what the stored packet and the composed one both hold, so a packet stored
   before v0.7 (with its `comprehension` block) or before the check was recorded (with no
   `check`, and so no word on whether every part was heard) still answers its manifest. The one
   with no check carries her warning that no check state was recorded. A take changed since
   still un-approves it, as it does any release.
+- **A Zerar retires the approval.** An archived session's draft is not approved, so its manifest
+  is refused until the passage's new session approves (its next version). The archived release
+  row and its packet stay readable by version.
+- **A panorama is refused before any canon is read**, as before: it has no meaning map to name.
 - **The packet is the record.** It is still composed, hashed and stored on the release row, and
   `GET /facilitator/sessions/{id}/releases/{version}` still serves it verbatim. No route serves it
   live any more.
