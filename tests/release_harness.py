@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +38,10 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.release import (
+    InternalizationReleaseBlocked,
+    compose_internalization_release,
+)
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
     back_translation_of,
@@ -123,6 +128,19 @@ async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
         select(IRRelease).where(IRRelease.session_id == session_id).order_by(IRRelease.version)
     )
     return list(rows.scalars().all())
+
+
+async def judged_packet(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+    """The packet this session composes, or the refusal naming every blocker standing.
+
+    The gate judged under the whole list, with nothing set aside: what the approval asks of a
+    team that has no facilitator's code. A case about what the packet carries reads it here
+    rather than from a route, because no route serves it live.
+    """
+    artifact, blockers = await compose_internalization_release(db, session)
+    if blockers:
+        raise InternalizationReleaseBlocked(blockers)
+    return artifact
 
 
 async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:

@@ -419,29 +419,12 @@ async def test_forcing_what_the_team_already_approved_returns_the_teams_release(
     assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
-async def test_the_desks_read_still_builds_under_the_whole_list(client, db_session, room_app):
-    """The GET is a read and never a force, so nothing is waived for it.
-
-    A facilitator looking at a disputed session sees the refusal the team saw. Forcing is an
-    act with a body and a record; opening the page is not one.
-    """
-    project, _credential = await a_claimed_device(db_session)
-    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await at_the_desk(db_session, room_app, project)
-
-    read = await client.get(desk_release(session.id), headers=desk)
-
-    assert read.status_code == 409, read.text
-    assert "telling_back_not_checked" in read.json()["detail"]
-
-
 async def test_the_desk_reads_a_forced_release_by_its_version(client, db_session, room_app):
     """The stored packet, served as it was approved, under the number it was approved as.
 
     Nothing served `ir_releases.packet` until now: the only facilitator read rebuilt the
-    packet live, which on a forced session is the refusal the team saw and not the draft the
-    Desk minted. The two routes are contrasted here once — the live read still answers 409
-    over the very session whose version 1 reads back whole.
+    packet live, which on a forced session was the refusal the team saw and not the draft the
+    Desk minted.
     """
     project, _credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
@@ -449,7 +432,6 @@ async def test_the_desk_reads_a_forced_release_by_its_version(client, db_session
 
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
     read = await client.get(desk_release_at(session.id, 1), headers=desk)
-    live = await client.get(desk_release(session.id), headers=desk)
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
@@ -463,7 +445,6 @@ async def test_the_desk_reads_a_forced_release_by_its_version(client, db_session
     assert body["release_id"] == forced.json()["release_id"]
     assert body["back_translation"]["checked"] is False
     assert body["back_translation"]["findings"]
-    assert live.status_code == 409, live.text
 
 
 async def test_a_version_that_was_never_minted_is_not_found(client, db_session, room_app):

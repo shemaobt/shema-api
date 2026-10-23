@@ -40,6 +40,9 @@ ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
+#: A manifest asked of a passage whose draft is not approved as it stands. Its own code
+#: because there is no version to reload and no blocker to name: the passage is approved first.
+ERROR_CODE_DRAFT_NOT_APPROVED: Final = "DRAFT_NOT_APPROVED"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: A heard mark on a question nobody has answered. Its own code for the reason above: there is
 #: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
@@ -68,6 +71,8 @@ ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
 #: A frase, restart or send for a scene rehearsal another send is still taking to the voice:
 #: retried, since that send may fail and leave the rehearsal open.
 ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
+#: A scene label given to a scene rehearsal that is a current part's origin: never accepted.
+ERROR_CODE_REHEARSAL_JOINED: Final = "REHEARSAL_JOINED"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
@@ -173,6 +178,15 @@ class NothingToForce(ConflictError):
     """
 
 
+class DraftNotApproved(ConflictError):
+    """A manifest was asked of a session whose draft is not approved as it stands.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is no version to reload; approve the
+    passage first.
+    """
+
+
 class ReplyMovedOn(ConflictError):
     """The reply the tablet heard is no longer the question's current one.
 
@@ -215,6 +229,14 @@ class SceneRehearsalSending(ConflictError):
 
     Its own exception so the tablet's outbox retries it: that turn may still fail and leave the
     rehearsal sendable.
+    """
+
+
+class RehearsalJoined(ConflictError):
+    """A different scene label for a scene rehearsal that is the origin of a current part.
+
+    Its own exception so the tablet can tell it from a conflict worth retrying: the label holds
+    until that part is recorded again.
     """
 
 
@@ -520,6 +542,13 @@ async def handle_nothing_to_force(_request: Request, exc: NothingToForce) -> JSO
     )
 
 
+async def handle_draft_not_approved(_request: Request, exc: DraftNotApproved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_DRAFT_NOT_APPROVED),
+    )
+
+
 async def handle_reply_moved_on(_request: Request, exc: ReplyMovedOn) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -635,6 +664,13 @@ async def handle_scene_rehearsal_sending(
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_SCENE_REHEARSAL_SENDING),
+    )
+
+
+async def handle_rehearsal_joined(_request: Request, exc: RehearsalJoined) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_REHEARSAL_JOINED),
     )
 
 
@@ -809,6 +845,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(TurnCollision, handle_turn_collision)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
+    app.add_exception_handler(DraftNotApproved, handle_draft_not_approved)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
@@ -824,6 +861,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
     app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(RehearsalJoined, handle_rehearsal_joined)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]

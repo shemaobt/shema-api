@@ -101,8 +101,8 @@ UNFORCEABLE_BLOCKERS = frozenset({"no_rehearsal_audio"})
 #: strings live once rather than at every site that asks whether a blocker carries ground.
 GROUNDED_BLOCKERS = frozenset({"playback_did_not_cover_the_clip", "untold_stretch"})
 
-#: Where the facilitator and the consultant read everything the check learned about a session.
-#: The route is a later slice's; the packet says where it will be so the two land together.
+#: Where the facilitator and the consultant read everything the check learned about a session:
+#: the retroverification read, which the packet and the manifest both point to.
 RETRO_ROUTE = "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao"
 
 
@@ -155,6 +155,11 @@ def release_name(language: str | None, pericope: str, version: int) -> str:
     return f"internalize-{_slug(language)}-{pericope.lower()}-v{version}"
 
 
+def released_as(release: IRRelease) -> str:
+    """The name a stored release goes by: its own, or its row id when stored before ADR 0048."""
+    return str(release.packet.get("release_id") or release.id)
+
+
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -178,6 +183,10 @@ _BESIDE_THE_DRAFT = frozenset(
     }
 )
 
+#: Counted off the draft rather than part of it: v0.6 counted its comprehension's open points
+#: in ``open_questions`` and v0.7 stopped, so the count moved under a draft nobody changed.
+_COUNTED = frozenset({"open_questions"})
+
 #: Read off the draft rather than part of it, so a schema can add or reshape them freely.
 _DERIVED = frozenset({"key", "scene", "index", "frase", "voiced", "duration_ms"})
 
@@ -192,10 +201,11 @@ def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
     content = {
         k: v
         for k, v in packet.items()
-        if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
+        if k not in _BESIDE_THE_DRAFT | _COUNTED and k not in ("audio", "back_translation")
     }
     content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
-    content["heard_complete"] = (packet.get("check") or {}).get("heardComplete")
+    if packet.get("check") is not None:
+        content["heard_complete"] = packet["check"].get("heardComplete")
     content["back_translation"] = {
         **{k: v for k, v in told.items() if k not in ("segments", "retro_takes", "played_by_take")},
         "segments": [_without_derived(frase) for frase in told.get("segments", [])],
@@ -220,10 +230,13 @@ def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
 
     Nuances are compared only where the stored packet recorded them: one approved before they
     reached the record says nothing about them, and a nuance moves only with a new reading,
-    which only new content brings.
+    which only new content brings. So is all the rest: only what both sides hold is compared,
+    so a key an older schema had and a newer one dropped (``comprehension``), or one it lacked
+    (the check, and with it whether every part was heard), never un-approves a draft.
     """
     recorded = "nuances" in (stored.get("check") or {})
-    return _content(stored, nuances=recorded) == _content(composed, nuances=recorded)
+    old, new = _content(stored, nuances=recorded), _content(composed, nuances=recorded)
+    return all(old[key] == new[key] for key in old.keys() & new.keys())
 
 
 #: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like
@@ -451,9 +464,33 @@ def _check_block(
 def _judge(blockers: list[str], waived: frozenset[str]) -> None:
     """Refuse over whatever the waiver did not name, and say nothing otherwise.
 
-    One sentence in one place because two callers ask it: the build, whose whole job after
-    composing is this, and the approval, which has to compare the packet before it gets
-    here. A waiver filters the refusal and never the packet.
+    The gate is Marcia's, whole: "Adote o meu portão inteiro, agora: sem achado em aberto e
+    com a gravação toda ouvida, senão não aprova; só o código do facilitador força."
+
+    ``checked`` says one whole reading returned no finding (ADR 0013), so a question the team
+    chose not to answer makes it false and ``telling_back_not_checked`` refuses the release.
+    This module used to argue the other way at length — that carrying the questions to Refine
+    was the one outcome the room existed to reach — and that argument lost on what a disputed
+    finding is. It is one of three things: the map wrong, which is rare and worth having; the
+    team not understanding; the recogniser erring. Only the first deserves to travel, and a
+    door open to all three sends the other two downstream as a passage the room approved, to
+    be heard as approved at the community's check.
+
+    The team that disagrees has a road, and it is older than this one: the raised hand, active
+    the whole session, answered by a person. If that person agrees with the team, a facilitator
+    forces the release with their own code, and the force is recorded on the row.
+    ``UNFORCEABLE_BLOCKERS`` is the whole of what a force never sets aside, and
+    ``approve_release`` is where it is applied, because that is where somebody decided it;
+    ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
+    is out of reach of any of it, because a panorama is not a draft of a passage at all.
+
+    What a forced packet says is unchanged: ``checked`` false and every open finding in
+    ``findings``. Judging the quality of a telling-back is not this packet's job — carrying
+    it honestly is, and the decision that it may travel anyway was a person's and is recorded
+    on the release rather than dressed up here.
+
+    The approval is the one caller: it compares the packet before it gets here, and a waiver
+    filters the refusal and never the packet.
     """
     standing = [code for code in blockers if code not in waived]
     if standing:
@@ -470,12 +507,8 @@ async def compose_internalization_release(
     depended on the gate — a blocker filters the refusal and not a single key of the
     artifact — so a packet composed here is the same packet either caller would have got.
 
-    It is a name anyone may say. `build_internalization_release` used to take a set of
-    blockers to waive, which no caller in the application ever passed: what wanted it was a
-    reader that had already decided the gate was not its subject, and that reader is asking
-    for the composition and not for a softer judgement. Answering with the two apart says so,
-    and it is the only door onto a blocked session's live packet — the Desk's own route
-    rebuilds under the whole list and refuses.
+    It is a name anyone may say, and it is the only door onto a session's live packet: the
+    approval judges what this composes, and no route serves it (ADR 0086).
 
     ``panorama_sessions_never_release`` is raised rather than listed, before anything is
     read, because a panorama is not a draft of a passage at all: there is nothing to compose
@@ -691,7 +724,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         forced=False,
     )
     approved = await _release_of(db, session, {**artifact, "check": check})
-    artifact["release_id"] = approved.packet["release_id"] if approved else None
+    artifact["release_id"] = released_as(approved) if approved else None
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     artifact["check"] = check
@@ -701,43 +734,6 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         WAV_FORMAT if parts and all(is_wav(p.content_type) for p in parts) else None
     )
     return artifact, blockers
-
-
-async def build_internalization_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """Build the closed-world release for one session, or refuse with typed blockers.
-
-    The gate is Marcia's, whole: "Adote o meu portão inteiro, agora: sem achado em aberto e
-    com a gravação toda ouvida, senão não aprova; só o código do facilitador força."
-
-    ``checked`` says one whole reading returned no finding (ADR 0013), so a question the team
-    chose not to answer makes it false and ``telling_back_not_checked`` refuses the release.
-    This module used to argue the other way at length — that carrying the questions to Refine
-    was the one outcome the room existed to reach — and that argument lost on what a disputed
-    finding is. It is one of three things: the map wrong, which is rare and worth having; the
-    team not understanding; the recogniser erring. Only the first deserves to travel, and a
-    door open to all three sends the other two downstream as a passage the room approved, to
-    be heard as approved at the community's check.
-
-    The team that disagrees has a road, and it is older than this one: the raised hand, active
-    the whole session, answered by a person. If that person agrees with the team, a facilitator
-    forces the release with their own code, and the force is recorded on the row.
-    ``UNFORCEABLE_BLOCKERS`` is the whole of what a force never sets aside, and
-    ``approve_release`` is where it is applied, because that is where somebody decided it;
-    ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
-    is out of reach of any of it, because a panorama is not a draft of a passage at all.
-
-    What a forced package says is unchanged: ``checked`` false and every open finding in
-    ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
-    it honestly is, and the decision that it may travel anyway was a person's and is recorded
-    on the release rather than dressed up here.
-
-    This judges under the whole list and sets nothing aside. A caller that wants the packet of
-    a session the gate refuses is not asking for a softer judgement: it is asking for the
-    composition, and ``compose_internalization_release`` is where it says so.
-    """
-    artifact, blockers = await compose_internalization_release(db, session)
-    _judge(blockers, frozenset())
-    return artifact
 
 
 async def _release_of(
@@ -767,13 +763,15 @@ async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | No
 
     Asking is never allowed to fail a read or an open. What the composer would refuse (the
     panorama, the demo team) is answered none before it runs, as is a session that names no
-    team, and so is one whose kept canon is gone, as every other reader of it degrades. The
-    packet hashes the session's id, so a release another session wrote is never this draft's,
-    and the composer is not run for it: the new session after a Zerar and the session in the
-    other language pay one query on every beat and no more.
+    team, a session a Zerar archived (its work is retired, and the passage waits for its new
+    session to approve), and one whose kept canon is gone, as every other reader of it
+    degrades. The packet hashes the session's id, so a release another session wrote is never
+    this draft's, and the composer is not run for it: the new session after a Zerar and the
+    session in the other language pay one query on every beat and no more.
     """
     if (
         session.project_id is None
+        or session.archive_id is not None
         or is_panorama(session.pericope)
         or await is_the_demo_team(db, session.project_id)
     ):
