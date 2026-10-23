@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.hard_stretch_harness import a_session
+from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     nothing_is_read_ahead,
     played_every_part,
@@ -626,4 +627,24 @@ async def test_a_bring_back_takes_the_findings_on_the_stretches_it_abandons_with
     assert answered.status_code == 200, answered.text
     assert (await the_file(room, session_id))["findings"] == [], (
         "o achado sobre o trecho abandonado seguia aberto sobre as frases trazidas de volta"
+    )
+
+
+async def test_a_tablet_of_another_team_cannot_bring_this_teams_frases_back(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session, language="pt")
+    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
+    await sent(db_session, rehearsal_id)
+    await joined(room, session_id, rehearsal_id, scene)
+    await restart_the_translation(room, session_id)
+    _stranger, credential = await a_claimed_device(db_session, email="estranho@example.com")
+
+    refused = await room.client.post(
+        f"{IR}/sessions/{session_id}/parts/2/bring-back", headers=team_headers(credential)
+    )
+
+    assert refused.status_code == 404, refused.text
+    assert (await the_session(room, session_id))["segments"] == [], (
+        "um tablet de outra equipe trazia de volta as frases desta"
     )
