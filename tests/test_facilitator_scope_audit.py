@@ -80,6 +80,8 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 #: The only body the force route accepts as a force. Without it the route answers
 #: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
 FORCE = {"json": {"force": True}}
+#: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
+NEVER_HALTED = {"params": {"halt": 0}}
 
 
 @pytest.fixture()
@@ -417,14 +419,14 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "POST",
-            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", {}),
-            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", NEVER_HALTED),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", NEVER_HALTED),
             "ids": (attend_id, absent),
         },
         {
             "method": "DELETE",
-            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", {}),
-            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", NEVER_HALTED),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", NEVER_HALTED),
             "ids": (unattend_id, absent),
         },
         {
@@ -543,7 +545,10 @@ FILTERING_TEMPLATES = {
 #: **An exemption list in a scope audit is the thing that rots it**, so membership here is
 #: not taken on trust — the case below refuses an entry whose route could name a resource.
 #: A route earns this by having no path parameter and asking for nothing but the caller.
-NOTHING_TO_SCOPE = {("GET", f"{DESK}/coverage-legend")}
+NOTHING_TO_SCOPE = {
+    ("GET", f"{DESK}/coverage-legend"),
+    ("GET", f"{IR}/facilitator/canon-pins"),
+}
 
 
 def test_the_audit_is_not_empty() -> None:

@@ -103,6 +103,7 @@ def _view(
         scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
+        sha256=rehearsal.sha256,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
         sent_at=_sent_at(rehearsal, sent),
@@ -139,6 +140,7 @@ def _reader_view(
         scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
+        sha256=rehearsal.sha256,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
         sent_at=_sent_at(rehearsal, sent),
@@ -386,7 +388,11 @@ async def label_scene_rehearsal(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SceneRehearsalView:
-    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`.
+
+    Another scene for a rehearsal that is a current part's origin is refused with 409
+    `REHEARSAL_JOINED`.
+    """
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
     with reading_the_canon_of(session.canon_pin):

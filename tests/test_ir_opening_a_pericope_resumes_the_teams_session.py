@@ -344,7 +344,8 @@ async def test_a_tablet_relaunched_in_a_room_halted_by_its_call_for_a_person_get
 
 
 def the_visit(session_id: str) -> str:
-    return f"{PREFIX}/facilitator/sessions/{session_id}/attended"
+    """A visit to a room halted once, naming that halt (ADR 0091)."""
+    return f"{PREFIX}/facilitator/sessions/{session_id}/attended?halt=1"
 
 
 async def test_a_visit_undone_after_the_tablet_reopened_the_room_leaves_the_room_going(
@@ -379,7 +380,14 @@ async def test_a_visit_that_lands_while_the_tablet_reopens_the_room_leaves_nothi
     async def visit() -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as db:
-            await attend(db, await get_session(db, halted["session_id"]), by=facilitator.id)
+            read = await get_session(db, halted["session_id"])
+            await attend(
+                db,
+                read,
+                by=facilitator.id,
+                halts_raised=read.halts_raised,
+                warned_at=read.warned_at,
+            )
             visited.append(halted["session_id"])
         await engine.dispose()
 

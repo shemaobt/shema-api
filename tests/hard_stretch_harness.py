@@ -94,10 +94,15 @@ async def voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
 
 
 class Facilitator:
-    def __init__(self, user_id: str, team_id: str, headers: dict[str, str]) -> None:
+    """Somebody who holds the room's facilitator role and facilitates exactly one team."""
+
+    def __init__(
+        self, user_id: str, team_id: str, headers: dict[str, str], *, team_name: str = ""
+    ) -> None:
         self.id = user_id
         self.team_id = team_id
         self.headers = headers
+        self.team_name = team_name
 
 
 async def a_session(
@@ -224,12 +229,6 @@ async def marks(db: AsyncSession, session_id: str) -> list[IRHardStretch]:
         .execution_options(**FROM_THE_DATABASE)
     )
     return list(result.scalars().all())
-
-
-async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -> httpx.Response:
-    return await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=who.headers
-    )
 
 
 async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:

@@ -37,7 +37,7 @@ def test_a_re_pin_keeps_the_canon_it_replaces_under_its_pin_beside_the_labels_it
     compiler.sha = NEXT
     compiler.files["fixtures/meaning-map/P01-Ruth-1-1-5.md"] = b"map P01 revised"
 
-    assert canon.sync(pin=NEXT, keep=(SHA,)) == 0
+    assert canon.sync(pin=NEXT) == 0
 
     kept = tmp_path / "kept" / SHA
     assert what_is_vendored(kept / "vendor") == {
@@ -59,7 +59,7 @@ def test_a_re_pin_keeps_her_portuguese_titles_beside_the_canon_it_replaces(
     compiler = a_vendor_synced_once_beside_its_labels
     compiler.sha = NEXT
 
-    assert canon.sync(pin=NEXT, keep=(SHA,)) == 0
+    assert canon.sync(pin=NEXT) == 0
 
     assert (tmp_path / "kept" / SHA / "ui-labels.pt.json").read_text() == FIRST_TITLES, (
         "o re-pin deixava a sessão aberta sem os títulos dela com que começou"

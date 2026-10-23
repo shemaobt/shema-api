@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import TypeGuard
 
-from sqlalchemy import ColumnElement, select, update
+from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -492,10 +492,45 @@ async def final_segments(
     team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
+    history = _not_the_part(takes if takes is not None else await takes_of(db, session_id))
     return [
-        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in set_aside
+        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in history
     ]
+
+
+def _not_the_part(takes: list[IRTake]) -> set[str]:
+    """The rehearsal takes no stretch counts on: every one that is not a current part.
+
+    Recording a part again retires the stretches of the take it replaced. A take can also stop
+    being the part with nobody recording anything, when the order that chooses the part changes
+    under stored rows (ENG-1760); its stretches stay standing on it, and read as the part's they
+    would carry one recording's telling-back and findings beside another recording's audio. So
+    a stretch counts only on the take that is the part now, and the rest are history.
+    """
+    parts = {part.id for part in current_parts(takes)}
+    return {take.id for take in takes if take.kind is IRTakeKind.ENSAIO and take.id not in parts}
+
+
+async def the_check_still_stands(
+    db: AsyncSession, state: BackTranslationState, takes: list[IRTake]
+) -> bool:
+    """Whether the stored check is still about the parts the session has now.
+
+    A check holds only while every stretch it read is on a take that is still the part. When
+    the order makes another take the part of any number (`_not_the_part`), nothing retired the
+    stretches the check read, so the stored check and its findings are about a recording the
+    passage no longer has: the gate reads it as not checked until the team tells and checks
+    again.
+    """
+    if not state.checked:
+        return False
+    history = _not_the_part(takes)
+    if not history or not state.analysed_segment_ids:
+        return True
+    read = await db.execute(
+        select(IRSegment.take_id).where(IRSegment.id.in_(state.analysed_segment_ids))
+    )
+    return history.isdisjoint(read.scalars().all())
 
 
 def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
@@ -508,14 +543,24 @@ def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
 async def set_aside_segment_ids(
     db: AsyncSession, session_id: str, takes: list[IRTake] | None = None
 ) -> set[str]:
-    """Every stored stretch told over a whole that stepped aside, retired or not.
+    """Every stored stretch told over a whole that stepped aside, retired or not, and every
+    standing one on a take that is no longer the part (`_not_the_part`): its findings and nuances
+    are history, stored and never carried.
 
     `takes` is the session's takes in `takes_of`'s order, for a caller that already read them.
     """
-    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
-    if not set_aside:
+    takes = takes if takes is not None else await takes_of(db, session_id)
+    history = _not_the_part(takes)
+    if not history:
         return set()
-    rows = await db.execute(select(IRSegment.id).where(IRSegment.take_id.in_(set_aside)))
+    rows = await db.execute(
+        select(IRSegment.id).where(
+            or_(
+                IRSegment.take_id.in_(_wholes_set_aside(takes)),
+                IRSegment.take_id.in_(history) & IRSegment.superseded_at.is_(None),
+            )
+        )
+    )
     return set(rows.scalars().all())
 
 
@@ -634,6 +679,33 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
     await db.flush()
 
 
+async def abandon_the_segments_of(
+    db: AsyncSession, session_id: str, *, take_ids: set[str]
+) -> list[IRSegment]:
+    """Stop the stretches of these recordings counting, pieces included, and mark none stale.
+
+    The **Bring-back**'s half of the verb below: the stretches go as **Abandoned** history and
+    nobody is invited to tell them again, because the rehearsal's frases are laid in their place.
+    """
+    going = _with_their_pieces(await current_segments(db, session_id), take_ids)
+    _stop_counting(going)
+    await db.flush()
+    return going
+
+
+async def stop_waiting_on_the_segments_of(db: AsyncSession, *, take_ids: set[str]) -> None:
+    """The stale stretches of these recordings stop waiting to be told again, and stay retired.
+
+    A part whose frases were laid over it is told: the stretches its earlier takes left waiting
+    would invite the team to tell that ground a second time.
+    """
+    await db.execute(
+        update(IRSegment)
+        .where(IRSegment.take_id.in_(take_ids), IRSegment.stale.is_(True))
+        .values(stale=False)
+    )
+
+
 async def retire_the_segments_of(
     db: AsyncSession, session_id: str, *, take_ids: set[str]
 ) -> list[IRSegment]:
@@ -658,7 +730,18 @@ async def retire_the_segments_of(
     are one fact about one upload: committed apart, a failure between them leaves the room
     carrying findings about audio nobody will hear again.
     """
-    rows = await current_segments(db, session_id)
+    going = _with_their_pieces(await current_segments(db, session_id), take_ids)
+    if not going:
+        return going
+    _stop_counting(going)
+    for row in going:
+        row.stale = True
+    await db.flush()
+    return going
+
+
+def _with_their_pieces(rows: list[IRSegment], take_ids: set[str]) -> list[IRSegment]:
+    """Of `rows`, the slices of these recordings and every piece divided out of them."""
     children: dict[str | None, list[IRSegment]] = {}
     for row in rows:
         children.setdefault(row.parent_id, []).append(row)
@@ -671,14 +754,7 @@ async def retire_the_segments_of(
                 leaving.add(piece.id)
                 walking.append(piece)
 
-    going = [row for row in rows if row.id in leaving]
-    if not going:
-        return going
-    _stop_counting(going)
-    for row in going:
-        row.stale = True
-    await db.flush()
-    return going
+    return [row for row in rows if row.id in leaving]
 
 
 async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:

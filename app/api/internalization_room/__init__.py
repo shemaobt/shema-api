@@ -4,6 +4,7 @@ from app.api.internalization_room import (
     archives,
     attended,
     back_translation,
+    canon_pins,
     conversation,
     coverage_channel,
     demo,
@@ -46,6 +47,7 @@ for _sub in (
     text_seam_back_translation,
     archives,
     demo,
+    canon_pins,
 ):
     for route in _sub.router.routes:
         router.routes.append(route)
