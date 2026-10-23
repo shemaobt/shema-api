@@ -20,7 +20,9 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.db.models.project import Project
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.progression import resolve, standing
+from app.services.internalization_room.sessions import apply_coverage
 from tests.baker import having_finished_the_passage, make_app, make_role, open_ir_session
 from tests.halt_harness import the_halt_of
 from tests.opening_harness import a_scripted_room, desk_routes
@@ -111,7 +113,9 @@ async def having_closed_and_approved(
         session = await ready_session(db, pericope=passage, project_id=team_id)
         approved = await room.post(team_release(session.id), headers=team_headers(tablet))
         assert approved.status_code == 200, approved.text[:300]
-        await having_finished_the_passage(db, session)
+        await apply_coverage(
+            db, session.id, dict.fromkeys(element_keys(passage), CoverageStatus.ENGAGED.value)
+        )
     assert session is not None
     return session
 
@@ -316,7 +320,7 @@ async def test_a_team_with_no_sessions_stands_in_ruth_on_its_first_passage_with_
 @pytest.mark.parametrize("book", ["Esther", "Jonah"])
 def test_the_standing_of_a_book_the_team_is_not_in_has_no_current_passage(book: str) -> None:
     passages = standing(
-        set(), book=book, here=resolve(set(), book="Ruth"), releases={}, findings={}
+        set(), book=book, here=resolve(set(), book="Ruth"), releases={}, approved=set(), findings={}
     )
 
     assert {entry.position.value for entry in passages} == {"future"}

@@ -262,7 +262,11 @@ async def test_a_facilitators_zerar_keeps_all_of_a_pericopes_work_under_one_arch
         assert await stamps(per_request, table, [session.id]) == {answered["archive"]["id"]}, table
     assert await row_counts(per_request) == counted
     assert set(bucket.objects) == kept
-    assert await what_the_facilitator_reads(client, desk, session.id) == before
+    after = await what_the_facilitator_reads(client, desk, session.id)
+    assert (before["file"].pop("approved"), after["file"].pop("approved")) == (True, False), (
+        "a Zerar retires the approved draft, as the wheel and the Desk read it (ADR 0081)"
+    )
+    assert after == before
 
 
 async def test_the_archives_snapshot_holds_each_session_as_it_stood(

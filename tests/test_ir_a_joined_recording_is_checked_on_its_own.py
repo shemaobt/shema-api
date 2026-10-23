@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import segments as segments_api
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.takes import takes_of
 from tests.hard_stretch_harness import MemoryStore
@@ -28,6 +28,7 @@ from tests.room_harness import (
     Analyst,
     Room,
     a_piece_still_to_be_told,
+    a_scene_rehearsal,
     another_rehearsal_take,
     nothing_is_read_ahead,
     played_every_part,
@@ -81,26 +82,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, stor
         yield door
 
 
-async def _a_scene_rehearsal(db: AsyncSession, session: IRSession, n: int) -> IRSceneRehearsal:
-    rehearsal = IRSceneRehearsal(
-        session_id=session.id,
-        project_id=session.project_id,
-        pericope=session.pericope,
-        n=n,
-        device_id=TABLET,
-        storage_key=f"scene-rehearsals/{session.id}/{n}",
-        size_bytes=2048,
-        sha256=chr(ord("p") + n) * 64,
-        crc32c="AAAAAAA=",
-        content_type="audio/wav",
-        duration_ms=4000,
-        scene=f"S{n}",
-    )
-    db.add(rehearsal)
-    await db.commit()
-    return rehearsal
-
-
 async def _recorded(
     db: AsyncSession,
     frases_by_part: list[list[tuple[int, int]]],
@@ -118,7 +99,7 @@ async def _recorded(
     parts = []
     for index, spans in enumerate(frases_by_part):
         number = index + 1
-        rehearsal = await _a_scene_rehearsal(db, session, number) if joined else None
+        rehearsal = await a_scene_rehearsal(db, session, number) if joined else None
         take = IRTake(
             session_id=session.id,
             project_id=session.project_id,
@@ -189,7 +170,7 @@ async def test_a_part_joined_from_a_scene_rehearsal_keeps_where_it_came_from(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    rehearsal = await _a_scene_rehearsal(db_session, session, 1)
+    rehearsal = await a_scene_rehearsal(db_session, session, 1)
 
     answered = await _joined_upload(client, session.id, part=1, origin=rehearsal.id)
 
@@ -202,7 +183,7 @@ async def test_the_take_listing_names_the_scene_rehearsal_a_joined_part_came_fro
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    rehearsal = await _a_scene_rehearsal(db_session, session, 1)
+    rehearsal = await a_scene_rehearsal(db_session, session, 1)
     await _joined_upload(client, session.id, part=1, origin=rehearsal.id)
 
     listed = await client.get(
@@ -569,7 +550,7 @@ async def _joined_in_wav(
     db: AsyncSession, store: MemoryStore, frases: list[tuple[int, int]]
 ) -> tuple[IRSession, IRTake, list[Any], str]:
     session, (part,), (told,) = await rehearsed_in_wav(db, store, [frases])
-    rehearsal = await _a_scene_rehearsal(db, session, 1)
+    rehearsal = await a_scene_rehearsal(db, session, 1)
     part.origin = rehearsal.id
     await db.commit()
     return session, part, told, rehearsal.id

@@ -11,17 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DraftNotApproved
 from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake
+from app.services.internalization_room.approved_draft import approved_draft, stands_on
 from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.canon.book_material import meaning_map_ref
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.check_block import RETRO_ROUTE
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.release import (
-    RETRO_ROUTE,
     InternalizationReleaseBlocked,
     _mother_tongue,
     _recording_grain,
-    approved_draft,
     packet_as_read,
     released_as,
 )
@@ -80,7 +80,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     release = await approved_draft(db, session)
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    if release is None or not _judged(parts, release.packet):
+    if release is None or not stands_on(release, parts):
         raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
     packet = packet_as_read(release)
     release_id = released_as(release)
@@ -191,12 +191,6 @@ async def _origins(
         for part in joined
         if (rehearsal := rehearsals.get(part.origin or "")) is not None
     }
-
-
-def _judged(parts: list[IRTake], packet: dict[str, Any]) -> bool:
-    """Whether the current parts are exactly the takes the approval judged, digest for digest."""
-    judged = (packet.get("audio") or {}).get("rehearsal_takes", [])
-    return [part.sha256 for part in parts] == [take.get("sha256") for take in judged]
 
 
 def _chain(take_id: str, laid: dict[str, LaidInSentence]) -> list[str]:

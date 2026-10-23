@@ -41,6 +41,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room import halt, turn_claim
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import findings_on_stretches_that_count
 from app.services.internalization_room.background import (
     HeardTake,
@@ -69,7 +70,6 @@ from app.services.internalization_room.prepare_opening import (
     take_prepared,
 )
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.session_takes import kept_takes_of

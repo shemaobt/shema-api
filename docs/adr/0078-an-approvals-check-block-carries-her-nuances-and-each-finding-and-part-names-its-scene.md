@@ -1,5 +1,5 @@
 ---
-status: accepted; amends ADR 0020
+status: accepted; amends ADR 0020; amended by ADR 0081: an approval compares the session's takes, not the whole content
 date: 2026-10-21
 ---
 

@@ -54,15 +54,17 @@ from tests.release_harness import (
     a_p02_telling_with_the_swapped_cause,
     a_rehearsal_only_half_heard,
     at_the_desk,
+    checked_telling_back,
     desk_release,
     desk_release_at,
-    one_stretch,
     ready_session,
     releases_of,
     reported_playback,
     team_headers,
     team_release,
     the_one_part_of,
+    the_part_recorded_again,
+    told_back_with_an_open_finding,
 )
 
 REVISION = "20260911_rel02"
@@ -563,7 +565,8 @@ async def test_the_stored_packet_is_served_as_approved_not_rebuilt(client, db_se
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     first = await client.post(team_release(session.id), headers=team_headers(credential))
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     second = await client.post(team_release(session.id), headers=team_headers(credential))
 
     one = await client.get(desk_release_at(session.id, 1), headers=desk)
@@ -622,17 +625,20 @@ async def test_a_changed_and_still_blocked_session_is_refused_after_a_force(
 ):
     """Compare-first never becomes a team force: what is compared is the packet, not the gate.
 
-    One more stretch told back moves the content while `checked` stays false, so the hash no
-    longer matches the forced row and the blocker is judged with nothing waived. The force
-    afterwards is the measurement of the premise: it mints version 2, which it could only do
-    because the content really did change.
+    The part recorded again and told back with a finding still open changes the takes while
+    `checked` stays false, so the draft is no longer the forced one and the blocker is judged
+    with nothing waived (ADR 0081). The force afterwards is the measurement of the premise: it
+    mints version 2, which it could only do because the takes really did change.
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text
@@ -645,7 +651,7 @@ async def test_a_changed_and_still_blocked_session_is_refused_after_a_force(
 
     assert forced_again.status_code == 200, forced_again.text
     assert forced_again.json()["version"] == 2, (
-        "a premissa do caso: o conteúdo mudou, e por isso a recusa acima não foi uma comparação"
+        "a premissa do caso: as takes mudaram, e por isso a recusa acima não foi uma comparação"
     )
 
 
@@ -654,16 +660,18 @@ async def test_a_changed_and_clean_session_after_a_force_mints_the_next_version(
 ):
     """The other side of compare-first: changed and clean is a new draft, and the team's own.
 
-    The Desk forced past a rehearsal the team had not heard through; the team then played it
-    through and asked. Nothing stands in the way now and the content is not what was forced,
-    so this is version 2 — stamped with the tablet that approved it and with no force on it.
+    The Desk forced past a rehearsal the team had not heard through; the team then recorded
+    the part again, told it back clean, played it through and asked. Nothing stands in the way
+    now and the takes are not what was forced, so this is version 2 — stamped with the tablet
+    that approved it and with no force on it.
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_rehearsal_only_half_heard(db_session, project)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
-    await reported_playback(db_session, session, back_translation_of(session))
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     approved = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text

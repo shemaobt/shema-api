@@ -21,7 +21,7 @@ from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.release import compose_internalization_release
-from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from tests.baker import (
     make_app,
@@ -29,12 +29,12 @@ from tests.baker import (
 )
 from tests.release_harness import (
     APP_KEY,
-    CLIP_MS,
     PREFIX,
     TABLET,
     P,
     a_claimed_device,
     at_the_desk,
+    checked_telling_back,
     desk_release,
     desk_release_at,
     judged_packet,
@@ -44,6 +44,7 @@ from tests.release_harness import (
     team_headers,
     team_release,
     the_one_part_of,
+    the_part_recorded_again,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import (
@@ -227,15 +228,8 @@ async def test_the_second_release_of_a_passage_is_named_v2(client, db_session, r
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_in(db_session, project.id)
     await approved(client, credential, session)
-    await capture_segment(
-        db_session,
-        session,
-        take_id=(await the_one_part_of(db_session, session)).id,
-        starts_ms=0,
-        ends_ms=CLIP_MS,
-        bridge_take_id="retro-novo",
-        transcript="uma frase a mais, contada de volta",
-    )
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
 
     body = await approved(client, credential, session)
 

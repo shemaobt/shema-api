@@ -100,7 +100,6 @@ from app.services.internalization_room.canon.parse_map import (
 )
 from app.services.internalization_room.coverage import PANORAMA_PREFIX
 from app.services.internalization_room.entered import latest_entered_first
-from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
 from app.services.internalization_room.live import live
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
@@ -154,6 +153,7 @@ def standing(
     book: str,
     here: str | None,
     releases: Mapping[str, PassageRelease],
+    approved: Collection[str],
     findings: Mapping[str, int],
 ) -> list[PericopeStanding]:
     """Every passage of one served book with its position already resolved — closed, current,
@@ -174,9 +174,10 @@ def standing(
     still offers and this panel calls closed is one screen telling a facilitator the team is
     past work the room is about to hand them again.
 
-    Approved is a different fact again: a passage with a release (ENG-1228). A finished session
-    without one approves nothing, so `closed` and `approved` are both served and never derived
-    from each other.
+    Approved is a different fact again: a passage whose draft stands under its latest live
+    release (ADR 0081), so a re-opened draft is not approved while its release stays listed. A
+    finished session without one approves nothing, so `closed` and `approved` are both served
+    and never derived from each other.
     """
     return [
         PericopeStanding(
@@ -186,14 +187,14 @@ def standing(
             position=_position(meaning_map.pericope_num, finished, here),
             release=releases.get(meaning_map.pericope_num),
             open_findings=findings.get(meaning_map.pericope_num, 0),
-            approved=meaning_map.pericope_num in releases,
+            approved=meaning_map.pericope_num in approved,
         )
         for meaning_map in load_book(book)
     ]
 
 
 def book_standings(
-    whereabouts: TeamWhereabouts, *, releases: Mapping[str, PassageRelease]
+    whereabouts: TeamWhereabouts, *, approved: Collection[str]
 ) -> list[BookStanding]:
     """Each served book's count, in the order GET /books serves them: «N de 14», «N de 18»,
     «N de 5». Complete means closed, the fact the resolution reads, never approved."""
@@ -202,7 +203,7 @@ def book_standings(
             book=book,
             passage_total=len(load_book(book)),
             approved_total=sum(
-                1 for meaning_map in load_book(book) if meaning_map.pericope_num in releases
+                1 for meaning_map in load_book(book) if meaning_map.pericope_num in approved
             ),
             complete=book in whereabouts.closed_books,
         )
@@ -350,16 +351,3 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     for project_id, pericope in result.all():
         closed.setdefault(project_id, set()).add(pericope)
     return closed
-
-
-async def team_standing(db: AsyncSession, project_id: str) -> list[PericopeStanding]:
-    """The Current book's passages as this team stands on them, each with its latest release
-    and open findings."""
-    whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
-    return standing(
-        whereabouts.finished,
-        book=whereabouts.book,
-        here=whereabouts.passage,
-        releases=await latest_releases(db, project_id),
-        findings=await open_findings(db, project_id),
-    )

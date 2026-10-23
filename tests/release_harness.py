@@ -12,11 +12,13 @@ fixture calling these.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +49,7 @@ from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
     report_playback,
+    retire_the_part_recorded_again,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
@@ -154,6 +157,58 @@ async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
     if len(parts) != 1:
         raise ValueError(f"this session holds {len(parts)} current parts, not one")
     return parts[0]
+
+
+async def checked_heard_and_approved(
+    client: httpx.AsyncClient,
+    db: AsyncSession,
+    session_id: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> int:
+    """The team's telling-back read clean, every part heard, and the passage approved.
+
+    Read through a fresh view of the rows, because the routes wrote them through sessions of
+    their own. Answers the version the approval was given.
+    """
+    db.expire_all()
+    session = await db.get(IRSession, session_id)
+    assert session is not None
+    told = await final_segments(db, session.id)
+    await reported_playback(
+        db,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+    answered = await client.post(team_release(session.id), headers=headers)
+    assert answered.status_code == 200, answered.text[:300]
+    version: int | None = answered.json()["version"]
+    assert version is not None, answered.text[:300]
+    return version
+
+
+async def the_part_recorded_again(db: AsyncSession, session: IRSession) -> IRTake:
+    """The team recorded this session's one part again: the change of takes that re-opens a
+    draft (ADR 0081), its ground untold until the team tells it back."""
+    part = await the_one_part_of(db, session)
+    fresh = ensaio_take(
+        session.id,
+        pericope=session.pericope,
+        scope=part.scope,
+        ordinal=part.ordinal,
+        sha256=hashlib.sha256(part.id.encode()).hexdigest(),
+        created_at=part.created_at + timedelta(minutes=1),
+        project_id=session.project_id,
+    )
+    db.add(fresh)
+    await db.commit()
+    await retire_the_part_recorded_again(db, session, fresh)
+    return fresh
 
 
 async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):

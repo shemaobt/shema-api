@@ -501,6 +501,9 @@ class ApprovedDraftView(BaseModel):
     release_id: str
     approved_at: str
     forced: bool
+    #: How many outside listeners this version's Checagem externa has heard; none until
+    #: listeners are kept (ENG-1422).
+    listeners: int = 0
 
 
 class SessionStateResponse(BaseModel):
@@ -565,7 +568,8 @@ class PassageView(BaseModel):
     reference: str | None = None
     beads: int = 0
     absence_index: int = -1
-    #: The team holds a live Release of this passage, from any tablet, forced or not.
+    #: The team's draft of this passage stands under its latest live Release, approved from
+    #: any tablet, forced or not; a re-open clears it until the next approval (ADR 0081).
     approved: bool = False
 
 

@@ -315,7 +315,7 @@ the Desk's column and the team's last activity ignore it. The Desk uses the same
 _Avoid_: passage, round, visit, visita, attempt
 
 **Approved passage** (*passagem aprovada*):
-A passage of a team that has a release. The count the Desk shows a team is of approved passages, per **Served book**; a finished session without a release approves nothing.
+A passage of a team whose draft stands under its latest live release (ADR 0071): a new take, a re-recorded sentence or a join that re-opened the draft leaves the passage not approved until the next approval, while the release itself stays in the history. The passage menu's «●» and the count the Desk shows a team, per **Served book**, read it; a finished session without a release approves nothing.
 _Avoid_: closed passage (a session done, which may hold no release), fechada, complete
 
 **Draft** (*rascunho*):
@@ -421,7 +421,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. The team's approval is refused while any **Blocker** stands, an open finding or an unheard part among them, and records the device that approved; a facilitator's **Forced release** passes them.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval over the same takes returns the release that already exists, whatever the telling-back says since, because only a change of takes makes a new draft (ADR 0081). A new draft's approval is refused while any **Blocker** stands, an open finding or an unheard part among them, and records the device that approved; a facilitator's **Forced release** passes them.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:

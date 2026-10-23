@@ -61,6 +61,8 @@ ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+#: A change that would re-open an approved draft, sent without the team's armed tap (ADR 0081).
+ERROR_CODE_DRAFT_APPROVED: Final = "DRAFT_APPROVED"
 ERROR_CODE_NOTHING_TO_BRING_BACK: Final = "NOTHING_TO_BRING_BACK"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
@@ -218,6 +220,10 @@ class IdempotencyKeyInFlight(ConflictError):
 
 class PassageClosed(ConflictError):
     pass
+
+
+class DraftApproved(ConflictError):
+    """A change that would re-open an approved draft, sent without the team's armed tap."""
 
 
 class NothingToBringBack(ConflictError):
@@ -603,6 +609,13 @@ async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONRe
     )
 
 
+async def handle_draft_approved(_request: Request, exc: DraftApproved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_DRAFT_APPROVED),
+    )
+
+
 async def handle_nothing_to_bring_back(_request: Request, exc: NothingToBringBack) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -907,6 +920,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
+    app.add_exception_handler(DraftApproved, handle_draft_approved)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToBringBack, handle_nothing_to_bring_back)  # type: ignore[arg-type]
     app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]

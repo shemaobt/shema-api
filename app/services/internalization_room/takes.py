@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -490,6 +490,21 @@ READING_ORDER = (
 )
 
 
+async def takes_of_sessions(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, list[IRTake]]:
+    """`takes_of` for several sessions in one read, each in its own reading order."""
+    held: dict[str, list[IRTake]] = {session_id: [] for session_id in session_ids}
+    if not held:
+        return held
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id.in_(list(held))).order_by(*READING_ORDER)
+    )
+    for take in result.scalars():
+        held[take.session_id].append(take)
+    return held
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     """Every take of a session, by its number first and then in the order it was accepted.
 
@@ -507,10 +522,7 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     the same way and PostgreSQL read it upside down, which put the oldest recording of a
     session at the bottom of the packet on the only database that serves a real team.
     """
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
-    )
-    return list(result.scalars().all())
+    return (await takes_of_sessions(db, [session_id]))[session_id]
 
 
 def current_parts(takes: list[IRTake]) -> list[IRTake]:

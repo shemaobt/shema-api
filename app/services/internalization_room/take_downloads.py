@@ -3,16 +3,21 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     SupersededTakeDownload,
     TakeDownload,
     TakeDownloadsResponse,
 )
+from app.services.internalization_room.approved_draft import (
+    approved_draft,
+    latest_release,
+    stands_on,
+)
 from app.services.internalization_room.release import (
-    _latest_release,
     _mother_tongue,
     release_name,
     released_as,
@@ -29,15 +34,33 @@ from app.services.internalization_room.takes import (
 from app.utils.stored_time import as_utc
 
 
-async def _release_id(db: AsyncSession, session: IRSession) -> str:
+async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake]) -> str:
+    """The id of the version this draft stands approved under, or the name the next will have.
+
+    A file names a release only while the draft stands under it (ADR 0081): after a re-open the
+    takes are the next version's draft, numbered on from the passage's last. A session a Zerar
+    archived is no draft any more, and keeps the name of the release its takes were approved
+    as, while they still stand on it.
+    """
+    standing = await approved_draft(db, session)
+    if standing is not None:
+        return released_as(standing)
+    if session.archive_id is not None:
+        own = await db.scalar(
+            select(IRRelease)
+            .where(IRRelease.session_id == session.id)
+            .order_by(IRRelease.version.desc())
+            .limit(1)
+        )
+        if own is not None and stands_on(own, parts):
+            return released_as(own)
     latest = (
         None
         if session.project_id is None
-        else await _latest_release(db, session.project_id, session.pericope)
+        else await latest_release(db, session.project_id, session.pericope)
     )
-    if latest is not None:
-        return released_as(latest)
-    return release_name(await _mother_tongue(db, session), session.pericope, 1)
+    version = latest.version + 1 if latest is not None else 1
+    return release_name(await _mother_tongue(db, session), session.pericope, version)
 
 
 def part_keys_by_number(parts: list[IRTake]) -> dict[int | None, str]:
@@ -77,7 +100,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
     keys = part_keys_by_number(parts)
-    release_id = await _release_id(db, session)
+    release_id = await _release_id(db, session, parts)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
     replaced_at = {

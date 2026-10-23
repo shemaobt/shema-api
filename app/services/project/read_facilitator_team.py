@@ -21,14 +21,15 @@ from app.core.exceptions import CanonNotKept
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
-from app.models.internalization_room import PericopePosition
+from app.models.internalization_room import PericopePosition, PericopeStanding
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
-from app.services.internalization_room.latest_by_passage import latest_releases
+from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import (
     book_standings,
@@ -74,11 +75,13 @@ async def read_facilitator_team(
         return None
 
     releases = await latest_releases(db, team_id)
+    approved = await standing_approvals(db, team_id, among=releases)
     passages = standing(
         whereabouts.finished,
         book=whereabouts.book,
         here=here,
         releases=releases,
+        approved=approved,
         findings={},
     )
     closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
@@ -106,7 +109,7 @@ async def read_facilitator_team(
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
         approved_total=sum(1 for entry in passages if entry.approved),
-        books=book_standings(whereabouts, releases=releases),
+        books=book_standings(whereabouts, approved=approved),
         scene_the_team_is_in=await _scene_they_are_in(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
@@ -159,3 +162,18 @@ async def _scene_they_are_in(
 
     latest = max(moved, key=lambda key: history[key].at)
     return scene_key(answers[latest])
+
+
+async def team_standing(db: AsyncSession, project_id: str) -> list[PericopeStanding]:
+    """The Current book's passages as this team stands on them, each with its latest release
+    and open findings."""
+    whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
+    releases = await latest_releases(db, project_id)
+    return standing(
+        whereabouts.finished,
+        book=whereabouts.book,
+        here=whereabouts.passage,
+        releases=releases,
+        approved=await standing_approvals(db, project_id, among=releases),
+        findings=await open_findings(db, project_id),
+    )

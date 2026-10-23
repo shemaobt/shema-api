@@ -41,7 +41,7 @@ from tests.release_harness import (
     team_release,
     told_back_with_an_open_finding,
 )
-from tests.room_harness import room_client
+from tests.room_harness import room_client, the_bucket_is_in_memory, upload_a_part
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST = CANON[0]
@@ -107,12 +107,17 @@ async def listed(desk_client: httpx.AsyncClient, desk: dict[str, str], team_id: 
 
 
 async def test_a_passage_forced_at_version_2_with_two_open_findings_on_its_latest_session_reads_version_2_forced_two_open_findings_and_approved(  # noqa: E501
-    room, desk_client, db_session, room_app
+    room, desk_client, db_session, room_app, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     session = await ready_session(db_session, project_id=team.id)
     await approved_by_the_team(room, tablet, session)
+    the_bucket_is_in_memory(monkeypatch)
+    again = await upload_a_part(
+        room, session.id, part=None, audio=b"recorded again", headers=team_headers(tablet)
+    )
+    assert again.status_code == 200, again.text[:300]
     await reported_playback(
         db_session, session, await told_back_with_two_open_findings(db_session, session)
     )
@@ -237,9 +242,11 @@ async def test_the_team_detail_counts_approved_passages(
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     for pericope in ("P02", "P03"):
+        await having_finished_the_passage(
+            db_session, await open_ir_session(db_session, pericope=pericope, project_id=team.id)
+        )
         session = await ready_session(db_session, pericope=pericope, project_id=team.id)
         await approved_by_the_team(room, tablet, session)
-        await having_finished_the_passage(db_session, session)
     await having_finished_the_passage(
         db_session, await open_ir_session(db_session, pericope=FIRST, project_id=team.id)
     )
@@ -249,6 +256,77 @@ async def test_the_team_detail_counts_approved_passages(
     assert detail.status_code == 200, detail.text[:300]
     assert detail.json()["approved_total"] == 2
     assert detail.json()["closed_total"] == 3
+
+
+async def test_a_passage_whose_draft_was_re_opened_reads_not_approved_and_keeps_its_release(
+    room, desk_client, db_session, room_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ENG-1260: the team recorded the passage again over its approved v1."""
+    the_bucket_is_in_memory(monkeypatch)
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    sessions = {}
+    for pericope in ("P02", "P03"):
+        sessions[pericope] = await ready_session(db_session, pericope=pericope, project_id=team.id)
+        await approved_by_the_team(room, tablet, sessions[pericope])
+    before = (await listed(desk_client, desk, team.id))["P03"]
+    assert (before["approved"], before["release"]["version"]) == (True, 1)
+    assert (await desk_client.get(f"/api/facilitator/teams/{team.id}", headers=desk)).json()[
+        "approved_total"
+    ] == 2
+
+    again = await upload_a_part(
+        room,
+        sessions["P03"].id,
+        part=None,
+        audio=b"a passagem gravada de novo",
+        headers=team_headers(tablet),
+    )
+    assert again.status_code == 200, again.text[:300]
+
+    after = (await listed(desk_client, desk, team.id))["P03"]
+    assert (after["approved"], after["release"]["version"]) == (False, 1)
+    detail = await desk_client.get(f"/api/facilitator/teams/{team.id}", headers=desk)
+    assert detail.json()["approved_total"] == 1
+
+
+async def statements_of(test_engine, read) -> int:
+    from sqlalchemy import event
+
+    seen: list[str] = []
+
+    def noted(conn, cursor, statement, parameters, context, executemany) -> None:
+        seen.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", noted)
+    try:
+        await read()
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", noted)
+    return len(seen)
+
+
+async def test_whether_each_passage_is_approved_costs_the_same_for_one_release_and_for_ten(
+    room, desk_client, db_session, room_app, test_engine
+) -> None:
+    """Approval is a comparison of takes, read for the whole team at once (ADR 0081)."""
+    counted = []
+    for released in (CANON[:1], CANON[:10]):
+        team, tablet = await a_claimed_device(db_session)
+        desk, _ = await at_the_desk(db_session, room_app, team)
+        for pericope in released:
+            session = await ready_session(db_session, pericope=pericope, project_id=team.id)
+            await approved_by_the_team(room, tablet, session)
+        passages = await listed(desk_client, desk, team.id)
+        assert sum(entry["approved"] for entry in passages.values()) == len(released)
+
+        async def the_two_desk_reads(team_id: str = team.id, headers: dict = desk) -> None:
+            await desk_client.get(f"/api/facilitator/teams/{team_id}", headers=headers)
+            await desk_client.get(f"/api/facilitator/teams/{team_id}/pericopes", headers=headers)
+
+        counted.append(await statements_of(test_engine, the_two_desk_reads))
+
+    assert counted[0] == counted[1], f"uma liberação custou {counted[0]}, dez custaram {counted[1]}"
 
 
 async def stored_release_id(db: AsyncSession, team_id: str, version: int) -> str:

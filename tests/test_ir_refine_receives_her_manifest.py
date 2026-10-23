@@ -35,6 +35,7 @@ from app.db.models.internalization_room import IRRelease, IRSceneRehearsal, IRSe
 from app.db.models.project import Project
 from app.services.internalization_room import manifest as manifest_service
 from app.services.internalization_room import takes as takes_service
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -44,7 +45,6 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
 )
 from app.services.internalization_room.canon import kept
-from app.services.internalization_room.earlier_passages import approved_pericopes
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import current_parts, takes_of
@@ -68,9 +68,11 @@ from tests.release_harness import (
     judged_packet,
     one_stretch,
     rehearsed_session,
+    releases_of,
     reported_playback,
     team_headers,
     team_release,
+    told_back_with_an_open_finding,
 )
 from tests.room_harness import (
     heard_every_part,
@@ -617,7 +619,14 @@ async def test_a_part_with_a_sentence_laid_in_says_how_many_along_its_chain(
     await laid_in_and_told_again(client, session.id, part_1[1].id, 1)
     await forced(client, desk, session)
     first = await manifest_of(client, desk, session)
-    await laid_in_and_told_again(client, session.id, part_1[2].id, 2, sentence_id="sentence-0002")
+    await laid_in_and_told_again(
+        client,
+        session.id,
+        part_1[2].id,
+        2,
+        sentence_id="sentence-0002",
+        reopens_the_approved_draft=True,
+    )
     await forced(client, desk, session)
     second = await manifest_of(client, desk, session)
     [spliced] = [
@@ -754,19 +763,56 @@ async def test_a_passage_never_approved_has_no_manifest(client, db_session, room
     assert read.json()["code"] == "DRAFT_NOT_APPROVED"
 
 
-async def test_a_frase_told_after_the_approval_leaves_the_passage_with_no_manifest(
+async def test_a_frase_told_after_the_approval_leaves_the_manifest_of_the_approved_version(
     client, db_session, room_app
 ):
+    """Only a change of takes re-opens an approved draft (ADR 0081)."""
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_p01(db_session, project.id)
     await approved(client, credential, session)
     await one_stretch(db_session, session, text="e mais uma frase contada")
     desk, _user = await at_the_desk(db_session, room_app, project)
 
-    read = await client.get(desk_release(session.id), headers=desk)
+    manifest = await manifest_of(client, desk, session)
 
-    assert read.status_code == 409, read.text
-    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert manifest["releaseId"] == "internalize-terena-p01-v1"
+
+
+async def test_a_finding_raised_after_the_approval_leaves_the_manifest_of_the_approved_version(
+    client, db_session, room_app
+):
+    """The gate is read only while no version stands: nothing but a take re-opens one."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", headers=team_headers(credential))
+
+    assert manifest["releaseId"] == "internalize-terena-p01-v1"
+    assert read.json()["approved"]["version"] == 1
+
+
+async def test_a_force_over_a_standing_version_answers_it_and_records_no_force(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    answer = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+
+    assert answer.status_code == 200, answer.text
+    assert (answer.json()["version"], answer.json()["forced_at"]) == (1, None)
+    assert len(await releases_of(db_session, session.id)) == 1
 
 
 async def test_a_passage_the_gate_refuses_has_no_manifest(client, db_session, room_app):
@@ -1038,7 +1084,7 @@ async def test_a_zerar_retires_the_approval_until_the_new_session_approves(
 
     assert retired.status_code == 409, retired.text
     assert retired.json()["code"] == "DRAFT_NOT_APPROVED"
-    assert P01 not in await approved_pericopes(db_session, project_id=project.id)
+    assert P01 not in await standing_approvals(db_session, project.id)
     kept = await client.get(desk_release_at(zeroed.id, 1), headers=desk)
     assert kept.status_code == 200, kept.text
 

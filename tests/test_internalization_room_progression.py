@@ -42,9 +42,9 @@ from app.services.internalization_room.progression import (
     active_passage,
     resolve,
     standing,
-    team_standing,
     where_teams_stand,
 )
+from app.services.project.read_facilitator_team import team_standing
 from tests.baker import (
     having_finished_the_passage,
     keep_a_take,
@@ -134,6 +134,7 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
         book=ROOM_BOOK,
         here=resolve(set(), book=ROOM_BOOK),
         releases={},
+        approved=set(),
         findings={},
     )
 
@@ -150,6 +151,7 @@ def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
             book=ROOM_BOOK,
             here=resolve({FIRST}, book=ROOM_BOOK),
             releases={},
+            approved=set(),
             findings={},
         )
     }
@@ -172,6 +174,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
             book=ROOM_BOOK,
             here=resolve({FIRST, THIRD}, book=ROOM_BOOK),
             releases={},
+            approved=set(),
             findings={},
         )
     }
@@ -187,6 +190,7 @@ def test_a_finished_team_has_no_current_passage() -> None:
         book=ROOM_BOOK,
         here=resolve(set(CANON), book=ROOM_BOOK),
         releases={},
+        approved=set(),
         findings={},
     )
 

@@ -31,12 +31,12 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.db.models.internalization_room import (
-    IRRelease,
     IRSegment,
     IRSession,
     IRTake,
     IRTakeKind,
 )
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import BackTranslationState, part_length
 from app.services.internalization_room.takes import (
     current_parts,
@@ -125,8 +125,7 @@ async def refuse_a_slice_a_version_cannot_take(
             "A passage already conferida keeps its pauses where they fell",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
         )
-    approved = await db.execute(select(IRRelease.id).where(IRRelease.session_id == session.id))
-    if approved.first() is not None:
+    if await approved_draft(db, session) is not None:
         raise PauseCannotMove(
             "A passage already approved keeps its pauses where they fell",
             ERROR_CODE_PAUSE_CANNOT_STAND_THERE,

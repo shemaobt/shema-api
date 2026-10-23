@@ -57,6 +57,7 @@ from app.services.internalization_room.canon.book_material import require_walkab
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map, not_served
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.check_block import keep_the_check_on_the_standing_release
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -576,6 +577,21 @@ async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
     the team speaking.
     """
     await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
+
+
+async def hold_the_session_row(db: AsyncSession, session: IRSession) -> None:
+    """Take the session's row until this transaction ends, and read it again under it.
+
+    The approval takes it before it composes, and every write of the telling-back takes it with
+    its conditional write of the row (`_written_forward`), so the two land one at a time and the
+    later one sees the earlier (ADR 0081).
+    """
+    await db.execute(
+        select(IRSession)
+        .where(IRSession.id == session.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
 
 
 async def refuse_if_archived(db: AsyncSession, session: IRSession) -> None:
@@ -1313,6 +1329,8 @@ async def save_back_translation(
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
+
+    The state written is the standing version's check too, in the same transaction (ADR 0081).
     """
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
@@ -1336,6 +1354,7 @@ async def save_back_translation(
     for name, value in vars(BackTranslationState.model_validate(written)).items():
         if getattr(state, name) != value:
             setattr(state, name, value)
+    await keep_the_check_on_the_standing_release(db, session, state)
     if commit:
         await db.commit()
         await db.refresh(session)

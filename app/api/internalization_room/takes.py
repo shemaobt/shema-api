@@ -23,6 +23,9 @@ from app.models.internalization_room import (
     TakesResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.approved_draft import (
+    refuse_a_keep_that_reopens_the_approved_draft,
+)
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.joined_parts import lay_the_rehearsals_frases
 from app.services.internalization_room.nudge_channel import nudge
@@ -76,6 +79,12 @@ def _kind(raw: str) -> IRTakeKind:
     "/sessions/{session_id}/takes",
     response_model=TakeResponse,
     dependencies=[linked_tablet_dep],
+    responses={
+        409: {
+            "description": "`DRAFT_APPROVED`: a joined or swapped part, or a whole take over a "
+            "joined recording, over an approved draft the team did not arm the tap to re-open"
+        }
+    },
 )
 async def keep_take(
     session_id: str,
@@ -124,6 +133,15 @@ async def keep_take(
             "it is not theirs; nothing is stored."
         ),
     ),
+    reopens_the_approved_draft: bool = Form(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, a joined or swapped part and a whole take over "
+            "a joined recording are refused DRAFT_APPROVED; a part recorded on the recording "
+            "screen never needs it."
+        ),
+    ),
     file: UploadFile = File(...),
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -152,6 +170,12 @@ async def keep_take(
     disagree, never corrected. A joined part keeps the server's clock as its recording time,
     and a resend answers with the row already kept, its time unmoved. A joined part lands
     with its rehearsal's frases as told stretches (ADR 0085).
+
+    **Over an approved draft, a join, a swap and a whole take over a joined recording re-open
+    it only with the team's armed tap** (`reopens_the_approved_draft`, ADR 0081), and without
+    it are refused `DRAFT_APPROVED` (409) with nothing stored. A part recorded on the recording
+    screen carries no origin and takes one tap, as hers does, and a take already kept brings
+    nothing new, so neither is ever refused.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -161,6 +185,10 @@ async def keep_take(
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
         await refuse_a_join_over_a_moved_part(
             db, session.id, ordinal=chunk_index, over_take=over_take, audio=audio
+        )
+    if not reopens_the_approved_draft:
+        await refuse_a_keep_that_reopens_the_approved_draft(
+            db, session, kind=take_kind, origin=origin, chunk_index=chunk_index, audio=audio
         )
     take = await store_take(
         db,
@@ -274,8 +302,9 @@ async def read_the_take_downloads(
 ) -> TakeDownloadsResponse:
     """What the facilitator hands Refine: each take under her file name, links good for an hour.
 
-    Read it again for fresh links; a name follows the passage's latest release at the moment of
-    the read.
+    Read it again for fresh links. A name is the release the draft stands approved under at
+    the moment of the read, or the name the next version will have; a session a Zerar archived
+    keeps the name of the release its takes were approved as (ADR 0081).
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await take_downloads_of(db, session)
