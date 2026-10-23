@@ -560,3 +560,36 @@ async def test_a_take_that_became_the_part_when_the_order_changed_is_not_told_by
     assert approved.status_code == 200, approved.text
     assert "no_telling_back" in approved.json()["blockers"]
     assert "no_telling_back" in await release_blockers(db_session, session)
+
+
+async def test_a_check_goes_stale_when_the_order_changes_which_take_is_a_part(
+    client, db_session, team, session
+):
+    _project, credential = team
+    monday = await send(
+        client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
+    )
+    tuesday = await send(
+        client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
+    )
+    second = await send(client, credential, session.id, recording(2, 3), part=2, pass_number=1)
+    await told_back_whole(db_session, session, monday["take_id"])
+    await told_back_whole(db_session, session, second["take_id"])
+    await a_checked_telling(db_session, session)
+    for take_id, recorded_at in ((monday["take_id"], MONDAY), (tuesday["take_id"], TUESDAY)):
+        await db_session.execute(
+            update(IRTake)
+            .where(IRTake.id == take_id)
+            .values(recorded_at=datetime.fromisoformat(recorded_at))
+        )
+    await db_session.commit()
+
+    stale = await client.post(team_release(session.id), headers=team_headers(credential))
+    await told_back_whole(db_session, session, tuesday["take_id"])
+    await a_checked_telling(db_session, session)
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+
+    assert stale.status_code == 200, stale.text
+    assert "telling_back_not_checked" in stale.json()["blockers"]
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["blockers"] == []

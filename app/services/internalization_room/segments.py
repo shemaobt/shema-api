@@ -512,6 +512,28 @@ def _not_the_part(takes: list[IRTake]) -> set[str]:
     return {take.id for take in takes if take.kind is IRTakeKind.ENSAIO and take.id not in parts}
 
 
+async def the_check_still_stands(
+    db: AsyncSession, state: BackTranslationState, takes: list[IRTake]
+) -> bool:
+    """Whether the stored check is still about the parts the session has now.
+
+    A check holds only while every stretch it read is on a take that is still the part. When
+    the order makes another take the part of any number (`_not_the_part`), nothing retired the
+    stretches the check read, so the stored check and its findings are about a recording the
+    passage no longer has: the gate reads it as not checked until the team tells and checks
+    again.
+    """
+    if not state.checked:
+        return False
+    history = _not_the_part(takes)
+    if not history or not state.analysed_segment_ids:
+        return True
+    read = await db.execute(
+        select(IRSegment.take_id).where(IRSegment.id.in_(state.analysed_segment_ids))
+    )
+    return history.isdisjoint(read.scalars().all())
+
+
 def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
     """The rehearsal takes with no number once the session holds a numbered part."""
     if not any(part.ordinal is not None for part in current_parts(takes)):
