@@ -44,6 +44,8 @@ from tests.turn_claim_harness import OPENING, Guide, a_voice, speak, the_guide_i
 
 APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
+#: The approval holds the row from before it composes, and touches no bucket (ADR 0081).
+THE_APPROVAL = "app/services/internalization_room/sessions.py"
 #: The open of the Checagem externa takes the row around a read and an insert, with no bucket.
 THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
@@ -329,6 +331,6 @@ def test_the_session_row_is_taken_for_update_only_by_doors_that_hold_no_bucket()
         if isinstance(node, ast.Call) and _takes_a_row_lock(node) and _on_the_session_row(node)
     )
 
-    assert locking == sorted([THE_SENTENCE_DOOR, THE_EXTERNAL_CHECK_OPEN]), (
-        "a linha da sessão era travada num lugar novo, que pode segurá-la pelo bucket"
+    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL, THE_EXTERNAL_CHECK_OPEN]), (
+        "a linha da sessão era travada num lugar novo, que ninguém conferiu contra o bucket"
     )

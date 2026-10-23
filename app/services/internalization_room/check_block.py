@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
 from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -21,9 +22,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.segments import (
-    final_segments,
     set_aside_segment_ids,
-    told_back,
 )
 from app.services.internalization_room.takes import current_parts, part_keys, takes_of
 
@@ -157,10 +156,23 @@ async def standing_state(
     )
 
 
+async def _its_own_stretches(db: AsyncSession, release: IRRelease) -> list[IRSegment]:
+    """The stretches the version froze, in its own order, as rows."""
+    ids = [
+        one["segment_id"]
+        for one in (release.packet.get("back_translation") or {}).get("segments", [])
+    ]
+    rows = {row.id: row for row in await db.scalars(select(IRSegment).where(IRSegment.id.in_(ids)))}
+    return [rows[one] for one in ids if one in rows]
+
+
 async def keep_the_check_on_the_standing_release(
     db: AsyncSession, session: IRSession, state: BackTranslationState
 ) -> None:
     """The check state a session's telling-back is written with is its standing version's.
+
+    Only on the stretches that version carries: a finding or a nuance on a stretch told after
+    it stays on the session, so the version's frase numbers and scenes keep naming its own.
 
     Called by the one funnel every writer of the telling-back goes through, in its transaction,
     so a verdict, a Restart, a report of listening and a reading ahead over a draft that
@@ -173,16 +185,27 @@ async def keep_the_check_on_the_standing_release(
         return
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    stretches = await final_segments(db, session.id, takes)
-    telling_back = await standing_state(db, session.id, state, takes)
+    own = await _its_own_stretches(db, release)
+    carried = {one.id for one in own}
+    standing = await standing_state(db, session.id, state, takes)
+    telling_back = standing.model_copy(
+        update={
+            "findings": [
+                one
+                for one in standing.findings
+                if one.segment_id is None or one.segment_id in carried
+            ],
+            "nuances": [one for one in standing.nuances if one.segment_id in carried],
+        }
+    )
     forced = was_forced(release.forced_by, release.forced_blockers)
     stored = release.packet.get("check") or {}
     live = check_block(
         telling_back,
-        told_back(stretches),
+        own,
         session.id,
         keys=part_keys(parts),
-        heard_complete=not unheard_parts(telling_back, parts, stretches),
+        heard_complete=not unheard_parts(telling_back, parts, own),
         version=release.version,
         forced=forced,
     )

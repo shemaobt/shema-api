@@ -410,6 +410,21 @@ async def test_the_session_after_a_zerar_names_its_files_by_the_next_version_not
     assert listed["release_id"] == RELEASE_V2
 
 
+async def test_a_session_a_zerar_archived_names_its_files_by_the_release_its_takes_were_approved_as(
+    client, db_session, room_app
+):
+    """The next version's name is a live draft's; the archived one keeps its own."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    zeroed = await ready_to_approve(db_session, project.id, ("audio/wav",))
+    await approved(client, credential, zeroed)
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+
+    listed = await read_downloads(client, desk, zeroed.id)
+
+    assert listed["release_id"] == RELEASE_V1
+
+
 async def test_a_release_stored_before_adr_0048_names_the_files_by_its_uuid(
     client, db_session, room_app
 ):

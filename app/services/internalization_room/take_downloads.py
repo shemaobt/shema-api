@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     SupersededTakeDownload,
     TakeDownload,
@@ -32,12 +33,22 @@ from app.utils.stored_time import as_utc
 async def _release_id(db: AsyncSession, session: IRSession) -> str:
     """The id of the version this draft stands approved under, or the name the next will have.
 
-    A file names a release only while the draft stands under it (ADR 0081): after a re-open or
-    a Zerar the takes are the next version's draft, numbered on from the passage's last.
+    A file names a release only while the draft stands under it (ADR 0081): after a re-open the
+    takes are the next version's draft, numbered on from the passage's last. A session a Zerar
+    archived is no draft any more, and keeps the name of the release its takes were approved as.
     """
     standing = await approved_draft(db, session)
     if standing is not None:
         return released_as(standing)
+    if session.archive_id is not None:
+        own = await db.scalar(
+            select(IRRelease)
+            .where(IRRelease.session_id == session.id)
+            .order_by(IRRelease.version.desc())
+            .limit(1)
+        )
+        if own is not None:
+            return released_as(own)
     latest = (
         None
         if session.project_id is None

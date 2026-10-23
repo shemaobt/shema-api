@@ -400,8 +400,9 @@ async def test_the_check_block_sits_outside_the_hash(
     Two reads of an unchanged session carry one hash and one block, `lastCheckAt` included —
     it is the moment of the verdict and not of the read, so the session is one a verdict
     really stamped rather than one built with the field empty. And a forced row's stored
-    packet and the live view of that very session carry one hash and one check while its takes
-    stand (ADR 0081): the block is the version's, kept beside the content and outside its hash.
+    packet and the live view of that very session hash the same although their `status`
+    disagree, which is the case ADR 0020 was written for: inside the hash, a force would mint
+    a version for nothing the next time the team approved.
     """
     the_room_speaks(monkeypatch)
     the_analyst_reads(monkeypatch)
@@ -429,7 +430,7 @@ async def test_the_check_block_sits_outside_the_hash(
     assert forced.status_code == 200, forced.text
     assert stored["package_sha256"] == live["package_sha256"]
     assert stored["check"]["status"] == "forcada"
-    assert live["check"] == stored["check"]
+    assert live["check"]["status"] == "sem_conferencia"
 
 
 async def test_the_verdict_stamps_when_the_check_ran(
@@ -620,11 +621,16 @@ async def test_the_teams_approval_after_a_force_returns_the_stored_block(
     assert read.json()["check"]["forced"] is True
 
 
-async def test_the_stored_block_names_its_own_version_and_the_live_read_of_a_standing_one_is_it(
+async def test_the_stored_block_names_its_own_version_and_the_live_one_none(
     client, db_session: AsyncSession, room_app
 ) -> None:
-    """Each stored block names the number its row was given, and the live read of the version
-    that stands is that version's packet, block and all (ADR 0081)."""
+    """Each stored block names the number its row was given; the live one names none.
+
+    `version` is null on the live read by rule and not by reading the packet's own `version`
+    key — which on a session whose takes stand under the latest release says 2 (ADR 0020). The
+    two answer different questions: the packet's says which approved draft this is, and the
+    block's says which release this block was stamped from.
+    """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
@@ -641,4 +647,6 @@ async def test_the_stored_block_names_its_own_version_and_the_live_read_of_a_sta
     assert second.json()["version"] == 2, second.text
     assert v1.json()["check"]["version"] == 1
     assert v2.json()["check"]["version"] == 2
-    assert live == v2.json(), "o rascunho de pé é a versão 2, e a leitura viva a serve"
+    assert live["version"] == 2, "o conteúdo vivo é o da versão 2, e o pacote diz isso"
+    assert live["check"]["version"] is None
+    assert live["check"]["forced"] is False
