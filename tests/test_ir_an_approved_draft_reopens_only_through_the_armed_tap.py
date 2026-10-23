@@ -268,18 +268,19 @@ async def test_a_join_that_finds_the_same_take_already_kept_brings_nothing_new_a
 
 
 async def test_a_whole_take_over_a_joined_recording_without_the_armed_tap_is_refused(
-    client, db_session
+    client, db_session, store
 ) -> None:
     session, _ = await _recorded(client, db_session, joined=True)
     await _approved(client, db_session, session)
-
     takes_before = await _takes(client, session.id)
+    stored_before = dict(store.objects)
 
     refused = await _kept(client, session.id, audio=b"a passagem inteira", part=None)
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "DRAFT_APPROVED"
     assert await _takes(client, session.id) == takes_before
+    assert store.objects == stored_before
     assert (await _approval(client, session.id) or {}).get("version") == 1
 
 

@@ -25,7 +25,9 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.nudge_channel import nudge
-from app.services.internalization_room.release import refuse_to_reopen_the_approved_draft
+from app.services.internalization_room.release import (
+    refuse_a_keep_that_reopens_the_approved_draft,
+)
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
 )
@@ -34,14 +36,12 @@ from app.services.internalization_room.take_downloads import take_downloads_of
 from app.services.internalization_room.takes import (
     LONGEST_TAKE_MS,
     TakeStore,
-    current_parts,
     listen_url,
     store_take,
     take_for_reader,
     take_in_session,
     take_store,
     takes_of,
-    the_take_already_kept,
 )
 from app.utils.stored_time import as_utc
 
@@ -172,19 +172,10 @@ async def keep_take(
     if origin is not None:
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
     audio = await file.read()
-    if (
-        take_kind is IRTakeKind.ENSAIO
-        and not reopens_the_approved_draft
-        and (
-            origin is not None
-            or (
-                chunk_index is None
-                and any(part.origin for part in current_parts(await takes_of(db, session.id)))
-            )
+    if not reopens_the_approved_draft:
+        await refuse_a_keep_that_reopens_the_approved_draft(
+            db, session, kind=take_kind, origin=origin, chunk_index=chunk_index, audio=audio
         )
-        and await the_take_already_kept(db, session.id, take_kind, audio) is None
-    ):
-        await refuse_to_reopen_the_approved_draft(db, session)
     take = await store_take(
         db,
         session_id=session.id,

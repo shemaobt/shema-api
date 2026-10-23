@@ -71,7 +71,13 @@ from app.services.internalization_room.sessions import (
     is_panorama,
     refuse_if_archived,
 )
-from app.services.internalization_room.takes import current_parts, is_wav, part_keys, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    is_wav,
+    part_keys,
+    takes_of,
+    the_take_already_kept,
+)
 from app.utils.stored_time import as_utc
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
@@ -724,6 +730,30 @@ async def refuse_to_reopen_the_approved_draft(db: AsyncSession, session: IRSessi
     """
     if await approved_draft(db, session) is not None:
         raise DraftApproved("This draft is approved; the team re-opens it with the armed tap")
+
+
+async def refuse_a_keep_that_reopens_the_approved_draft(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    kind: IRTakeKind,
+    origin: str | None,
+    chunk_index: int | None,
+    audio: bytes,
+) -> None:
+    """Refuse a join, a swap or a whole take over a joined recording on an approved draft.
+
+    A part recorded on the recording screen carries no origin and takes one tap (ADR 0081),
+    and a take already kept brings nothing new, so neither is ever refused.
+    """
+    if kind is not IRTakeKind.ENSAIO:
+        return
+    joined = origin is not None or (
+        chunk_index is None
+        and any(part.origin for part in current_parts(await takes_of(db, session.id)))
+    )
+    if joined and await the_take_already_kept(db, session.id, kind, audio) is None:
+        await refuse_to_reopen_the_approved_draft(db, session)
 
 
 async def standing_approvals(
