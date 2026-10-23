@@ -57,11 +57,13 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
     retired_segments,
     set_aside_segment_ids,
+    the_check_still_stands,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -316,6 +318,28 @@ def _take_view(take: IRTake) -> dict[str, Any]:
 CheckStatus = Literal["conferida", "forcada", "sem_conferencia"]
 
 
+def packet_as_read(release: IRRelease) -> dict[str, Any]:
+    """The stored packet with its check block's force derived by `was_forced` (ADR 0080).
+
+    The check block is outside the hash (ADR 0020), so deriving it rewrites nothing that a
+    **Version** promises; the content is served as it was approved.
+    """
+    check = release.packet.get("check")
+    if check is None or was_forced(release.forced_by, release.forced_blockers):
+        return release.packet
+    return {
+        **release.packet,
+        "check": {
+            **check,
+            "forced": False,
+            "status": _check_status(check["conferida"], False),
+            "forcedBy": None,
+            "forcedAt": None,
+            "forcedBlockers": None,
+        },
+    }
+
+
 def _check_status(conferida: bool, forced: bool) -> CheckStatus:
     """The one place the three words are chosen, for the composer and for the approval alike.
 
@@ -552,13 +576,15 @@ async def compose_internalization_release(
 async def _standing(
     db: AsyncSession, session: IRSession, takes: list[IRTake]
 ) -> BackTranslationState:
-    """The state but its findings and nuances on a whole that stepped aside, only stored."""
+    """The state but its findings and nuances on a whole that stepped aside, only stored, and
+    its check only while it is about the parts the session has now."""
     aside = await set_aside_segment_ids(db, session.id, takes)
     state = back_translation_of(session)
     return state.model_copy(
         update={
             "findings": [f for f in state.findings if f.segment_id not in aside],
             "nuances": [n for n in state.nuances if n.segment_id not in aside],
+            "checked": await the_check_still_stands(db, state, takes),
         }
     )
 
@@ -838,9 +864,10 @@ async def approve_release(
     ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
     together: a force comes from the Desk, where there is a person and no device.
 
-    A force with nothing to waive is still a force and is still recorded as one, with empty
-    lists of findings and of blockers passed. The act was the facilitator's, and a row that
-    hid that would say the team approved a draft the team did not approve.
+    A force with nothing to waive is an ordinary approval: no who, no when, no findings and no
+    blockers passed, and the check block's ``forced`` false. Her finalize records a force only
+    when the gate was shut, and a clean passage that read as forced would tell the consultant a
+    check was overruled that never was (ADR 0080).
 
     What is open at that moment is dumped from the state the packet was composed from and not
     copied out of the packet's own list, which is what lets the two differ by the analyst's
@@ -904,18 +931,19 @@ async def approve_release(
         return latest
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
-    passed = sorted(set(blockers)) if forced_by else None
+    forced = was_forced(forced_by, blockers)
+    who_forced = forced_by if forced else None
+    passed = sorted(set(blockers)) if forced else None
 
     row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
-    forced = forced_by is not None
     forced_at = datetime.now(UTC) if forced else None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
-    packet["check"]["forcedBy"] = forced_by
+    packet["check"]["forcedBy"] = who_forced
     packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
     packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
@@ -927,7 +955,7 @@ async def approve_release(
         package_sha256=packet["package_sha256"],
         packet=packet,
         device_id=device_id,
-        forced_by=forced_by,
+        forced_by=who_forced,
         forced_at=forced_at,
         forced_blockers=passed,
         forced_open_findings=(
@@ -937,7 +965,7 @@ async def approve_release(
                     await _standing(db, session, await takes_of(db, session.id))
                 ).findings
             ]
-            if forced_by
+            if forced
             else None
         ),
     )

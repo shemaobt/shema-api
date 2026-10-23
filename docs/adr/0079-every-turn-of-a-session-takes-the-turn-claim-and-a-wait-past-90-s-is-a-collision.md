@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0089: no door holds the session row across the bucket
 date: 2026-10-21
 ---
 

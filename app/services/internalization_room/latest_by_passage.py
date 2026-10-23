@@ -17,6 +17,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
 )
 from app.services.internalization_room.entered import latest_entered_first
+from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.live import live
 
 
@@ -26,7 +27,9 @@ async def latest_releases(db: AsyncSession, project_id: str) -> dict[str, Passag
         select(
             IRRelease.pericope,
             IRRelease.version,
+            IRRelease.forced_by,
             IRRelease.forced_at,
+            IRRelease.forced_blockers,
             IRRelease.approved_at,
             IRRelease.packet["release_id"].as_string().label("release_id"),
         )
@@ -40,7 +43,7 @@ async def latest_releases(db: AsyncSession, project_id: str) -> dict[str, Passag
             latest[row.pericope] = PassageRelease(
                 release_id=row.release_id,
                 version=row.version,
-                forced_at=row.forced_at,
+                forced_at=row.forced_at if was_forced(row.forced_by, row.forced_blockers) else None,
                 approved_at=row.approved_at,
             )
     return latest

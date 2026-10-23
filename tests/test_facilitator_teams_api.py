@@ -160,17 +160,18 @@ async def having_closed(db: AsyncSession, team, *passages: str) -> None:
         await having_finished_the_passage(db, session)
 
 
-async def having_closed_the_book(db: AsyncSession, team) -> None:
-    """Walk this team to the end of Ruth.
+async def having_closed_every_book(db: AsyncSession, team) -> None:
+    """Walk this team to the end of every served book.
 
     The events are written by `apply_coverage` rather than inserted, so a fixture cannot agree
-    with a resolution that reads them differently from how the room writes them. It is fourteen
-    passages because "complete" now means the book, not a session — and the room opens every one
-    of them today, which is how `open_ir_session` opens each.
+    with a resolution that reads them differently from how the room writes them. It is every
+    passage of every served book because "complete" means all of them, not a session and not
+    one book (ADR 0094) — and the room opens every one of them today, which is how
+    `open_ir_session` opens each.
     """
-    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+    from app.services.internalization_room.canon.parse_map import served_maps
 
-    for meaning_map in load_book(ROOM_BOOK):
+    for meaning_map in served_maps():
         passage = meaning_map.pericope_num
         session = await open_ir_session(db, pericope=passage, project_id=team.id)
         await having_finished_the_passage(db, session)
@@ -345,11 +346,11 @@ async def test_a_team_that_closed_every_passage_reads_complete_and_stands_on_non
     """`complete` used to mean the latest session was done, which is now a passing moment.
 
     Since ENG-450 a closed passage moves the team to the next one, so the only way to have
-    nothing left is to have reached the end of the book — and there `active_passage` is null,
-    which is what lets the Desk draw the last passage closed rather than current.
+    nothing left is to have reached the end of every served book — and there `active_passage`
+    is null, which is what lets the Desk draw the last passage closed rather than current.
     """
     team = await a_team(db_session, name="Equipe Tikuna")
-    await having_closed_the_book(db_session, team)
+    await having_closed_every_book(db_session, team)
     _user, headers = await a_facilitator(db_session, team)
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
@@ -382,7 +383,7 @@ async def test_a_team_that_finished_the_book_is_still_found_by_name(client, db_s
     Without this the search raises on the one team it is most reasonable to look up by name.
     """
     team = await a_team(db_session, name="Equipe Tikuna")
-    await having_closed_the_book(db_session, team)
+    await having_closed_every_book(db_session, team)
     _user, headers = await a_facilitator(db_session, team)
 
     answer = await client.get(TEAMS_URL, params={"search": "tikuna"}, headers=headers)
@@ -404,7 +405,7 @@ async def test_a_finished_passage_is_never_stalled_however_long_ago_it_was(clien
     """Stalled means work has stopped, not that the team is quiet. A team that finished
     and moved on is not somebody to chase."""
     team = await a_team(db_session, name="Equipe Apurinã")
-    await having_closed_the_book(db_session, team)
+    await having_closed_every_book(db_session, team)
     for session in (await db_session.execute(select(IRSession))).scalars():
         session.updated_at = datetime.now(UTC) - LONG_AGO
     await db_session.commit()
@@ -638,7 +639,7 @@ async def test_each_filter_narrows_to_the_state_it_names(client, db_session):
     await a_session(db_session, with_hands)
     await a_session(db_session, working)
     await a_session(db_session, stopped, when=datetime.now(UTC) - LONG_AGO)
-    await having_closed_the_book(db_session, finished)
+    await having_closed_every_book(db_session, finished)
 
     _user, headers = await a_facilitator(db_session, with_hands, working, stopped, finished)
 

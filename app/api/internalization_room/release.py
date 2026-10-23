@@ -22,7 +22,9 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
+    packet_as_read,
     release_by_version,
+    was_forced,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
@@ -37,7 +39,11 @@ def forced_answer(release: IRRelease) -> ForcedReleaseResponse:
         version=release.version,
         package_sha256=release.package_sha256,
         approved_at=as_utc(release.approved_at).isoformat(),
-        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
+        forced_at=(
+            as_utc(release.forced_at).isoformat()
+            if release.forced_at and was_forced(release.forced_by, release.forced_blockers)
+            else None
+        ),
     )
 
 
@@ -46,7 +52,7 @@ def approval_of(release: IRRelease) -> ApprovedDraftView:
         version=release.version,
         release_id=release.packet["release_id"],
         approved_at=as_utc(release.approved_at).isoformat(),
-        forced=release.forced_by is not None,
+        forced=was_forced(release.forced_by, release.forced_blockers),
     )
 
 
@@ -86,7 +92,8 @@ async def facilitator_release_by_version(
     """One approved draft of this session's passage, exactly as it was approved.
 
     The stored packet is the contract (ADR 0014): what a **Version** means is that this
-    content was approved under that number, so it is served verbatim and never rebuilt. A
+    content was approved under that number, so it is served as stored and never rebuilt, its
+    check block's force derived from what it waived (ADR 0080). A
     forced draft reads back here whole — its open findings listed and `checked` false — which
     is the one thing the route beside this cannot do. That one is a live rebuild under the
     whole list, and on a session a facilitator had to force it answers with the refusal
@@ -98,7 +105,7 @@ async def facilitator_release_by_version(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     release = await release_by_version(db, session, version)
-    return release.packet
+    return packet_as_read(release)
 
 
 @router.post(

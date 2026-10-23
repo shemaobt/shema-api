@@ -94,9 +94,24 @@ aliases list under `app/services/internalization_room/canon/vendor/` — moves o
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
 beside the copy. It keeps the canon it replaces, with the element labels, under
 `canon/kept/<pin>/`: a session reads the canon it opened with while it is live, until a Zerar
-archives it. Then it drops every kept tree whose pin it is not told to keep with `--keep`, the
-one it just made included: which pins an open session names needs a production read, and while
-production carries only tests the sync takes none. Never edit vendored
+archives it. The sync never removes a kept tree. Kept trees leave only by hand, through a
+prune (ADR 0088). From an up-to-date main checkout, fetch production's live pins with a Desk
+token, then prune with them at once (a file older than 15 minutes is refused) and open a pull
+request with what it removed:
+
+```sh
+curl -sf -H "Authorization: Bearer <token>" \
+  "$PRODUCTION_API/api/internalization-room/facilitator/canon-pins" -o pins.json &&
+  uv run python scripts/sync_internalization_canon.py --prune --live-pins pins.json
+```
+
+The prune keeps every pin in the file, the pin production serves and the deployed pin. It
+refuses with no file, with a file that is not that read's answer or was not served by production
+(`tripod-backend`), is older than 15 minutes or was answered in this machine's future, with a
+pin it holds no tree for, and when `kept/` is a link or holds one. Both clocks must be on network
+time. While a prune pull request is pending, until it deploys, do not roll production back or
+run the deploy workflow on an older ref: a revision serving a dropped pin opens sessions that
+answer 409 after the next deploy. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.

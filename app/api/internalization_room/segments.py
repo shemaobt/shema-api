@@ -288,7 +288,9 @@ router.add_api_route(
         409: {
             "description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16; "
             "`SENTENCE_ID_REUSED`: the id already names another recording; "
-            "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation"
+            "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation; "
+            "`PART_CHANGED`: the frase's part changed while the sentence was laid in; nothing "
+            "was written, send it again"
         },
         413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
     },
@@ -326,7 +328,9 @@ async def re_record_the_sentence(
     already laid in with another recording or another frase. The same recording sent again
     under its id is answered as it stands and laid in once; `ANOTHER_SENTENCE_AWAITS` (409, with
     `frases: [n]`) while another frase awaits its translation, one sentence at a time — the
-    awaiting frase itself may be recorded again.
+    awaiting frase itself may be recorded again; `PART_CHANGED` (409) when the frase's part or
+    its span changed while the sentence was spliced and stored, where nothing is written and the
+    tablet offers to send the same sentence again.
     """
     audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
     refuse_a_sentence_too_long(audio)
