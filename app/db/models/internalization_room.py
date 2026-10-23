@@ -414,15 +414,22 @@ class IRTake(Base):
 
     __tablename__ = "ir_takes"
     __table_args__ = (
-        UniqueConstraint("session_id", "storage_key", name="uq_ir_takes_session_storage_key"),
+        Index(
+            "uq_ir_takes_session_storage_key",
+            "session_id",
+            "storage_key",
+            unique=True,
+            postgresql_where=text("set_aside_at IS NULL"),
+            sqlite_where=text("set_aside_at IS NULL"),
+        ),
         Index(
             "uq_ir_takes_session_kind_sha256",
             "session_id",
             "kind",
             "sha256",
             unique=True,
-            postgresql_where=text("sha256 <> ''"),
-            sqlite_where=text("sha256 <> ''"),
+            postgresql_where=text("sha256 <> '' AND set_aside_at IS NULL"),
+            sqlite_where=text("sha256 <> '' AND set_aside_at IS NULL"),
         ),
     )
 

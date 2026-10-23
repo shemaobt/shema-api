@@ -38,6 +38,7 @@ from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
+from app.utils.stored_time import as_utc
 
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
@@ -240,6 +241,7 @@ async def store_take(
     sent_sha256: str | None = None,
     sent_duration_ms: int | None = None,
     sent_recorded_at: datetime | None = None,
+    past_the_set_aside: bool = False,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -259,6 +261,9 @@ async def store_take(
 
     The server's clock is read once, before the bytes are measured or stored: the take's
     arrival and its offset are both read on it, so neither counts as the tablet's.
+
+    `past_the_set_aside` looks past the takes a **Grain switch** set aside: the same bytes kept
+    at the grain in force are a new take that stands, sharing the stored object (ADR 0096).
     """
     arrived = datetime.now(UTC)
     checked = await checked_recording(
@@ -266,7 +271,9 @@ async def store_take(
     )
     key = storage_key(session_id, kind, checked.sha256, content_type)
 
-    already = await _the_same_take(db, session_id, kind, checked.sha256)
+    already = await _the_same_take(
+        db, session_id, kind, checked.sha256, past_the_set_aside=past_the_set_aside
+    )
     if already is not None:
         return already
     await db.commit()
@@ -307,7 +314,9 @@ async def store_take(
         async with db.begin_nested():
             db.add(take)
     except IntegrityError:
-        winner = await _the_same_take(db, session_id, kind, checked.sha256)
+        winner = await _the_same_take(
+            db, session_id, kind, checked.sha256, past_the_set_aside=past_the_set_aside
+        )
         if winner is None:
             raise
         return winner
@@ -318,17 +327,25 @@ async def store_take(
 async def the_take_already_kept(
     db: AsyncSession, session_id: str, kind: IRTakeKind, audio: bytes
 ) -> IRTake | None:
-    return await _the_same_take(db, session_id, kind, recording_digest(audio))
+    return await _the_same_take(
+        db, session_id, kind, recording_digest(audio), past_the_set_aside=True
+    )
 
 
 async def _the_same_take(
-    db: AsyncSession, session_id: str, kind: IRTakeKind, sha256: str
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    past_the_set_aside: bool = False,
 ) -> IRTake | None:
-    found: IRTake | None = await db.scalar(
-        select(IRTake).where(
-            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256
-        )
+    query = select(IRTake).where(
+        IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256
     )
+    if past_the_set_aside:
+        query = query.where(IRTake.set_aside_at.is_(None))
+    found: IRTake | None = await db.scalar(query.order_by(IRTake.set_aside_at.is_not(None)))
     return found
 
 
@@ -524,6 +541,11 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
         newest.pop(None, None)
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
+
+
+def set_aside_moment(take: IRTake) -> str | None:
+    """When a **Grain switch** set this take aside, with its offset, or none while none has."""
+    return None if take.set_aside_at is None else as_utc(take.set_aside_at).isoformat()
 
 
 def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:

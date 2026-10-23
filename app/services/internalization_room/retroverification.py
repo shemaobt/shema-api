@@ -59,7 +59,7 @@ from app.services.internalization_room.segments import (
     told_back,
 )
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import current_parts, set_aside_moment, takes_of
 
 #: Where a facilitator's browser fetches one take, as the file points at it. A path and never
 #: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
@@ -133,7 +133,7 @@ def _take_view(take: IRTake) -> RetroverificationTake:
         sha256=take.sha256,
         recorded_at=_moment(take.recorded_at),
         url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
-        set_aside_at=_moment(take.set_aside_at),
+        set_aside_at=set_aside_moment(take),
     )
 
 

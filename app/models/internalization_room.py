@@ -1274,7 +1274,7 @@ class SupersededTakeDownload(TakeDownload):
     """A **Superseded take**, with when the take that replaced it reached the server."""
 
     superseded_at: str
-    #: When a grain switch set it aside, which is then its `superseded_at` too.
+    #: When a grain switch set it aside; its `superseded_at` too when no take replaced it.
     set_aside_at: str | None = None
 
 
