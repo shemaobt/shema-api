@@ -307,7 +307,7 @@ the Desk's column and the team's last activity ignore it. The Desk uses the same
 _Avoid_: passage, round, visit, visita, attempt
 
 **Approved passage** (*passagem aprovada*):
-A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
+A passage of a team whose draft stands under its latest live release (ADR 0071): a new take, a re-recorded sentence or a join that re-opened the draft leaves the passage not approved until the next approval, while the release itself stays in the history. The passage menu's «●» and the count the Desk shows a team read it; a finished session without a release approves nothing.
 _Avoid_: closed passage (a session done, which may hold no release), fechada, complete
 
 **Draft** (*rascunho*):

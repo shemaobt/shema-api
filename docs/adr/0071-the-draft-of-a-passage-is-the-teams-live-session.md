@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; extended by ADR 0081: only a change of takes re-opens the draft, a door re-opens it only with the armed tap, and the menu and the Desk follow it
 date: 2026-10-19
 ---
 
