@@ -387,8 +387,12 @@ The halt kind that only calls somebody over: the session goes on while it stands
 _Avoid_: needs a person, notice, alert, Aviso
 
 **Visit** (`attended_at`):
-A facilitator's mark on the Desk that somebody went to a room. It is a record: it writes nothing on the session's status and lifts no blocking halt. A halted room with a visit leaves the queue, and undoing the visit puts it back. It is the only end of a Warning. A new halt clears it.
+A facilitator's mark on the Desk that somebody went to a room. It is a record: it writes nothing on the session's status and lifts no blocking halt. A halted room with a visit leaves the queue, and undoing the visit puts it back. It is the only end of a Warning. A new halt clears it. It names the halt it answers, its **Halt count** and its Warning; one naming an older one is refused and the Desk reads again.
 _Avoid_: attend lifts, resolve, Atendido
+
+**Halt count** (`halts_raised`):
+How many blocking halts a room has raised; a Warning does not move it. A visit and its undo name the count and the Warning the Desk read. A write naming another is refused, so a visit always answers the halt somebody saw.
+_Avoid_: version, revision
 
 **Station**:
 The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. A session the team left keeps the station it stopped in.
