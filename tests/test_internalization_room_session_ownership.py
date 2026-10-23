@@ -152,6 +152,9 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/restart"): (
         "test_ir_the_translation_starts_over.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/parts/{{number}}/bring-back"): (
+        "test_ir_a_joined_part_carries_its_scene_translations.py"
+    ),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/listened-whole"): (
         "test_ir_a_joined_recording_is_checked_on_its_own.py"
     ),

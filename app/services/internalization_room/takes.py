@@ -4,13 +4,13 @@ import base64
 import hashlib
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from app.core.exceptions import (
     NotFoundError,
     RecordingRefused,
     StretchNoLongerCounts,
+    TakeMoved,
     UnknownReferenceError,
     ValidationError,
 )
@@ -461,31 +462,67 @@ async def refuse_a_take_that_is_no_longer_a_part(
         raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
+async def refuse_a_join_over_a_moved_part(
+    db: AsyncSession, session_id: str, *, ordinal: int | None, over_take: str | None, audio: bytes
+) -> None:
+    """Refuse a join when its part's live take is not the one the team chose it over.
+
+    `over_take` is that take, or None when the team chose the join over an empty scene. A join
+    whose bytes are already kept is its own resend, answered by the storing with that take, which
+    may no longer be the part: the tablet reads the answer against the part. The look and the
+    storing hold no lock (ADR 0089), so two joins at once over one take may both land.
+    """
+    if await the_take_already_kept(db, session_id, IRTakeKind.ENSAIO, audio) is not None:
+        return
+    live = next(
+        (p.id for p in current_parts(await takes_of(db, session_id)) if p.ordinal == ordinal),
+        None,
+    )
+    if live != over_take:
+        raise TakeMoved("This part's live take is no longer the one the join was chosen over")
+
+
 READING_ORDER = (
     IRTake.ordinal.asc().nulls_first(),
-    IRTake.pass_number.asc().nulls_first(),
-    IRTake.created_at,
+    case((IRTake.kind == IRTakeKind.RETRO, IRTake.pass_number), else_=None).asc().nulls_first(),
+    IRTake.created_at.asc(),
+    IRTake.id.asc(),
 )
 
 
+async def takes_of_sessions(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, list[IRTake]]:
+    """`takes_of` for several sessions in one read, each in its own reading order."""
+    held: dict[str, list[IRTake]] = {session_id: [] for session_id in session_ids}
+    if not held:
+        return held
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id.in_(list(held))).order_by(*READING_ORDER)
+    )
+    for take in result.scalars():
+        held[take.session_id].append(take)
+    return held
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
-    """Every take of a session, in reading order rather than in arrival order.
+    """Every take of a session, by its number first and then in the order it was accepted.
 
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
 
-    Both columns are nullable and the placement is named rather than left to the engine:
-    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
-    that captured none — and a take with no pass predates the room sending one, so either
-    is the earliest thing in its own group. Unnamed, SQLite
-    read that the same way and PostgreSQL read it upside down, which put the oldest
-    recording of a session at the bottom of the packet on the only database that serves
-    a real team.
+    Under one ordinal a rehearsal take reads in the order the room accepted it, whatever its
+    pass or its **Recording time** (ENG-1760). A back-translation take reads by its pass first,
+    which says which side of a check it was told on.
+
+    The ordinal and the pass are nullable, and their placement is named rather than left to
+    the engine: a take with no ordinal belongs to no stretch — the undivided passage, or a
+    recording that captured none — and a back-translation take with no pass predates the room
+    sending one, so either is the earliest thing in its own group. Unnamed, SQLite read that
+    the same way and PostgreSQL read it upside down, which put the oldest recording of a
+    session at the bottom of the packet on the only database that serves a real team.
     """
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
-    )
-    return list(result.scalars().all())
+    return (await takes_of_sessions(db, [session_id]))[session_id]
 
 
 def current_parts(takes: list[IRTake]) -> list[IRTake]:
@@ -502,11 +539,11 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     history, kept with its stretches and findings and no longer a part anybody is asked for.
 
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
-    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
-    alone it would be wrong, and this module says why two functions up: that stamp is when the
-    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
-    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
-    its own recordings and does not move with the link.
+    the last one the room accepted. Keyed on the pass it would be wrong: a reinstalled tablet,
+    or a second one, counts its passes from 1 again, so its newer take would read below an
+    older pass 2. Keyed on the **Recording time** it would be wrong too: a tablet's clock can
+    read any year, so a take stamped 2099 would hold the part against every later one, and a
+    take stamped 2000 would never become it.
 
     So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
     parts come back in the reading order and no caller sorts them again.

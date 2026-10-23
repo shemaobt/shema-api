@@ -48,6 +48,9 @@ THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
 THE_APPROVAL = "app/services/internalization_room/sessions.py"
 #: The open of the Checagem externa holds the row around a read and an insert, with no bucket.
 THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
+#: The visit's halt check, which holds the row until its own commit and touches no bucket
+#: (ADR 0091).
+THE_VISITS_HALT = "app/services/internalization_room/sessions.py"
 THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
@@ -332,7 +335,7 @@ def test_the_session_row_is_taken_for_update_only_by_doors_that_hold_no_bucket()
         if isinstance(node, ast.Call) and _takes_a_row_lock(node) and _on_the_session_row(node)
     )
 
-    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL]), (
+    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL, THE_VISITS_HALT]), (
         "a linha da sessão era travada num lugar novo, que ninguém conferiu contra o bucket"
     )
 

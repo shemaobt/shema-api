@@ -127,7 +127,8 @@ class IRSession(Base):
     #: When the last warning was raised (ENG-1163). A warning refuses nothing, so it never
     #: writes ``status``: the room goes on while it stands. It stands until a facilitator
     #: attends the session, so it is read together with ``attended_at``: undoing the visit is
-    #: what brings it back, and no landing turn touches either column. It is cleared only when
+    #: what brings it back, except on a demo team, whose undo is attended again at once
+    #: (ADR 0064), and no landing turn touches either column. It is cleared only when
     #: a new halt clears the stamps of a visit that had ended it, making that visit final.
     warned_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     #: When a facilitator said they went to this room, and who said it. Null is the ordinary

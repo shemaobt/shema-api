@@ -21,8 +21,7 @@ from app.services.device.demo_team import the_demo_team
 
 router = APIRouter()
 
-#: One bucket for every caller, per instance: an address is whatever the caller writes in
-#: ``X-Forwarded-For`` (ADR 0064).
+#: One bucket for every caller, per instance (ADR 0064).
 DEMO_RATE_LIMIT_PER_MINUTE = 10
 LINKED = "Linked. Go back to the tablet."
 

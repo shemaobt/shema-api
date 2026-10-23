@@ -142,6 +142,14 @@ async def _takes(client: httpx.AsyncClient, session_id: str) -> list[dict[str, A
     return takes
 
 
+async def _the_part(client: httpx.AsyncClient, session_id: str, ordinal: int) -> str:
+    return str(
+        [one for one in await _takes(client, session_id) if one["ordinal"] == ordinal][-1][
+            "take_id"
+        ]
+    )
+
+
 async def _marked(client: httpx.AsyncClient) -> bool:
     answered = await client.get(f"{PREFIX}/books/Ruth/passages?language=pt")
     assert answered.status_code == 200, answered.text
@@ -204,7 +212,12 @@ async def test_a_join_of_a_new_take_over_an_approved_draft_without_the_armed_tap
     stored_before = dict(store.objects)
 
     refused = await upload_a_part(
-        client, session.id, audio=b"cena nova", part=1, origin=rehearsal.id
+        client,
+        session.id,
+        audio=b"cena nova",
+        part=1,
+        origin=rehearsal.id,
+        over_take=await _the_part(client, session.id, 1),
     )
 
     assert refused.status_code == 409, refused.text
@@ -227,6 +240,7 @@ async def test_the_same_join_with_the_armed_tap_lands_and_re_opens_the_draft(
         audio=b"cena nova",
         part=1,
         origin=rehearsal.id,
+        over_take=await _the_part(client, session.id, 1),
         reopens_the_approved_draft=True,
     )
 
@@ -317,7 +331,14 @@ async def test_a_draft_that_no_longer_stands_approved_takes_a_join_without_the_a
     assert reopened.status_code == 200, reopened.text
     rehearsal = await a_scene_rehearsal(db_session, session, 3)
 
-    kept = await upload_a_part(client, session.id, audio=b"cena nova", part=2, origin=rehearsal.id)
+    kept = await upload_a_part(
+        client,
+        session.id,
+        audio=b"cena nova",
+        part=2,
+        origin=rehearsal.id,
+        over_take=await _the_part(client, session.id, 2),
+    )
 
     assert kept.status_code == 200, kept.text
 
