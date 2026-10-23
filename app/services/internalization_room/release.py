@@ -63,6 +63,7 @@ from app.services.internalization_room.segments import (
     final_segments,
     retired_segments,
     set_aside_segment_ids,
+    the_check_still_stands,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -575,13 +576,15 @@ async def compose_internalization_release(
 async def _standing(
     db: AsyncSession, session: IRSession, takes: list[IRTake]
 ) -> BackTranslationState:
-    """The state but its findings and nuances on a whole that stepped aside, only stored."""
+    """The state but its findings and nuances on a whole that stepped aside, only stored, and
+    its check only while it is about the parts the session has now."""
     aside = await set_aside_segment_ids(db, session.id, takes)
     state = back_translation_of(session)
     return state.model_copy(
         update={
             "findings": [f for f in state.findings if f.segment_id not in aside],
             "nuances": [n for n in state.nuances if n.segment_id not in aside],
+            "checked": await the_check_still_stands(db, state, takes),
         }
     )
 
