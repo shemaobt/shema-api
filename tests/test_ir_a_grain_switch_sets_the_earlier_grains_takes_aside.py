@@ -649,9 +649,10 @@ async def test_a_whole_that_stepped_aside_for_scene_parts_does_not_come_back_wit
     switched = await _switched(client, session.id, "whole")
 
     assert switched["grain"] == "whole"
-    assert all(take["set_aside_at"] for take in _rehearsals(switched).values()), (
+    assert _rehearsals(switched)[old_whole]["set_aside_at"] is not None, (
         "a inteira gravada antes da troca voltou a ser a parte"
     )
+    assert all(take["set_aside_at"] for take in _rehearsals(switched).values())
 
 
 async def test_a_switch_over_frases_told_but_never_checked_starts_the_telling_over(
