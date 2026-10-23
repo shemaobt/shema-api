@@ -27,6 +27,7 @@ from app.core.exceptions import (
     FraseOutOfPlace,
     NotFoundError,
     PauseCannotMove,
+    RehearsalJoined,
     RestartOutOfOrder,
     SceneRehearsalSending,
     SceneRehearsalSent,
@@ -41,6 +42,7 @@ from app.db.models.internalization_room import (
     IRSceneRestart,
     IRSceneSaid,
     IRSession,
+    IRTake,
     IRTurn,
 )
 from app.models.internalization_room import (
@@ -57,9 +59,11 @@ from app.services.internalization_room.segments import refuse_a_frase_under_the_
 from app.services.internalization_room.takes import (
     TakeStore,
     checked_recording,
+    current_parts,
     extension,
     recording_digest,
     store_recording,
+    takes_of,
 )
 from app.services.internalization_room.turn_claim import (
     Draft,
@@ -250,16 +254,34 @@ async def label_the_scene(
     """The team's scene label given after the recording, sent or not: said later.
 
     A scene the passage lacks is refused and changes nothing; the label already standing is
-    kept as it was said.
+    kept as it was said. A rehearsal that is a current part's origin keeps its label; another is
+    refused with `REHEARSAL_JOINED`.
     """
     if scene not in scene_ids_for(rehearsal.pericope):
         raise UnknownScene(f"{scene} is not a scene of {rehearsal.pericope}")
     rehearsal = await _locked(db, rehearsal.id)
     if scene != rehearsal.scene:
+        if await _is_a_current_origin(db, rehearsal):
+            raise RehearsalJoined(f"Scene rehearsal {rehearsal.id} is joined as a part")
         rehearsal.scene = scene
         rehearsal.scene_said = IRSceneSaid.LATER
     await db.commit()
     return rehearsal
+
+
+async def _is_a_current_origin(db: AsyncSession, rehearsal: IRSceneRehearsal) -> bool:
+    """Whether a live session of the passage holds a current part whose origin is the rehearsal."""
+    holders = await db.scalars(
+        select(IRTake.session_id)
+        .join(IRSession, IRSession.id == IRTake.session_id)
+        .where(IRTake.origin == rehearsal.id, live(IRSession))
+        .distinct()
+    )
+    for session_id in holders.all():
+        parts = current_parts(await takes_of(db, session_id))
+        if any(part.origin == rehearsal.id for part in parts):
+            return True
+    return False
 
 
 def current_attempt(restarts: Sequence[IRSceneRestart]) -> str | None:

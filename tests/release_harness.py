@@ -307,7 +307,7 @@ def ensaio_take(
         content_type="audio/mp4",
     )
     if created_at is not None:
-        take.created_at = created_at
+        take.created_at = take.recorded_at = created_at
     return take
 
 
@@ -337,7 +337,7 @@ def retro_take(
         content_type="audio/mp4",
     )
     if created_at is not None:
-        take.created_at = created_at
+        take.created_at = take.recorded_at = created_at
     return take
 
 

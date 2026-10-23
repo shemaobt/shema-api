@@ -72,9 +72,9 @@ async def test_the_wheel_offers_all_fourteen_passages_of_ruth_in_order(
 
 
 def test_a_team_that_finished_the_seventh_passage_is_sent_to_the_eighth() -> None:
-    assert resolve(set(RUTH[:7])) == "P08"
-    assert resolve(set(RUTH[:13])) == "P14"
-    assert resolve(set(RUTH)) is None
+    assert resolve(set(RUTH[:7]), book="Ruth") == "P08"
+    assert resolve(set(RUTH[:13]), book="Ruth") == "P14"
+    assert resolve(set(RUTH), book="Ruth") is None
 
 
 def test_the_lines_that_pointed_ahead_in_the_book_are_gone_from_p05_and_p07() -> None:

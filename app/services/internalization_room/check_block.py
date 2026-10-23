@@ -23,6 +23,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.segments import (
     set_aside_segment_ids,
+    the_check_still_stands,
 )
 from app.services.internalization_room.takes import current_parts, part_keys, takes_of
 
@@ -146,12 +147,14 @@ def check_block(
 async def standing_state(
     db: AsyncSession, session_id: str, state: BackTranslationState, takes: list[IRTake]
 ) -> BackTranslationState:
-    """The state but its findings and nuances on a whole that stepped aside, only stored."""
+    """The state but its findings and nuances on a whole that stepped aside, only stored, and
+    its check only while it is about the parts the session has now."""
     aside = await set_aside_segment_ids(db, session_id, takes)
     return state.model_copy(
         update={
             "findings": [f for f in state.findings if f.segment_id not in aside],
             "nuances": [n for n in state.nuances if n.segment_id not in aside],
+            "checked": await the_check_still_stands(db, state, takes),
         }
     )
 
