@@ -65,6 +65,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, close_db, init_db
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
+from app.core.proxy_headers import CloudRunProxyHeadersMiddleware
 from app.core.qdrant import close_qdrant, init_qdrant
 from app.core.rate_limit import limiter
 from app.services.bhsa import loader
@@ -129,11 +130,11 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     from slowapi import _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
-    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")  # type: ignore[arg-type]
+    if settings.cloud_run_service:
+        app.add_middleware(CloudRunProxyHeadersMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

@@ -41,6 +41,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room import halt, turn_claim
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import findings_on_stretches_that_count
 from app.services.internalization_room.background import (
     HeardTake,
@@ -56,11 +57,13 @@ from app.services.internalization_room.hearing import (
     heard_speech,
     stop_hearing,
 )
+from app.services.internalization_room.joined_parts import parts_to_bring_back
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.outside_listeners import listeners_counted
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -68,7 +71,6 @@ from app.services.internalization_room.prepare_opening import (
     take_prepared,
 )
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.release import approved_draft
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sentences import the_sentence_awaiting
 from app.services.internalization_room.session_takes import kept_takes_of
@@ -77,7 +79,7 @@ from app.services.internalization_room.sessions import book_of, is_panorama, was
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
 )
-from app.services.internalization_room.takes import AUDIO_MIME
+from app.services.internalization_room.takes import AUDIO_MIME, current_parts, takes_of
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -343,7 +345,13 @@ async def _state(
         opened=was_opened(session),
         moment=moment_view(session),
         kept_takes=await kept_takes_of(session),
-        approved=approval_of(approved) if approved else None,
+        approved=(
+            approval_of(approved).model_copy(
+                update={"listeners": await listeners_counted(db, approved)}
+            )
+            if approved
+            else None
+        ),
     )
 
 
@@ -360,7 +368,8 @@ async def _progress(
     resumes is the same reading the analyst gets.
     """
     state = room.back_translation_of(session)
-    stretches = await room.final_segments(db, session.id)
+    takes = await takes_of(db, session.id)
+    stretches = await room.final_segments(db, session.id, takes)
     findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
     awaiting = await the_sentence_awaiting(db, session)
@@ -376,6 +385,7 @@ async def _progress(
             findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
         ),
         superseded_attempts=len(state.superseded),
+        bring_back=await parts_to_bring_back(db, session, current_parts(takes), stretches),
         awaiting_segment_id=awaiting.segment_id if awaiting else None,
         rerecorded_sentences=[
             RerecordedSentenceView(
@@ -534,6 +544,7 @@ async def facilitator_sessions(
                 project_id=team,
                 team_name=named.get(team, ""),
                 halt=halt.standing(session),
+                halts_raised=session.halts_raised,
                 warned_at=(
                     as_utc(warned).isoformat()
                     if (warned := halt.standing_warning_since(session)) is not None

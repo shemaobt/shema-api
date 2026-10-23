@@ -107,6 +107,10 @@ MIGRATION_FILES = {
     "test_ir_a_stretch_marks_that_its_part_was_recorded_again_migration.py",
     "test_ir_a_forced_release_records_its_blockers_migration.py",
     "test_ir_the_claim_for_the_opening_migration.py",
+    "test_ir_the_external_check_migration.py",
+    "test_ir_outside_listeners_migration.py",
+    "test_ir_a_grain_switch_migration.py",
+    "test_ir_a_rehearsal_laid_in_again_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

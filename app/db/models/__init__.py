@@ -25,6 +25,11 @@ from app.db.models.change_request import ChangeRequest
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
     IRCoverageEvent,
+    IRExternalCheck,
+    IRExternalListener,
+    IRExternalMark,
+    IRExternalRecording,
+    IRExternalRecordingKind,
     IRQuestion,
     IRRelease,
     IRSession,
@@ -167,6 +172,11 @@ __all__ = [
     "Device",
     "GranularityLevel",
     "IRCoverageEvent",
+    "IRExternalCheck",
+    "IRExternalListener",
+    "IRExternalMark",
+    "IRExternalRecording",
+    "IRExternalRecordingKind",
     "IRQuestion",
     "IRRelease",
     "IRSession",

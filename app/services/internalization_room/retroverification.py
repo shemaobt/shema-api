@@ -39,6 +39,7 @@ from app.models.internalization_room import (
     RetroverificationTake,
     RetroverificationTelling,
 )
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -49,7 +50,7 @@ from app.services.internalization_room.back_translation import (
     unheard_parts,
 )
 from app.services.internalization_room.hard_stretches import hard_stretches_of
-from app.services.internalization_room.release import releases_of_passage
+from app.services.internalization_room.release import releases_of_passage, was_forced
 from app.services.internalization_room.segments import (
     current_segments,
     divided_segments,
@@ -58,7 +59,7 @@ from app.services.internalization_room.segments import (
     told_back,
 )
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import current_parts, set_aside_moment, takes_of
 
 #: Where a facilitator's browser fetches one take, as the file points at it. A path and never
 #: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
@@ -106,13 +107,14 @@ def _telling_view(row: IRSegment) -> RetroverificationTelling:
 
 
 def _release_view(release: IRRelease) -> RetroverificationRelease:
+    forced = was_forced(release.forced_by, release.forced_blockers)
     return RetroverificationRelease(
         version=release.version,
         session_id=release.session_id,
         approved_at=release.approved_at.isoformat(),
         device_id=release.device_id,
-        forced_by=release.forced_by,
-        forced_at=_moment(release.forced_at),
+        forced_by=release.forced_by if forced else None,
+        forced_at=_moment(release.forced_at) if forced else None,
         forced_open_findings=[
             RetroverificationFinding.model_validate(finding)
             for finding in release.forced_open_findings or []
@@ -131,6 +133,7 @@ def _take_view(take: IRTake) -> RetroverificationTake:
         sha256=take.sha256,
         recorded_at=_moment(take.recorded_at),
         url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
+        set_aside_at=set_aside_moment(take),
     )
 
 
@@ -361,7 +364,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             reading_moved=any(one.frase is None for one in numbered),
             never_analysed=telling_back.never_analysed,
         ),
-        approved=latest is not None,
+        approved=await approved_draft(db, session) is not None,
         analysed=not telling_back.never_analysed,
         checked=telling_back.checked,
         checked_at=_moment(telling_back.checked_at),

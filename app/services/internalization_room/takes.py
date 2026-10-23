@@ -4,13 +4,14 @@ import base64
 import hashlib
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,11 +23,13 @@ from app.core.exceptions import (
     NotFoundError,
     RecordingRefused,
     StretchNoLongerCounts,
+    TakeMoved,
     UnknownReferenceError,
     ValidationError,
 )
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
+    IRGrain,
     IRSceneFrase,
     IRSceneRehearsal,
     IRSession,
@@ -37,6 +40,7 @@ from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
+from app.utils.stored_time import as_utc
 
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
@@ -239,6 +243,8 @@ async def store_take(
     sent_sha256: str | None = None,
     sent_duration_ms: int | None = None,
     sent_recorded_at: datetime | None = None,
+    past_the_set_aside: bool = False,
+    the_same: Callable[[str], Awaitable[IRTake | None]] | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -258,14 +264,32 @@ async def store_take(
 
     The server's clock is read once, before the bytes are measured or stored: the take's
     arrival and its offset are both read on it, so neither counts as the tablet's.
+
+    `past_the_set_aside` looks past the takes a **Grain switch** set aside: the same bytes kept
+    at the grain in force are a new take that stands, sharing the stored object (ADR 0096).
+
+    `the_same` is the caller's question of which take these bytes already are, given their hash;
+    unasked, it is their identity in storage. It is asked before the bytes are stored and, for a
+    joined part, again under the session's row before the row is written, so two tablets joining
+    at once never both write one (ADR 0095).
     """
+    same = the_same or partial(
+        _the_same_take,
+        db,
+        session_id,
+        kind,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=past_the_set_aside,
+    )
     arrived = datetime.now(UTC)
     checked = await checked_recording(
         audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
     )
     key = storage_key(session_id, kind, checked.sha256, content_type)
 
-    already = await _the_same_take(db, session_id, kind, checked.sha256)
+    already = await same(checked.sha256)
     if already is not None:
         return already
     await db.commit()
@@ -273,6 +297,12 @@ async def store_take(
     stored = await store_recording(
         audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
+    if origin is not None:
+        await db.execute(select(IRSession.id).where(IRSession.id == session_id).with_for_update())
+        already = await same(checked.sha256)
+        if already is not None:
+            await db.commit()
+            return already
     offset = (
         noted_clock_offset(sent_recorded_at, arrived)
         if origin is not None and sent_recorded_at is not None
@@ -306,7 +336,7 @@ async def store_take(
         async with db.begin_nested():
             db.add(take)
     except IntegrityError:
-        winner = await _the_same_take(db, session_id, kind, checked.sha256)
+        winner = await same(checked.sha256)
         if winner is None:
             raise
         return winner
@@ -315,19 +345,59 @@ async def store_take(
 
 
 async def the_take_already_kept(
-    db: AsyncSession, session_id: str, kind: IRTakeKind, audio: bytes
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    audio: bytes,
+    *,
+    ordinal: int | None = None,
+    pass_number: int | None = None,
+    origin: str | None = None,
 ) -> IRTake | None:
-    return await _the_same_take(db, session_id, kind, recording_digest(audio))
+    return await the_take_this_keep_already_is(
+        db,
+        session_id,
+        kind,
+        recording_digest(audio),
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=True,
+    )
 
 
 async def _the_same_take(
-    db: AsyncSession, session_id: str, kind: IRTakeKind, sha256: str
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    ordinal: int | None = None,
+    pass_number: int | None = None,
+    origin: str | None = None,
+    past_the_set_aside: bool = False,
 ) -> IRTake | None:
-    found: IRTake | None = await db.scalar(
-        select(IRTake).where(
-            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256
+    """The take these bytes are in storage: a resend, or a second tablet's same join.
+
+    A part laid in from a scene rehearsal is that take only under the same number and pass as
+    well, because a swap back to an earlier rehearsal sends bytes the session already holds and
+    is a new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
+    """
+    same = (
+        (
+            IRTake.origin.is_not(None),
+            IRTake.ordinal.is_not_distinct_from(ordinal),
+            IRTake.pass_number.is_not_distinct_from(pass_number),
         )
+        if origin is not None
+        else (IRTake.origin.is_(None),)
     )
+    query = select(IRTake).where(
+        IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256, *same
+    )
+    if past_the_set_aside:
+        query = query.where(IRTake.set_aside_at.is_(None))
+    found: IRTake | None = await db.scalar(query.order_by(IRTake.set_aside_at.is_not(None)))
     return found
 
 
@@ -461,31 +531,83 @@ async def refuse_a_take_that_is_no_longer_a_part(
         raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
+async def refuse_a_join_over_a_moved_part(
+    db: AsyncSession,
+    session_id: str,
+    *,
+    ordinal: int | None,
+    pass_number: int | None,
+    origin: str,
+    over_take: str | None,
+    audio: bytes,
+) -> None:
+    """Refuse a join when its part's live take is not the one the team chose it over.
+
+    `over_take` is that take, or None when the team chose the join over an empty scene. A join
+    whose bytes are already kept is its own resend, answered by the storing with that take, which
+    may no longer be the part: the tablet reads the answer against the part. The look holds no
+    lock (ADR 0089), so two joins of different rehearsals at once over one take may both land.
+    """
+    already = await the_take_already_kept(
+        db,
+        session_id,
+        IRTakeKind.ENSAIO,
+        audio,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+    )
+    if already is not None:
+        return
+    live = next(
+        (p.id for p in current_parts(await takes_of(db, session_id)) if p.ordinal == ordinal),
+        None,
+    )
+    if live != over_take:
+        raise TakeMoved("This part's live take is no longer the one the join was chosen over")
+
+
 READING_ORDER = (
     IRTake.ordinal.asc().nulls_first(),
-    IRTake.pass_number.asc().nulls_first(),
-    IRTake.created_at,
+    case((IRTake.kind == IRTakeKind.RETRO, IRTake.pass_number), else_=None).asc().nulls_first(),
+    IRTake.created_at.asc(),
+    IRTake.id.asc(),
 )
 
 
+async def takes_of_sessions(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, list[IRTake]]:
+    """`takes_of` for several sessions in one read, each in its own reading order."""
+    held: dict[str, list[IRTake]] = {session_id: [] for session_id in session_ids}
+    if not held:
+        return held
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id.in_(list(held))).order_by(*READING_ORDER)
+    )
+    for take in result.scalars():
+        held[take.session_id].append(take)
+    return held
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
-    """Every take of a session, in reading order rather than in arrival order.
+    """Every take of a session, by its number first and then in the order it was accepted.
 
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
 
-    Both columns are nullable and the placement is named rather than left to the engine:
-    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
-    that captured none — and a take with no pass predates the room sending one, so either
-    is the earliest thing in its own group. Unnamed, SQLite
-    read that the same way and PostgreSQL read it upside down, which put the oldest
-    recording of a session at the bottom of the packet on the only database that serves
-    a real team.
+    Under one ordinal a rehearsal take reads in the order the room accepted it, whatever its
+    pass or its **Recording time** (ENG-1760). A back-translation take reads by its pass first,
+    which says which side of a check it was told on.
+
+    The ordinal and the pass are nullable, and their placement is named rather than left to
+    the engine: a take with no ordinal belongs to no stretch — the undivided passage, or a
+    recording that captured none — and a back-translation take with no pass predates the room
+    sending one, so either is the earliest thing in its own group. Unnamed, SQLite read that
+    the same way and PostgreSQL read it upside down, which put the oldest recording of a
+    session at the bottom of the packet on the only database that serves a real team.
     """
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
-    )
-    return list(result.scalars().all())
+    return (await takes_of_sessions(db, [session_id]))[session_id]
 
 
 def current_parts(takes: list[IRTake]) -> list[IRTake]:
@@ -501,24 +623,89 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     while the session holds no numbered part. Once the team has recorded by scene the whole is
     history, kept with its stretches and findings and no longer a part anybody is asked for.
 
+    A take a **Grain switch** set aside is no part, whatever its number: after a switch the parts
+    are the newest grain's alone, so a whole recorded after a switch to the whole passage is the
+    one part even beside numbered takes, which the switch stamped (ADR 0096).
+
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
-    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
-    alone it would be wrong, and this module says why two functions up: that stamp is when the
-    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
-    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
-    its own recordings and does not move with the link.
+    the last one the room accepted. Keyed on the pass it would be wrong: a reinstalled tablet,
+    or a second one, counts its passes from 1 again, so its newer take would read below an
+    older pass 2. Keyed on the **Recording time** it would be wrong too: a tablet's clock can
+    read any year, so a take stamped 2099 would hold the part against every later one, and a
+    take stamped 2000 would never become it.
 
     So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
     parts come back in the reading order and no caller sorts them again.
     """
     newest: dict[int | None, IRTake] = {}
     for take in takes:
-        if take.kind is IRTakeKind.ENSAIO:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is None:
             newest[take.ordinal] = take
     if any(ordinal is not None for ordinal in newest):
         newest.pop(None, None)
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
+
+
+async def the_take_this_keep_already_is(
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    ordinal: int | None,
+    pass_number: int | None,
+    origin: str | None,
+    past_the_set_aside: bool,
+) -> IRTake | None:
+    """The take a keep's bytes already are, as the room reads its parts.
+
+    A part joined from the rehearsal already standing under its number, with that part's bytes,
+    is that part whatever pass the tablet counted: a second tablet joins above the pass it last
+    listed and lands on the one part (ADR 0095). Otherwise it is the take its bytes are in
+    storage.
+    """
+    if origin is not None and kind is IRTakeKind.ENSAIO:
+        standing = [
+            part
+            for part in current_parts(await takes_of(db, session_id))
+            if part.ordinal == ordinal
+        ]
+        if standing and (standing[0].origin, standing[0].sha256) == (origin, sha256):
+            return standing[0]
+    return await _the_same_take(
+        db,
+        session_id,
+        kind,
+        sha256,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=past_the_set_aside,
+    )
+
+
+def set_aside_moment(take: IRTake) -> str | None:
+    """When a **Grain switch** set this take aside, with its offset, or none while none has."""
+    return None if take.set_aside_at is None else as_utc(take.set_aside_at).isoformat()
+
+
+def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:
+    """Whether a rehearsal take is of the grain a **Grain switch** left behind: never a part."""
+    return (
+        kind is IRTakeKind.ENSAIO
+        and session.grain is not None
+        and (IRGrain.WHOLE if ordinal is None else IRGrain.SCENE) is not session.grain
+    )
+
+
+def grain_in_force(session: IRSession, parts: list[IRTake]) -> IRGrain | None:
+    """The grain the last **Grain switch** chose, else the one the current parts were told in."""
+    if session.grain is not None:
+        return session.grain
+    if any(part.ordinal is not None for part in parts):
+        return IRGrain.SCENE
+    return IRGrain.WHOLE if parts else None
 
 
 def part_positions(parts: list[IRTake]) -> dict[int | None, int | None]:

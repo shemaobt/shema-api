@@ -2,8 +2,10 @@
 
 The app draws its approved mark from `approved` on each entry of
 `GET /books/{book}/passages`, never from what one tablet remembers. A passage is approved
-when the team holds a live Release of it, from any tablet, forced or not; a Zerar archives the
-release and the mark goes with it. A passage rehearsed, talked in or never opened is not.
+while the team's draft of it stands under its latest live Release, approved from any tablet,
+forced or not (ADR 0081); a re-open takes the mark away until the next approval, and a Zerar
+archives the release and the mark goes with it. A passage rehearsed, talked in or never opened
+is not.
 """
 
 from __future__ import annotations
@@ -18,10 +20,14 @@ from app.api.internalization_room import sessions as sessions_api
 from app.db.models.project import Project
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.baker import make_app, make_role
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
     PREFIX,
+    P,
     a_claimed_device,
     at_the_desk,
+    checked_heard_and_approved,
     claimed_tablets_of_one_team,
     desk_release,
     ready_session,
@@ -30,6 +36,7 @@ from tests.release_harness import (
     team_release,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.sentence_harness import rehearsed_in_wav, spoken
 from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
 
@@ -40,7 +47,14 @@ def per_request(test_engine) -> async_sessionmaker[AsyncSession]:
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, per_request, monkeypatch: pytest.MonkeyPatch):
+def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    return the_bucket_is_in_memory(monkeypatch)
+
+
+@pytest.fixture()
+async def client(
+    db_session: AsyncSession, per_request, monkeypatch: pytest.MonkeyPatch, store: MemoryStore
+):
     guide = ScriptedAgent([])
 
     async def heard(*_: Any, **__: Any) -> HeardSpeech:
@@ -51,7 +65,6 @@ async def client(db_session: AsyncSession, per_request, monkeypatch: pytest.Monk
 
     the_turn_is_scripted(monkeypatch, heard=heard, model=guide)
     monkeypatch.setattr(sessions_api, "prepare_opening", no_opening_ahead)
-    the_bucket_is_in_memory(monkeypatch)
     async with room_client(db_session, monkeypatch, per_request=per_request) as c:
         yield c
 
@@ -175,3 +188,36 @@ async def test_the_panorama_entry_is_never_approved(
 
     first = answered.json()["passages"][0]
     assert (first["kind"], first["approved"]) == ("panorama", False)
+
+
+async def test_a_re_opened_draft_loses_its_mark_on_every_tablet_until_the_next_approval(
+    client, db_session, store
+) -> None:
+    """ENG-1260, acceptance 7."""
+    tablet_a = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    tablet_b = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    session, _parts, frases = await rehearsed_in_wav(db_session, store, [[(0, 1000), (1000, 2000)]])
+    assert (
+        await checked_heard_and_approved(
+            client, db_session, session.id, headers=team_headers(tablet_a.credential)
+        )
+        == 1
+    )
+    assert (await the_wheel(client, tablet_b.credential))[P] is True
+
+    reopened = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{frases[0][0].id}/sentence",
+        headers=team_headers(tablet_a.credential),
+        data={"sentence_id": "sentence-0001", "reopens_the_approved_draft": "true"},
+        files={"file": ("frase.wav", spoken(1.0), "audio/wav")},
+    )
+    assert reopened.status_code == 200, reopened.text[:300]
+
+    assert (await the_wheel(client, tablet_b.credential))[P] is False
+    assert (
+        await checked_heard_and_approved(
+            client, db_session, session.id, headers=team_headers(tablet_a.credential)
+        )
+        == 2
+    )
+    assert (await the_wheel(client, tablet_b.credential))[P] is True

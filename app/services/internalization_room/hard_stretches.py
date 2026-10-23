@@ -7,7 +7,9 @@ follows clears. Once is the database's promise now, not a read before the write.
 
 Because the mark belongs to the telling that crossed, the whole of a captured telling is closed
 here too: the stretch row, the telling-back state and the mark are one transaction, and both
-routes that capture one come through `capture_and_note_a_hard_stretch` to get it.
+routes that capture one come through `capture_and_note_a_hard_stretch` to get it. A frase laid
+from a scene rehearsal is not a telling of the team's here and crosses nothing, so the lay writes
+its stretches itself and only applies `a_capture_after_a_check_unchecks` (ADR 0085).
 
 It sits between the two services rather than inside either: the count is the stretch's and the
 halt is the session's, `sessions` already reads `segments`, and `segments` reaching back for
@@ -103,7 +105,7 @@ async def a_hard_stretch_stands(db: AsyncSession, stretch: IRSegment) -> bool:
     return mark is not None
 
 
-async def _a_capture_after_a_check_unchecks(standing: BackTranslationState) -> None:
+async def a_capture_after_a_check_unchecks(standing: BackTranslationState) -> None:
     if not standing.never_analysed:
         standing.checked = False
         standing.verdict = None
@@ -159,14 +161,14 @@ async def capture_and_note_a_hard_stretch(
     if state is None:
         await db.refresh(session, ["back_translation"])
         standing = back_translation_of(session)
-    await _a_capture_after_a_check_unchecks(standing)
+    await a_capture_after_a_check_unchecks(standing)
     moved = replaces is not None and replaces.ends_ms != ends_ms
     if moved:
         standing.pauses_moved += 1
     if state is not None or moved or not standing.never_analysed:
         standing.scope = standing.scope or session.pericope
         await save_back_translation(
-            db, session, standing, commit=False, rule=_a_capture_after_a_check_unchecks
+            db, session, standing, commit=False, rule=a_capture_after_a_check_unchecks
         )
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()

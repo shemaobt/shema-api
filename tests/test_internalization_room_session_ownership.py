@@ -119,6 +119,27 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/release"): (
         "release_harness.py's own release cases — a stricter, pre-existing rule"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/external-check/open"): (
+        "test_ir_the_team_opens_the_external_check_of_its_approved_version.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners"): (
+        "test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"
+    ),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}"): (
+        "test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"
+    ),
+    (
+        "POST",
+        f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}/recordings",
+    ): ("test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"),
+    (
+        "POST",
+        f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}/marks",
+    ): ("test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"),
+    (
+        "POST",
+        f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}/finish",
+    ): ("test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/chunks"): (
         "test_internalization_room_back_translation_ownership.py"
     ),
@@ -131,11 +152,17 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/restart"): (
         "test_ir_the_translation_starts_over.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/parts/{{number}}/bring-back"): (
+        "test_ir_a_joined_part_carries_its_scene_translations.py"
+    ),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/listened-whole"): (
         "test_ir_a_joined_recording_is_checked_on_its_own.py"
     ),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/segments/{{segment_id}}/sentence"): (
         "test_ir_a_team_re_records_one_whole_sentence.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/grain"): (
+        "test_ir_a_grain_switch_sets_the_earlier_grains_takes_aside.py"
     ),
 }
 

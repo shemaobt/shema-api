@@ -18,7 +18,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     approve_release,
-    build_internalization_release,
     compose_internalization_release,
 )
 from app.services.internalization_room.retroverification import retroverification_file
@@ -37,6 +36,7 @@ from tests.release_harness import (
     P,
     checked_telling_back,
     ensaio_take,
+    judged_packet,
     one_stretch,
     ready_session,
     reported_playback,
@@ -57,7 +57,7 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
     session = await create_session(db_session, pericope=P)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert blocked.value.blockers == ["no_rehearsal_audio", "no_telling_back"]
 
@@ -66,7 +66,7 @@ async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope="OV")
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert blocked.value.blockers == ["panorama_sessions_never_release"]
 
@@ -82,7 +82,7 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     """
     session = await ready_session(db_session)
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     assert artifact["purpose"] == "first_team_rehearsal"
     assert artifact["readiness"] == "ready_for_refine"
@@ -123,8 +123,8 @@ async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
     second_instant = datetime(2026, 9, 10, 9, 0, tzinfo=UTC)
     monkeypatch.setattr(release_module, "datetime", _FixedClock([first_instant, second_instant]))
 
-    first = await build_internalization_release(db_session, session)
-    second = await build_internalization_release(db_session, session)
+    first = await judged_packet(db_session, session)
+    second = await judged_packet(db_session, session)
 
     assert first["created_at"] == first_instant.isoformat()
     assert second["created_at"] == second_instant.isoformat()
@@ -140,9 +140,9 @@ async def test_one_more_stretch_told_changes_the_packet_hash(
     frozen = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
     monkeypatch.setattr(release_module, "datetime", _FixedClock([frozen, frozen]))
 
-    before = await build_internalization_release(db_session, session)
+    before = await judged_packet(db_session, session)
     await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    after = await build_internalization_release(db_session, session)
+    after = await judged_packet(db_session, session)
 
     assert before["package_sha256"] != after["package_sha256"], (
         "o mesmo relógio nas duas leituras não pode esconder que o conteúdo mudou"
@@ -155,7 +155,7 @@ async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession)
     await reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
 
@@ -176,7 +176,7 @@ async def test_a_listening_report_that_runs_past_its_part_is_cut_to_it_and_trave
     await db_session.commit()
     await reported_playback(db_session, session, state, clip_duration_ms=37000)
 
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
 
     assert packet["readiness"] == "ready_for_refine"
 
@@ -193,7 +193,7 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     await retire_every_segment(db_session, session.id)
     kept = await one_stretch(db_session, session)
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     archived = artifact["back_translation"]["superseded_attempts"][0]
     assert archived["findings"][0]["kind"] == "missing"
@@ -216,9 +216,9 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     the team is working on — one take per part — and the earlier one is history, which the
     **Retroverification file** is where the facilitator and the consultant read.
 
-    Which of the two is the part is the pass the tablet counted, and not the moment the upload
-    landed: the outbox drains whenever the link comes back, so the abandoned take can be written
-    down *after* the take that replaced it, and it is written down that way here on purpose.
+    Which of the two is the part is the one the room accepted last, and not the pass the tablet
+    counted: a reinstalled tablet, or a second one, counts from 1 again (ENG-1760). The later
+    arrival is pass 1 here on purpose.
 
     The whole-passage take `ready_session` leaves is history once a numbered part exists, so
     the packet carries only the numbered one.
@@ -258,10 +258,10 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
-    assert seen == [(1, 2, "c" * 64)], (
+    assert seen == [(1, 1, "b" * 64)], (
         "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
-        "nos rótulos dizia qual era qual; e pela chegada a escolha sairia trocada, porque a "
-        "passada 1 foi anotada depois da 2"
+        "nos rótulos dizia qual era qual; e pela passada a escolha sairia trocada, porque a "
+        "passada 1 chegou depois da 2"
     )
     assert "b" * 64 in [take.sha256 for take in file.takes], (
         "e a tomada abandonada continua inteira no arquivo de retroverificação"
@@ -293,7 +293,7 @@ async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     db_session.add_all([told_last, told_first, told_second])
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     retro_takes = artifact["back_translation"]["retro_takes"]
     assert [take["take_id"] for take in retro_takes] == [
@@ -324,7 +324,7 @@ async def test_a_session_carrying_an_open_finding_is_refused(
     )
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert blocked.value.blockers == ["telling_back_not_checked"]
 
@@ -344,7 +344,7 @@ async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
     await reported_playback(db_session, session, state)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert blocked.value.blockers == ["telling_back_never_analysed"]
 
@@ -358,7 +358,7 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
     await retire_every_segment(db_session, session.id)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert "no_telling_back" in blocked.value.blockers
 
@@ -366,7 +366,7 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
 async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSession) -> None:
     session = await ready_session(db_session)
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     assert artifact["readiness"] == "ready_for_refine"
     assert artifact["back_translation"]["checked"] is True
@@ -424,7 +424,7 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     await db_session.commit()
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert blocked.value.blockers == ["telling_back_not_checked"]
 
@@ -447,7 +447,7 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     await one_stretch(db_session, session)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
-        await build_internalization_release(db_session, session)
+        await judged_packet(db_session, session)
 
     assert "telling_back_never_analysed" in blocked.value.blockers
 
@@ -477,7 +477,7 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
             replaces=half,
         )
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     carried = artifact["back_translation"]["divided_segments"]
     assert [one["segment_id"] for one in carried] == [whole.id]
@@ -650,7 +650,7 @@ async def test_a_superseded_telling_back_is_history_and_counts_nothing(
     ]
     await reported_playback(db_session, session, state)
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     assert artifact["open_questions"] == 0
     assert artifact["back_translation"]["superseded_attempts"][0]["findings"][0]["kind"] == (

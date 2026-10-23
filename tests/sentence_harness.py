@@ -109,10 +109,12 @@ async def re_record(
     *,
     sentence_id: str = "sentence-0001",
     headers: dict[str, str] | None = None,
+    reopens_the_approved_draft: bool = False,
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/sentence",
-        data={"sentence_id": sentence_id},
+        data={"sentence_id": sentence_id}
+        | ({"reopens_the_approved_draft": "true"} if reopens_the_approved_draft else {}),
         files={"file": ("frase.wav", audio, WAV)},
         headers=headers,
     )
@@ -180,9 +182,24 @@ async def named_and_heard(
 
 
 async def laid_in_and_told_again(
-    client: httpx.AsyncClient, session_id: str, segment_id: str, position: int
+    client: httpx.AsyncClient,
+    session_id: str,
+    segment_id: str,
+    position: int,
+    *,
+    sentence_id: str = "sentence-0001",
+    reopens_the_approved_draft: bool = False,
 ) -> str:
-    laid = (await re_record(client, session_id, segment_id, spoken(1.0))).json()["segments"]
+    laid = (
+        await re_record(
+            client,
+            session_id,
+            segment_id,
+            spoken(1.0),
+            sentence_id=sentence_id,
+            reopens_the_approved_draft=reopens_the_approved_draft,
+        )
+    ).json()["segments"]
     new = laid[position]
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",

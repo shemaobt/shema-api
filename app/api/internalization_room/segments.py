@@ -30,6 +30,7 @@ from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.joined_parts import bring_back_the_rehearsals_frases
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
@@ -144,6 +145,41 @@ async def restart(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     await room.start_the_translation_over(db, session)
+    nudge(session.project_id, "stretches")
+    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+
+
+@router.post(
+    "/sessions/{session_id}/parts/{number}/bring-back",
+    response_model=SegmentsResponse,
+    dependencies=[linked_tablet_dep],
+    responses={
+        400: {"description": "`PANORAMA_RECORDS_NOTHING`: a panorama records nothing"},
+        401: {"description": "`UNAUTHORIZED`: no linked tablet's credential"},
+        404: {"description": "`NOT_FOUND`: no such session for this team, or no part `number`"},
+        409: {
+            "description": "`NOTHING_TO_BRING_BACK`: the part was not joined from a scene "
+            "rehearsal of this session, a sentence was re-recorded in it, or the rehearsal "
+            "has no frase; nothing is written"
+        },
+    },
+)
+async def bring_back(
+    session_id: str,
+    number: int,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SegmentsResponse:
+    """«trazer de volta as traduções do ensaio desta cena»: the rehearsal's frases laid again.
+
+    Offered on a joined part none of whose rehearsal's frases stands, after «recomeçar a
+    tradução» or when they never landed. The stretches told here on that part are abandoned,
+    kept as history and never deleted, and the check starts over as after any telling. A part
+    whose frases already stand answers as it is, so a second tap lays once.
+    """
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    await bring_back_the_rehearsals_frases(db, session, number)
     nudge(session.project_id, "stretches")
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
@@ -288,7 +324,10 @@ router.add_api_route(
         409: {
             "description": "`PART_NOT_WAV`: the part was not recorded as WAV PCM16; "
             "`SENTENCE_ID_REUSED`: the id already names another recording; "
-            "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation"
+            "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation; "
+            "`PART_CHANGED`: the frase's part changed while the sentence was laid in; nothing "
+            "was written, send it again; `DRAFT_APPROVED`: the draft is approved and the team "
+            "did not arm the tap that re-opens it"
         },
         413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
     },
@@ -298,6 +337,13 @@ async def re_record_the_sentence(
     segment_id: str,
     sentence_id: str = Form(..., pattern=r"^[A-Za-z0-9_-]{8,64}$"),
     file: UploadFile = File(...),
+    reopens_the_approved_draft: bool = Form(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, the sentence is refused DRAFT_APPROVED."
+        ),
+    ),
     asking_for_stale: bool = include_stale_dep,
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -326,7 +372,12 @@ async def re_record_the_sentence(
     already laid in with another recording or another frase. The same recording sent again
     under its id is answered as it stands and laid in once; `ANOTHER_SENTENCE_AWAITS` (409, with
     `frases: [n]`) while another frase awaits its translation, one sentence at a time — the
-    awaiting frase itself may be recorded again.
+    awaiting frase itself may be recorded again; `PART_CHANGED` (409) when the frase's part or
+    its span changed while the sentence was spliced and stored, where nothing is written and the
+    tablet offers to send the same sentence again; `DRAFT_APPROVED` (409) over an approved draft
+    when the team did not arm the tap that re-opens it (`reopens_the_approved_draft`), asked
+    after the format and before the awaiting frase, as hers is (splice.ts:157). A sentence
+    already laid in is answered before it, so a resend after a landing is never refused.
     """
     audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
     refuse_a_sentence_too_long(audio)
@@ -341,6 +392,7 @@ async def re_record_the_sentence(
         audio=audio,
         device_id=device_id,
         store=store,
+        reopens_the_approved_draft=reopens_the_approved_draft,
     )
     return SentenceLaidInResponse(
         session_id=session.id,

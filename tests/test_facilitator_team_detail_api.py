@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys, elements_for
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book, served_maps
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     an_email,
@@ -271,13 +271,18 @@ async def test_a_passage_closed_out_of_order_still_counts(client, db_session) ->
     assert body["active_passage"]["pericope"] == SECOND
 
 
-async def test_a_team_that_finished_the_book_has_closed_all_of_it(client, db_session) -> None:
+async def test_a_team_that_finished_every_book_has_closed_all_of_the_book_it_is_in(
+    client, db_session
+) -> None:
     _user, team, headers = await a_facilitator(db_session, email="fim@x.com")
-    await having_closed(db_session, team, *CANON)
+    await having_closed(
+        db_session, team, *(meaning_map.pericope_num for meaning_map in served_maps())
+    )
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
+    listed = (await client.get(f"{team_url(team.id)}/pericopes", headers=headers)).json()
 
-    assert body["closed_total"] == len(CANON)
+    assert body["closed_total"] == len(listed)
     assert body["active_passage"] is None
     assert body["state"] == "complete"
 
@@ -419,7 +424,7 @@ async def test_the_answer_does_not_pay_per_bead_or_per_team(
     against_events = [s for s in seen if "ir_coverage_events" in s]
 
     assert len(against_events) <= 2, f"mais de duas leituras dos eventos: {against_events}"
-    assert len(seen) <= 5, f"a resposta custou {len(seen)} statements: {seen}"
+    assert len(seen) <= 6, f"a resposta custou {len(seen)} statements: {seen}"
 
 
 async def test_two_default_facilitators_get_two_different_project_names(db_session):

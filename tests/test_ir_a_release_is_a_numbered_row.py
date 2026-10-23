@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import Any
 
 import httpx
 import pytest
@@ -28,7 +29,8 @@ from app.core.enums import ProjectRole
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import release as release_module
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.release import compose_internalization_release
+from app.services.internalization_room.sessions import create_session, get_session
 from tests.alembic_harness import indexes_of, run_alembic, scalar, tables_of
 from tests.baker import (
     make_app,
@@ -42,10 +44,12 @@ from tests.release_harness import (
     PREFIX,
     P,
     a_claimed_device,
-    one_stretch,
+    checked_telling_back,
     ready_session,
     releases_of,
+    reported_playback,
     team_headers,
+    the_part_recorded_again,
 )
 
 APP_KEY = "internalization-room"
@@ -108,6 +112,12 @@ async def _facilitator(db: AsyncSession, room_app, project=None) -> dict[str, st
         await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     access, _refresh = await issue_tokens(db, user)
     return {"Authorization": f"Bearer {access}"}
+
+
+async def composed(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+    """The packet this session composes right now: what an approval compares."""
+    packet, _blockers = await compose_internalization_release(db, await get_session(db, session.id))
+    return packet
 
 
 async def _below_the_floor(db: AsyncSession, session: IRSession) -> None:
@@ -180,29 +190,24 @@ async def test_the_team_approves_a_passage_whose_conversation_fell_short(client,
     assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
-async def test_the_desk_reads_that_passage_with_no_blocker(client, db_session, room_app):
-    """The Desk's read goes through the same gate, and a refusal there is a 409."""
+async def test_that_passage_composes_with_no_blocker(db_session):
+    """The composition an approval compares goes through the same gate, and names nothing."""
     project, _credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
     await _below_the_floor(db_session, session)
-    desk = await _facilitator(db_session, room_app, project)
 
-    read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
+    packet, blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
 
-    assert read.status_code == 200, read.text
-    assert "comprehension" not in read.json(), "a mesa ainda lia a prática que a sala não guarda"
+    assert blockers == []
+    assert "comprehension" not in packet, "o pacote ainda carregava a prática que a sala não guarda"
 
 
 async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_one(
     client, db_session
 ):
-    """One more stretch told is what moves the content here, and it stands for the re-record.
-
-    A part recorded again reaches the packet the same way — the take under that number
-    changes, so the content differs — and it costs a whole recording to stage. What the version
-    turns on is the hash, not which edit changed it, so the cheaper change proves the rule; the
-    re-recording has its own file of cases.
-    """
+    """The part recorded again is the change of takes that re-opens the draft (ADR 0081)."""
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
 
@@ -212,7 +217,8 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
     version_one = (await releases_of(db_session, session.id))[0]
     as_approved = json.dumps(version_one.packet, sort_keys=True)
 
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     second = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
@@ -227,34 +233,29 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
     )
 
 
-async def test_the_packet_names_its_release_and_says_which_schema_it_is(
-    client, db_session, room_app
-):
+async def test_the_packet_names_its_release_and_says_which_schema_it_is(client, db_session):
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
-    desk = await _facilitator(db_session, room_app, project)
 
-    before = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
+    before = await composed(db_session, session)
     approved = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
-    after = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    redrafted = await client.get(
-        f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk
-    )
+    after = await composed(db_session, session)
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
+    redrafted = await composed(db_session, session)
 
-    assert before.status_code == 200, before.text
-    assert before.json()["release_id"] is None
-    assert before.json()["version"] is None
-    assert after.json()["schema_version"] == SCHEMA_VERSION
-    assert after.json()["release_id"] == approved.json()["release_id"]
-    assert after.json()["version"] == 1
-    assert after.json()["package_sha256"] == approved.json()["package_sha256"]
-    assert redrafted.json()["release_id"] is None, (
+    assert before["release_id"] is None
+    assert before["version"] is None
+    assert after["schema_version"] == SCHEMA_VERSION
+    assert after["release_id"] == approved.json()["release_id"]
+    assert after["version"] == 1
+    assert after["package_sha256"] == approved.json()["package_sha256"]
+    assert redrafted["release_id"] is None, (
         "o rascunho de agora não é o que foi aprovado, e nomear a versão 1 diria que é"
     )
-    assert redrafted.json()["version"] is None
+    assert redrafted["version"] is None
 
 
 async def test_two_approvals_cannot_take_one_number(db_session):
@@ -317,7 +318,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
 ):
     """Two approvals read the same last version, and only one of them can write it.
 
-    The race is staged by holding the read still — `_latest_release` answers as it did before
+    The race is staged by holding the read still — `latest_release` answers as it did before
     the winner committed — because that is exactly what the loser of a real race saw, and two
     event loops racing on one SQLite file would prove less about the rule and more about the
     file. Everything after the read is real: the allocation, the insert, and the index that
@@ -339,7 +340,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
     async def _as_it_was_before_the_winner(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(release_module, "_latest_release", _as_it_was_before_the_winner)
+    monkeypatch.setattr(release_module, "latest_release", _as_it_was_before_the_winner)
     refused = await client.post(
         f"{PREFIX}/sessions/{session_id}/release", headers=team_headers(credential)
     )
@@ -383,10 +384,8 @@ async def test_a_second_conversation_about_one_passage_shares_the_sequence(clien
     assert again.json()["release_id"] != first.json()["release_id"]
 
 
-async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(
-    client, db_session, room_app
-):
-    """The read and the approval answer one question, so they cannot answer it differently.
+async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(client, db_session):
+    """The composition and the approval answer one question, so they cannot answer it differently.
 
     A second conversation about the same passage takes v2, and the first session's packet is
     no longer the approved draft of that passage even though nothing in that session changed.
@@ -396,27 +395,22 @@ async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(
     project, credential = await a_claimed_device(db_session)
     first_session = await ready_session(db_session, project_id=project.id)
     second_session = await ready_session(db_session, project_id=project.id)
-    desk = await _facilitator(db_session, room_app, project)
 
     await client.post(
         f"{PREFIX}/sessions/{first_session.id}/release", headers=team_headers(credential)
     )
-    named = await client.get(
-        f"{PREFIX}/facilitator/sessions/{first_session.id}/release", headers=desk
-    )
+    named = await composed(db_session, first_session)
     await client.post(
         f"{PREFIX}/sessions/{second_session.id}/release", headers=team_headers(credential)
     )
-    moved_on = await client.get(
-        f"{PREFIX}/facilitator/sessions/{first_session.id}/release", headers=desk
-    )
+    moved_on = await composed(db_session, first_session)
 
-    assert named.json()["version"] == 1
-    assert moved_on.json()["release_id"] is None, (
+    assert named["version"] == 1
+    assert moved_on["release_id"] is None, (
         "a v1 deixou de ser o rascunho aprovado da passagem quando a v2 pousou"
     )
-    assert moved_on.json()["version"] is None
-    assert moved_on.json()["package_sha256"] == named.json()["package_sha256"]
+    assert moved_on["version"] is None
+    assert moved_on["package_sha256"] == named["package_sha256"]
 
 
 async def test_no_team_writes_a_release_on_another_teams_passage(client, db_session):

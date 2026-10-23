@@ -30,14 +30,14 @@ turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-
 | Request Joãozinho on dev | Requests the reviewer on every head of a pull request into `dev`, including one retargeted onto it, which is what fires the review there. It requests nobody when the author is Joãozinho's own login or a bot, because the review would skip and a skipped check counts as passing. |
 
 Both deploys pull their configuration from GCP Secret Manager, and each sets a few plain
-environment variables on the service directly. They are not the same few. Production sets six:
-the platform bucket, the oral-collector's bucket, the mail provider, the Azure tenant id, the
-Azure client id and the CORS origins. Staging sets six of its own — the environment name, the
-mail provider, the job-queue app id, its two buckets and its CORS origins — because each has to
-differ from production's: the app id in particular, since a second registration under
-production's id would overwrite it. Anything secret comes from Secret Manager, never from a
-workflow file, and the Azure client secret is mounted from there like the rest; the tenant and
-client ids beside it are not secret.
+environment variables on the service directly. They are not the same few. Production sets the
+platform bucket, the Oral Collector bucket, the mail provider, the Azure tenant id, the Azure
+client id, the CORS origins, the mother-tongue floor and the two minimum app builds. Staging sets
+six of its own — the environment name, the mail provider, the job-queue app id, its two buckets
+and its CORS origins — because each has to differ from production's: the app id in particular,
+since a second registration under production's id would overwrite it. Anything
+secret comes from Secret Manager, never from a workflow file, and the Azure client secret is
+mounted from there like the rest; the tenant and client ids beside it are not secret.
 
 A workflow that names only some of the service's plain variables still deploys, because
 `--update-env-vars` merges: whatever was set by hand survives, unnamed and unrecorded. The

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0096: after a grain switch the parts are only the newest grain's, and a whole recorded after a switch to the whole passage is the one part beside numbered takes
 date: 2026-09-16
 ---
 

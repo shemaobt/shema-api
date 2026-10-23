@@ -54,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
+    IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
     IRSession,
@@ -80,6 +81,8 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 #: The only body the force route accepts as a force. Without it the route answers
 #: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
 FORCE = {"json": {"force": True}}
+#: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
+NEVER_HALTED = {"params": {"halt": 0}}
 
 
 @pytest.fixture()
@@ -208,6 +211,15 @@ async def _a_recorded_session_of(db: AsyncSession, owner: Facilitator, tag: str)
     return session.id, take.id
 
 
+async def _an_opened_check_of(db: AsyncSession, session_id: str) -> None:
+    db.add(
+        IRExternalCheck(
+            release_id=f"r-{session_id}", session_id=session_id, version=1, takes=[], frases=[]
+        )
+    )
+    await db.commit()
+
+
 async def _claim_of(db: AsyncSession, owner: Facilitator, tag: str) -> dict:
     minted = await create_device(db)
     return {"json": {"code": minted.claim_code, "project_id": owner.project.id}}
@@ -248,6 +260,7 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     await question_service._store().put(owned_key, b"a equipe perguntou", "audio/mp4")
     absent_key = "internalization-room/questions/nao-existe-em-lugar-nenhum.m4a"
     session_id, take_id = await _a_recorded_session_of(db, owner, f"t{tag}")
+    await _an_opened_check_of(db, session_id)
     # One session per route: the mark and its undo are the same claim written and
     # withdrawn, so sharing a session would make each case depend on the other's order.
     attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
@@ -417,14 +430,14 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "POST",
-            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", {}),
-            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", NEVER_HALTED),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", NEVER_HALTED),
             "ids": (attend_id, absent),
         },
         {
             "method": "DELETE",
-            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", {}),
-            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", NEVER_HALTED),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", NEVER_HALTED),
             "ids": (unattend_id, absent),
         },
         {
@@ -432,14 +445,13 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{session_id}/release", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", {}),
             "ids": (session_id, absent),
-            #: The owner is refused too, and by a different door: 409 with the blockers
-            #: named, because a session this far from finished has no artifact to hand
-            #: over. That is the answer to somebody who *is* the owner — a stranger gets
-            #: 404, the same as for an id that never existed. The two codes differing is
-            #: what scoping means here, and asserting 200 would mean building a
-            #: release-ready session inside a scope audit: comprehension evaluated,
-            #: the floor met, rehearsal audio, a telling-back read by the analyst and a
-            #: report of playback. The audit would then fail whenever any of those changed,
+            #: The owner is refused too, and by a different door: 409 `DRAFT_NOT_APPROVED`,
+            #: because a session this far from approved has no manifest. That is the answer
+            #: to somebody who *is* the owner — a stranger gets 404, the same as for an id
+            #: that never existed. The two codes differing is what scoping means here, and
+            #: asserting 200 would mean approving a session inside a scope audit: the floor
+            #: met, rehearsal audio, a telling-back read by the analyst, a report of playback
+            #: and the approval. The audit would then fail whenever any of those changed,
             #: which is every one of them except scope.
             "owner_expects": 409,
         },
@@ -465,6 +477,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: file saying almost nothing rather than none at all. Nothing has to be built for
             #: it — no gate, no version, no analyst — so asking for 200 costs this audit
             #: nothing and is what makes the refusal beside it mean scope.
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/external-check/1", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/external-check/1", {}),
             "ids": (session_id, absent),
         },
         {
@@ -544,7 +562,10 @@ FILTERING_TEMPLATES = {
 #: **An exemption list in a scope audit is the thing that rots it**, so membership here is
 #: not taken on trust — the case below refuses an entry whose route could name a resource.
 #: A route earns this by having no path parameter and asking for nothing but the caller.
-NOTHING_TO_SCOPE = {("GET", f"{DESK}/coverage-legend")}
+NOTHING_TO_SCOPE = {
+    ("GET", f"{DESK}/coverage-legend"),
+    ("GET", f"{IR}/facilitator/canon-pins"),
+}
 
 
 def test_the_audit_is_not_empty() -> None:

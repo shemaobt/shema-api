@@ -16,10 +16,10 @@ from app.models.internalization_room import (
     ServedBooksResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_map, served_books
 from app.services.internalization_room.coverage import PANORAMA_PREFIX
-from app.services.internalization_room.earlier_passages import approved_pericopes
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.passage_lines import offered, panorama_line_for
 from app.services.internalization_room.voice_handles import clip_url
@@ -135,14 +135,14 @@ async def passages(
     than all of them, because the room's ElevenLabs key carries its own quota and a cold
     book should not spend it in one breath. Story order is the order they come back in.
 
-    Each passage says whether the team holds a live Release of it (`approved`), read once for
-    the whole book from the caller's team; the panorama is never approved.
+    Each passage says whether the team's draft of it stands approved (`approved`, ADR 0081),
+    read once for the whole book from the caller's team; the panorama is never approved.
     """
     settings = get_settings()
     spoken = floor(settings) if language is None else normalize(language)
     if spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
-    team_approved = await approved_pericopes(db, project_id=project_id)
+    team_approved = await standing_approvals(db, project_id)
     await db.commit()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
     every_passage = offered(book, spoken)

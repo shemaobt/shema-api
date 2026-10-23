@@ -1,5 +1,5 @@
 ---
-status: amended by ADR 0076: the demo team's halts are stamped, not lifted
+status: amended by ADR 0076: the demo team's halts are stamped, not lifted; reason amended by ADR 0093: the app no longer trusts `X-Forwarded-For` from any host
 date: 2026-10-16
 ---
 

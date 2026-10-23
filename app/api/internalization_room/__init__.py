@@ -4,12 +4,15 @@ from app.api.internalization_room import (
     archives,
     attended,
     back_translation,
+    canon_pins,
     conversation,
     coverage_channel,
     demo,
     devices,
+    external_check,
     fixed_lines,
     golden_doors,
+    outside_listeners,
     passages,
     questions,
     release,
@@ -36,6 +39,8 @@ for _sub in (
     takes,
     scene_rehearsals,
     release,
+    external_check,
+    outside_listeners,
     retroverification,
     conversation,
     devices,
@@ -44,6 +49,7 @@ for _sub in (
     text_seam_back_translation,
     archives,
     demo,
+    canon_pins,
 ):
     for route in _sub.router.routes:
         router.routes.append(route)

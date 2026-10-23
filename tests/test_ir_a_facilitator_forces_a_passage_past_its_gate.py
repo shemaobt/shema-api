@@ -46,6 +46,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
+    the_part_recorded_again,
 )
 from tests.room_harness import room_client
 
@@ -274,7 +275,7 @@ async def test_the_teams_own_approval_on_the_passage_of_case_1_is_still_refused_
     assert await releases_of_team(db_session, team.id) == []
 
 
-async def test_after_a_forced_version_1_a_clean_check_and_the_teams_approval_record_version_2_conferida_and_version_1_stays_forced(  # noqa: E501
+async def test_after_a_forced_version_1_the_part_recorded_again_a_clean_check_and_the_teams_approval_record_version_2_conferida_and_version_1_stays_forced(  # noqa: E501
     room, db_session, room_app
 ):
     team, tablet = await a_claimed_device(db_session)
@@ -282,6 +283,7 @@ async def test_after_a_forced_version_1_a_clean_check_and_the_teams_approval_rec
     desk, _facilitator = await at_the_desk(db_session, room_app, team)
     forced = await room.post(desk_passage_release(team.id, P), headers=desk, json=FORCE)
     assert forced.status_code == 200, forced.text
+    await the_part_recorded_again(db_session, session)
     await reported_playback(db_session, session, await checked_telling_back(db_session, session))
 
     approved = await room.post(team_release(session.id), headers=team_headers(tablet))

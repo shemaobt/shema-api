@@ -185,6 +185,15 @@ class PericopeStanding(BaseModel):
     approved: bool
 
 
+class BookStanding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    book: str
+    passage_total: int
+    approved_total: int
+    complete: bool
+
+
 class SessionBead(BaseModel):
     """One bead of a session card's mini necklace.
 
@@ -379,6 +388,19 @@ class DivideSegmentRequest(BaseModel):
     at_ms: int
 
 
+class GrainSwitchRequest(BaseModel):
+    """The grain the team chose: the passage told whole, or scene by scene."""
+
+    grain: Literal["whole", "scene"]
+    reopens_the_approved_draft: bool = Field(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, a switch is refused DRAFT_APPROVED."
+        ),
+    )
+
+
 class SegmentsResponse(BaseModel):
     """Every stretch that counts after a division or a replacement, for the tablet to redraw.
 
@@ -458,6 +480,14 @@ class BackTranslationProgress(BaseModel):
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    bring_back: list[int] = Field(
+        default_factory=list,
+        description=(
+            "The numbers of the joined parts whose scene rehearsal's frases «trazer de volta as "
+            "traduções do ensaio desta cena» can lay again: none of them stands on the part, no "
+            "sentence was re-recorded in it, and the rehearsal is of this session (ADR 0085)."
+        ),
+    )
     awaiting_segment_id: str | None = Field(
         default=None,
         description=(
@@ -484,6 +514,112 @@ class ApprovedDraftView(BaseModel):
     release_id: str
     approved_at: str
     forced: bool
+    #: How many **Outside listeners** this version's **Checagem externa** has numbered; none
+    #: before it is opened.
+    listeners: int = 0
+
+
+class ExternalCheckPart(BaseModel):
+    take_id: str
+    key: str | None
+
+
+class ExternalCheckFrase(BaseModel):
+    #: Null on a release written before frases were numbered.
+    frase: int | None
+    segment_id: str
+    take_id: str | None
+    starts_ms: int | None
+    ends_ms: int | None
+
+
+class ExternalCheckView(BaseModel):
+    """The **Checagem externa** of one approved version, as its first open copied it."""
+
+    check_id: str
+    version: int
+    opened_at: str
+    takes: list[ExternalCheckPart]
+    frases: list[ExternalCheckFrase]
+
+
+class ListenerRecordingView(BaseModel):
+    """A **Listener recording** as stored; no field ever carries its words."""
+
+    recording_id: str
+    kind: str
+    #: The frase a ``frase`` comment is on, as the tablet named it, and its **Frase number** in
+    #: the check (null on a stretch never numbered, or on a part).
+    segment_id: str | None
+    frase: int | None
+    content_type: str
+    duration_ms: int | None
+    size_bytes: int
+    sha256: str
+    stored_at: str
+
+
+class ListenerFraseView(BaseModel):
+    """One frase a listener answered: ok only when marked «está boa» with no comment."""
+
+    segment_id: str
+    frase: int | None
+    ok: bool
+    comments: list[ListenerRecordingView]
+
+
+class ListenerView(BaseModel):
+    """An **Outside listener**, known by the number alone, with what they recorded."""
+
+    number: int
+    started_at: str
+    finished_at: str | None
+    completed: bool
+    #: The newest retelling; the earlier ones stay stored.
+    retelling: ListenerRecordingView | None
+    whole: list[ListenerRecordingView]
+    frases: list[ListenerFraseView]
+
+
+class ListenerFactsFrase(BaseModel):
+    segment_id: str
+    frase: int | None
+    ok: bool
+    comments: int
+
+
+class ListenerFacts(BaseModel):
+    """What the team reads back of a listener: facts, never a recording of theirs."""
+
+    number: int
+    started_at: str
+    finished_at: str | None
+    completed: bool
+    retold: bool
+    whole: int
+    frases: list[ListenerFactsFrase]
+
+
+class ExternalCheckListenersView(BaseModel):
+    """A version's **Checagem externa** with its outside listeners, for the facilitator."""
+
+    check_id: str
+    version: int
+    opened_at: str
+    listeners: list[ListenerView]
+
+
+class NewListenerRequest(BaseModel):
+    #: Minted by the tablet for one «Novo ouvinte» tap and sent again with any resend of it.
+    attempt: str = Field(min_length=1, max_length=64)
+
+
+class MarkRequest(BaseModel):
+    segment_id: str
+
+
+class FinishRequest(BaseModel):
+    completed: bool
 
 
 class SessionStateResponse(BaseModel):
@@ -548,7 +684,8 @@ class PassageView(BaseModel):
     reference: str | None = None
     beads: int = 0
     absence_index: int = -1
-    #: The team holds a live Release of this passage, from any tablet, forced or not.
+    #: The team's draft of this passage stands under its latest live Release, approved from
+    #: any tablet, forced or not; a re-open clears it until the next approval (ADR 0081).
     approved: bool = False
 
 
@@ -971,6 +1108,10 @@ class FacilitatorSessionView(BaseModel):
     project_id: str
     team_name: str
     halt: str | None = None
+    #: The halt count a visit or its undo names (ADR 0091).
+    halts_raised: int
+    #: The standing warning's moment, ISO-8601 with an offset; a visit names it beside the halt
+    #: count (ADR 0091).
     warned_at: str | None = None
     #: ISO-8601 with an offset, like every other instant this module serves.
     attended_at: str | None = None
@@ -1094,11 +1235,16 @@ class TakeResponse(BaseModel):
     pericope: str = ""
     recorded_at: str = ""
     duration_ms: int | None = None
+    #: When a grain switch set this take aside; the tablet never shows such a take as a part.
+    set_aside_at: str | None = None
 
 
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+    #: The grain in force: the last switch's, else read off the current parts; null with no part
+    #: and no switch.
+    grain: Literal["whole", "scene"] | None = None
 
 
 class MotherTongueTake(BaseModel):
@@ -1149,6 +1295,8 @@ class SupersededTakeDownload(TakeDownload):
     """A **Superseded take**, with when the take that replaced it reached the server."""
 
     superseded_at: str
+    #: When a grain switch set it aside; its `superseded_at` too when no take replaced it.
+    set_aside_at: str | None = None
 
 
 class TakeDownloadsResponse(BaseModel):
@@ -1180,6 +1328,9 @@ class SceneRehearsalFacts(BaseModel):
     scene_said: Literal["recording", "later"] | None = None
     duration_ms: int | None = None
     content_type: str
+    #: The sha256 of the rehearsal's bytes, in hex: what a join sends as the part's fingerprint,
+    #: so the room keeps exactly those bytes.
+    sha256: str
     verified: bool = False
     recorded_at: str = ""
     sent_at: str | None = None
@@ -1527,6 +1678,8 @@ class RetroverificationTake(BaseModel):
     #: ISO-8601 with an offset, like every other instant this module serves.
     recorded_at: str | None = None
     url: str
+    #: ISO-8601 with an offset: when a grain switch set this take aside, null while none has.
+    set_aside_at: str | None = None
 
 
 class RetroverificationFile(BaseModel):
@@ -1734,3 +1887,10 @@ class SessionCoverageResponse(BaseModel):
     panorama: bool
     no_elements: bool
     ledger: str | None
+
+
+class CanonPinsResponse(BaseModel):
+    environment: str
+    deployed_pin: str
+    answered_at: datetime
+    pins: list[str]

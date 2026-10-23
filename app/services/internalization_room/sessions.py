@@ -9,6 +9,7 @@ from typing import Any, TypeVar
 from sqlalchemy import (
     JSON,
     ColumnElement,
+    Row,
     Text,
     and_,
     case,
@@ -23,13 +24,20 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
-from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    HaltMoved,
+    NotFoundError,
+    PassageClosed,
+    ValidationError,
+)
 from app.core.room_enums import HaltKind
 from app.core.served_books import SERVED_BOOKS
 from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
+    IRGrain,
     IRSession,
     IRSessionStatus,
     IRTake,
@@ -39,6 +47,7 @@ from app.db.models.internalization_room import (
 from app.models.internalization_room import PlayedTake
 from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room import halt, turn_instructions
+from app.services.internalization_room.approved_draft import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     CheckRound,
@@ -50,6 +59,7 @@ from app.services.internalization_room.canon.book_material import require_walkab
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map, not_served
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.check_block import keep_the_check_on_the_standing_release
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -68,6 +78,7 @@ from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
+    current_segments,
     final_segments,
     retire_every_segment,
     retire_the_segments_of,
@@ -75,7 +86,12 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
 )
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    grain_in_force,
+    of_the_grain_left_behind,
+    takes_of,
+)
 from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
 from app.services.project.facilitated_scope import confined_to, readable_project_ids
 from app.services.project.facilitates_project import facilitates_project
@@ -151,11 +167,12 @@ async def create_session(
     heard the book's panorama and asks for it again is opened the panorama (ENG-1237, folded
     from ENG-1282). Only a silence is filled, never a request overruled.
 
-    Raises ``ConflictError`` when the team has closed every passage that opens and none was
-    named. That is the end of the book, and it is a defined state rather than a wrap-around:
-    the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
-    a passage is the way back in. The end it names is the end of the walkable book, which is
-    the only end a team can reach — a passage `require_walkable` refuses can never be closed.
+    Raises ``ConflictError`` when the team has closed every passage that opens in every served
+    book and none was named. That is the end of the walk, and it is a defined state rather than
+    a wrap-around: the request is well formed and the team exists, so 409 rather than 400 or
+    404, and naming a passage is the way back in. The end it names is the end of the walkable
+    books, the only end a team can reach — a passage `require_walkable` refuses can never be
+    closed.
 
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A
@@ -169,7 +186,7 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        book=ROOM_BOOK,
+        book=None,
     )
     session = await _minted(
         db,
@@ -221,7 +238,8 @@ async def open_session(
     stands, because a facilitator's visit is its only exit (ADR 0039).
 
     An open that names no passage lands on the team's next passage of the book of the session
-    it came from, ``after``, and of Ruth when it came from none (ADR 0066).
+    it came from, ``after``, and of the team's Current book when it came from none (ADR 0066,
+    ADR 0094).
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -229,7 +247,7 @@ async def open_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        book=book_of(after.pericope) if after is not None else ROOM_BOOK,
+        book=book_of(after.pericope) if after is not None else None,
     )
     session = await _pointed(db, project_id, pericope, spoken)
     created = False
@@ -347,7 +365,7 @@ async def _resolved(
     after_panorama: bool,
     project_id: str | None,
     language: str | None,
-    book: str,
+    book: str | None,
 ) -> tuple[str, bool, str]:
     """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
@@ -478,7 +496,12 @@ async def _the_live_session(db: AsyncSession, session_id: str) -> IRSession:
 
 
 async def _land(
-    db: AsyncSession, session: IRSession, values: dict[str, Any], *, commit: bool = True
+    db: AsyncSession,
+    session: IRSession,
+    values: dict[str, Any],
+    *,
+    commit: bool = True,
+    again_if_unmoved: bool = False,
 ) -> IRSession:
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
@@ -494,22 +517,16 @@ async def _land(
     A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
     live and lands after the Zerar finds nothing to land on, and is answered as the session
     gone, with the unknown session's words, rather than as another turn's conflict (ADR 0052).
+
+    ``again_if_unmoved`` is for a write of the conversation: when what moved the version left the
+    session live and the conversation as this ``session`` read it, it was an approval's claim and
+    not another turn, and the write lands once more on the version stored now. One that lost to
+    another turn is still refused (ADR 0080).
     """
     await db.flush()
-    stmt = (
-        update(IRSession)
-        .where(IRSession.id == session.id, IRSession.version == session.version)
-        .values(**values, version=IRSession.version + 1)
-        .returning(
-            IRSession.version,
-            IRSession.coverage_state,
-            IRSession.status,
-            IRSession.ended_at,
-            IRSession.updated_at,
-        )
-        .execution_options(synchronize_session=False)
-    )
-    landed = (await db.execute(stmt)).one_or_none()
+    landed = await _write_at_the_version_read(db, session, values)
+    if landed is None and again_if_unmoved and await _took_the_version_if_unmoved(db, session):
+        landed = await _write_at_the_version_read(db, session, values)
     if landed is None:
         await refuse_if_archived(db, session)
         # Nothing matched, so nothing is pending: leave the transaction to the caller's
@@ -523,6 +540,41 @@ async def _land(
     return session
 
 
+async def _write_at_the_version_read(
+    db: AsyncSession, session: IRSession, values: dict[str, Any]
+) -> Row[Any] | None:
+    stmt = (
+        update(IRSession)
+        .where(IRSession.id == session.id, IRSession.version == session.version)
+        .values(**values, version=IRSession.version + 1)
+        .returning(
+            IRSession.version,
+            IRSession.coverage_state,
+            IRSession.status,
+            IRSession.ended_at,
+            IRSession.updated_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    return (await db.execute(stmt)).one_or_none()
+
+
+async def _took_the_version_if_unmoved(db: AsyncSession, session: IRSession) -> bool:
+    """Take the version stored now when the session is live and its conversation is the one
+    ``session`` read; read in one statement, so a Zerar landing in between is never missed."""
+    stored = (
+        await db.execute(
+            select(IRSession.version, IRSession.messages, IRSession.archive_id).where(
+                IRSession.id == session.id
+            )
+        )
+    ).one()
+    if stored.archive_id is not None or stored.messages != session.messages:
+        return False
+    set_committed_value(session, "version", stored.version)
+    return True
+
+
 async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
     """Take this session's version for a write that lands beside the session rather than on
     it, a release minted on it, so a Zerar or a turn that moved it first refuses this one the
@@ -533,6 +585,21 @@ async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
     the team speaking.
     """
     await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
+
+
+async def hold_the_session_row(db: AsyncSession, session: IRSession) -> None:
+    """Take the session's row until this transaction ends, and read it again under it.
+
+    The approval takes it before it composes, and every write of the telling-back takes it with
+    its conditional write of the row (`_written_forward`), so the two land one at a time and the
+    later one sees the earlier (ADR 0081).
+    """
+    await db.execute(
+        select(IRSession)
+        .where(IRSession.id == session.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
 
 
 async def refuse_if_archived(db: AsyncSession, session: IRSession) -> None:
@@ -670,7 +737,7 @@ async def append_exchange(
         guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
-    return await _land(db, session, values, commit=commit)
+    return await _land(db, session, values, commit=commit, again_if_unmoved=True)
 
 
 def _the_turns_times() -> dict[str, int]:
@@ -995,7 +1062,9 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     if await is_the_demo_team(db, session.project_id):
         await db.flush()
         await db.refresh(session, ["status", "halts_raised", "warned_at", "attended_at"])
-        return await attend(db, session, by=None)
+        return await attend(
+            db, session, by=None, halts_raised=session.halts_raised, warned_at=session.warned_at
+        )
     return await _written(db, session, commit=True)
 
 
@@ -1077,20 +1146,38 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     return session.person_arrived_at
 
 
-async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRSession:
+async def attend(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    by: str | None,
+    halts_raised: int,
+    warned_at: datetime | None,
+) -> IRSession:
     """A facilitator says they went to this room: a Visit, which writes nothing on the status.
 
     The visit is the only exit a warning has (ADR 0039): it ends because ``attended_at`` is now
-    set, and undoing the visit brings it back. A blocking halt is the team's to lift, and the
+    set, and undoing the visit brings it back, except on a demo team, whose undo is attended
+    again at once (ADR 0064). A blocking halt is the team's to lift, and the
     visit only takes the room off the queue (ADR 0076).
+
+    **It names the halt it answers** (ADR 0091): ``halts_raised`` and ``warned_at`` as the
+    Desk read them. The count moves with a blocking halt only (ADR 0039), and ``warned_at``
+    with a warning. The stamp is written only while both are still the room's, under the
+    row's lock, so a halt raised after the read is never hidden by a visit to the one before.
 
     **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
     every tap would record when somebody last touched the Desk rather than when they went to
     the room — and the moment of the visit is the whole of what this field is for.
 
     ``by`` is None when nobody went: the server stamps a demo team's halt itself (ADR 0064).
+
+    ``updated_at`` is written its own value: a visit is not the team's act, and the team's
+    Current book reads its latest session by that column (ADR 0094).
     """
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
     _visited(session, by=by)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
@@ -1103,19 +1190,57 @@ def _visited(session: IRSession, *, by: str | None) -> None:
         session.attended_by = by
 
 
-async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
+async def unattend(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> IRSession:
     """Withdraw the mark: nobody went. The stamps clear and the status is not written.
 
     A halted room is back on the queue, and a warning the visit ended stands again: it stands
-    while ``warned_at`` is set and nobody is marked as having gone.
+    while ``warned_at`` is set and nobody is marked as having gone. A demo team's halt is
+    stamped again by the server at once, because it never calls a person (ADR 0064); a visit
+    to a demo room that never halted clears like any other. Whether a halt stands is read
+    under the row's lock, so a halt raised or lifted after ``session`` was read is the one it
+    answers.
+
+    Like the visit, it names the halt the Desk read (ADR 0091): an undo of a visit to an older
+    halt would clear a colleague's visit to the newer one.
+
+    ``updated_at`` is left as it was, as the visit left it (ADR 0094). The demo read comes
+    before the stamps clear, because a read flushes what is pending and the flush would move it.
     """
+    demo = await is_the_demo_team(db, session.project_id)
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
     if session.attended_at is None:
         return session
     session.attended_at = None
     session.attended_by = None
+    if demo and halt.standing(session) is not None:
+        _visited(session, by=None)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def _the_halt_held(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> None:
+    """Read the room again under its row lock, and refuse a write naming a halt that moved.
+
+    The lock holds until the visit's commit, so nothing raises or lifts a halt between this
+    comparison and the write. ``warned_at`` is compared as the instant it is, never as stored
+    text, which a row written by SQL may spell differently from a bound value.
+    """
+    held = (
+        await db.execute(
+            select(IRSession)
+            .where(IRSession.id == session.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if (held.halts_raised, held.warned_at) != (halts_raised, warned_at):
+        raise HaltMoved(held.halts_raised, held.warned_at)
 
 
 def back_translation_of(session: IRSession) -> BackTranslationState:
@@ -1212,6 +1337,8 @@ async def save_back_translation(
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
+
+    The state written is the standing version's check too, in the same transaction (ADR 0081).
     """
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
@@ -1235,6 +1362,7 @@ async def save_back_translation(
     for name, value in vars(BackTranslationState.model_validate(written)).items():
         if getattr(state, name) != value:
             setattr(state, name, value)
+    await keep_the_check_on_the_standing_release(db, session, state)
     if commit:
         await db.commit()
         await db.refresh(session)
@@ -1384,3 +1512,77 @@ async def start_the_translation_over(db: AsyncSession, session: IRSession) -> No
     await started_over(state)
     await retire_every_segment(db, session.id)
     await save_back_translation(db, session, state, rule=started_over)
+
+
+async def switch_the_grain(
+    db: AsyncSession, session: IRSession, grain: IRGrain, *, reopens_the_approved_draft: bool
+) -> bool:
+    """The team moves between the passage told whole and scene by scene, and says whether it did.
+
+    A switch to the grain in force changes nothing and asks nothing, not even whether the draft
+    stands approved. A real one records the grain and its time on the session and stamps every
+    rehearsal take the session holds with that time: the earlier grain's parts, their superseded
+    takes and a whole that had already stepped aside, since none was recorded after the switch.
+    The stamp is set once and never cleared, so a switch back restores nothing (ADR 0096).
+
+    It stamps rather than comparing **Recording times** with the switch, because a joined part
+    keeps the server's clock and a tablet take its own, and a drifting clock would put a take on
+    the wrong side.
+
+    The telling-back starts over as «recomeçar a tradução» does, but only when there is one to
+    start over: her switch restarts only over frases or checks, and an empty attempt would show
+    the consultant one nobody made.
+
+    The session's row is held through the helper the approval holds it with, and the grain and
+    the approved draft are read under it: an approval composing while the switch waits lands
+    first and the switch then refuses it without the armed tap, and a rival switch to the same
+    grain finds it in force. Nothing inside reaches the bucket (ADR 0081, ADR 0089).
+
+    It sweeps the earlier grain once more after its commit: a keep whose take committed while
+    the stamp ran, and which read the session before the switch committed, stamped nothing.
+    """
+    await hold_the_session_row(db, session)
+    if grain_in_force(session, current_parts(await takes_of(db, session.id))) is grain:
+        await db.commit()
+        return False
+    if not reopens_the_approved_draft:
+        await refuse_to_reopen_the_approved_draft(db, session)
+    at = datetime.now(UTC)
+    session.grain = grain
+    session.grain_switched_at = at
+
+    unstamped = (
+        IRTake.session_id == session.id,
+        IRTake.kind == IRTakeKind.ENSAIO,
+        IRTake.set_aside_at.is_(None),
+    )
+    await db.execute(update(IRTake).where(*unstamped).values(set_aside_at=at))
+    state = back_translation_of(session)
+    if state.checks or state.checked or await current_segments(db, session.id):
+        await start_the_translation_over(db, session)
+    else:
+        await db.commit()
+
+    earlier = IRTake.ordinal.is_not(None) if grain is IRGrain.WHOLE else IRTake.ordinal.is_(None)
+    await db.execute(update(IRTake).where(*unstamped, earlier).values(set_aside_at=at))
+    await db.commit()
+    await db.refresh(session)
+    return True
+
+
+async def set_aside_by_the_grain_in_force(
+    db: AsyncSession, session: IRSession, take: IRTake
+) -> None:
+    """A rehearsal take of the grain a **Grain switch** left behind is kept and set aside at once.
+
+    The Outbox drains one part's recordings at a time, so a take recorded before the switch can
+    land after it. It is set aside and never refused, because the tablet would hold a refused
+    row forever. It carries the time of the switch that made its grain the earlier one, which is
+    the latest (ADR 0096).
+    """
+    if take.set_aside_at is not None:
+        return
+    await db.refresh(session, ["grain", "grain_switched_at"])
+    if of_the_grain_left_behind(session, take.kind, take.ordinal):
+        take.set_aside_at = session.grain_switched_at
+        await db.commit()

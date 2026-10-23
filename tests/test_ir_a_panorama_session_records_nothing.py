@@ -178,6 +178,20 @@ async def test_starting_the_translation_over_under_a_panorama_is_refused(
     assert [one.id for one in await final_segments(db_session, session.id)] == before
 
 
+async def test_a_grain_switch_under_a_panorama_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession, bucket: MemoryStore
+) -> None:
+    session, _, _ = await _a_panorama_with_a_told_stretch(db_session)
+    before = [one.id for one in await final_segments(db_session, session.id)]
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session.id}/grain", headers=HEADERS, json={"grain": "scene"}
+    )
+
+    _refused(refused)
+    assert [one.id for one in await final_segments(db_session, session.id)] == before
+
+
 async def test_the_text_seam_will_not_open_a_back_translation_session_over_a_panorama(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

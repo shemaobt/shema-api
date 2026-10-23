@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
+    IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
     IRSession,
@@ -54,6 +55,8 @@ DESK = "/api/facilitator"
 P = "P03"
 AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 FORCE = {"json": {"force": True}}
+#: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
+NEVER_HALTED = {"params": {"halt": 0}}
 
 
 class Bucket:
@@ -183,7 +186,10 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
         crc32c="AAAAAA==",
         content_type="audio/mp4",
     )
-    db.add_all([question, take])
+    check = IRExternalCheck(
+        release_id=f"r-{tag}", session_id=session.id, version=1, takes=[], frases=[]
+    )
+    db.add_all([question, take, check])
     await db.commit()
     await bucket.put(question.audio_key, b"a equipe perguntou", "audio/mp4")
     await bucket.put(f"voz/{tag}", b"a voz falou", "audio/mpeg")
@@ -234,8 +240,8 @@ def _writes_on(team: Team, claim_code: str) -> list[tuple[str, str, dict]]:
     return [
         ("POST", f"{IR}/facilitator/questions/{team.question}/reply", AUDIO),
         ("POST", f"{IR}/facilitator/questions/{team.question}/resolve", {}),
-        ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", {}),
-        ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", {}),
+        ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
+        ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
         ("POST", f"{DESK}/devices/{team.device}/attended", {}),
         ("DELETE", f"{DESK}/devices/{team.device}/attended", {}),
         ("POST", f"{DESK}/devices/claim", {"json": {"code": claim_code, "project_id": team.id}}),
@@ -347,6 +353,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
         f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
         f"{IR}/facilitator/sessions/{session}/takes/downloads",
+        f"{IR}/facilitator/sessions/{session}/external-check/1",
     ]
 
     values = {"session_id": session, "number": 0, "version": 1}
@@ -369,7 +376,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9]):
+    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9], reads[11]):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
@@ -460,7 +467,9 @@ async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attende
         f"{IR}/facilitator/questions/{desk['a'].question}/reply", headers=reader, **AUDIO
     )
     attended = await client.post(
-        f"{IR}/facilitator/sessions/{desk['a'].session}/attended", headers=reader
+        f"{IR}/facilitator/sessions/{desk['a'].session}/attended",
+        params={"halt": 0},
+        headers=reader,
     )
     device_attended = await client.post(
         f"{DESK}/devices/{desk['a'].device}/attended", headers=reader
@@ -529,6 +538,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),
         (f"{IR}/facilitator/sessions/{team.session}/releases/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/retroverificacao", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/external-check/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", {}),

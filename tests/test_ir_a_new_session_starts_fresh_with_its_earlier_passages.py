@@ -41,7 +41,7 @@ from tests.release_harness import (
     team_headers,
     team_release,
 )
-from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.room_harness import room_client, the_bucket_is_in_memory, upload_a_part
 from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
 
@@ -339,6 +339,25 @@ async def test_the_first_passage_of_a_book_and_the_panorama_carry_no_earlier_pas
         "P01": "not_worked",
         "P02": "approved",
     }, "o controle: a sala carimba as passagens anteriores de uma passagem que as tem"
+
+
+async def test_an_earlier_passage_whose_draft_was_re_opened_is_started_not_approved(
+    client, db_session, per_request
+) -> None:
+    """ENG-1260: the Guide reads the one rule of an **Approved passage** (ADR 0081)."""
+    team, tablet = await a_claimed_device(db_session)
+    p02 = await approved(client, db_session, team, tablet, "P02")
+    again = await upload_a_part(
+        client, p02.id, part=None, audio=b"recorded again", headers=team_headers(tablet)
+    )
+    assert again.status_code == 200, again.text[:300]
+
+    third = await opened(client, tablet, {"pericope": "P03"})
+
+    assert await stored_stamp(per_request, third["session_id"]) == {
+        "P01": "not_worked",
+        "P02": "started",
+    }
 
 
 async def test_the_golden_doors_earlier_passages_win_over_the_rooms_own_reading(

@@ -16,6 +16,10 @@ from sqlalchemy import ColumnElement
 
 from app.db.models.internalization_room import (
     IRCoverageEvent,
+    IRExternalCheck,
+    IRExternalListener,
+    IRExternalMark,
+    IRExternalRecording,
     IRRelease,
     IRSceneFrase,
     IRSceneRehearsal,
@@ -34,6 +38,10 @@ Stamped = (
     | type[IRSceneRehearsal]
     | type[IRSceneFrase]
     | type[IRSceneRestart]
+    | type[IRExternalCheck]
+    | type[IRExternalListener]
+    | type[IRExternalRecording]
+    | type[IRExternalMark]
 )
 
 

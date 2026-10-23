@@ -2,19 +2,26 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     SupersededTakeDownload,
     TakeDownload,
     TakeDownloadsResponse,
 )
+from app.services.internalization_room.approved_draft import (
+    approved_draft,
+    latest_release,
+    stands_on,
+)
 from app.services.internalization_room.release import (
-    _latest_release,
     _mother_tongue,
     release_name,
+    released_as,
 )
 from app.services.internalization_room.takes import (
     DOWNLOAD_LINK_SECONDS,
@@ -22,28 +29,66 @@ from app.services.internalization_room.takes import (
     extension,
     is_declared,
     part_positions,
+    set_aside_moment,
     signed_url,
     takes_of,
 )
 from app.utils.stored_time import as_utc
 
 
-async def _release_id(db: AsyncSession, session: IRSession) -> str:
+async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake]) -> str:
+    """The id of the version this draft stands approved under, or the name the next will have.
+
+    A file names a release only while the draft stands under it (ADR 0081): after a re-open the
+    takes are the next version's draft, numbered on from the passage's last. A session a Zerar
+    archived is no draft any more, and keeps the name of the release its takes were approved
+    as, while they still stand on it.
+    """
+    standing = await approved_draft(db, session)
+    if standing is not None:
+        return released_as(standing)
+    if session.archive_id is not None:
+        own = await db.scalar(
+            select(IRRelease)
+            .where(IRRelease.session_id == session.id)
+            .order_by(IRRelease.version.desc())
+            .limit(1)
+        )
+        if own is not None and stands_on(own, parts):
+            return released_as(own)
     latest = (
         None
         if session.project_id is None
-        else await _latest_release(db, session.project_id, session.pericope)
+        else await latest_release(db, session.project_id, session.pericope)
     )
-    if latest is not None:
-        return str(latest.packet.get("release_id") or latest.id)
-    return release_name(await _mother_tongue(db, session), session.pericope, 1)
+    version = latest.version + 1 if latest is not None else 1
+    return release_name(await _mother_tongue(db, session), session.pericope, version)
+
+
+def part_keys_by_number(parts: list[IRTake]) -> dict[int | None, str]:
+    """The **Part key** under each number the current parts carry, `whole` when told whole."""
+    return {
+        None: "whole",
+        **{
+            ordinal: "whole" if position is None else f"S{position}"
+            for ordinal, position in part_positions(parts).items()
+        },
+    }
+
+
+def file_name(release_id: str, key: str, take: IRTake, *, superseded: bool = False) -> str:
+    """The name a take downloads under, and the name the **Manifest** gives it (ADR 0073)."""
+    stem = f"{release_id}-{key}"
+    if superseded:
+        stem += f"-substituida-{take.id}"
+    return f"{stem}.{extension(take.content_type)}"
 
 
 def _with_bytes(take: IRTake) -> bool:
     return take.kind is IRTakeKind.ENSAIO and not is_declared(take)
 
 
-def _link(take: IRTake, filename: str) -> Awaitable[str]:
+def download_link(take: IRTake, filename: str) -> Awaitable[str]:
     return signed_url(
         take.storage_key,
         take.content_type,
@@ -56,16 +101,12 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     """The session's rehearsal takes named the way Refine receives them, with hour-long links."""
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    keys = {
-        None: "whole",
-        **{
-            ordinal: "whole" if position is None else f"S{position}"
-            for ordinal, position in part_positions(parts).items()
-        },
-    }
-    release_id = await _release_id(db, session)
+    release_id = await _release_id(db, session, parts)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
+    by_number = part_keys_by_number(parts)
+    keys = {take.id: by_number[take.ordinal] for take in rehearsals if take.set_aside_at is None}
+    keys |= _keys_as_they_stood(rehearsals)
     replaced_at = {
         take.id: as_utc(successor.created_at).isoformat()
         for take, successor in _each_with_its_successor(takes)
@@ -76,26 +117,28 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         if take.kind is IRTakeKind.ENSAIO and take.ordinal is not None
     )
     for take in rehearsals:
-        if take.id not in live_ids and take.id not in replaced_at:
+        if take.id in live_ids or take.id in replaced_at:
+            continue
+        aside = set_aside_moment(take)
+        if aside is not None:
+            replaced_at[take.id] = aside
+        else:
             later = [at for at in numbered_at if at > as_utc(take.created_at)]
             replaced_at[take.id] = (later or numbered_at)[0].isoformat()
 
-    def filename(take: IRTake) -> str:
-        stem = f"{release_id}-{keys[take.ordinal]}"
-        if take.id not in live_ids:
-            stem += f"-substituida-{take.id}"
-        return f"{stem}.{extension(take.content_type)}"
-
-    names = [filename(take) for take in rehearsals]
+    names = [
+        file_name(release_id, keys[take.id], take, superseded=take.id not in live_ids)
+        for take in rehearsals
+    ]
     links = await asyncio.gather(
-        *(_link(take, name) for take, name in zip(rehearsals, names, strict=True))
+        *(download_link(take, name) for take, name in zip(rehearsals, names, strict=True))
     )
     live: list[TakeDownload] = []
     superseded: list[SupersededTakeDownload] = []
     for take, name, link in zip(rehearsals, names, links, strict=True):
         entry = TakeDownload(
             take_id=take.id,
-            key=keys[take.ordinal],
+            key=keys[take.id],
             filename=name,
             url=link,
             sha256=take.sha256,
@@ -107,7 +150,11 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
             live.append(entry)
         else:
             superseded.append(
-                SupersededTakeDownload(**entry.model_dump(), superseded_at=replaced_at[take.id])
+                SupersededTakeDownload(
+                    **entry.model_dump(),
+                    superseded_at=replaced_at[take.id],
+                    set_aside_at=set_aside_moment(take),
+                )
             )
     return TakeDownloadsResponse(
         session_id=session.id,
@@ -116,6 +163,26 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         takes=live,
         superseded_takes=superseded,
     )
+
+
+def _keys_as_they_stood(takes: list[IRTake]) -> dict[str, str]:
+    """Each take a **Grain switch** set aside, keyed by its place among the takes it stamped.
+
+    The current parts no longer hold its number, so its key is read off the takes the same
+    switch set aside with it: the numbers among them in reading order, from one.
+    """
+    stamped: dict[datetime, list[IRTake]] = {}
+    for take in takes:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is not None:
+            stamped.setdefault(take.set_aside_at, []).append(take)
+    keys: dict[str, str] = {}
+    for group in stamped.values():
+        numbers = sorted({take.ordinal for take in group if take.ordinal is not None})
+        for take in group:
+            keys[take.id] = (
+                "whole" if take.ordinal is None else f"S{numbers.index(take.ordinal) + 1}"
+            )
+    return keys
 
 
 def _each_with_its_successor(takes: list[IRTake]) -> list[tuple[IRTake, IRTake]]:
