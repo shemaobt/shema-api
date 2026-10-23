@@ -114,7 +114,7 @@ async def refuse_a_keep_that_reopens_the_approved_draft(
             audio,
             ordinal=chunk_index,
             pass_number=pass_number,
-            joined=origin is not None,
+            origin=origin,
         )
         is None
     ):

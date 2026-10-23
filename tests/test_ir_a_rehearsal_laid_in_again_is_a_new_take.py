@@ -235,6 +235,27 @@ async def test_two_tablets_joining_the_same_rehearsal_at_the_same_pass_leave_one
     assert len(await _takes_of_part(client, session.id, 2)) == 1
 
 
+async def test_a_second_tablet_joining_the_rehearsal_already_in_the_part_at_its_next_pass_leaves_one_take(  # noqa: E501
+    client, db_session
+) -> None:
+    session, ra, _ = await _two_rehearsals(db_session)
+    other = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    from_x = await _kept(client, session.id, part=2, audio=A, pass_number=1, origin=ra)
+
+    from_y = await _kept(
+        client,
+        session.id,
+        part=2,
+        audio=A,
+        pass_number=2,
+        origin=ra,
+        headers=other.headers | {"X-Room-Device": "tablet-y"},
+    )
+
+    assert from_y == from_x, "a segunda tablet juntando o mesmo ensaio deixava duas tomadas"
+    assert len(await _takes_of_part(client, session.id, 2)) == 1
+
+
 async def test_a_late_resend_of_an_earlier_join_does_not_take_the_part_back(
     client, db_session
 ) -> None:
@@ -304,16 +325,18 @@ async def test_a_resend_of_a_join_already_kept_over_an_approved_draft_is_not_ref
     client, db_session
 ) -> None:
     session, ra, rb = await _two_rehearsals(db_session)
-    one = await _kept(client, session.id, part=1, audio=CENA_1, pass_number=1, origin=ra)
+    scene_1 = await a_scene_rehearsal(db_session, session, 3)
+    one = await _kept(client, session.id, part=1, audio=CENA_1, pass_number=1, origin=scene_1.id)
     await _told_over(db_session, session, one, 1)
+    first = await _kept(client, session.id, part=2, audio=A, pass_number=1, origin=ra)
     two = await _kept(client, session.id, part=2, audio=B, pass_number=2, origin=rb)
     await _told_over(db_session, session, two, 2)
     await checked_heard_and_approved(client, db_session, session.id)
 
-    resent = await _keep(client, session.id, part=2, audio=B, pass_number=2, origin=rb)
+    late = await _keep(client, session.id, part=2, audio=A, pass_number=1, origin=ra)
 
-    assert resent.status_code == 200, resent.text
-    assert resent.json()["take_id"] == two
+    assert late.status_code == 200, late.text
+    assert late.json()["take_id"] == first
     assert (await _approval(client, session.id) or {}).get("version") == 1
 
 

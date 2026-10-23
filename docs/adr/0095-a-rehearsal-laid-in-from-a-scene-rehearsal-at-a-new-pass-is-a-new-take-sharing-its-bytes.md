@@ -15,10 +15,13 @@ take as a new one (`src/draft/join.ts:225-240` at 18fa7c4).
 
 Decided (the Definer, 2026-10-23, Q38):
 
-- A take laid in from a scene rehearsal (one carrying `origin`) is the same take only under the
-  same bytes, the same part number and the same pass: a resend from the Outbox, or a second
-  tablet's same join. Otherwise it is a new row. A → B → A is three takes, and the last is the
-  part.
+- A take laid in from a scene rehearsal (one carrying `origin`) is the part standing under its
+  number when that part is already this rehearsal, with the same bytes, whatever pass the tablet
+  counted: a second tablet joins above the pass it last listed, and must land on the one part
+  (the Orchestrator, 2026-10-23, from ENG-1385's acceptance 7). Otherwise it is the same take
+  only under the same bytes, part number and pass: a resend from the Outbox, including a late
+  one of a rehearsal the team swapped away from, which never takes the part back. Otherwise it
+  is a new row. A → B → A is three takes, and the last is the part.
 - A take recorded as itself is still its bytes, once per session, and never answers a joined row.
 - The joined rows of the same bytes share one stored object: the storage key stays the bytes'
   hash.
@@ -44,3 +47,6 @@ Consequences: two rows can share one stored object, and nothing in the room dele
 objects. The Desk's downloads list each row. A joined take sent with no number or no pass is the
 same take as an earlier one sent the same way, and the race guard reads a missing number or pass
 as one value, so two such deliveries at once still leave one row.
+Two tablets joining the same rehearsal at different passes at the same instant both miss the
+standing part and leave two rows of the same bytes under that number; the newer is the part and
+both hold the same audio. No index can say which take is standing.

@@ -278,7 +278,7 @@ async def store_take(
         checked.sha256,
         ordinal=ordinal,
         pass_number=pass_number,
-        joined=origin is not None,
+        origin=origin,
         past_the_set_aside=past_the_set_aside,
     )
     if already is not None:
@@ -328,7 +328,7 @@ async def store_take(
             checked.sha256,
             ordinal=ordinal,
             pass_number=pass_number,
-            joined=origin is not None,
+            origin=origin,
             past_the_set_aside=past_the_set_aside,
         )
         if winner is None:
@@ -346,7 +346,7 @@ async def the_take_already_kept(
     *,
     ordinal: int | None = None,
     pass_number: int | None = None,
-    joined: bool = False,
+    origin: str | None = None,
 ) -> IRTake | None:
     return await _the_same_take(
         db,
@@ -355,7 +355,7 @@ async def the_take_already_kept(
         recording_digest(audio),
         ordinal=ordinal,
         pass_number=pass_number,
-        joined=joined,
+        origin=origin,
         past_the_set_aside=True,
     )
 
@@ -368,22 +368,32 @@ async def _the_same_take(
     *,
     ordinal: int | None = None,
     pass_number: int | None = None,
-    joined: bool = False,
+    origin: str | None = None,
     past_the_set_aside: bool = False,
 ) -> IRTake | None:
     """The take these bytes already are: a resend, or a second tablet's same join.
 
-    A part laid in from a scene rehearsal is that take only under the same number and pass as
-    well, because a swap back to an earlier rehearsal sends bytes the session already holds and
-    is a new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
+    A part laid in from a scene rehearsal is the part standing under its number when that part
+    is already this rehearsal's bytes, whatever pass the tablet counted, so a second tablet's
+    join lands on it. Otherwise it is that take only under the same number and pass as well,
+    because a swap back to an earlier rehearsal sends bytes the session already holds and is a
+    new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
     """
+    if origin is not None:
+        standing = [
+            part
+            for part in current_parts(await takes_of(db, session_id))
+            if part.ordinal == ordinal
+        ]
+        if standing and (standing[0].origin, standing[0].sha256) == (origin, sha256):
+            return standing[0]
     same = (
         (
             IRTake.origin.is_not(None),
             IRTake.ordinal.is_not_distinct_from(ordinal),
             IRTake.pass_number.is_not_distinct_from(pass_number),
         )
-        if joined
+        if origin is not None
         else (IRTake.origin.is_(None),)
     )
     query = select(IRTake).where(
