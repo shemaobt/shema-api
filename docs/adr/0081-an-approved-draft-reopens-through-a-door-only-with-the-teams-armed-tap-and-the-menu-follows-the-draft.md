@@ -18,7 +18,11 @@ Only a change of takes re-opens a draft (Marcia, 1 October; ENG-1256's acceptanc
 the Definer's answers of 23 October): a draft is one session's rehearsal takes by
 fingerprint in their order. A telling told again, a stretch divided, a verdict, a question
 answered, the nuances, the listening and the Restart are the approved version's check state
-and leave it approved. This amends ADR 0078, which compared the whole content.
+and leave it approved. This amends ADR 0078, which compared the whole content. While the takes
+are a version's, every door naming it serves its stored packet, hash unchanged, and a verdict
+that lands over it is written into that release's check block, outside the hash (ADR 0020),
+keeping who forced it: one check state for every reader. Asking is a comparison of takes read
+off the rows, never a composed packet.
 
 The book wheel's and the Desk's `approved` mean that the draft stands under the passage's
 latest live release, not that a release exists, so a re-open clears «●» on every tablet on
@@ -32,9 +36,11 @@ over an approved draft, because her recording-screen take has no `finalized` che
 twice (ADR 0089) and a draft approved during the bucket write would slip past; keeping the
 wheel on "a release exists", because her menu reads `finalizedAt`, which a re-open clears.
 
-Consequences: the wheel and the Desk compose one packet per passage with a release. The
-Desk's count of approved passages drops when a team re-opens. An approval racing a keep (the
+Consequences: the wheel, the Desk, the Guide's earlier passages and the retroverification file
+read one rule, at a constant cost per team read whatever the number of released passages. The
+Desk's count of approved passages drops when a team re-opens. A team approving again over a
+standing version with a fresh open finding is answered with that version, and a facilitator's
+force over it records no force, since nothing new is drafted. An approval racing a keep (the
 release minted between the keep's check and its row) lands the take without the flag: the
-storage primitive knows nothing of drafts, and the window is the bucket write. The Guide's
-earlier-passages fact still reads "has a release". A whole take over numbered parts is kept
-but set aside until the grain door (ENG-1765) makes it the draft.
+storage primitive knows nothing of drafts, and the window is the bucket write. A whole take
+over numbered parts is kept but set aside until the grain door (ENG-1765) makes it the draft.

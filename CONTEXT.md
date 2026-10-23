@@ -405,7 +405,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. The team's approval is refused while any **Blocker** stands, an open finding or an unheard part among them, and records the device that approved; a facilitator's **Forced release** passes them.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval over the same takes returns the release that already exists, whatever the telling-back says since, because only a change of takes makes a new draft (ADR 0081). A new draft's approval is refused while any **Blocker** stands, an open finding or an unheard part among them, and records the device that approved; a facilitator's **Forced release** passes them.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
