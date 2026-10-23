@@ -434,8 +434,9 @@ class IRTake(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
-    #: Whether `recorded_at` is the take's own **Recording time** — the tablet's, or the server's
-    #: for a joined or spliced part — and not an arrival standing in for one.
+    #: Whether `recorded_at` is the take's own **Recording time** — the tablet's, the server's
+    #: for a joined part, or a spliced part's when the part it was laid into has one — and not
+    #: an arrival standing in for one.
     recorded_at_known: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

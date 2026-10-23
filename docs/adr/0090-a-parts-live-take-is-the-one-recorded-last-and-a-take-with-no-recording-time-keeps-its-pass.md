@@ -15,14 +15,18 @@ Decided (ENG-1760, Henok on 2026-10-22):
 - Under one part number the live take is the one recorded last by its **Recording time**
   (ADR 0072). Two takes with the same Recording time are read by pass, then by arrival. A take
   recorded earlier is never the part because its pass is higher.
-- A take has a Recording time of its own when the tablet sent one, and when it is a joined or a
-  spliced part, whose time is the server's (ADR 0072). A take sent with no time, a declared
-  text-seam part and a take stored before ENG-1273 that was neither joined nor spliced have
-  none: they keep the pass order among themselves and read before every take that has one.
+- A take has a Recording time of its own when the tablet sent one, and when it is a joined
+  part, whose time is the server's (ADR 0072). A spliced part has one exactly when the part it
+  was laid into has one: a sentence laid into a part with none keeps that part's order, so the
+  part recorded again after it is still the part. A take sent with no time, a declared
+  text-seam part and a take stored before ENG-1273 that was neither joined nor spliced into a
+  part with a Recording time have none: they keep the pass order among themselves and read
+  before every take that has one.
 - The take says which it is in a stored mark, `recorded_at_known`, written when the take is
   stored and backfilled for the rows already kept: true for a joined part, for a row whose
-  Recording time differs from its arrival, and for a take a laid-in sentence names. Every other
-  row stays false and keeps the order it was read in until now.
+  Recording time differs from its arrival, and for a take a laid-in sentence names when the
+  take it was laid into is true, read in the order the sentences were laid. Every other row
+  stays false and keeps the order it was read in until now.
 - One order serves every reader: the part, the gate, the **Packet**, the listening ledger, the
   downloads' names, the tablet's list and the consultant's read. Retro takes read it too. The
   mark is never served, and the Recording time served is unchanged.

@@ -479,8 +479,9 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
 
     Under one ordinal the take recorded last reads last, by its **Recording time**, and the
     pass then the arrival break a tie. A take with no Recording time of its own — sent with
-    none, or stored before ENG-1273 and neither joined nor spliced — reads before every take
-    that has one, and among its kind by the pass, which is the order it was read in before.
+    none, stored before ENG-1273 and not joined, or spliced into a part like it — reads before
+    every take that has one, and among its kind by the pass, which is the order it was read
+    in before.
 
     Every key is nullable and the placement is named rather than left to the engine:
     a take with no ordinal belongs to no stretch — the undivided passage, or a recording

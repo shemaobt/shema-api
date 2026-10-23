@@ -442,6 +442,34 @@ async def test_a_sentence_laid_into_a_part_timed_on_the_tablet_keeps_the_spliced
     assert the_tablets_part(await tablet_list(client, credential, session.id)) == spliced
 
 
+async def test_a_part_sent_with_no_recording_time_and_spliced_is_still_replaced_by_its_next_pass(
+    client, db_session, room_app, team, session
+):
+    project, credential = team
+    part = await send(client, credential, session.id, recording(4, 21), pass_number=1)
+    first = await capture_segment(
+        db_session,
+        session,
+        take_id=part["take_id"],
+        starts_ms=0,
+        ends_ms=2000,
+        bridge_take_id="retro-1",
+        transcript="a primeira frase",
+    )
+    laid = await re_record(
+        client, session.id, first.id, spoken(1.0), headers=team_headers(credential)
+    )
+    assert laid.status_code == 200, laid.text
+
+    again = await send(client, credential, session.id, recording(4, 22), pass_number=2)
+
+    assert (
+        await the_desks_part(client, db_session, room_app, project, session.id)
+        == (again["take_id"])
+    )
+    assert the_tablets_part(await tablet_list(client, credential, session.id)) == again["take_id"]
+
+
 async def test_every_reader_names_the_same_take_as_the_part(
     client, db_session, room_app, team, session, consultant
 ):

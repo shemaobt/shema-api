@@ -26,7 +26,8 @@ ARRIVED_ONLY = "b0000000-0000-0000-0000-000000000001"
 TABLET_TIMED = "b0000000-0000-0000-0000-000000000002"
 JOINED = "b0000000-0000-0000-0000-000000000003"
 SPLICED = "b0000000-0000-0000-0000-000000000004"
-NOT_NAMED = "b0000000-0000-0000-0000-000000000005"
+SPLICED_AGAIN = "b0000000-0000-0000-0000-000000000005"
+SPLICED_INTO_AN_ARRIVAL = "b0000000-0000-0000-0000-000000000006"
 UPLOADED = "2026-10-01 08:00:00"
 RECORDED_ON_THE_TABLET = "2026-10-01 07:42:00"
 
@@ -77,11 +78,11 @@ async def _insert_take(
     await engine.dispose()
 
 
-def a_laid_in_sentence(take_id: str) -> dict:
+def a_laid_in_sentence(previous_take_id: str, take_id: str) -> dict:
     return {
         "sentence_id": "sentence-0001",
         "segment_id": "s0000000-0000-0000-0000-000000000001",
-        "previous_take_id": ARRIVED_ONLY,
+        "previous_take_id": previous_take_id,
         "take_id": take_id,
         "starts_ms": 0,
         "ends_ms": 1000,
@@ -147,20 +148,37 @@ async def test_a_joined_part_has_its_recording_time_after_the_migration(
     assert await known(url, JOINED) is True
 
 
-async def test_a_spliced_part_named_by_a_laid_in_sentence_has_its_recording_time(
+async def test_a_spliced_part_has_a_recording_time_only_when_the_part_it_was_laid_into_has_one(
     before_the_migration,
 ) -> None:
     url = before_the_migration
-    await _insert_session(url, SESSION, {"sentences": [a_laid_in_sentence(SPLICED)]})
-    await _insert_session(url, OTHER_SESSION, {"sentences": []})
+    await _insert_session(
+        url,
+        SESSION,
+        {
+            "sentences": [
+                a_laid_in_sentence(TABLET_TIMED, SPLICED),
+                a_laid_in_sentence(SPLICED, SPLICED_AGAIN),
+            ]
+        },
+    )
+    await _insert_session(
+        url,
+        OTHER_SESSION,
+        {"sentences": [a_laid_in_sentence(ARRIVED_ONLY, SPLICED_INTO_AN_ARRIVAL)]},
+    )
+    await _insert_take(url, TABLET_TIMED, recorded_at=RECORDED_ON_THE_TABLET)
     await _insert_take(url, SPLICED)
-    await _insert_take(url, NOT_NAMED, session_id=OTHER_SESSION)
+    await _insert_take(url, SPLICED_AGAIN)
+    await _insert_take(url, ARRIVED_ONLY, session_id=OTHER_SESSION)
+    await _insert_take(url, SPLICED_INTO_AN_ARRIVAL, session_id=OTHER_SESSION)
 
     up = run_alembic(url, "upgrade", REVISION)
 
     assert up.returncode == 0, up.stderr
     assert await known(url, SPLICED) is True
-    assert await known(url, NOT_NAMED) is False
+    assert await known(url, SPLICED_AGAIN) is True
+    assert await known(url, SPLICED_INTO_AN_ARRIVAL) is False
 
 
 async def test_the_migration_walks_back_down_and_up_again(before_the_migration) -> None:

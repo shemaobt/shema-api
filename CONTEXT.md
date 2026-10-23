@@ -80,7 +80,7 @@ An audio file recorded by the team, of one of three kinds: a conversation turn's
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
 **Recording time** (`recorded_at`):
-When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. A take sent with no time, and a take stored before ENG-1273 that was neither joined nor spliced, has none of its own: the arrival stands in where it is served, and it is never what makes a take the part. Such takes keep their pass order among themselves and come before every take that has one (ENG-1760).
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. A take sent with no time, a take stored before ENG-1273 that was not joined, and a part spliced into one of these has none of its own: the arrival stands in where it is served, and it is never what makes a take the part. Such takes keep their pass order among themselves and come before every take that has one (ENG-1760).
 _Avoid_: upload time, created_at (when the upload landed), timestamp
 
 **Clock offset** (`device_clock_offset_ms`):

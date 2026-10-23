@@ -219,7 +219,7 @@ async def lay_in_a_sentence(
         origin=part.origin,
         created_at=now,
         recorded_at=now,
-        recorded_at_known=True,
+        recorded_at_known=part.recorded_at_known,
         duration_ms=await measure_ms_bounded(spliced.audio),
     )
     db.add(take)
