@@ -495,7 +495,8 @@ class ExternalCheckPart(BaseModel):
 
 
 class ExternalCheckFrase(BaseModel):
-    frase: int
+    #: Null on a release written before frases were numbered.
+    frase: int | None
     segment_id: str
     take_id: str | None
     starts_ms: int | None

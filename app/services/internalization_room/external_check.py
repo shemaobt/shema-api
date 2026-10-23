@@ -77,21 +77,19 @@ def _takes(packet: dict[str, Any]) -> list[dict[str, Any]]:
 def _frases(packet: dict[str, Any]) -> list[dict[str, Any]]:
     """The told stretches as the listeners will hear them, never the team's words (ADR 0111).
 
-    A release written before frases were numbered carries none, and one written before the
-    telling-back was stored carries no stretches; its takes may still stand, since approval
-    reads only the takes. The frase is the stretch's place in the reading, which is what the
-    packet's own order already is.
+    Read as the packet holds them, whatever schema wrote it: approval reads only the takes, so a
+    release from before frases were numbered, or before the telling-back was stored, can stand.
+    Its frases are copied unnumbered, since a stretch is numbered in one place and not here.
     """
-    segments = (packet.get("back_translation") or {}).get("segments", [])
     return [
         {
-            "frase": segment.get("frase", place),
+            "frase": segment.get("frase"),
             "segment_id": segment["segment_id"],
             "take_id": segment["take_id"],
             "starts_ms": segment["starts_ms"],
             "ends_ms": segment["ends_ms"],
         }
-        for place, segment in enumerate(segments, start=1)
+        for segment in (packet.get("back_translation") or {}).get("segments", [])
     ]
 
 

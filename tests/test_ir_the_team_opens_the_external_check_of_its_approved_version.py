@@ -376,7 +376,7 @@ async def a_version_stored_as_older_releases_were(
     return session_id
 
 
-async def test_a_version_approved_before_frases_were_numbered_opens_with_its_stretches_in_order(
+async def test_a_version_approved_before_frases_were_numbered_opens_with_its_stretches_unnumbered(
     client, db_session
 ):
     team, credential = await a_claimed_device(db_session)
@@ -394,9 +394,9 @@ async def test_a_version_approved_before_frases_were_numbered_opens_with_its_str
 
     assert opened.status_code == 200, opened.text
     assert [(frase["frase"], frase["segment_id"]) for frase in opened.json()["frases"]] == [
-        (1, release.packet["back_translation"]["segments"][0]["segment_id"]),
-        (2, release.packet["back_translation"]["segments"][1]["segment_id"]),
+        (None, segment["segment_id"]) for segment in release.packet["back_translation"]["segments"]
     ]
+    assert len(opened.json()["frases"]) == 2
 
 
 async def test_a_version_approved_before_the_telling_was_stored_opens_with_no_frases(
