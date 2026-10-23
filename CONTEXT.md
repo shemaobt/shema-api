@@ -124,7 +124,7 @@ The recording of the whole passage in the mother tongue, and the station where i
 _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 
 **Part**:
-One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part, until the team records by scene: then the whole is history, kept but no longer a part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
+One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part, until the team records by scene: then the whole is history, kept but no longer a part. After a **Grain switch** the parts are only the new grain's takes recorded after it, so a whole recorded after a switch to the whole passage is the one part even beside numbered takes. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 
 **Part key** (`key`):
@@ -132,12 +132,16 @@ The name a **Part** goes by in a file name and in what Refine receives: `whole` 
 _Avoid_: clip key, scope (the tablet's `parte-N`), chunk_index, ordinal (the number as stored)
 
 **Superseded take** (`superseded_takes`, `superseded_at`):
-A rehearsal take that a later take under the same part's number replaced. It is kept, listed apart from the current parts, and downloads as `<release>-<key>-substituida-<take id>.<ext>`; its time is when the take that replaced it reached the server.
+A rehearsal take that a later take under the same part's number replaced. It is kept, listed apart from the current parts, and downloads as `<release>-<key>-substituida-<take id>.<ext>`; its time is when the take that replaced it reached the server. A take a **Grain switch** set aside is listed with them, carrying `set_aside_at`, and its time is the switch's.
 _Avoid_: kept take (kept names a telling kept for the team), replaced take, old take, Substituída (in prose); **Superseded** alone is a telling-back attempt
 
 **Recording grain** (`recording_grain`):
 Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers. The **Manifest** says it in her words as `grain`: `scene` for parts, `whole`.
 _Avoid_: granularity, mode, shape, Granularidade
+
+**Grain switch** (`POST /sessions/{id}/grain`; `grain`, `grain_switched_at`, `set_aside_at`):
+The team's move between recording the passage whole and scene by scene (`whole`, `scene`). It sets every rehearsal take the session holds aside, stamped with the switch's time, and any take of the other grain that lands after it. The telling-back starts over as «recomeçar a tradução» does, so the passage has no check. From then on the **Parts** are only the takes of the new grain recorded after the switch. Nothing is deleted, and a switch back never restores a take. A switch to the grain in force changes nothing; over an approved draft it takes the team's armed tap (`reopens_the_approved_draft`). A session never switched reads its parts as before.
+_Avoid_: mode change, archive (Zerar's), reset, Troca de gravação (in prose)
 
 **Joined recording** (`origin`):
 A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A recording no join touched is checked exactly as any other.
