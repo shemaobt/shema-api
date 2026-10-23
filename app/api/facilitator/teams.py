@@ -1,7 +1,7 @@
 """The Desk's entry screen and the panels behind it, all addressed by team.
 
 Three reads and no writes. The work queue, the team's necklace for one passage, and the
-book's fourteen passages with this team's position on each. Where a team stands is answered
+passages of the book the team is in with its position on each. Where a team stands is answered
 by one resolution (`services/internalization_room/progression.py`) rather than by each route
 working it out, which is what "one source of truth for where is this team" costs in practice:
 the queue used to read the most recent session that named a passage and the necklace used to
@@ -124,7 +124,8 @@ async def read_team_coverage_route(
     is showing, which is what the selector is for — and it makes the omitted case mean "the
     one they are on" rather than "the first one there is".
 
-    Omitted by a team that has closed every passage of the book is a ``ConflictError``. There
+    Omitted, it is the team's passage in its Current book (ADR 0094). Omitted by a team that has
+    closed every passage of every served book is a ``ConflictError``. There
     is no passage they are on, so there is nothing for the default to be; the request is well
     formed and the team exists, which rules out 400 and 404, and naming a passage answers it.
 
@@ -142,7 +143,7 @@ async def read_team_coverage_route(
         pericope = await active_passage(db, project_id=team_id)
         if pericope is None:
             raise ConflictError(
-                "This team has closed every passage the book can walk; name the one to read"
+                "This team has closed every passage of every served book; name the one to read"
             )
 
     return await team_necklace(db, team_id=team_id, pericope=pericope)
@@ -154,9 +155,9 @@ async def list_team_pericopes_route(
     user: ReaderUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[PericopeStanding]:
-    """The book's passages in the canon's order, each already placed for this team.
+    """The current book's passages in the canon's order, each already placed for this team.
 
-    It answers positions and not a list. A screen given the fourteen and the team's active
+    It answers positions and not a list. A screen given the passages and the team's active
     passage would have to work out closed from current from future itself, which is a second
     place deciding where a team stands — and the two would disagree on exactly the cases that
     matter, such as a passage closed out of order.

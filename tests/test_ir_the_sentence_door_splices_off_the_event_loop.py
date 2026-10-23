@@ -41,10 +41,9 @@ from tests.sentence_harness import (
     nuance_of_frase,
     re_record,
     rehearsed_in_wav,
-    samples_of,
     spoken,
-    take_named,
 )
+from tests.session_row_lock_harness import the_session_row_locks_as_postgres_does
 from tests.turn_harness import the_room_agent_is
 
 
@@ -90,34 +89,6 @@ async def client(
         yield door
 
 
-class SessionLock:
-    def __init__(self) -> None:
-        self.held = False
-
-
-def watching_the_session_lock(monkeypatch: pytest.MonkeyPatch) -> SessionLock:
-    lock = SessionLock()
-    execute, commit, rollback = AsyncSession.execute, AsyncSession.commit, AsyncSession.rollback
-
-    async def locking(self: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
-        if getattr(statement, "_for_update_arg", None) is not None:
-            lock.held = True
-        return await execute(self, statement, *args, **kwargs)
-
-    async def committing(self: AsyncSession) -> None:
-        await commit(self)
-        lock.held = False
-
-    async def rolling_back(self: AsyncSession) -> None:
-        await rollback(self)
-        lock.held = False
-
-    monkeypatch.setattr(AsyncSession, "execute", locking)
-    monkeypatch.setattr(AsyncSession, "commit", committing)
-    monkeypatch.setattr(AsyncSession, "rollback", rolling_back)
-    return lock
-
-
 def noting_the_thread(
     ran_on: dict[str, set[int]], name: str, original: Callable[..., Any]
 ) -> Callable[..., Any]:
@@ -158,7 +129,7 @@ async def test_the_session_row_lock_is_let_go_while_the_part_is_spliced(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, _, ((frase,),) = await rehearsed_in_wav(db_session, store, [[(0, 2000)]])
-    lock = watching_the_session_lock(monkeypatch)
+    lock = the_session_row_locks_as_postgres_does(monkeypatch)
     held_while_splicing: list[bool] = []
     splice = sentences.splice_sentence
 
@@ -194,38 +165,6 @@ async def test_a_frase_awaiting_its_translation_is_refused_before_the_parts_byte
         409,
         "ANOTHER_SENTENCE_AWAITS",
     ), "uma parte ilegível escondia que outra frase ainda esperava pela tradução"
-
-
-async def test_a_sentence_laid_in_and_told_while_another_is_spliced_is_not_lost_under_it(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    store: MemoryStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session, _, ((first, middle, _),) = await rehearsed_in_wav(
-        db_session, store, [[(0, 1000), (1000, 2000), (2000, 3000)]]
-    )
-    read = store.get
-    rival_has_landed: list[bool] = []
-
-    async def read_then_a_rival_lays_in_and_is_told(key: str) -> bytes | None:
-        held = await read(key)
-        if not rival_has_landed:
-            rival_has_landed.append(True)
-            await laid_in_and_told_again(client, session.id, middle.id, 1)
-        return held
-
-    monkeypatch.setattr(store, "get", read_then_a_rival_lays_in_and_is_told)
-
-    laid = await re_record(client, session.id, first.id, spoken(0.5), sentence_id="sentence-0002")
-
-    assert laid.status_code == 200, laid.text
-    spans = [(one["starts_ms"], one["ends_ms"]) for one in laid.json()["segments"]]
-    assert spans == [(0, 900), (900, 2300), (2300, 3300)]
-    final = await take_named(db_session, laid.json()["segments"][0]["take_id"])
-    assert len(samples_of(store.objects[final.storage_key])) == 52800, (
-        "a frase emendada na parte lida antes da outra perdia a frase que entrou nesse meio tempo"
-    )
 
 
 async def test_the_same_sentence_sent_twice_at_once_is_laid_in_once(
@@ -313,7 +252,7 @@ async def test_a_frase_told_again_while_its_sentence_is_spliced_takes_no_sentenc
     ] == []
 
 
-async def test_a_nuance_heard_named_stays_named_through_a_lay_in_that_is_spliced_again(
+async def test_a_nuance_heard_named_stays_named_through_a_lay_in_refused_while_its_part_changed_and_sent_again(  # noqa: E501
     client: httpx.AsyncClient,
     analyst: Any,
     speaker: Speaker,
@@ -335,6 +274,10 @@ async def test_a_nuance_heard_named_stays_named_through_a_lay_in_that_is_spliced
         return held
 
     monkeypatch.setattr(store, "get", read_then_a_rival_lays_in_and_is_told)
+    refused = await re_record(
+        client, session.id, told[0].id, spoken(0.5), sentence_id="sentence-0002"
+    )
+    assert (refused.status_code, refused.json().get("code")) == (409, "PART_CHANGED"), refused.text
     laid = await re_record(client, session.id, told[0].id, spoken(0.5), sentence_id="sentence-0002")
     assert laid.status_code == 200, laid.text
     new = laid.json()["segments"][0]
@@ -358,7 +301,7 @@ async def test_a_nuance_heard_named_stays_named_through_a_lay_in_that_is_spliced
     assert again.status_code == 200, again.text
     assert speaker.handed() == [], (
         "a nuance dita sobre a terceira frase era nomeada de novo depois de duas frases "
-        "regravadas, uma delas emendada outra vez"
+        "regravadas, uma delas recusada e reenviada"
     )
     async with rival_factory() as reading_db:
         kept = (await stored_telling_back(reading_db, session)).checks

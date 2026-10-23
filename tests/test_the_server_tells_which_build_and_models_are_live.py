@@ -45,6 +45,8 @@ async def test_anyone_can_ask_which_build_store_and_models_are_live(
     monkeypatch.setattr(settings, "gcs_platform_bucket", "the-platform-bucket")
     monkeypatch.setattr(settings, "tripod_voice_model", "voice-a, voice-b,voice-c")
     monkeypatch.setattr(settings, "tripod_classifier_model", "class-a,class-b")
+    monkeypatch.setattr(settings, "internalization_room_minimum_app_ios", 12)
+    monkeypatch.setattr(settings, "internalization_room_minimum_app_android", 14)
 
     response = await ask()
 
@@ -54,6 +56,7 @@ async def test_anyone_can_ask_which_build_store_and_models_are_live(
         "store": "gcs:the-platform-bucket",
         "model": ["voice-a", "voice-b", "voice-c"],
         "classifier_model": ["class-a", "class-b"],
+        "minimum_app": {"ios": 12, "android": 14},
     }
 
 

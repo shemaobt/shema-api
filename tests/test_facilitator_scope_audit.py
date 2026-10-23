@@ -544,7 +544,10 @@ FILTERING_TEMPLATES = {
 #: **An exemption list in a scope audit is the thing that rots it**, so membership here is
 #: not taken on trust — the case below refuses an entry whose route could name a resource.
 #: A route earns this by having no path parameter and asking for nothing but the caller.
-NOTHING_TO_SCOPE = {("GET", f"{DESK}/coverage-legend")}
+NOTHING_TO_SCOPE = {
+    ("GET", f"{DESK}/coverage-legend"),
+    ("GET", f"{IR}/facilitator/canon-pins"),
+}
 
 
 def test_the_audit_is_not_empty() -> None:

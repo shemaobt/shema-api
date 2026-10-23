@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     env: str = "development"
     #: The git SHA the image was built from, baked in as `GIT_SHA` at build time.
     build_id: str = Field("unknown", validation_alias="GIT_SHA")
+    cloud_run_service: str = Field("", validation_alias="K_SERVICE")
     port: int = 8000
 
     database_url: str
@@ -109,6 +110,8 @@ class Settings(BaseSettings):
     #: her app unless the team chose English. The app names the team's choice on the session.
     internalization_room_default_language: str = "pt"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
+    internalization_room_minimum_app_ios: int = Field(default=0, ge=0)
+    internalization_room_minimum_app_android: int = Field(default=0, ge=0)
 
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it

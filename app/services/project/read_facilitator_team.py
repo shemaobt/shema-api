@@ -30,7 +30,11 @@ from app.services.internalization_room.coverage_events import necklace_with_touc
 from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.latest_by_passage import latest_releases
 from app.services.internalization_room.live import live
-from app.services.internalization_room.progression import finished_passages, resolve, standing
+from app.services.internalization_room.progression import (
+    book_standings,
+    standing,
+    where_teams_stand,
+)
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.list_facilitator_teams import team_cards
 from app.services.project.team_state import team_state
@@ -45,9 +49,11 @@ async def read_facilitator_team(
     and one that is not the caller's are indistinguishable from here, which is what lets the
     route answer them with one refusal. Telling them apart is the enumeration ENG-443 closed.
 
-    Four statements and none of them grows: the team's row, the passages it has finished, its
-    latest releases, and the necklace of the passage it is standing on. The second serves both
-    the active passage and ``closed_total`` from one read rather than asking twice.
+    Five statements and none of them grows: the team's row, the passages it has finished, the
+    books of its live sessions, its latest releases, and the necklace of the passage it is
+    standing on. The finished passages serve the active passage, ``closed_total`` and each
+    book's completeness from one read, and the releases serve both ``approved_total`` and
+    ``books``.
 
     The necklace read was measured on a throwaway Postgres 17 with 210,000 events over 200
     teams, ``ANALYZE``d and not against an empty table: a **Bitmap Index Scan** on
@@ -57,8 +63,8 @@ async def read_facilitator_team(
     """
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
-    finished = (await finished_passages(db, project_ids=[team_id])).get(team_id, set())
-    here = resolve(finished)
+    whereabouts = (await where_teams_stand(db, project_ids=[team_id]))[team_id]
+    here = whereabouts.passage
     row = (
         await db.execute(
             team_cards(scope).where(Project.id == team_id).add_columns(_the_canon_pin_on(here))
@@ -67,7 +73,14 @@ async def read_facilitator_team(
     if row is None:
         return None
 
-    passages = standing(finished, releases=await latest_releases(db, team_id), findings={})
+    releases = await latest_releases(db, team_id)
+    passages = standing(
+        whereabouts.finished,
+        book=whereabouts.book,
+        here=here,
+        releases=releases,
+        findings={},
+    )
     closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
     active = None
     if here is not None:
@@ -83,7 +96,7 @@ async def read_facilitator_team(
         mother_tongue=row.mother_tongue,
         active_passage=active,
         state=team_state(
-            book_closed=here is None,
+            every_book_closed=whereabouts.complete,
             last_activity_at=row.last_activity_at,
             now=moment,
         ),
@@ -93,6 +106,7 @@ async def read_facilitator_team(
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
         approved_total=sum(1 for entry in passages if entry.approved),
+        books=book_standings(whereabouts, releases=releases),
         scene_the_team_is_in=await _scene_they_are_in(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
