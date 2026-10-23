@@ -75,6 +75,7 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     back_translation_of,
     claim_the_version,
+    hold_the_session_row,
     is_panorama,
     refuse_if_archived,
 )
@@ -322,11 +323,6 @@ async def compose_internalization_release(
 ) -> tuple[dict[str, Any], list[str]]:
     """The packet this session composes right now, and everything standing in its way.
 
-    **A draft that stands approved is answered with its release's stored packet** (ADR 0081):
-    while the takes are that version's, every door naming it serves exactly the packet it
-    names, its hash unchanged, and nothing stands in its way: only a change of takes re-opens
-    it, so blockers are read only when no version stands.
-
     Composing and judging are two acts, and separating them is what lets the approval ask
     whether the takes changed before it asks whether the gate is shut. The hash never
     depended on the gate — a blocker filters the refusal and not a single key of the
@@ -420,19 +416,16 @@ async def compose_internalization_release(
     ``package_sha256`` is taken before ``created_at``, ``release_id``, ``version``, ``check``,
     ``language``, ``session_language`` and ``audio_format`` are written into the returned
     dict, so the hash covers none of the seven. ``created_at`` records when this read happened
-    and not what the session holds; the two after it are null on a live composition, which is
-    never a release; ``check`` is a view of the approval's row, written later still, and so is
-    derived here with no version and no force (ADR 0020). The last three say whose rehearsal this is
-    and in what format it was recorded (ADR 0048). All seven would move without the content
-    moving, and two reads of an unchanged session must carry one hash. A consumer verifying
-    the fingerprint drops those seven keys and hashes the rest.
+    and not what the session holds; the two after it say which version this draft stands
+    approved under, by its stored name (ADR 0081); ``check`` is a view of the approval's row,
+    written later still, and so is derived here with no version and no force (ADR 0020). The
+    last three say whose rehearsal this is and in what format it was recorded (ADR 0048). All
+    seven would move without the content moving, and two reads of an unchanged session must
+    carry one hash. A consumer verifying the fingerprint drops those seven keys and hashes the
+    rest.
     """
     with reading_the_canon_of(session.canon_pin):
-        artifact, blockers = await _composed(db, session)
-    standing = await approved_draft(db, session)
-    if standing is not None:
-        return packet_as_read(standing), []
-    return artifact, blockers
+        return await _composed(db, session)
 
 
 async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
@@ -536,8 +529,9 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         version=None,
         forced=False,
     )
-    artifact["release_id"] = None
-    artifact["version"] = None
+    standing = await approved_draft(db, session)
+    artifact["release_id"] = released_as(standing) if standing else None
+    artifact["version"] = standing.version if standing else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     artifact["check"] = check
     artifact["language"] = await _mother_tongue(db, session)
@@ -705,6 +699,7 @@ async def approve_release(
     only while the session's ``version`` is still the one read here (ADR 0052, ADR 0066).
     """
     assert session.project_id is not None
+    await hold_the_session_row(db, session.id)
     await refuse_if_archived(db, session)
 
     packet, blockers = await compose_internalization_release(db, session)

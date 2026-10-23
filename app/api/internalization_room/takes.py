@@ -286,8 +286,9 @@ async def read_the_take_downloads(
 ) -> TakeDownloadsResponse:
     """What the facilitator hands Refine: each take under her file name, links good for an hour.
 
-    Read it again for fresh links; a name follows the passage's latest release at the moment of
-    the read.
+    Read it again for fresh links. A name is the release the draft stands approved under at
+    the moment of the read, or the name the next version will have; a session a Zerar archived
+    keeps the name of the release its takes were approved as (ADR 0081).
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await take_downloads_of(db, session)
