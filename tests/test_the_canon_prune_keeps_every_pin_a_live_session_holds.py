@@ -365,6 +365,23 @@ def test_a_prune_whose_file_is_older_than_fifteen_minutes_refuses_and_removes_no
     )
 
 
+def test_a_prune_whose_file_was_answered_in_its_future_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _the_read_answered(canon_dir, LIVE, ago=timedelta(minutes=-1))
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert "future" in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, (
+        "com o relógio do operador atrasado, um arquivo velho parecia novo e apagou canon"
+    )
+
+
 def test_a_prune_whose_file_is_a_minute_old_prunes(
     a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

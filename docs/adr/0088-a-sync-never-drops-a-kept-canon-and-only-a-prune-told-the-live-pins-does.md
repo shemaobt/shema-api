@@ -33,7 +33,7 @@ Decided:
 - The prune refuses, exits 1 and removes nothing when the checkout has no `VENDOR_PIN`, when it
   has no file, when the file is not that read's answer (unreadable, not JSON, no `pins` list, no
   `deployed_pin`, no zoned `answered_at`, an entry that is not a full sha), when the file does not
-  name `tripod-backend` as its environment, when it was answered more than 15 minutes ago, when
+  name `tripod-backend` as its environment, when it was answered more than 15 minutes ago or in the prune's future, when
   `kept/` is a link or holds one, and when a live pin or the served pin names neither a kept tree
   nor the checkout's deployed pin. A file from staging, a local server or a fresh database answers
   `{"pins": []}`, and pruning on it would drop every kept tree production reads; a pin the

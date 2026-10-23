@@ -34,8 +34,8 @@ compiler's main line, when the pin leaves no consumable passage at all, and when
 list's bytes differ from the sha256 her `_spec/pins.json` records for it. `--prune` refuses,
 exits 1 and removes nothing when the checkout has no `VENDOR_PIN`, when it is given no file, a
 file that is not that read's answer, that production (`tripod-backend`) did not serve or that
-it answered more than 15 minutes ago, a pin that names neither a kept tree nor the deployed pin,
-or a `kept/` that is a link or holds one.
+it answered more than 15 minutes ago or in this machine's future, a pin that names neither a
+kept tree nor the deployed pin, or a `kept/` that is a link or holds one.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
@@ -278,7 +278,15 @@ def prune(live_pins: Path | None) -> int:
             file=sys.stderr,
         )
         return 1
-    if datetime.now(UTC) - answered > FRESH_FOR:
+    age = datetime.now(UTC) - answered
+    if age < timedelta(0):
+        print(
+            f"{live_pins} was answered at {answered.isoformat()}, in this machine's future — "
+            "put both clocks on network time and fetch it again",
+            file=sys.stderr,
+        )
+        return 1
+    if age > FRESH_FOR:
         print(
             f"{live_pins} was answered at {answered.isoformat()}, more than 15 minutes ago — "
             "fetch it again and prune at once",
