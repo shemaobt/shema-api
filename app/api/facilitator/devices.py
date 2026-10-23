@@ -91,8 +91,7 @@ async def claim_device_route(
     Counted per caller, not per code. A limit keyed on the code would leave the attempt that
     matters untouched — someone walking through many different codes fills a new bucket with
     every guess and never meets a limit at all. ``bearer_token_key`` is what the two other
-    authenticated metered routes use; escaping it costs a valid credential and a fresh login,
-    where ``get_remote_address`` behind this app's ``ProxyHeadersMiddleware`` costs a header.
+    authenticated metered routes use; escaping it costs a valid credential and a fresh login.
 
     **What this does and does not impose.** ``bearer_token_key`` buckets on the access token,
     and its own docstring is explicit that it does not cover "a user minting sessions to grind
