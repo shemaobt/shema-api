@@ -11,18 +11,24 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 import pytest
 from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
-from app.db.models.internalization_room import IRExternalCheck
+from app.db.models.internalization_room import IRExternalCheck, IRSession
 from app.services.internalization_room import external_check as external_check_module
+from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.segments import capture_segment
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
+    CLIP_MS,
     PREFIX,
     P,
     a_claimed_device,
@@ -35,6 +41,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
+    the_one_part_of,
     the_part_recorded_again,
 )
 
@@ -148,7 +155,7 @@ async def test_the_first_open_writes_one_log_line_and_a_second_open_writes_none(
     assert second.status_code == 200, second.text
     assert len(after_the_first) == 1, after_the_first
     assert P in after_the_first[0]
-    assert "v1" in after_the_first[0]
+    assert " v1 " in after_the_first[0]
     assert session.id in after_the_first[0]
     assert opened_lines(caplog) == after_the_first, "a segunda abertura não avisa ninguém"
 
@@ -324,3 +331,88 @@ async def test_a_zerar_keeps_the_check_under_the_passages_archive(client, db_ses
     assert kept.id == opened.json()["check_id"]
     assert kept.archive_id == zeroed.json()["archive"]["id"]
     assert after.status_code == 404, after.text
+
+
+async def told_in_two_stretches(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    part = await the_one_part_of(db, session)
+    told = [
+        await capture_segment(
+            db,
+            session,
+            take_id=part.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=f"retro-{starts_ms}",
+            transcript=transcript,
+        )
+        for starts_ms, ends_ms, transcript in (
+            (0, CLIP_MS // 2, "Noemi voltou com Rute"),
+            (CLIP_MS // 2, CLIP_MS, "Rute espigou no campo de Boaz"),
+        )
+    ]
+    return BackTranslationState(
+        scope=session.pericope,
+        findings=[],
+        checked=True,
+        analysed_segment_ids=[stretch.id for stretch in told],
+    )
+
+
+async def a_version_stored_as_older_releases_were(
+    client: httpx.AsyncClient,
+    db: AsyncSession,
+    *,
+    team_id: str,
+    credential: str,
+    strip: Callable[[dict[str, Any]], None],
+) -> str:
+    """An approved version whose stored packet lacks what an older release never wrote."""
+    session_id = (await ready_session(db, project_id=team_id, tell=told_in_two_stretches)).id
+    await approved(client, session_id, credential)
+    (release,) = await releases_of(db, session_id)
+    strip(release.packet)
+    flag_modified(release, "packet")
+    await db.commit()
+    return session_id
+
+
+async def test_a_version_approved_before_frases_were_numbered_opens_with_its_stretches_in_order(
+    client, db_session
+):
+    team, credential = await a_claimed_device(db_session)
+
+    def _unnumbered(packet: dict[str, Any]) -> None:
+        for segment in packet["back_translation"]["segments"]:
+            del segment["frase"]
+
+    session_id = await a_version_stored_as_older_releases_were(
+        client, db_session, team_id=team.id, credential=credential, strip=_unnumbered
+    )
+    (release,) = await releases_of(db_session, session_id)
+
+    opened = await client.post(external_check_open(session_id), headers=team_headers(credential))
+
+    assert opened.status_code == 200, opened.text
+    assert [(frase["frase"], frase["segment_id"]) for frase in opened.json()["frases"]] == [
+        (1, release.packet["back_translation"]["segments"][0]["segment_id"]),
+        (2, release.packet["back_translation"]["segments"][1]["segment_id"]),
+    ]
+
+
+async def test_a_version_approved_before_the_telling_was_stored_opens_with_no_frases(
+    client, db_session
+):
+    team, credential = await a_claimed_device(db_session)
+
+    def _untold(packet: dict[str, Any]) -> None:
+        del packet["back_translation"]["segments"]
+
+    session_id = await a_version_stored_as_older_releases_were(
+        client, db_session, team_id=team.id, credential=credential, strip=_untold
+    )
+
+    opened = await client.post(external_check_open(session_id), headers=team_headers(credential))
+
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["frases"] == []
+    assert opened.json()["takes"]

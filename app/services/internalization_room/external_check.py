@@ -75,16 +75,23 @@ def _takes(packet: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _frases(packet: dict[str, Any]) -> list[dict[str, Any]]:
-    """The told stretches as the listeners will hear them, never the team's words (ADR 0111)."""
+    """The told stretches as the listeners will hear them, never the team's words (ADR 0111).
+
+    A release written before frases were numbered carries none, and one written before the
+    telling-back was stored carries no stretches; its takes may still stand, since approval
+    reads only the takes. The frase is the stretch's place in the reading, which is what the
+    packet's own order already is.
+    """
+    segments = (packet.get("back_translation") or {}).get("segments", [])
     return [
         {
-            "frase": segment["frase"],
+            "frase": segment.get("frase", place),
             "segment_id": segment["segment_id"],
             "take_id": segment["take_id"],
             "starts_ms": segment["starts_ms"],
             "ends_ms": segment["ends_ms"],
         }
-        for segment in packet["back_translation"]["segments"]
+        for place, segment in enumerate(segments, start=1)
     ]
 
 
