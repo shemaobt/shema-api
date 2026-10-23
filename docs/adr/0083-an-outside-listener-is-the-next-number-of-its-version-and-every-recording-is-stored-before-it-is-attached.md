@@ -10,7 +10,9 @@ number of that **Version** and nothing else, and that every recording they make 
 moment it stops, never heard by a recognizer or a model (the app's ADR 0111). Decided: three
 tables hanging off ENG-1421's `ir_external_checks` (ADR 0082). `ir_external_listeners` numbers
 each listener from 1 per check, by the room's max-plus-one loop under a unique index on (check,
-number), so two tablets asking at once never share a number and none is reused.
+number), so two tablets asking at once never share a number and none is reused. The tablet
+sends an `attempt` it minted for the tap, unique per check, so a tap resent after its answer was
+lost is the same listener and never leaves an empty one behind (Q70).
 `ir_external_recordings` keeps each **Listener recording** (a retelling, a comment on the whole,
 or a comment on one frase) with its content type, length, size, sha256 and the time it was
 stored. The bytes go to the bucket under `internalization-room/external/<release row id>/<n>/`

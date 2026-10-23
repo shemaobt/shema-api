@@ -11,6 +11,7 @@ from app.models.internalization_room import (
     ListenerFacts,
     ListenerRecordingView,
     MarkRequest,
+    NewListenerRequest,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.outside_listeners import (
@@ -43,17 +44,20 @@ async def _the_teams_check(
 async def a_new_listener_route(
     session_id: str,
     version: int,
+    body: NewListenerRequest,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> ListenerFacts:
     """The team's tablet asks for the next **Outside listener** of this version's check.
 
-    No body: the number is the room's to give, never the tablet's to send, and nothing names
-    the person. Answers the new listener's facts. 404 for a version whose check the team never
+    The number is the room's to give, never the tablet's to send, and nothing names the person.
+    The tablet sends only the attempt it minted for the tap: the same attempt again answers the
+    listener it already got, so a lost answer never leaves an empty listener behind. Answers the
+    listener's facts. 404 for a version whose check the team never
     opened.
     """
     check = await _the_teams_check(db, session_id, version, project_id)
-    listener = await a_new_listener(db, check)
+    listener = await a_new_listener(db, check, attempt=body.attempt)
     return await a_listeners_facts(db, check, listener.number)
 
 

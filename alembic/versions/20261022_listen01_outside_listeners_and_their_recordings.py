@@ -1,6 +1,7 @@
 """the outside listeners of a Checagem externa, their recordings and their marks
 
-Each listener is the next number of the check's version under a unique index, each recording
+Each listener is the next number of the check's version under a unique index, and one tablet
+tap asked twice is one listener by its attempt; each recording
 is attached only once its bytes are in the bucket, and each mark is one «está boa» on one frase
 (ADR 0083). Three new tables, so nothing to backfill.
 
@@ -31,11 +32,13 @@ def upgrade() -> None:
         sa.Column("check_id", sa.String(length=36), nullable=False),
         sa.Column("session_id", sa.String(length=36), nullable=False),
         sa.Column("number", sa.Integer(), nullable=False),
+        sa.Column("attempt", sa.String(length=64), nullable=False),
         _now("started_at"),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("archive_id", sa.String(length=36), nullable=True),
         sa.UniqueConstraint("check_id", "number", name="uq_ir_external_listeners_check_number"),
+        sa.UniqueConstraint("check_id", "attempt", name="uq_ir_external_listeners_check_attempt"),
     )
     op.create_table(
         "ir_external_recordings",

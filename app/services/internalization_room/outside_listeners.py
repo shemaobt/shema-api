@@ -79,20 +79,46 @@ async def _last_number(db: AsyncSession, check_id: str) -> int:
     return int(last or 0)
 
 
-async def a_new_listener(db: AsyncSession, check: IRExternalCheck) -> IRExternalListener:
-    """The next number of the check's version. Two tablets asking at once can read the same
-    last number: the unique index refuses the second, which walks to the next one."""
+async def _the_same_tap(db: AsyncSession, check_id: str, attempt: str) -> IRExternalListener | None:
+    found: IRExternalListener | None = await db.scalar(
+        select(IRExternalListener).where(
+            IRExternalListener.check_id == check_id, IRExternalListener.attempt == attempt
+        )
+    )
+    return found
+
+
+async def a_new_listener(
+    db: AsyncSession, check: IRExternalCheck, *, attempt: str
+) -> IRExternalListener:
+    """The next number of the check's version, or the listener this tap already minted.
+
+    Two tablets asking at once can read the same last number: the unique index refuses the
+    second, which walks to the next one. A tap sent again after its answer was lost carries the
+    same attempt and is the same listener, whether it comes after the first landed or meets it
+    at the index.
+    """
     check_id, session_id = check.id, check.session_id
+    already = await _the_same_tap(db, check_id, attempt)
+    if already is not None:
+        return already
     archive_id = await _held_archive(db, IRExternalCheck, check_id)
     last = await _last_number(db, check_id)
     for number in range(last + 1, last + 1 + NUMBERING_TRIES):
         listener = IRExternalListener(
-            check_id=check_id, session_id=session_id, number=number, archive_id=archive_id
+            check_id=check_id,
+            session_id=session_id,
+            number=number,
+            attempt=attempt,
+            archive_id=archive_id,
         )
         try:
             async with db.begin_nested():
                 db.add(listener)
         except IntegrityError:
+            winner = await _the_same_tap(db, check_id, attempt)
+            if winner is not None:
+                return winner
             continue
         await db.commit()
         return listener

@@ -113,9 +113,17 @@ def at(session_id: str, version: int, rest: str = "") -> str:
 
 
 async def ask(
-    room: Room, session_id: str, version: int, headers: dict[str, str] | None = None
+    room: Room,
+    session_id: str,
+    version: int,
+    headers: dict[str, str] | None = None,
+    attempt: str | None = None,
 ) -> httpx.Response:
-    return await room.client.post(at(session_id, version), headers=headers)
+    return await room.client.post(
+        at(session_id, version),
+        json={"attempt": attempt or str(uuid.uuid4())},
+        headers=headers,
+    )
 
 
 async def listener(room: Room, session_id: str, version: int) -> int:
@@ -284,6 +292,20 @@ async def test_two_tablets_asking_at_once_get_two_different_numbers(
 
     assert (first.status_code, second.status_code) == (200, 200), (first.text, second.text)
     assert sorted([first.json()["number"], second.json()["number"]]) == [1, 2]
+
+
+async def test_the_same_attempt_asked_twice_is_one_listener_and_two_attempts_are_two_numbers(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id, _check = await an_open_check(room, db_session)
+
+    first = await ask(room, session_id, 1, attempt="toque-1")
+    again = await ask(room, session_id, 1, attempt="toque-1", headers=room.tablet_b)
+    other = await ask(room, session_id, 1, attempt="toque-2")
+
+    assert [answer.status_code for answer in (first, again, other)] == [200, 200, 200]
+    assert (first.json()["number"], again.json()["number"], other.json()["number"]) == (1, 1, 2)
+    assert [each["number"] for each in (await read(room, session_id, 1))["listeners"]] == [1, 2]
 
 
 async def test_a_tablet_that_read_the_last_number_before_the_other_wrote_it_still_gets_the_next_one(

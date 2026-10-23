@@ -785,19 +785,23 @@ class IRExternalListener(Base):
     a person (ADR 0083).
 
     The number is the room's to give under the unique index, so two tablets asking at once
-    never share one. The first finish is kept: how the listener ended is not rewritten by a
-    resend.
+    never share one, and one tap asked twice is one listener. The first finish is kept: how
+    the listener ended is not rewritten by a resend.
     """
 
     __tablename__ = "ir_external_listeners"
     __table_args__ = (
         UniqueConstraint("check_id", "number", name="uq_ir_external_listeners_check_number"),
+        UniqueConstraint("check_id", "attempt", name="uq_ir_external_listeners_check_attempt"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     check_id: Mapped[str] = mapped_column(String(36), index=True)
     session_id: Mapped[str] = mapped_column(String(36), index=True)
     number: Mapped[int] = mapped_column(Integer)
+    #: The id the tablet minted for its «Novo ouvinte» tap: a resend after a lost answer is the
+    #: same listener, never a second number.
+    attempt: Mapped[str] = mapped_column(String(64))
     started_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True),
         default=lambda: datetime.now(UTC),

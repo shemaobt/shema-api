@@ -70,6 +70,9 @@ async def test_the_outside_listeners_tables_come_and_go_with_their_migration(tmp
         indexes = await indexes_of(url, table)
         for column in INDEXED[table]:
             assert indexes.get(f"ix_{table}_{column}") == (False, [column]), (table, column)
+    assert (await unique_constraints_of(url, "ir_external_listeners")).get(
+        "uq_ir_external_listeners_check_attempt"
+    ) == ["check_id", "attempt"], "sem ele, a mesma tentativa reenviada vira outro ouvinte"
 
     down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
 

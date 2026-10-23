@@ -579,6 +579,11 @@ class ExternalCheckListenersView(BaseModel):
     listeners: list[ListenerView]
 
 
+class NewListenerRequest(BaseModel):
+    #: Minted by the tablet for one «Novo ouvinte» tap and sent again with any resend of it.
+    attempt: str = Field(min_length=1, max_length=64)
+
+
 class MarkRequest(BaseModel):
     segment_id: str
 
