@@ -148,7 +148,7 @@ def _moment(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp)
 
 
-async def _kept(response: httpx.Response) -> str:
+def _kept(response: httpx.Response) -> str:
     assert response.status_code == 200, response.text
     take_id: str = response.json()["take_id"]
     return take_id
@@ -177,7 +177,7 @@ async def _joined_parts(
     for part in (1, 2):
         rehearsal = await a_scene_rehearsal(db, session, part)
         parts.append(
-            await _kept(await _joined_upload(client, session.id, part=part, origin=rehearsal.id))
+            _kept(await _joined_upload(client, session.id, part=part, origin=rehearsal.id))
         )
     return parts
 
@@ -189,7 +189,7 @@ async def _recorded_parts(
     session, _ = await rehearsed_in_parts(db, 0)
     parts = []
     for part in (1, 2):
-        take_id = await _kept(
+        take_id = _kept(
             await upload_a_part(client, session.id, part=part, audio=f"parte {part}".encode())
         )
         await _told_over(db, session, take_id, f"a parte {part} contada de volta")
@@ -221,9 +221,7 @@ async def _switched_to_the_whole_over_joined_parts(
     before = datetime.now(UTC)
     await _switched(client, session.id, "whole")
     after = datetime.now(UTC)
-    whole = await _kept(
-        await upload_a_part(client, session.id, part=None, audio=b"a passagem inteira")
-    )
+    whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"a passagem inteira"))
     return session, parts, whole, before, after
 
 
@@ -290,16 +288,14 @@ async def test_after_a_switch_to_scene_by_scene_the_parts_stand_and_the_whole_is
     client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    whole = await _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
+    whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
 
     switched = await _switched(client, session.id, "scene")
 
     assert switched["grain"] == "scene"
     assert _rehearsals(switched)[whole]["set_aside_at"] is not None
     for part in (1, 2):
-        await _kept(
-            await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode())
-        )
+        _kept(await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode()))
     downloads = await _downloads(client, desk, session.id)
     assert [take["key"] for take in downloads["takes"]] == ["S1", "S2"]
     (aside,) = downloads["superseded_takes"]
@@ -331,12 +327,10 @@ async def test_a_second_switch_to_the_grain_just_chosen_changes_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    whole = await _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
+    whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
     first = _rehearsals(await _switched(client, session.id, "scene"))[whole]["set_aside_at"]
     for part in (1, 2):
-        await _kept(
-            await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode())
-        )
+        _kept(await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode()))
     stamps_before = {
         take_id: take["set_aside_at"]
         for take_id, take in _rehearsals(await _listing(client, session.id)).items()
@@ -417,7 +411,7 @@ async def test_after_a_switch_the_automatic_check_runs_again(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    whole = await _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
+    whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
     await _told_over(db_session, session, whole, "a passagem contada de volta")
     checked = await press_terminei(
         client, session.id, report=played_every_part([whole], duration_ms=PART_MS)
@@ -525,6 +519,22 @@ async def test_the_retroverification_file_lists_the_set_aside_takes_flagged_with
     assert rehearsals[whole]["set_aside_at"] is None
 
 
+async def test_the_desks_takes_listing_names_the_grain_and_flags_the_set_aside_takes(
+    client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
+) -> None:
+    session, parts, whole, before, after = await _switched_to_the_whole_over_joined_parts(
+        client, db_session
+    )
+
+    read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/takes", headers=desk)
+
+    assert read.status_code == 200, read.text
+    assert read.json()["grain"] == "whole"
+    rehearsals = _rehearsals(read.json())
+    _one_instant([rehearsals[part]["set_aside_at"] for part in parts], before, after)
+    assert rehearsals[whole]["set_aside_at"] is None
+
+
 async def test_the_retroverification_file_of_a_session_never_switched_flags_no_take(
     client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
 ) -> None:
@@ -576,18 +586,16 @@ async def test_a_switch_back_never_restores_the_earlier_takes(
     client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    first_whole = await _kept(
+    first_whole = _kept(
         await upload_a_part(client, session.id, part=None, audio=b"a primeira inteira")
     )
     t1 = _rehearsals(await _switched(client, session.id, "scene"))[first_whole]["set_aside_at"]
     parts = [
-        await _kept(
-            await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode())
-        )
+        _kept(await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode()))
         for part in (1, 2)
     ]
     back = _rehearsals(await _switched(client, session.id, "whole"))
-    second_whole = await _kept(
+    second_whole = _kept(
         await upload_a_part(client, session.id, part=None, audio=b"a segunda inteira")
     )
 
@@ -607,11 +615,9 @@ async def test_a_session_never_switched_reads_its_grain_off_its_parts_and_flags_
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    await _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
+    _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
     for part in (1, 2):
-        await _kept(
-            await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode())
-        )
+        _kept(await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode()))
 
     listing = await _listing(client, session.id)
 
@@ -623,7 +629,7 @@ async def test_a_switch_over_a_passage_with_nothing_told_starts_no_attempt_over(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    await _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
+    _kept(await upload_a_part(client, session.id, part=None, audio=b"inteira"))
 
     await _switched(client, session.id, "scene")
 
@@ -636,11 +642,9 @@ async def test_a_whole_that_stepped_aside_for_scene_parts_does_not_come_back_wit
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _ = await rehearsed_in_parts(db_session, 0)
-    old_whole = await _kept(await upload_a_part(client, session.id, part=None, audio=b"a antiga"))
+    old_whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"a antiga"))
     for part in (1, 2):
-        await _kept(
-            await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode())
-        )
+        _kept(await upload_a_part(client, session.id, part=part, audio=f"cena {part}".encode()))
 
     switched = await _switched(client, session.id, "whole")
 
@@ -648,3 +652,22 @@ async def test_a_whole_that_stepped_aside_for_scene_parts_does_not_come_back_wit
     assert all(take["set_aside_at"] for take in _rehearsals(switched).values()), (
         "a inteira gravada antes da troca voltou a ser a parte"
     )
+
+
+async def test_a_switch_over_frases_told_but_never_checked_starts_the_telling_over(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await _recorded_parts(client, db_session)
+
+    await _switched(client, session.id, "whole")
+
+    assert len((await stored_telling_back(db_session, session)).superseded) == 1, (
+        "as frases contadas antes da troca não foram guardadas numa tentativa"
+    )
+    retired = (
+        await db_session.scalars(
+            select(IRSegment.superseded_at).where(IRSegment.session_id == session.id)
+        )
+    ).all()
+    assert len(retired) == 2
+    assert None not in retired

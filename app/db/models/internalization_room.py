@@ -190,7 +190,7 @@ class IRSession(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    #: The **Grain** the team chose by its last **Grain switch**. Null on a session never
+    #: The grain the team chose by its last **Grain switch**. Null on a session never
     #: switched, whose parts are read off their numbers as before.
     grain: Mapped[IRGrain | None] = mapped_column(
         Enum(
