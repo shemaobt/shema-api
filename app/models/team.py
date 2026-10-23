@@ -16,6 +16,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
+from app.models.internalization_room import BookStanding
+
 
 class TeamState(StrEnum):
     """Where a team stands on the passage it is working on.
@@ -23,6 +25,8 @@ class TeamState(StrEnum):
     Three values and no fourth. This is not a score and carries no ranking: a facilitator
     reads it to know who to help next, and the moment it can be ordered it becomes a
     measure of people (P-03).
+
+    ``complete`` is every passage of every served book closed (ADR 0094).
     """
 
     IN_PROGRESS = "in_progress"
@@ -68,8 +72,9 @@ class FacilitatorTeamView(BaseModel):
     team_id: str
     name: str
     mother_tongue: str
-    #: Null for a team that has closed every passage of the book. That is the end of the walk
-    #: and a defined state, not a missing value — ENG-469 draws such a team with its last
+    #: Null for a team that has closed every passage of the current book, which it is in only
+    #: when no served book has a passage left (ADR 0094). That is the end of the walk and a
+    #: defined state, not a missing value — ENG-469 draws such a team with its last
     #: passage closed rather than current, which is only expressible if there is no current.
     active_passage: ActivePassageView | None
     state: TeamState
@@ -106,7 +111,7 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
     #: first: it says where they **are**.
     scene_the_team_is_in: str | None = None
 
-    #: How many of the book's passages have met the completion floor.
+    #: How many of the current book's passages have met the completion floor.
     #:
     #: **A position in the book, not a measure of the team, and the reason has to live beside
     #: it.** Every other count on every other surface is forbidden, so without the reason
@@ -118,12 +123,17 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
     #: reading it (ENG-1598); ``approved_total`` is the count the Desk draws.
     closed_total: int
 
-    #: How many of the book's passages are approved: each has a live release, and a finished
-    #: session without one approves nothing.
+    #: How many of the current book's passages are approved: each has a live release, and a
+    #: finished session without one approves nothing. It pairs with ``/pericopes``, which
+    #: answers the same book.
     #:
-    #: **The count Marcia's page shows, «N de 14 aprovadas».** Decided with Jonatas on
+    #: **The count Marcia's page shows, «N de 14 aprovadas» for Ruth.** Decided with Jonatas on
     #: 2026-10-13 (ENG-1228, Q5) to replace ``closed_total`` as the one count the Desk draws.
     approved_total: int
+
+    #: Each served book's count, in the order GET /books serves them: the Desk's «N de 14»,
+    #: «N de 18» and «N de 5». ``complete`` is the book closed, not approved (ADR 0094).
+    books: list[BookStanding]
 
 
 class TeamListingResponse(BaseModel):

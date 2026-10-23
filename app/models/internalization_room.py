@@ -185,6 +185,15 @@ class PericopeStanding(BaseModel):
     approved: bool
 
 
+class BookStanding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    book: str
+    passage_total: int
+    approved_total: int
+    complete: bool
+
+
 class SessionBead(BaseModel):
     """One bead of a session card's mini necklace.
 

@@ -515,17 +515,17 @@ async def test_a_team_that_has_not_started_is_answered_about_the_first_passage(
     assert [bead["key"] for bead in body] == element_keys("P01")
 
 
-async def test_a_team_that_closed_the_book_has_no_passage_to_default_to(
+async def test_a_team_that_closed_every_book_has_no_passage_to_default_to(
     client, db_session: AsyncSession
 ) -> None:
     """409 rather than 400 or 404: the request is well formed and the team exists.
 
     There is simply no passage they are on, which is the end of the walk. Naming one answers.
     """
-    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+    from app.services.internalization_room.canon.parse_map import served_maps
 
     _user, project, headers = await a_facilitator(db_session, email="b6end@x.com")
-    for meaning_map in load_book(ROOM_BOOK):
+    for meaning_map in served_maps():
         await a_session_the_team_finished(
             db_session, project_id=project.id, pericope=meaning_map.pericope_num
         )

@@ -167,6 +167,10 @@ _Avoid_: introduction
 A book of her pinned canon that the room vendors and offers whole: Esther, Jonah and Ruth at the pin 5b5c8d2, listed in the order of their passage ids. Every published passage of a served book is offered and opens. No readiness test holds one back, and each served book has its own **Panorama** (`OV-<Book>`).
 _Avoid_: walkable book, enabled book, published book (her word for what the compiler publishes, which may hold books the room does not serve)
 
+**Current book**:
+The **Served book** a team is in. It is the book of the team's latest live session, a **Panorama** included, taken in the order the Desk reads a team's sessions (a room the team entered first, then the most recent), while that book still has a passage the team has not closed. Otherwise it is the first of Ruth, Esther and Jonah that has one, so a team with no session is in Ruth and a team that closed Ruth and opened nothing else is in Esther. The team's next passage is the next unclosed passage of its current book and of no other, and only the current book has a current passage. An open that names no passage lands there, unless it follows a session, which names its own book. A team that closed every passage of every served book has no current passage.
+_Avoid_: active book, standing book, livro atual (in prose)
+
 **Prepared opening**:
 The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
 _Avoid_: ready line, prepared line
@@ -307,7 +311,7 @@ the Desk's column and the team's last activity ignore it. The Desk uses the same
 _Avoid_: passage, round, visit, visita, attempt
 
 **Approved passage** (*passagem aprovada*):
-A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
+A passage of a team that has a release. The count the Desk shows a team is of approved passages, per **Served book**; a finished session without a release approves nothing.
 _Avoid_: closed passage (a session done, which may hold no release), fechada, complete
 
 **Draft** (*rascunho*):
@@ -315,7 +319,7 @@ The team's recording of a passage with its frases and telling-back, kept across 
 _Avoid_: rascunho final (the approved version's words on the screen), release (the record of an approval), session (what holds the draft, not the draft)
 
 **Inactive team** (*equipe inativa*):
-A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of the book is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
+A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of every **Served book** is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
 _Avoid_: stalled, parada, idle, dormant
 
 **Opening a session**:
