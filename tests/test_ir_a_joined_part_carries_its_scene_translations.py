@@ -462,7 +462,7 @@ async def test_a_joined_part_laid_over_a_part_recorded_again_leaves_nothing_wait
     by_hand = await recorded_as_itself(room, session_id, recording(SCENE_MS / 1000, 50))
     await told_by_hand(room, session_id, by_hand)
 
-    await joined(room, session_id, rehearsal_id, scene)
+    await joined(room, session_id, rehearsal_id, scene, over_take=by_hand)
 
     read = await the_session(room, session_id, include_stale="true")
     assert [s for s in read["segments"] if s["stale"]] == [], (

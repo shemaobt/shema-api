@@ -8,6 +8,7 @@ label. Said at the recording holds only while the label is the one given then.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -50,13 +51,21 @@ async def the_record(room: Room, session_id: str, rehearsal_id: str) -> dict[str
 
 
 async def part_2(
-    room: Room, session_id: str, *, origin: str | None, audio: bytes, pass_number: int | None = None
+    room: Room,
+    session_id: str,
+    *,
+    origin: str | None,
+    audio: bytes,
+    pass_number: int | None = None,
+    recorded_at: datetime | None = None,
 ) -> httpx.Response:
     data = {"kind": "ensaio", "scope": "parte-2", "chunk_index": "2"}
     if origin is not None:
         data["origin"] = origin
     if pass_number is not None:
         data["pass_number"] = str(pass_number)
+    if recorded_at is not None:
+        data["recorded_at"] = recorded_at.isoformat()
     return await room.client.post(
         f"{IR}/sessions/{session_id}/takes",
         headers=TABLET_DEVICE,
@@ -105,7 +114,14 @@ async def test_a_rehearsal_whose_part_was_recorded_again_takes_another_scene_sai
     room: Room, db_session: AsyncSession
 ) -> None:
     session_id, rehearsal_id = await a_joined_rehearsal(room, db_session)
-    again = await part_2(room, session_id, origin=None, audio=b"cena 2 outra vez", pass_number=2)
+    again = await part_2(
+        room,
+        session_id,
+        origin=None,
+        audio=b"cena 2 outra vez",
+        pass_number=2,
+        recorded_at=datetime.now(UTC),
+    )
     assert again.status_code == 200, again.text
 
     moved = await label(room, session_id, rehearsal_id, "S3")
