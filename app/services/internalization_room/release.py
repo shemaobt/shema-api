@@ -158,70 +158,24 @@ def _package_sha256(artifact: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-#: What a packet says beside the draft rather than about it: its name and number, when it was
-#: read, the check stamped on it, whose it is, the canon it was read against and the schema it
-#: was written under.
-_BESIDE_THE_DRAFT = frozenset(
-    {
-        "schema_version",
-        "canon_vendor_pin",
-        "package_sha256",
-        "release_id",
-        "version",
-        "created_at",
-        "check",
-        "language",
-        "session_language",
-        "audio_format",
-    }
-)
-
-#: Read off the draft rather than part of it, so a schema can add or reshape them freely.
-_DERIVED = frozenset({"key", "scene", "index", "frase", "voiced", "duration_ms"})
-
-
-def _without_derived(entry: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in entry.items() if k not in _DERIVED}
-
-
-def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
-    audio = packet.get("audio") or {}
-    told = packet.get("back_translation") or {}
-    content = {
-        k: v
-        for k, v in packet.items()
-        if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
-    }
-    content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
-    content["heard_complete"] = (packet.get("check") or {}).get("heardComplete")
-    content["back_translation"] = {
-        **{k: v for k, v in told.items() if k not in ("segments", "retro_takes", "played_by_take")},
-        "segments": [_without_derived(frase) for frase in told.get("segments", [])],
-        "retro_takes": [take.get("sha256") for take in told.get("retro_takes", [])],
-    }
-    if nuances:
-        content["nuances"] = [_without_derived(one) for one in packet["check"]["nuances"]]
-    return content
+def _draft(packet: dict[str, Any]) -> tuple[Any, list[Any]]:
+    takes = (packet.get("audio") or {}).get("rehearsal_takes", [])
+    return packet.get("session_id"), [take.get("sha256") for take in takes]
 
 
 def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
-    """Whether a stored release and a composed packet are one draft, whatever schema each is in.
+    """Whether a stored release and a composed packet are one draft: one session's same takes.
 
-    The draft is its own content: the takes by fingerprint and order, the stretches, the
-    telling with its findings and history, the questions, the nuances, and whether every part
-    was heard. Never the schema version, the canon pin, the listening's own numbers, or what is
-    read off the content, so a deploy that
-    adds or reshapes those, a canon re-vendored or a listen that fills a tolerated gap never
-    un-approves a draft nobody changed. Both sides are read the same way on the spot, from the
-    stored packet and the composed one, never through the stored ``package_sha256``, which is
-    the published hash of a whole packet and moves with the schema (ADR 0078, amending 0020).
-
-    Nuances are compared only where the stored packet recorded them: one approved before they
-    reached the record says nothing about them, and a nuance moves only with a new reading,
-    which only new content brings.
+    Only a change of takes re-opens an approved draft (Marcia, 1 October; ADR 0081): a part
+    recorded again, joined, swapped or dropped, and a sentence laid in, which is a new take.
+    The telling-back with its findings and verdict, the questions, the nuances and the
+    listening are the approved version's check state, as her store clears `finalizedAt` only
+    when a clip changes. The draft is the session's (ADR 0071), so another language's session
+    or the one after a Zerar is never it, whatever its bytes. The takes are read off both
+    packets by fingerprint, in order, the same way, whatever schema each was written in, never
+    through the stored ``package_sha256``.
     """
-    recorded = "nuances" in (stored.get("check") or {})
-    return _content(stored, nuances=recorded) == _content(composed, nuances=recorded)
+    return _draft(stored) == _draft(composed)
 
 
 #: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like

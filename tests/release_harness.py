@@ -12,9 +12,10 @@ fixture calling these.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +43,7 @@ from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
     report_playback,
+    retire_the_part_recorded_again,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
@@ -136,6 +138,25 @@ async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
     if len(parts) != 1:
         raise ValueError(f"this session holds {len(parts)} current parts, not one")
     return parts[0]
+
+
+async def the_part_recorded_again(db: AsyncSession, session: IRSession) -> IRTake:
+    """The team recorded this session's one part again: the change of takes that re-opens a
+    draft (ADR 0081), its ground untold until the team tells it back."""
+    part = await the_one_part_of(db, session)
+    fresh = ensaio_take(
+        session.id,
+        pericope=session.pericope,
+        scope=part.scope,
+        ordinal=part.ordinal,
+        sha256=hashlib.sha256(part.id.encode()).hexdigest(),
+        created_at=part.created_at + timedelta(minutes=1),
+        project_id=session.project_id,
+    )
+    db.add(fresh)
+    await db.commit()
+    await retire_the_part_recorded_again(db, session, fresh)
+    return fresh
 
 
 async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):

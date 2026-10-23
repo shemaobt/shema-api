@@ -52,16 +52,17 @@ from tests.release_harness import (
     a_p02_telling_with_the_swapped_cause,
     a_rehearsal_only_half_heard,
     at_the_desk,
+    checked_telling_back,
     desk_release,
     desk_release_at,
     never_analysed_telling_back,
-    one_stretch,
     ready_session,
     releases_of,
     reported_playback,
     team_headers,
     team_release,
     the_one_part_of,
+    the_part_recorded_again,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import (
@@ -641,7 +642,8 @@ async def test_the_stored_block_names_its_own_version_and_the_live_one_none(
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     first = await client.post(team_release(session.id), headers=team_headers(credential))
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     second = await client.post(team_release(session.id), headers=team_headers(credential))
     v1 = await client.get(desk_release_at(session.id, 1), headers=desk)
     v2 = await client.get(desk_release_at(session.id, 2), headers=desk)

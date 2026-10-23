@@ -18,6 +18,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import (
     IRQuestion,
     IRQuestionStatus,
@@ -549,3 +550,60 @@ async def test_asking_whether_a_draft_is_approved_answers_none_when_its_kept_can
     shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, "a" * 40))
 
     assert await approved_draft(db_session, session) is None
+
+
+async def test_a_raised_hand_answered_after_approval_leaves_the_draft_approved_as_v1(
+    client, db_session, room_app
+) -> None:
+    """ENG-1260 (ENG-1256, acceptance 1): only a change of takes re-opens an approved draft."""
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _parts = await rehearsed_in_parts(db_session, 2, project_id=team.id)
+    hand = IRQuestion(
+        session_id=session.id,
+        device_id="tablet-1",
+        project_id=team.id,
+        pericope=session.pericope,
+        status=IRQuestionStatus.OPEN,
+        audio_key="internalization-room/questions/mao-levantada.m4a",
+    )
+    db_session.add(hand)
+    await db_session.commit()
+    await parts_told_and_played(db_session, session)
+    assert (await approved_by_the_team(client, tablet, session.id))["version"] == 1
+
+    answered = await client.post(f"{PREFIX}/facilitator/questions/{hand.id}/resolve", headers=desk)
+    assert answered.status_code == 200, answered.text[:300]
+
+    assert (await the_tablet_reads(client, tablet, session.id))["approved"]["version"] == 1
+    assert (await approved_by_the_team(client, tablet, session.id))["version"] == 1
+
+
+async def test_a_frase_translated_again_after_approval_leaves_the_draft_approved_as_v1(
+    client, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ENG-1260 (ENG-1256, acceptance 2)."""
+
+    async def said(*_: Any, **__: Any) -> str:
+        return "Noemi voltou com Rute para Belém"
+
+    monkeypatch.setattr(segments_api, "heard", said)
+    team, tablet = await a_claimed_device(db_session)
+    session, _parts = await rehearsed_in_parts(db_session, 2, project_id=team.id)
+    await parts_told_and_played(db_session, session)
+    assert (await approved_by_the_team(client, tablet, session.id))["version"] == 1
+    frase = (await final_segments(db_session, session.id))[0]
+
+    told = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{frase.id}/replace",
+        headers=team_headers(tablet),
+        data={
+            "take_id": frase.take_id,
+            "starts_ms": str(frase.starts_ms),
+            "ends_ms": str(frase.ends_ms),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase de novo", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text[:300]
+
+    assert (await the_tablet_reads(client, tablet, session.id))["approved"]["version"] == 1

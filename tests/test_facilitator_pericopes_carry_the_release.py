@@ -41,7 +41,7 @@ from tests.release_harness import (
     team_release,
     told_back_with_an_open_finding,
 )
-from tests.room_harness import room_client
+from tests.room_harness import room_client, the_bucket_is_in_memory, upload_a_part
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST = CANON[0]
@@ -107,12 +107,17 @@ async def listed(desk_client: httpx.AsyncClient, desk: dict[str, str], team_id: 
 
 
 async def test_a_passage_forced_at_version_2_with_two_open_findings_on_its_latest_session_reads_version_2_forced_two_open_findings_and_approved(  # noqa: E501
-    room, desk_client, db_session, room_app
+    room, desk_client, db_session, room_app, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     session = await ready_session(db_session, project_id=team.id)
     await approved_by_the_team(room, tablet, session)
+    the_bucket_is_in_memory(monkeypatch)
+    again = await upload_a_part(
+        room, session.id, part=None, audio=b"recorded again", headers=team_headers(tablet)
+    )
+    assert again.status_code == 200, again.text[:300]
     await reported_playback(
         db_session, session, await told_back_with_two_open_findings(db_session, session)
     )

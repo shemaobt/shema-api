@@ -42,10 +42,12 @@ from tests.release_harness import (
     PREFIX,
     P,
     a_claimed_device,
-    one_stretch,
+    checked_telling_back,
     ready_session,
     releases_of,
+    reported_playback,
     team_headers,
+    the_part_recorded_again,
 )
 
 APP_KEY = "internalization-room"
@@ -196,13 +198,7 @@ async def test_the_desk_reads_that_passage_with_no_blocker(client, db_session, r
 async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_one(
     client, db_session
 ):
-    """One more stretch told is what moves the content here, and it stands for the re-record.
-
-    A part recorded again reaches the packet the same way — the take under that number
-    changes, so the content differs — and it costs a whole recording to stage. What the version
-    turns on is the hash, not which edit changed it, so the cheaper change proves the rule; the
-    re-recording has its own file of cases.
-    """
+    """The part recorded again is the change of takes that re-opens the draft (ADR 0081)."""
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
 
@@ -212,7 +208,8 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
     version_one = (await releases_of(db_session, session.id))[0]
     as_approved = json.dumps(version_one.packet, sort_keys=True)
 
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     second = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
@@ -239,7 +236,8 @@ async def test_the_packet_names_its_release_and_says_which_schema_it_is(
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
     after = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     redrafted = await client.get(
         f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk
     )

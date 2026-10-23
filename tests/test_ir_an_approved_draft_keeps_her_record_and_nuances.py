@@ -46,6 +46,7 @@ from tests.release_harness import (
     P,
     a_claimed_device,
     at_the_desk,
+    checked_telling_back,
     desk_release,
     desk_release_at,
     ensaio_take,
@@ -54,7 +55,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
-    the_one_part_of,
+    the_part_recorded_again,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import (
@@ -218,15 +219,8 @@ async def test_a_second_approval_of_the_same_passage_is_named_v2(client, db_sess
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_session(db_session, pericope="P01", project_id=project.id)
     await approved(client, credential, session)
-    await capture_segment(
-        db_session,
-        session,
-        take_id=(await the_one_part_of(db_session, session)).id,
-        starts_ms=0,
-        ends_ms=CLIP_MS,
-        bridge_take_id="retro-novo",
-        transcript="uma frase a mais, contada de volta",
-    )
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
 
     body = await approved(client, credential, session)
 
@@ -838,14 +832,8 @@ def the_takes_reordered(packet: dict) -> None:
     packet["audio"]["rehearsal_takes"].reverse()
 
 
-@pytest.mark.parametrize(
-    "change",
-    [another_question, another_finding, another_take, the_takes_reordered],
-    ids=["questions", "findings", "takes", "take order"],
-)
-async def test_a_draft_differing_in_one_part_of_its_content_is_not_approved(
-    client, db_session, change
-):
+@pytest.mark.parametrize("change", [another_take, the_takes_reordered], ids=["takes", "take order"])
+async def test_a_draft_differing_in_its_takes_is_not_approved(client, db_session, change):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_clean_draft_approved(client, db_session, project, credential)
 
@@ -854,7 +842,20 @@ async def test_a_draft_differing_in_one_part_of_its_content_is_not_approved(
     assert await approved_on_the_tablet(client, credential, session) is None
 
 
-async def test_a_draft_whose_recorded_nuance_differs_is_not_approved(
+@pytest.mark.parametrize(
+    "change", [another_question, another_finding], ids=["questions", "findings"]
+)
+async def test_a_draft_differing_only_in_its_check_state_stays_approved(client, db_session, change):
+    """Only a change of takes re-opens an approved draft (ADR 0081)."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_clean_draft_approved(client, db_session, project, credential)
+
+    await stored_with(db_session, session, change)
+
+    assert (await approved_on_the_tablet(client, credential, session))["version"] == 1
+
+
+async def test_a_draft_whose_recorded_nuance_differs_stays_approved(
     client, analyst, speaker, db_session
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
@@ -869,4 +870,4 @@ async def test_a_draft_whose_recorded_nuance_differs_is_not_approved(
         db_session, session, lambda packet: packet["check"]["nuances"][0].update(idx="outro")
     )
 
-    assert await approved_on_the_tablet(client, credential, session) is None
+    assert (await approved_on_the_tablet(client, credential, session))["version"] == 1
