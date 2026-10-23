@@ -63,6 +63,7 @@ from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.outside_listeners import listeners_counted
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -344,7 +345,13 @@ async def _state(
         opened=was_opened(session),
         moment=moment_view(session),
         kept_takes=await kept_takes_of(session),
-        approved=approval_of(approved) if approved else None,
+        approved=(
+            approval_of(approved).model_copy(
+                update={"listeners": await listeners_counted(db, approved)}
+            )
+            if approved
+            else None
+        ),
     )
 
 

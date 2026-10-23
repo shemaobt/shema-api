@@ -107,6 +107,7 @@ MIGRATION_FILES = {
     "test_ir_a_forced_release_records_its_blockers_migration.py",
     "test_ir_the_claim_for_the_opening_migration.py",
     "test_ir_the_external_check_migration.py",
+    "test_ir_outside_listeners_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

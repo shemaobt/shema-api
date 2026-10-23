@@ -122,6 +122,24 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/external-check/open"): (
         "test_ir_the_team_opens_the_external_check_of_its_approved_version.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners"): (
+        "test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"
+    ),
+    ("GET", f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}"): (
+        "test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"
+    ),
+    (
+        "POST",
+        f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}/recordings",
+    ): ("test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"),
+    (
+        "POST",
+        f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}/marks",
+    ): ("test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"),
+    (
+        "POST",
+        f"{PREFIX}/sessions/{{session_id}}/external-check/{{version}}/listeners/{{number}}/finish",
+    ): ("test_ir_an_outside_listener_is_a_number_and_every_recording_is_kept.py"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/chunks"): (
         "test_internalization_room_back_translation_ownership.py"
     ),

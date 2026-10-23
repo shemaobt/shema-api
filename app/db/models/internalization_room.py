@@ -781,6 +781,111 @@ class IRExternalCheck(Base):
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
+class IRExternalListener(Base):
+    """An **Outside listener**: the next number of its check's version, and nothing that names
+    a person (ADR 0083).
+
+    The number is the room's to give under the unique index, so two tablets asking at once
+    never share one, and one tap asked twice is one listener. The first finish is kept: how
+    the listener ended is not rewritten by a resend.
+    """
+
+    __tablename__ = "ir_external_listeners"
+    __table_args__ = (
+        UniqueConstraint("check_id", "number", name="uq_ir_external_listeners_check_number"),
+        UniqueConstraint("check_id", "attempt", name="uq_ir_external_listeners_check_attempt"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    check_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    #: The id the tablet minted for its «Novo ouvinte» tap: a resend after a lost answer is the
+    #: same listener, never a second number.
+    attempt: Mapped[str] = mapped_column(String(64))
+    started_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRExternalRecordingKind(enum.StrEnum):
+    RETELL = "retell"
+    WHOLE = "whole"
+    FRASE = "frase"
+
+
+class IRExternalRecording(Base):
+    """A **Listener recording**, in the bucket before this row names it.
+
+    Never transcribed and never handed to a model: no column holds words, by design (the app's
+    ADR 0111). The same bytes sent again by the same listener are this row.
+    """
+
+    __tablename__ = "ir_external_recordings"
+    __table_args__ = (
+        UniqueConstraint("listener_id", "sha256", name="uq_ir_external_recordings_listener_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    listener_id: Mapped[str] = mapped_column(String(36), index=True)
+    check_id: Mapped[str] = mapped_column(String(36))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    kind: Mapped[IRExternalRecordingKind] = mapped_column(
+        Enum(
+            IRExternalRecordingKind,
+            native_enum=False,
+            length=16,
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        )
+    )
+    #: The frase a ``frase`` comment is on, by its stretch's ``segment_id`` in the check, or by
+    #: the part's ``take_id`` on a check with no frases; null for the other kinds.
+    segment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    content_type: Mapped[str] = mapped_column(String(64))
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    stored_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRExternalMark(Base):
+    """An outside listener's «está boa» on one frase, addressed as a ``frase`` recording is."""
+
+    __tablename__ = "ir_external_marks"
+    __table_args__ = (
+        UniqueConstraint("listener_id", "segment_id", name="uq_ir_external_marks_listener_segment"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    listener_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    segment_id: Mapped[str] = mapped_column(String(36))
+    marked_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
 class IRHardStretch(Base):
     """A stretch the team told three times, kept for the consultant and cleared by nothing.
 

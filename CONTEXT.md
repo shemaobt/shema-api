@@ -452,6 +452,14 @@ _Avoid_: check state, conferência
 The record that a team opened the external check of one approved **Version**: one row per **Release**, created by the team's first open and answered to every later one, never closed, locked or deleted. It keeps the version's parts (take id and **Part key**) and frases as the release's packet holds them, copied at the first open. A new version opens a new one; a Zerar stamps it with the passage's **Archive** (ADR 0082; the app's ADR 0111).
 _Avoid_: external review, listener session, gate, Phase 4
 
+**Outside listener** (`ir_external_listeners`, *ouvinte*):
+A person who did not help translate, heard on a **Checagem externa** and known only by a number: the next of that **Version**, from 1, only up, never reused, never given to two tablets at once. The record keeps the number, when the listener started, when they finished (none while unfinished) and whether they completed; never a name, a photo or a sign-in (ADR 0083; the app's ADR 0111).
+_Avoid_: tester, reviewer, participant, user, n (in prose)
+
+**Listener recording** (`ir_external_recordings`):
+One recording an **Outside listener** made, stored in the bucket the moment it arrives and only then attached: a retelling (`retell`), a comment on the whole passage (`whole`) or a comment on one frase (`frase`). It keeps its content type as recorded, its length, size, sha256 and when it was stored, and is never transcribed or handed to a model.
+_Avoid_: clip (her word), take (a take is the team's), comment (a comment is one kind), note, feedback
+
 **Retroverification file** (`retroverificacao`):
 The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose

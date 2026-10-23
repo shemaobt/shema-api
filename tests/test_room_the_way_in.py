@@ -54,6 +54,11 @@ TEAM_DOORS = [
     ("POST", "/sessions/{session_id}/back-translation/restart"),
     ("GET", "/sessions/{session_id}/coverage"),
     ("POST", "/sessions/{session_id}/external-check/open"),
+    ("POST", "/sessions/{session_id}/external-check/{version}/listeners"),
+    ("GET", "/sessions/{session_id}/external-check/{version}/listeners/{number}"),
+    ("POST", "/sessions/{session_id}/external-check/{version}/listeners/{number}/finish"),
+    ("POST", "/sessions/{session_id}/external-check/{version}/listeners/{number}/marks"),
+    ("POST", "/sessions/{session_id}/external-check/{version}/listeners/{number}/recordings"),
     ("POST", "/sessions/{session_id}/needs-person"),
     ("POST", "/sessions/{session_id}/parts/{number}/bring-back"),
     ("POST", "/sessions/{session_id}/person-arrived"),
@@ -135,6 +140,7 @@ def knock(
         segment_id="trecho",
         take_id="tomada",
         turn_id="turno",
+        version=1,
     )
     return client.request(method, f"{PREFIX}{filled}", headers=headers)
 
