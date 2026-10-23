@@ -13,6 +13,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.project import Project
 from app.services.auth.issue_tokens import issue_tokens
@@ -80,7 +81,7 @@ async def test_the_read_names_each_pin_a_live_session_holds_once(
     await _a_session(db_session, team, "P02")
     await _a_session(db_session, team, "P03")
 
-    assert await _pins(client, reader) == {"pins": sorted([deployed, NEW_PIN])}, (
+    assert (await _pins(client, reader))["pins"] == sorted([deployed, NEW_PIN]), (
         "a leitura repetia um pin ou deixava de fora o de uma sessão viva"
     )
 
@@ -101,7 +102,7 @@ async def test_an_archived_sessions_pin_is_not_named(
     )
     assert zerar.status_code == 200, zerar.text[:300]
 
-    assert await _pins(client, reader) == {"pins": [NEW_PIN]}, (
+    assert (await _pins(client, reader))["pins"] == [NEW_PIN], (
         "a leitura guardava o canon de uma sessão que o Zerar arquivou"
     )
 
@@ -119,7 +120,7 @@ async def test_an_approved_drafts_session_is_still_named(
     approved = await client.post(desk_release(session.id), headers=reader, json={"force": True})
     assert approved.status_code == 200, approved.text[:300]
 
-    assert await _pins(client, reader) == {"pins": [NEW_PIN]}, (
+    assert (await _pins(client, reader))["pins"] == [NEW_PIN], (
         "a leitura deixava de fora o pin de um rascunho aprovado, que segue vivo"
     )
 
@@ -157,10 +158,10 @@ async def test_a_consultant_with_no_team_reads_the_same_answer_as_a_facilitator(
     await _a_session(db_session, team_a, "P01")
     the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN)
     await _a_session(db_session, team_b, "P01")
-    every_pin = {"pins": sorted([deployed, NEW_PIN])}
+    every_pin = sorted([deployed, NEW_PIN])
 
-    assert await _pins(client, facilitator) == every_pin
-    assert await _pins(client, consultant) == every_pin
+    assert (await _pins(client, facilitator))["pins"] == every_pin
+    assert (await _pins(client, consultant))["pins"] == every_pin
 
 
 async def test_with_no_live_session_the_read_answers_an_empty_list(
@@ -169,4 +170,23 @@ async def test_with_no_live_session_the_read_answers_an_empty_list(
     team = await _a_team(db_session, "x")
     reader = await _a_reader(db_session, "x@example.com", role="facilitator", facilitates=(team,))
 
-    assert await _pins(client, reader) == {"pins": []}
+    assert (await _pins(client, reader))["pins"] == []
+
+
+async def test_the_read_names_the_environment_that_served_it_and_its_deployed_pin(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    team = await _a_team(db_session, "x")
+    reader = await _a_reader(db_session, "x@example.com", role="facilitator", facilitates=(team,))
+    monkeypatch.setattr(get_settings(), "cloud_run_service", "tripod-backend")
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN)
+
+    answer = await _pins(client, reader)
+
+    assert (answer["environment"], answer["deployed_pin"]) == ("tripod-backend", NEW_PIN), (
+        "o arquivo não dizia de que ambiente veio nem que pin ele serve, e o prune não tinha "
+        "como recusar um arquivo do staging ou guardar o canon que produção serve"
+    )

@@ -359,7 +359,7 @@ What Zerar leaves behind: one row per reset of a pericope, every language at onc
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Kept canon** (`canon/kept/<pin>/`):
-The canon a re-pin replaced. It is kept in the repository under its pin, together with the element labels and Portuguese titles it was read with, so that a live **Session** opened under that pin keeps reading it. A sync never removes one. Only a prune removes kept trees, and only after it has been given the pins that live sessions hold, as production's `canon-pins` read answers them. The prune keeps every one of those pins and the deployed pin (ADR 0088). Once a pin is pruned, a session that still names it is refused with `CANON_NOT_KEPT` on every read of the canon.
+The canon a re-pin replaced. It is kept in the repository under its pin, together with the element labels and Portuguese titles it was read with, so that a live **Session** opened under that pin keeps reading it. A sync never removes one. Only a prune removes kept trees, and only after it has been given the pins that live sessions hold, as production's `canon-pins` read answers them. The prune keeps every one of those pins, the pin production serves and the deployed pin (ADR 0088). Once a pin is pruned, a session that still names it is refused with `CANON_NOT_KEPT` on every read of the canon.
 _Avoid_: old canon, archived canon (an **Archive** is a Zerar's), cache
 
 **Needs a person** (`needs_person`):

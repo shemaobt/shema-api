@@ -1,9 +1,9 @@
 """ENG-1753 — only a prune removes a kept canon, and it keeps every pin a live session holds.
 
 The prune is handed the answer of production's `canon-pins` read, saved to a file. It keeps
-every kept tree named there and the tree of the deployed pin, removes the others, and refuses
-to remove anything when it has no file, a file that is not that answer, or a live pin it holds
-no canon for.
+every kept tree named there, the tree of the pin production serves and that of the deployed
+pin, removes the others, and refuses to remove anything when it has no file, a file that is not
+production's answer, or a pin it holds no canon for.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from tests.canon_sync_harness import SHA, Compiler, point_the_sync_at, what_is_v
 LIVE = "a" * 40
 STALE = "c" * 40
 ELSEWHERE = "d" * 40
+PRODUCTION = "tripod-backend"
 
 
 @pytest.fixture
@@ -47,8 +48,9 @@ def _live_pins(tmp_path: Path, body: str) -> Path:
     return file
 
 
-def _the_read_answered(tmp_path: Path, *pins: str) -> Path:
-    return _live_pins(tmp_path, json.dumps({"pins": list(pins)}))
+def _the_read_answered(tmp_path: Path, *pins: str, serving: str = SHA) -> Path:
+    answer = {"environment": PRODUCTION, "deployed_pin": serving, "pins": list(pins)}
+    return _live_pins(tmp_path, json.dumps(answer))
 
 
 def _prune(monkeypatch: pytest.MonkeyPatch, *args: str) -> int:
@@ -184,6 +186,114 @@ def test_a_prune_beside_a_stray_file_under_kept_still_prunes(
     assert [name for name in _kept_trees(canon_dir) if not name.startswith(".")] == sorted(
         [LIVE, SHA]
     ), "um arquivo do Finder em kept/ derrubava o prune"
+
+
+def test_a_prune_keeps_the_pin_production_serves_though_no_session_holds_it(
+    a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _the_read_answered(canon_dir, serving=LIVE)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 0
+
+    assert _kept_trees(canon_dir) == sorted([LIVE, SHA]), (
+        "o prune apagou o canon que produção ainda serve com o deploy segurado, e as sessões "
+        "abertas nele respondiam 409 depois do deploy"
+    )
+
+
+@pytest.mark.parametrize(
+    "environment",
+    ["tripod-backend-staging", "", None],
+    ids=["staging", "no cloud run service", "no environment"],
+)
+def test_a_prune_whose_file_does_not_name_production_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    environment: str | None,
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    answer: dict[str, object] = {"deployed_pin": SHA, "pins": [LIVE]}
+    if environment is not None:
+        answer["environment"] = environment
+    live_pins = _live_pins(canon_dir, json.dumps(answer))
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert str(live_pins) in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, (
+        "um arquivo de um ambiente sem sessões vivas apagou o canon que produção lê"
+    )
+
+
+def test_a_prune_whose_file_carries_no_deployed_pin_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _live_pins(canon_dir, json.dumps({"environment": PRODUCTION, "pins": [LIVE]}))
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert str(live_pins) in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, (
+        "um arquivo sem o pin servido apagou o canon que produção serve"
+    )
+
+
+def test_a_prune_told_a_served_pin_it_holds_no_tree_for_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _the_read_answered(canon_dir, LIVE, serving=ELSEWHERE)
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert ELSEWHERE in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, (
+        "um prune feito de um checkout que não conhece o pin servido apagou canon"
+    )
+
+
+def test_a_prune_with_no_deployed_pin_in_the_checkout_refuses_and_removes_nothing(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    (canon_dir / "vendor" / "VENDOR_PIN").unlink()
+    live_pins = _the_read_answered(canon_dir, LIVE)
+    before = _everything_under(canon_dir)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 1
+
+    assert "VENDOR_PIN" in capsys.readouterr().err
+    assert _everything_under(canon_dir) == before, "um checkout sem VENDOR_PIN apagou canon"
+
+
+def test_a_prune_removes_nothing_through_a_link_under_kept(
+    a_canon_deployed_beside_three_kept_trees: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "VENDOR_PIN").write_text("pin_commit: outside\n")
+    (canon_dir / "kept" / ("b" * 40)).symlink_to(outside, target_is_directory=True)
+    live_pins = _the_read_answered(canon_dir, LIVE)
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 0
+
+    assert (outside / "VENDOR_PIN").read_text() == "pin_commit: outside\n", (
+        "o prune apagou por um link o que está fora de kept/"
+    )
+    assert STALE not in _kept_trees(canon_dir), "o prune parou no meio, no link"
 
 
 def test_a_prune_told_every_kept_pin_removes_nothing(

@@ -17,20 +17,27 @@ Decided:
 - `--sync` keeps the pin it replaces and removes no kept tree. `--keep` is removed: with nothing
   to drop, there is nothing to keep.
 - A kept tree leaves only through `--prune --live-pins <file>`, run by hand from an up-to-date
-  main checkout. It keeps every pin the file names and the deployed pin, and removes every other
-  kept tree. The workflow runs `--sync` only.
+  main checkout. It keeps every pin the file names, the pin production serves and the
+  checkout's deployed pin, and removes every other kept tree. The workflow runs `--sync` only.
+  Production's pin counts on its own: main can be re-pinned to B while a held deploy keeps
+  production on A, and with no session yet on A, a prune that kept only the checkout's B would
+  drop A and every session opened on A after the deploy would answer 409.
 - The file is the saved body of `GET /api/internalization-room/facilitator/canon-pins`, which
-  answers `{"pins": [...]}`: every distinct canon pin of a session no Zerar archived, sorted,
-  with null pins left out. The ticket spells the path `/internalization-room/canon-pins`; the
+  answers `{"environment": ..., "deployed_pin": ..., "pins": [...]}`: the Cloud Run service that
+  answered (`K_SERVICE`, `tripod-backend` in production, empty off Cloud Run), the pin it serves,
+  and every distinct canon pin of a session no Zerar archived, sorted, with null pins left out. The ticket spells the path `/internalization-room/canon-pins`; the
   house puts every Desk read under `/facilitator`, and the role-gate audit requires it.
 - The read is behind `ReaderUser` and is not scoped to the reader's teams. A prune told one
   team's pins would remove the canon another team's live session reads. The pins are commits of
   a public repository and the answer is the same for every reader.
-- The prune refuses, exits 1 and removes nothing when it has no file, when the file is not that
-  read's answer (unreadable, not JSON, no `pins` list, an entry that is not a full sha), and when
-  a live pin names neither a kept tree nor the deployed pin. That last file came from another
-  environment or from a checkout behind production, and pruning on it would delete what the
-  operator meant to keep.
+- The prune refuses, exits 1 and removes nothing when the checkout has no `VENDOR_PIN`, when it
+  has no file, when the file is not that read's answer (unreadable, not JSON, no `pins` list, no
+  `deployed_pin`, an entry that is not a full sha), when the file does not name `tripod-backend`
+  as its environment, and when a live pin or the served pin names neither a kept tree nor the
+  checkout's deployed pin. A file from staging, a local server or a fresh database answers
+  `{"pins": []}`, and pruning on it would drop every kept tree production reads; a pin the
+  checkout lacks means a checkout behind production.
+- The prune never removes through a link under `kept/`: it passes over links and files.
 - The suite checks that every canon pin a test fixture's `PROVENANCE.json` names is the deployed
   pin or a kept canon.
 
@@ -50,6 +57,6 @@ Consequences:
   per compiler move.
 - A session archived by a Zerar may lose its canon at the next prune, and the consultant's by-id
   read of it then answers 409 `CANON_NOT_KEPT`.
-- The operator's file is the only source of truth for the prune. A file from the wrong
-  environment that names only pins the checkout holds passes every refusal; the prune's pull
-  request is the review that catches it.
+- The operator's file is the only source of truth for the prune, and its environment is what
+  the file says. A file edited by hand passes every refusal; the prune's pull request is the
+  review that catches it.

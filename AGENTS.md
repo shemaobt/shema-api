@@ -104,8 +104,9 @@ curl -sf -H "Authorization: Bearer <token>" \
   uv run python scripts/sync_internalization_canon.py --prune --live-pins pins.json
 ```
 
-The prune keeps every pin in the file and the deployed pin. It refuses with no file, with a
-file that is not that read's answer, and with a live pin it holds no tree for. Never edit vendored
+The prune keeps every pin in the file, the pin production serves and the deployed pin. It
+refuses with no file, with a file that is not that read's answer or was not served by production
+(`tripod-backend`), and with a pin it holds no tree for. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.
