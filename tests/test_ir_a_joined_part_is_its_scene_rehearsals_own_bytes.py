@@ -8,6 +8,7 @@ fingerprint; the room keeps exactly those bytes and refuses any others (ADR 0072
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 
 import httpx
 import pytest
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.takes import takes_of
 from tests.hard_stretch_harness import a_session
-from tests.scene_rehearsal_harness import IR, Room, a_room, read_by_b, recording
+from tests.scene_rehearsal_harness import IR, Room, a_room, read_by_b, record, recorded, recording
 
 
 @pytest.fixture()
@@ -34,6 +35,7 @@ async def _joined(
     origin: str,
     sha256: str,
     audio: bytes,
+    pass_number: int | None = None,
     headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     return await client.post(
@@ -45,21 +47,23 @@ async def _joined(
             "chunk_index": str(part),
             "origin": origin,
             "sha256": sha256,
+            **({} if pass_number is None else {"pass_number": str(pass_number)}),
         },
         files={"file": ("cena.wav", audio, "audio/wav")},
     )
 
 
 async def _rehearsed(room: Room, session_id: str, audio: bytes) -> tuple[str, str]:
-    kept = await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals",
-        data={"scene": "S2"},
-        files={"file": ("cena.wav", audio, "audio/wav")},
-    )
-    assert kept.status_code == 200, kept.text
+    rehearsal_id = await recorded(room, session_id, audio)
     (listed,) = await read_by_b(room, session_id)
-    assert kept.json()["sha256"] == listed["sha256"]
-    return str(listed["rehearsal_id"]), str(listed["sha256"])
+    assert listed["rehearsal_id"] == rehearsal_id
+    return rehearsal_id, str(listed["sha256"])
+
+
+async def _parts(room: Room, session_id: str, headers: dict[str, str]) -> list[dict[str, Any]]:
+    listed = await room.client.get(f"{IR}/sessions/{session_id}/takes", headers=headers)
+    assert listed.status_code == 200, listed.text
+    return list(listed.json()["takes"])
 
 
 async def test_the_listing_names_each_scene_rehearsals_fingerprint(
@@ -68,12 +72,9 @@ async def test_the_listing_names_each_scene_rehearsals_fingerprint(
     session_id = await a_session(db_session)
     audio = recording(4, 7)
 
-    kept = await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals",
-        data={"scene": "S2"},
-        files={"file": ("cena.wav", audio, "audio/wav")},
-    )
+    kept = await record(room, session_id, audio)
 
+    assert kept.status_code == 200, kept.text
     expected = hashlib.sha256(audio).hexdigest()
     assert kept.json()["sha256"] == expected, "a resposta do envio não nomeava a impressão digital"
     assert [r["sha256"] for r in await read_by_b(room, session_id)] == [expected], (
@@ -99,11 +100,11 @@ async def test_a_part_joined_under_the_rehearsals_fingerprint_is_kept_as_those_b
     )
 
     assert joined.status_code == 200, joined.text
-    (part,) = await takes_of(db_session, session_id)
-    assert (part.ordinal, part.origin, part.sha256) == (2, rehearsal_id, fingerprint)
-    assert list(room.bucket.objects.values()).count(audio) >= 1, (
-        "a parte não eram os bytes do ensaio"
-    )
+    (part,) = await _parts(room, session_id, room.tablet_b)
+    assert (part["ordinal"], part["origin"], part["sha256"]) == (2, rehearsal_id, fingerprint)
+    assert part["take_id"] == joined.json()["take_id"], "a parte juntada não é a vigente"
+    (kept,) = await takes_of(db_session, session_id)
+    assert room.bucket.objects[kept.storage_key] == audio, "a parte não eram os bytes do ensaio"
 
 
 async def test_bytes_that_are_not_the_rehearsals_fingerprint_are_refused_and_nothing_is_kept(
@@ -124,7 +125,7 @@ async def test_bytes_that_are_not_the_rehearsals_fingerprint_are_refused_and_not
 
     assert refused.status_code == 422, refused.text
     assert refused.json()["code"] == "TAKE_FINGERPRINT_DIFFERS"
-    assert await takes_of(db_session, session_id) == []
+    assert await _parts(room, session_id, room.tablet_b) == []
     assert room.bucket.objects == stored_before, "bytes de outro som entraram como a parte"
 
 
@@ -136,7 +137,13 @@ async def test_the_same_rehearsal_joined_from_two_tablets_is_one_take(
     rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
 
     first = await _joined(
-        room.client, session_id, part=2, origin=rehearsal_id, sha256=fingerprint, audio=audio
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=3,
     )
     second = await _joined(
         room.client,
@@ -145,9 +152,11 @@ async def test_the_same_rehearsal_joined_from_two_tablets_is_one_take(
         origin=rehearsal_id,
         sha256=fingerprint,
         audio=audio,
+        pass_number=3,
         headers=room.tablet_b,
     )
 
     assert (first.status_code, second.status_code) == (200, 200), (first.text, second.text)
-    assert first.json()["take_id"] == second.json()["take_id"]
-    assert len(await takes_of(db_session, session_id)) == 1, "a mesma junção virou duas gravações"
+    assert second.json() == first.json(), "a segunda junção mudou a gravação que já existia"
+    parts = await _parts(room, session_id, room.tablet_b)
+    assert [p["take_id"] for p in parts] == [first.json()["take_id"]]
