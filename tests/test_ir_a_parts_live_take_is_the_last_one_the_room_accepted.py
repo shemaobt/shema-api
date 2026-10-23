@@ -2,10 +2,10 @@
 
 A reinstalled tablet, or a second one, counts its passes from 1 again, so the pass the tablet
 sends no longer says which recording of a part came last, and a tablet's clock can read any year.
-Under one part number the take that lands last is the part, whatever its pass or its **Recording
-time**. Every case sends real WAV through the room's doors and reads which take is the part where
-the Desk, the tablet, the consultant and the **Packet** read it. Expected values come from the
-ticket as settled on 2026-10-23 (recon Q69).
+Under one part number the take the room accepts last is the part, whatever its pass or its
+**Recording time**. Every case sends real WAV through the room's doors and reads which take is
+the part where the Desk, the tablet, the consultant and the **Packet** read it. Expected values
+come from the ticket as settled on 2026-10-23 (recon Q69).
 """
 
 from __future__ import annotations
@@ -250,13 +250,13 @@ async def a_checked_telling(db: AsyncSession, session: IRSession) -> None:
     await checked_over(db, session, await final_segments(db, session.id))
 
 
-async def told_and_checked_while_the_order_was_the_pass(
+async def told_while_the_order_was_the_pass(
     client: httpx.AsyncClient, credential: str, session: IRSession, db: AsyncSession
-) -> tuple[dict[str, Any], dict[str, Any], IRSegment]:
+) -> tuple[dict[str, Any], IRSegment]:
     """A part stored before ENG-1760: pass 2, then pass 1 from a reinstall landing after it.
 
-    The pass then chose pass 2 as the part, so it was told back and checked over it, and those
-    rows are still stored when the room starts reading by arrival.
+    The pass then chose pass 2 as the part, so it was told back over it, and those rows are
+    still stored when the room starts reading by arrival.
     """
     monday = await send(
         client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
@@ -264,8 +264,7 @@ async def told_and_checked_while_the_order_was_the_pass(
     tuesday = await send(
         client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
     )
-    over_monday = await told_back_whole(db, session, monday["take_id"])
-    return monday, tuesday, over_monday
+    return tuesday, await told_back_whole(db, session, monday["take_id"])
 
 
 async def recorded_on_monday(
@@ -371,10 +370,15 @@ async def test_a_live_take_whose_clock_reads_2099_is_replaced_by_the_take_record
     )
     today = await send(client, credential, session.id, recording(2, 2), recorded_at=an_hour_ago())
 
+    listed = await tablet_list(client, credential, session.id)
     assert (
         await the_desks_part(client, db_session, room_app, project, session.id) == today["take_id"]
     )
-    assert the_tablets_part(await tablet_list(client, credential, session.id)) == today["take_id"]
+    assert the_tablets_part(listed) == today["take_id"]
+    assert [take["recorded_at"] for take in listed] == [
+        "2099-01-01T10:00:00+00:00",
+        today["recorded_at"],
+    ]
 
 
 async def test_a_take_whose_clock_reads_2000_landing_last_is_the_part(
@@ -576,7 +580,7 @@ async def test_a_part_stored_under_the_pass_order_is_not_told_by_the_take_it_no_
     client, db_session, team, session
 ):
     _project, credential = team
-    _monday, tuesday, over_monday = await told_and_checked_while_the_order_was_the_pass(
+    tuesday, over_monday = await told_while_the_order_was_the_pass(
         client, credential, session, db_session
     )
     await checked_over(db_session, session, [over_monday])
@@ -609,7 +613,7 @@ async def test_a_check_stored_under_the_pass_order_goes_stale_when_arrival_chang
     client, db_session, team, session
 ):
     _project, credential = team
-    _monday, tuesday, over_monday = await told_and_checked_while_the_order_was_the_pass(
+    tuesday, over_monday = await told_while_the_order_was_the_pass(
         client, credential, session, db_session
     )
     second = await send(client, credential, session.id, recording(2, 3), part=2, pass_number=1)
@@ -682,7 +686,7 @@ async def test_a_forced_release_carries_no_finding_on_the_take_that_is_no_longer
     client, db_session, team, session
 ):
     _project, credential = team
-    _monday, _tuesday, over_monday = await told_and_checked_while_the_order_was_the_pass(
+    _tuesday, over_monday = await told_while_the_order_was_the_pass(
         client, credential, session, db_session
     )
     await checked_over(db_session, session, [over_monday])

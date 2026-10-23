@@ -470,7 +470,7 @@ READING_ORDER = (
 
 
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
-    """Every take of a session, in reading order rather than in arrival order.
+    """Every take of a session, by its number first and then in the order it was accepted.
 
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
@@ -481,10 +481,10 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
 
     The ordinal and the pass are nullable, and their placement is named rather than left to
     the engine: a take with no ordinal belongs to no stretch — the undivided passage, or a
-    recording that captured none — and a take with no pass predates the room sending one, so
-    either is the earliest thing in its own group. Unnamed, SQLite read that the same way and
-    PostgreSQL read it upside down, which put the oldest recording of a session at the bottom
-    of the packet on the only database that serves a real team.
+    recording that captured none — and a back-translation take with no pass predates the room
+    sending one, so either is the earliest thing in its own group. Unnamed, SQLite read that
+    the same way and PostgreSQL read it upside down, which put the oldest recording of a
+    session at the bottom of the packet on the only database that serves a real team.
     """
     result = await db.execute(
         select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)

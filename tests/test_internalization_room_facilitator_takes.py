@@ -277,6 +277,6 @@ async def test_a_take_with_no_pass_holds_its_place_on_either_database(
     ordered = [statement for statement in emitted if "ORDER BY" in statement]
     assert ordered, "takes_of tem de ter chegado ao banco para haver o que ler"
     assert ordered[-1].count("NULLS FIRST") == 2, (
-        "as duas colunas anuláveis precisam dizer onde o nulo cai, senão o pacote sai em "
+        "as duas chaves anuláveis precisam dizer onde o nulo cai, senão o pacote sai em "
         "uma ordem no teste e na oposta em produção"
     )

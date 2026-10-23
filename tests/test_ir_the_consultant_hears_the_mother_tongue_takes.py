@@ -93,6 +93,7 @@ async def _keep(
     recorded_at: datetime | None = None,
     duration_ms: int | None = None,
     pass_number: int | None = None,
+    created_at: datetime | None = None,
 ) -> str:
     take = ensaio_take(
         session.id,
@@ -100,6 +101,7 @@ async def _keep(
         sha256=sha,
         project_id=team.id,
         pass_number=pass_number,
+        created_at=created_at,
     )
     take.size_bytes = size_bytes
     take.duration_ms = duration_ms
@@ -243,8 +245,24 @@ async def test_a_telling_back_and_a_part_recorded_again_are_not_listed_beside_th
     team: Project,
     db_session: AsyncSession,
 ) -> None:
-    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, pass_number=1)
-    again = await _keep(db_session, session, team, ordinal=1, sha="b" * 64, pass_number=2)
+    await _keep(
+        db_session,
+        session,
+        team,
+        ordinal=1,
+        sha="a" * 64,
+        pass_number=1,
+        created_at=datetime(2026, 9, 1, 10, 0, tzinfo=UTC),
+    )
+    again = await _keep(
+        db_session,
+        session,
+        team,
+        ordinal=1,
+        sha="b" * 64,
+        pass_number=2,
+        created_at=datetime(2026, 9, 1, 10, 5, tzinfo=UTC),
+    )
     second = await _keep(db_session, session, team, ordinal=2, sha="c" * 64, pass_number=1)
     db_session.add(retro_take(session.id, ordinal=1, sha256="d" * 64, project_id=team.id))
     await db_session.commit()

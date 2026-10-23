@@ -13,7 +13,8 @@ would never become it. This supersedes in part ADR 0090.
 Decided (ENG-1760, the Definer's recon Q69, chosen by Henok on 2026-10-23):
 
 - Under one part number the live take is the last one the room accepted: the takes read by
-  ordinal, then arrival (`created_at`), then id. Neither the pass nor the Recording time orders
+  ordinal, then arrival (`created_at`), then id, with a back-translation take's pass before its
+  arrival (below). Neither the pass nor the Recording time orders
   a rehearsal take, and rows stored before this change keep their arrival order.
 - The Recording time is the record for the consultant and Refine (ADR 0072). It orders nothing
   and is never clamped or corrected, so the derivation of which takes have one of their own,
@@ -33,4 +34,6 @@ Consequences: a take that drains late from a tablet's outbox is the part when it
 when the team recorded over it meanwhile (ENG-579's case); a join names the take it replaces
 and is refused when that take is no longer live (ENG-1385). A session whose earlier order and
 arrival disagree changes its part once, so its packet's hash moves once and its stored check
-reads as not checked until the team tells and checks again.
+reads as not checked until the team tells and checks again. `created_at` is stamped when the
+upload reaches the server, before its bytes are stored, so a splice or a second tablet's take
+that is stored while a slower upload of the same part is still being written reads after it.
