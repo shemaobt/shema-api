@@ -31,9 +31,7 @@ from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
-from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import final_segments
-from app.services.internalization_room.sessions import get_session
 from tests.baker import make_app, make_role
 from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import (
@@ -615,7 +613,7 @@ async def test_a_frase_translated_again_after_approval_leaves_the_draft_approved
     assert (await the_tablet_reads(client, tablet, session.id))["approved"]["version"] == 1
 
 
-async def test_the_release_door_serves_v1s_stored_packet_after_a_hand_is_answered(
+async def test_the_version_door_serves_v1s_stored_packet_after_a_hand_is_answered(
     client, db_session, room_app
 ) -> None:
     """A release id names exactly its stored packet while the takes are its own."""
@@ -633,20 +631,17 @@ async def test_the_release_door_serves_v1s_stored_packet_after_a_hand_is_answere
     db_session.add(hand)
     await db_session.commit()
     await parts_told_and_played(db_session, session)
-    await approved_by_the_team(client, tablet, session.id)
+    approval = await approved_by_the_team(client, tablet, session.id)
     answered = await client.post(f"{PREFIX}/facilitator/questions/{hand.id}/resolve", headers=desk)
     assert answered.status_code == 200, answered.text[:300]
 
-    live, _blockers = await compose_internalization_release(
-        db_session, await get_session(db_session, session.id)
-    )
     stored = (
         await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/releases/1", headers=desk)
     ).json()
 
-    assert live["version"] == 1
-    assert live["package_sha256"] == stored["package_sha256"]
-    assert live["raised_questions"] == stored["raised_questions"]
+    assert stored["package_sha256"] == approval["package_sha256"]
+    assert [one["status"] for one in stored["raised_questions"]] == ["open"]
+    assert (await the_tablet_reads(client, tablet, session.id))["approved"]["version"] == 1
 
 
 async def test_the_translation_started_over_after_approval_leaves_the_draft_approved_as_v1(

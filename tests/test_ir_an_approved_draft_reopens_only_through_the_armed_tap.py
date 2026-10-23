@@ -10,23 +10,28 @@ the draft, and a join that finds the same take already kept brings nothing new.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
+from app.services.internalization_room import release as release_service
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     FindingKind,
 )
-from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import capture_segment, final_segments
-from app.services.internalization_room.sessions import get_session
+from app.services.internalization_room.sessions import (
+    back_translation_of,
+    get_session,
+    save_back_translation,
+)
 from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
@@ -56,6 +61,7 @@ from tests.room_harness import (
     upload_a_part,
 )
 from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
+from tests.session_row_lock_harness import the_session_row_locks_as_postgres_does
 
 REOPENS = {"reopens_the_approved_draft": "true"}
 
@@ -379,15 +385,11 @@ async def test_a_check_that_comes_back_clean_over_a_forced_v1_is_the_one_check_e
     assert pressed.status_code == 200, pressed.text
 
     read = await _approval(client, session.id)
-    live, _blockers = await compose_internalization_release(
-        db_session, await get_session(db_session, session.id)
-    )
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
     retro = (await client.get(desk_retro(session.id), headers=desk)).json()
 
     assert read is not None
     assert (read["version"], read["forced"]) == (1, True)
-    assert live == stored
     assert (stored["check"]["status"], stored["check"]["forced"]) == ("conferida", True)
     assert stored["check"]["conferida"] is True
     assert (retro["approved"], retro["checked"]) == (True, True)
@@ -440,3 +442,94 @@ async def test_the_translation_started_over_after_the_approval_is_the_standing_v
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
     retro = (await client.get(desk_retro(session.id), headers=desk)).json()
     assert (stored["check"]["conferida"], retro["checked"]) == (False, False)
+
+
+async def test_a_finding_on_a_stretch_told_after_the_approval_leaves_the_versions_check_as_it_was(
+    client, db_session, room_app
+) -> None:
+    """A version's check names places in its own stretches, never in one told after it."""
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    await checked_heard_and_approved(client, db_session, session.id)
+    restarted = await client.post(f"{PREFIX}/sessions/{session.id}/back-translation/restart")
+    assert restarted.status_code == 200, restarted.text
+    after_the_restart = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+    part_2 = after_the_restart["audio"]["rehearsal_takes"][1]["take_id"]
+    await db_session.refresh(session)
+    told_again = await capture_segment(
+        db_session,
+        session,
+        take_id=part_2,
+        starts_ms=0,
+        ends_ms=PART_MS,
+        bridge_take_id="retro-de-novo",
+        transcript="a cena 2 contada de novo",
+    )
+    await db_session.refresh(session)
+    state = back_translation_of(session)
+    state.findings = [
+        Finding(kind=FindingKind.ADDITION, note="a mais", segment_id=told_again.id, chunk=1)
+    ]
+    state.analysed_segment_ids = [told_again.id]
+    await save_back_translation(db_session, session, state)
+
+    stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+
+    assert stored["check"] == after_the_restart["check"]
+
+
+async def test_a_verdict_landing_while_the_passage_is_approved_is_the_versions_check_or_refuses_it(
+    client, db_session, room_app, test_engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The approval and every write of the telling-back hold the session's row, one at a time."""
+    the_session_row_locks_as_postgres_does(monkeypatch)
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    told = await final_segments(db_session, session.id)
+    await reported_playback(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+    elsewhere = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    composing = release_service.compose_internalization_release
+    verdicts: list[asyncio.Task[None]] = []
+
+    async def a_verdict() -> None:
+        async with elsewhere() as other:
+            stored = await get_session(other, session.id)
+            state = back_translation_of(stored)
+            state.findings = [
+                Finding(kind=FindingKind.ADDITION, note="a mais", segment_id=told[0].id, chunk=1)
+            ]
+            state.checked = False
+            await save_back_translation(other, stored, state)
+
+    async def a_verdict_lands_while_it_is_composed(*args: Any, **kwargs: Any) -> Any:
+        composed = await composing(*args, **kwargs)
+        verdicts.append(asyncio.create_task(a_verdict()))
+        await asyncio.sleep(0.2)
+        return composed
+
+    monkeypatch.setattr(
+        release_service, "compose_internalization_release", a_verdict_lands_while_it_is_composed
+    )
+
+    approved = await client.post(team_release(session.id))
+    await verdicts[0]
+
+    assert approved.status_code == 200, approved.text
+    if approved.json()["version"] is None:
+        assert "telling_back_not_checked" in approved.json()["blockers"]
+    else:
+        stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+        assert [one["idx"] for one in stored["check"]["findings"]] == [told[0].id]

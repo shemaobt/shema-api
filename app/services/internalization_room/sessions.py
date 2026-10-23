@@ -571,6 +571,16 @@ async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
     await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
 
 
+async def hold_the_session_row(db: AsyncSession, session_id: str) -> None:
+    """Take the session's row until this transaction ends, before anything is read.
+
+    The approval takes it before it composes, and every write of the telling-back takes it with
+    its conditional write of the row (`_written_forward`), so the two land one at a time and the
+    later one sees the earlier (ADR 0081).
+    """
+    await db.execute(select(IRSession.id).where(IRSession.id == session_id).with_for_update())
+
+
 async def refuse_if_archived(db: AsyncSession, session: IRSession) -> None:
     """Refuse a session a Zerar archived, as stored now and not as it was read, with the
     unknown session's words (ADR 0052)."""
