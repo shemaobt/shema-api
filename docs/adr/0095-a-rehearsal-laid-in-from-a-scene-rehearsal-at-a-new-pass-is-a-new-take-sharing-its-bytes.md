@@ -40,6 +40,6 @@ Considered and rejected:
 - Keying the joined identity on bytes and number alone: A → B → A → B would collapse two swaps.
 
 Consequences: two rows can share one stored object, and nothing in the room deletes take
-objects. The Desk's downloads list each row. A joined take sent with no pass is the same take as
-an earlier one with no pass, and the race guard does not cover it (a null is distinct in a unique
-index); every join the tablet sends carries its pass.
+objects. The Desk's downloads list each row. A joined take sent with no number or no pass is the
+same take as an earlier one sent the same way, and the race guard reads a missing number or pass
+as one value, so two such deliveries at once still leave one row.

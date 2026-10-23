@@ -25,7 +25,7 @@ KEY = "takes/a/ensaio/aaaa/tomada.m4a"
 
 
 async def _insert_take(
-    url: str, take_id: str, *, pass_number: int, origin: str | None, sha256: str = "a" * 64
+    url: str, take_id: str, *, pass_number: int | None, origin: str | None, sha256: str = "a" * 64
 ) -> None:
     engine = create_async_engine(url)
     async with engine.begin() as conn:
@@ -89,6 +89,22 @@ async def test_two_hand_recorded_takes_of_the_same_bytes_are_still_refused(
 
     with pytest.raises(IntegrityError):
         await _insert_take(url, "b0000000-0000-0000-0000-000000000002", pass_number=2, origin=None)
+
+
+async def test_two_joined_takes_of_the_same_bytes_sent_with_no_pass_are_refused(
+    before_the_migration,
+) -> None:
+    url = before_the_migration
+    up = run_alembic(url, "upgrade", REVISION)
+    assert up.returncode == 0, up.stderr
+    await _insert_take(
+        url, "b0000000-0000-0000-0000-000000000001", pass_number=None, origin=REHEARSAL
+    )
+
+    with pytest.raises(IntegrityError):
+        await _insert_take(
+            url, "b0000000-0000-0000-0000-000000000002", pass_number=None, origin=REHEARSAL
+        )
 
 
 async def test_the_migration_walks_down_where_no_bytes_are_shared(before_the_migration) -> None:
