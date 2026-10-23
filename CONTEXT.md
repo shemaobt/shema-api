@@ -428,6 +428,10 @@ _Avoid_: override, bypass, forced approval, Aprovação forçada
 The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Beside `forced`, and in our names rather than hers, a **Forced release** says who forced it (`forcedBy`), when (`forcedAt`) and the blockers it passed (`forcedBlockers`), each null when nobody forced. Never the analyst's note.
 _Avoid_: check state, manifest check, conferência
 
+**Checagem externa** (`ir_external_checks`):
+The record that a team opened the external check of one approved **Version**: one row per **Release**, created by the team's first open and answered to every later one, never closed, locked or deleted. It keeps the version's parts (take id and **Part key**) and frases as the release's packet holds them, copied at the first open. A new version opens a new one; a Zerar stamps it with the passage's **Archive** (ADR 0082; the app's ADR 0111).
+_Avoid_: external review, listener session, gate, Phase 4
+
 **Retroverification file** (`retroverificacao`):
 The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
