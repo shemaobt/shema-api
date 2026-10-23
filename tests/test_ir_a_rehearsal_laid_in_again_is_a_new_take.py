@@ -356,7 +356,7 @@ async def test_a_hand_recorded_take_with_a_joined_parts_bytes_is_its_own_take(
 async def test_a_second_tablet_joining_while_the_first_stores_its_bytes_leaves_one_take(
     db_session, monkeypatch: pytest.MonkeyPatch, store, rival_factory
 ) -> None:
-    the_session_row_locks_as_postgres_does(monkeypatch)
+    lock = the_session_row_locks_as_postgres_does(monkeypatch)
     session, ra, _ = await _two_rehearsals(db_session)
     other = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     tablet_y = other.headers | {"X-Room-Device": "tablet-y"}
@@ -380,11 +380,13 @@ async def test_a_second_tablet_joining_while_the_first_stores_its_bytes_leaves_o
             return await put(key, data, content_type)
 
         monkeypatch.setattr(store, "put", y_joins_while_x_stores)
+        lock.notes_the_calls(monkeypatch, store, "get", "put", "stat")
 
         from_x = await _kept(racing, session.id, part=2, audio=A, pass_number=1, origin=ra)
 
         assert from_x == staged[0], "duas tablets juntando ao mesmo tempo deixavam duas tomadas"
         assert len(await _takes_of_part(racing, session.id, 2)) == 1
+        assert lock.made_while_held == [], "o bucket trabalhava com a linha da sessão presa"
 
 
 async def test_a_part_number_below_zero_or_a_pass_below_one_is_refused_at_the_door(

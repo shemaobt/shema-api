@@ -51,6 +51,8 @@ THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
 THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
 #: The grain door holds the row around a read, a stamp and the restart, with no bucket.
 THE_GRAIN_SWITCH = "app/services/internalization_room/sessions.py"
+#: A joined keep takes the row after its bytes are stored, to ask again and write its row.
+THE_JOINED_KEEP = "app/services/internalization_room/takes.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -334,7 +336,7 @@ def test_the_session_row_is_taken_for_update_only_by_doors_that_hold_no_bucket()
         if isinstance(node, ast.Call) and _takes_a_row_lock(node) and _on_the_session_row(node)
     )
 
-    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL]), (
+    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL, THE_JOINED_KEEP]), (
         "a linha da sessão era travada num lugar novo, que ninguém conferiu contra o bucket"
     )
 
