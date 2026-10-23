@@ -27,7 +27,8 @@ Decided (the Definer, 2026-10-23, Q38):
 - One migration replaces the two uniqueness rules on `ir_takes` with three partial unique
   indexes: the key and the bytes once per session among takes recorded as themselves, and the
   bytes, number and pass once per session among joined takes. The last is the race guard for
-  two tablets sending the same join at once. It is reversible until the first swap back: over a
+  two tablets sending the same join at once. A take a **Grain switch** set aside stays outside
+  all three, as ADR 0096 put it outside the two before. It is reversible until the first swap back: over a
   session holding two takes of the same bytes the old index fails loudly on the way down, and no
   take is deleted.
 
