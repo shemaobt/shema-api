@@ -29,8 +29,14 @@ from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTa
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import report_playback
 from app.services.internalization_room import takes as takes_service
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Finding,
+    FindingKind,
+)
+from app.services.internalization_room.release import approve_release
 from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.sessions import get_session, save_back_translation
 from tests.baker import grant_room_app_role, make_app, make_role, make_user
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
@@ -489,7 +495,7 @@ async def test_the_tablets_list_carries_each_takes_pass_as_sent(client, team, se
     assert passes == {monday["take_id"]: 2, tuesday["take_id"]: 1}
 
 
-async def test_a_take_stored_before_its_mark_was_written_still_reads_by_its_recording_time(
+async def test_a_take_stored_by_an_earlier_server_reads_by_its_recording_time(
     client, db_session, team, session
 ):
     project, credential = team
@@ -511,7 +517,6 @@ async def test_a_take_stored_before_its_mark_was_written_still_reads_by_its_reco
     )
     for take, recorded_at in ((monday, MONDAY), (tuesday, TUESDAY)):
         take.recorded_at = datetime.fromisoformat(recorded_at)
-        take.recorded_at_known = False
         db_session.add(take)
     await db_session.commit()
 
@@ -593,3 +598,88 @@ async def test_a_check_goes_stale_when_the_order_changes_which_take_is_a_part(
     assert "telling_back_not_checked" in stale.json()["blockers"]
     assert approved.status_code == 200, approved.text
     assert approved.json()["blockers"] == []
+
+
+async def test_a_sentence_laid_again_over_a_spliced_part_keeps_the_newest_splice_as_the_part(
+    client, db_session, room_app, team, session
+):
+    project, credential = team
+    part = await send(
+        client, credential, session.id, recording(4, 21), pass_number=1, recorded_at=an_hour_ago()
+    )
+    first = await capture_segment(
+        db_session,
+        session,
+        take_id=part["take_id"],
+        starts_ms=0,
+        ends_ms=2000,
+        bridge_take_id="retro-1",
+        transcript="a primeira frase",
+    )
+    await capture_segment(
+        db_session,
+        session,
+        take_id=part["take_id"],
+        starts_ms=2000,
+        ends_ms=4000,
+        bridge_take_id="retro-2",
+        transcript="a segunda frase",
+    )
+    once = await re_record(
+        client,
+        session.id,
+        first.id,
+        spoken(1.0),
+        sentence_id="sentence-0001",
+        headers=team_headers(credential),
+    )
+    assert once.status_code == 200, once.text
+
+    again = await re_record(
+        client,
+        session.id,
+        first.id,
+        spoken(0.5),
+        sentence_id="sentence-0002",
+        headers=team_headers(credential),
+    )
+
+    assert again.status_code == 200, again.text
+    spliced_again = again.json()["segments"][0]["take_id"]
+    assert spliced_again not in (part["take_id"], once.json()["segments"][0]["take_id"])
+    assert await the_desks_part(client, db_session, room_app, project, session.id) == spliced_again
+    assert the_tablets_part(await tablet_list(client, credential, session.id)) == spliced_again
+
+
+async def test_a_forced_release_carries_no_finding_on_the_take_that_stopped_being_the_part(
+    client, db_session, team, session
+):
+    _project, credential = team
+    monday = await send(
+        client, credential, session.id, recording(2, 1), tablet=OLD_TABLET, pass_number=2
+    )
+    tuesday = await send(
+        client, credential, session.id, recording(2, 2), tablet=NEW_TABLET, pass_number=1
+    )
+    await told_back_whole(db_session, session, monday["take_id"])
+    [over_monday] = await final_segments(db_session, session.id)
+    await a_checked_telling(db_session, session)
+    state = await stored_telling_back(db_session, session)
+    state.findings = [
+        Finding(kind=FindingKind.MISSING, note="faltou Moabe", segment_id=over_monday.id, chunk=1)
+    ]
+    await save_back_translation(db_session, await get_session(db_session, session.id), state)
+    for take_id, recorded_at in ((monday["take_id"], MONDAY), (tuesday["take_id"], TUESDAY)):
+        await db_session.execute(
+            update(IRTake)
+            .where(IRTake.id == take_id)
+            .values(recorded_at=datetime.fromisoformat(recorded_at))
+        )
+    await db_session.commit()
+
+    release = await approve_release(
+        db_session, await get_session(db_session, session.id), forced_by="a-facilitadora"
+    )
+
+    assert release.forced_open_findings == []
+    assert release.packet["back_translation"]["findings"] == []

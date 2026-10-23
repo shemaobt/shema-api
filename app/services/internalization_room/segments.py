@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import TypeGuard
 
-from sqlalchemy import ColumnElement, select, update
+from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -544,14 +544,24 @@ def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
 async def set_aside_segment_ids(
     db: AsyncSession, session_id: str, takes: list[IRTake] | None = None
 ) -> set[str]:
-    """Every stored stretch told over a whole that stepped aside, retired or not.
+    """Every stored stretch told over a whole that stepped aside, retired or not, and every
+    standing one on a take that is no longer the part (`_not_the_part`): its findings and nuances
+    are history, stored and never carried.
 
     `takes` is the session's takes in `takes_of`'s order, for a caller that already read them.
     """
-    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
-    if not set_aside:
+    takes = takes if takes is not None else await takes_of(db, session_id)
+    history = _not_the_part(takes)
+    if not history:
         return set()
-    rows = await db.execute(select(IRSegment.id).where(IRSegment.take_id.in_(set_aside)))
+    rows = await db.execute(
+        select(IRSegment.id).where(
+            or_(
+                IRSegment.take_id.in_(_wholes_set_aside(takes)),
+                IRSegment.take_id.in_(history) & IRSegment.superseded_at.is_(None),
+            )
+        )
+    )
     return set(rows.scalars().all())
 
 

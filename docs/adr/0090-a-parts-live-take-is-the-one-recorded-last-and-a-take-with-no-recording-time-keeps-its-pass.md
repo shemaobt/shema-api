@@ -25,19 +25,22 @@ Decided (ENG-1760, Henok on 2026-10-22):
 - Which takes have one is read off what every writer already stores: a joined part names its
   `origin`, and a tablet's time is never its arrival, which the server stamps from one clock
   reading for a take sent with none. So a take written by a server that predates this decision,
-  through a held deploy or a rollback, reads the same. A stored mark, `recorded_at_known`,
-  carries only what the row cannot show: a splice of a part that had one. The migration
-  backfills it for the takes a laid-in sentence names, in the order the sentences were laid.
+  through a held deploy or a rollback, reads the same. A spliced part is stamped like a take
+  sent with none, so its row cannot say it; the sentence laid into it names the take it was laid
+  into, which every server that ever spliced wrote, and the splice inherits from that take,
+  through a sentence laid again over a splice too. Nothing new is stored, so nothing is
+  migrated.
 - A stretch counts only on the take that is the part now. Recording a part again retires the
   stretches of the take it replaced, but a take can stop being the part with nobody recording
   anything, when this order changes under stored rows or is rolled back. The stretches standing
-  on it are history: never told and never checked for the current part. A stored check stands
+  on it are history: never told and never checked for the current part, and their findings and
+  nuances are stored and never carried, forced or not. A stored check stands
   only while every stretch it read is on a take that is still the part; once the order makes
   another take the part of any number, the release reads the session as not checked, and no
   packet carries the old check or its findings until the team tells and checks again.
 - One order serves every reader: the part, the gate, the **Packet**, the listening ledger, the
   downloads' names, the tablet's list and the consultant's read. Retro takes read it too. The
-  mark is never served, and the Recording time served is unchanged.
+  Recording time served is unchanged.
 - The tablet changes nothing and keeps counting its passes.
 
 Rejected: **pass first, with a reinstalled tablet asking the server for the highest pass**,
@@ -46,7 +49,10 @@ Recording time of old rows**, because it is served on four reads and hashed into
 (ADR 0072), so every packet's hash would move; **guessing at read time from
 `recorded_at = created_at` and no origin**, because it cannot tell a spliced part from a take
 sent with no time, so a sentence laid into a tablet-timed part would sort first and stop being
-the part (ADR 0069); **the stored time alone**, because a take sent with no time would go back
+the part (ADR 0069), unless the laid-in sentence is read beside it, as decided; **a stored mark
+of which takes have their own time**, because a server that predates it writes every take
+without it, so a held deploy or a rollback would sort a timed take, a join or a splice as
+untimed; **the stored time alone**, because a take sent with no time would go back
 to upload order and ENG-579's abandoned rehearsal, written down after the take that replaced
 it, would become the part again.
 

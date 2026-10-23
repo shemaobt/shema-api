@@ -4,13 +4,13 @@ import base64
 import hashlib
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import case, or_, select
+from sqlalchemy import ColumnElement, UnaryExpression, case, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -463,25 +463,59 @@ async def refuse_a_take_that_is_no_longer_a_part(
         raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
-#: Read off what every writer stores — a joined part's `origin`, a tablet's time that is never
-#: its arrival — so a take written by a server that predates the mark reads the same; the stored
-#: mark carries only the one case the row cannot show, a splice of a part that had one.
-HAS_ITS_OWN_RECORDING_TIME = or_(
-    IRTake.origin.is_not(None), IRTake.recorded_at != IRTake.created_at, IRTake.recorded_at_known
-)
+def has_its_own_recording_time(spliced: Collection[str] = ()) -> ColumnElement[bool]:
+    """Whether a take's `recorded_at` is its own **Recording time**, read off what every server
+    that ever wrote a take stores, so a take written before this rule reads the same.
+
+    A joined part names its `origin`. A tablet's time is never its arrival, which the server
+    stamps from one clock reading for a take sent with none. A spliced part is stamped like a
+    take sent with none, so the row cannot say it; the sentence laid into it can, and `spliced`
+    is the takes that sentence makes one (`_spliced_into_a_timed_part`).
+    """
+    own = or_(IRTake.origin.is_not(None), IRTake.recorded_at != IRTake.created_at)
+    return or_(own, IRTake.id.in_(spliced)) if spliced else own
 
 
-def has_its_own_recording_time(take: IRTake) -> bool:
-    """`HAS_ITS_OWN_RECORDING_TIME`, asked of a take already read."""
-    return take.origin is not None or take.recorded_at != take.created_at or take.recorded_at_known
+def reading_order(spliced: Collection[str] = ()) -> tuple[UnaryExpression[Any], ...]:
+    return (
+        IRTake.ordinal.asc().nulls_first(),
+        case((has_its_own_recording_time(spliced), IRTake.recorded_at), else_=None)
+        .asc()
+        .nulls_first(),
+        IRTake.pass_number.asc().nulls_first(),
+        IRTake.created_at.asc(),
+    )
 
 
-READING_ORDER = (
-    IRTake.ordinal.asc().nulls_first(),
-    case((HAS_ITS_OWN_RECORDING_TIME, IRTake.recorded_at), else_=None).asc().nulls_first(),
-    IRTake.pass_number.asc().nulls_first(),
-    IRTake.created_at,
-)
+READING_ORDER = reading_order()
+
+
+async def _spliced_into_a_timed_part(db: AsyncSession, session_id: str) -> set[str]:
+    """The spliced parts of a session whose part had its own **Recording time**.
+
+    Each sentence laid in names the take it was laid into, and every server that ever spliced
+    wrote that, so this is read the same for a splice made before the rule. Walked in the order
+    the sentences were laid, so a sentence laid again over a splice inherits through it.
+    """
+    told = await db.scalar(select(IRSession.back_translation).where(IRSession.id == session_id))
+    laid = [(one["previous_take_id"], one["take_id"]) for one in (told or {}).get("sentences", [])]
+    if not laid:
+        return set()
+    timed = set(
+        (
+            await db.execute(
+                select(IRTake.id).where(
+                    IRTake.id.in_({previous for previous, _ in laid}),
+                    has_its_own_recording_time(),
+                )
+            )
+        ).scalars()
+    )
+    spliced: set[str] = set()
+    for previous, take_id in laid:
+        if previous in timed or previous in spliced:
+            spliced.add(take_id)
+    return spliced
 
 
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
@@ -504,8 +538,9 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     it upside down, which put the oldest recording of a session at the bottom of the packet on
     the only database that serves a real team.
     """
+    spliced = await _spliced_into_a_timed_part(db, session_id)
     result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
+        select(IRTake).where(IRTake.session_id == session_id).order_by(*reading_order(spliced))
     )
     return list(result.scalars().all())
 
