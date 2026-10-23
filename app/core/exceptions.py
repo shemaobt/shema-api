@@ -65,6 +65,8 @@ ERROR_CODE_UNKNOWN_SCENE: Final = "UNKNOWN_SCENE"
 #: A frase, restart or send for a scene rehearsal whose send landed: never accepted, never
 #: retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
+#: A scene label given to a scene rehearsal that is a current part's origin: never accepted.
+ERROR_CODE_REHEARSAL_JOINED: Final = "REHEARSAL_JOINED"
 #: A frase, restart or send for a scene rehearsal another send is still taking to the voice:
 #: retried, since that send may fail and leave the rehearsal open.
 ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
@@ -206,6 +208,14 @@ class SceneRehearsalSent(ConflictError):
     """A frase or a restart for a scene rehearsal that was sent, which is frozen for good.
 
     Its own exception so the tablet's outbox can tell it from a conflict worth retrying.
+    """
+
+
+class RehearsalJoined(ConflictError):
+    """A different scene label for a scene rehearsal that is the origin of a current part.
+
+    Its own exception so the tablet can tell it from a conflict worth retrying: the label holds
+    until that part is recorded again.
     """
 
 
@@ -628,6 +638,13 @@ async def handle_scene_rehearsal_sent(_request: Request, exc: SceneRehearsalSent
     )
 
 
+async def handle_rehearsal_joined(_request: Request, exc: RehearsalJoined) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_REHEARSAL_JOINED),
+    )
+
+
 async def handle_scene_rehearsal_sending(
     _request: Request, exc: SceneRehearsalSending
 ) -> JSONResponse:
@@ -823,6 +840,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
     app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(RehearsalJoined, handle_rehearsal_joined)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
