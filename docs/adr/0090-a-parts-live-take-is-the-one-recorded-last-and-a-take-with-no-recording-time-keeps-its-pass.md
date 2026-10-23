@@ -31,7 +31,10 @@ Decided (ENG-1760, Henok on 2026-10-22):
 - A stretch counts only on the take that is the part now. Recording a part again retires the
   stretches of the take it replaced, but a take can stop being the part with nobody recording
   anything, when this order changes under stored rows or is rolled back. The stretches standing
-  on it are history: never told and never checked for the current part.
+  on it are history: never told and never checked for the current part. A stored check stands
+  only while every stretch it read is on a take that is still the part; once the order makes
+  another take the part of any number, the release reads the session as not checked, and no
+  packet carries the old check or its findings until the team tells and checks again.
 - One order serves every reader: the part, the gate, the **Packet**, the listening ledger, the
   downloads' names, the tablet's list and the consultant's read. Retro takes read it too. The
   mark is never served, and the Recording time served is unchanged.
