@@ -119,6 +119,9 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/release"): (
         "release_harness.py's own release cases — a stricter, pre-existing rule"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/external-check/open"): (
+        "test_ir_the_team_opens_the_external_check_of_its_approved_version.py"
+    ),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/chunks"): (
         "test_internalization_room_back_translation_ownership.py"
     ),

@@ -46,6 +46,8 @@ APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
 #: The approval holds the row from before it composes, and touches no bucket (ADR 0081).
 THE_APPROVAL = "app/services/internalization_room/sessions.py"
+#: The open of the Checagem externa holds the row around a read and an insert, with no bucket.
+THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
 #: The visit's halt check, which holds the row until its own commit and touches no bucket
 #: (ADR 0091).
 THE_VISITS_HALT = "app/services/internalization_room/sessions.py"
@@ -325,7 +327,7 @@ def _on_the_session_row(call: ast.Call) -> bool:
     return named or (isinstance(first, ast.Name) and first.id == "session")
 
 
-def test_only_the_sentence_door_the_approval_and_the_visits_halt_take_the_session_row() -> None:
+def test_the_session_row_is_taken_for_update_only_by_doors_that_hold_no_bucket() -> None:
     locking = sorted(
         str(path.relative_to(APP.parent))
         for path in APP.rglob("*.py")
@@ -338,7 +340,9 @@ def test_only_the_sentence_door_the_approval_and_the_visits_halt_take_the_sessio
     )
 
 
-def test_the_session_row_the_approval_holds_is_taken_only_by_the_approval() -> None:
+def test_the_session_row_held_through_the_helper_is_held_only_by_doors_that_hold_no_bucket() -> (
+    None
+):
     """Each caller of the helper that takes the row holds it across no bucket call (ADR 0089)."""
     holding = sorted(
         str(path.relative_to(APP.parent))
@@ -349,6 +353,6 @@ def test_the_session_row_the_approval_holds_is_taken_only_by_the_approval() -> N
         and node.func.id == "hold_the_session_row"
     )
 
-    assert holding == [THE_APPROVAL_SERVICE], (
+    assert holding == sorted([THE_APPROVAL_SERVICE, THE_EXTERNAL_CHECK_OPEN]), (
         "a linha da sessão era segurada por um chamador novo, que ninguém conferiu contra o bucket"
     )
