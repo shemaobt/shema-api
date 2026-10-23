@@ -15,14 +15,16 @@ from app.models.internalization_room import (
     TeamReleaseResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.manifest import refine_manifest
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.passage_force import force_passage
 from app.services.internalization_room.release import (
     GROUNDED_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
-    build_internalization_release,
+    packet_as_read,
     release_by_version,
+    was_forced,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
@@ -37,7 +39,11 @@ def forced_answer(release: IRRelease) -> ForcedReleaseResponse:
         version=release.version,
         package_sha256=release.package_sha256,
         approved_at=as_utc(release.approved_at).isoformat(),
-        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
+        forced_at=(
+            as_utc(release.forced_at).isoformat()
+            if release.forced_at and was_forced(release.forced_by, release.forced_blockers)
+            else None
+        ),
     )
 
 
@@ -46,7 +52,7 @@ def approval_of(release: IRRelease) -> ApprovedDraftView:
         version=release.version,
         release_id=release.packet["release_id"],
         approved_at=as_utc(release.approved_at).isoformat(),
-        forced=release.forced_by is not None,
+        forced=was_forced(release.forced_by, release.forced_blockers),
     )
 
 
@@ -54,12 +60,12 @@ def approval_of(release: IRRelease) -> ApprovedDraftView:
 async def internalization_release(
     session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """The Refine handoff artifact for one finished session, built fail-closed.
+    """The Refine **Manifest** of this session's approved draft (ADR 0086).
 
-    A facilitator route on purpose: the release is the seam between apps, read by the
-    person carrying the work into Refine, never by the tablet in front of the team. A
-    session that is not ready answers 409 with the blockers named — a partial artifact
-    would look downstream exactly like a finished one.
+    A facilitator route on purpose: the manifest is the seam between apps, read by the
+    person carrying the work into Refine, never by the tablet in front of the team. A draft
+    that is not approved as it stands answers 409 ``DRAFT_NOT_APPROVED``: there is no
+    manifest of a passage nobody approved, and the stored packet is read back by version.
 
     Gated on ``ReaderUser`` and not on the app-wide gate it arrived with. It was
     written against a ``CurrentUser`` that ENG-438 had already retired — the route is
@@ -72,11 +78,10 @@ async def internalization_release(
     arrived with. That is a defect this composition created rather than inherited: on
     ``main`` there was no per-team scoping to violate, and on this branch the route did not
     exist, so neither side was wrong and their intersection had no reviewer. Resolving the
-    session by id alone handed a facilitator of one team the handoff artifact of another —
-    every finding, every quote, the whole of what that team recorded.
+    session by id alone handed a facilitator of one team what another team recorded.
     """
     session = await room.get_session_for_reader(db, user, session_id)
-    return await build_internalization_release(db, session)
+    return await refine_manifest(db, session)
 
 
 @router.get("/facilitator/sessions/{session_id}/releases/{version}")
@@ -86,11 +91,11 @@ async def facilitator_release_by_version(
     """One approved draft of this session's passage, exactly as it was approved.
 
     The stored packet is the contract (ADR 0014): what a **Version** means is that this
-    content was approved under that number, so it is served verbatim and never rebuilt. A
-    forced draft reads back here whole — its open findings listed and `checked` false — which
-    is the one thing the route beside this cannot do. That one is a live rebuild under the
-    whole list, and on a session a facilitator had to force it answers with the refusal
-    rather than with the draft the Desk minted.
+    content was approved under that number, so it is served as stored and never rebuilt, its
+    check block's force derived from what it waived (ADR 0080). A forced draft reads back here
+    whole — its open findings listed and `checked` false. The route beside this serves Refine
+    the manifest of the approved draft, which carries none of the team's words; this is the
+    record that keeps them.
 
     A number nobody approved is 404, and so is a session this facilitator does not
     facilitate: the scoping is the same one the read beside it does, and a release carries
@@ -98,7 +103,7 @@ async def facilitator_release_by_version(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     release = await release_by_version(db, session, version)
-    return release.packet
+    return packet_as_read(release)
 
 
 @router.post(

@@ -9,6 +9,7 @@ from typing import Any, TypeVar
 from sqlalchemy import (
     JSON,
     ColumnElement,
+    Row,
     Text,
     and_,
     case,
@@ -50,6 +51,7 @@ from app.services.internalization_room.canon.book_material import require_walkab
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map, not_served
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.check_block import keep_the_check_on_the_standing_release
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -478,7 +480,12 @@ async def _the_live_session(db: AsyncSession, session_id: str) -> IRSession:
 
 
 async def _land(
-    db: AsyncSession, session: IRSession, values: dict[str, Any], *, commit: bool = True
+    db: AsyncSession,
+    session: IRSession,
+    values: dict[str, Any],
+    *,
+    commit: bool = True,
+    again_if_unmoved: bool = False,
 ) -> IRSession:
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
@@ -494,8 +501,32 @@ async def _land(
     A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
     live and lands after the Zerar finds nothing to land on, and is answered as the session
     gone, with the unknown session's words, rather than as another turn's conflict (ADR 0052).
+
+    ``again_if_unmoved`` is for a write of the conversation: when what moved the version left the
+    session live and the conversation as this ``session`` read it, it was an approval's claim and
+    not another turn, and the write lands once more on the version stored now. One that lost to
+    another turn is still refused (ADR 0080).
     """
     await db.flush()
+    landed = await _write_at_the_version_read(db, session, values)
+    if landed is None and again_if_unmoved and await _took_the_version_if_unmoved(db, session):
+        landed = await _write_at_the_version_read(db, session, values)
+    if landed is None:
+        await refuse_if_archived(db, session)
+        # Nothing matched, so nothing is pending: leave the transaction to the caller's
+        # teardown rather than rolling back a session shared with the rest of the request,
+        # the way autosave_state.py's own version conflict does.
+        raise ConflictError("This session was written to by another turn.")
+    for key, value in {**values, **landed._mapping}.items():
+        set_committed_value(session, key, value)
+    if commit:
+        await db.commit()
+    return session
+
+
+async def _write_at_the_version_read(
+    db: AsyncSession, session: IRSession, values: dict[str, Any]
+) -> Row[Any] | None:
     stmt = (
         update(IRSession)
         .where(IRSession.id == session.id, IRSession.version == session.version)
@@ -509,18 +540,23 @@ async def _land(
         )
         .execution_options(synchronize_session=False)
     )
-    landed = (await db.execute(stmt)).one_or_none()
-    if landed is None:
-        await refuse_if_archived(db, session)
-        # Nothing matched, so nothing is pending: leave the transaction to the caller's
-        # teardown rather than rolling back a session shared with the rest of the request,
-        # the way autosave_state.py's own version conflict does.
-        raise ConflictError("This session was written to by another turn.")
-    for key, value in {**values, **landed._mapping}.items():
-        set_committed_value(session, key, value)
-    if commit:
-        await db.commit()
-    return session
+    return (await db.execute(stmt)).one_or_none()
+
+
+async def _took_the_version_if_unmoved(db: AsyncSession, session: IRSession) -> bool:
+    """Take the version stored now when the session is live and its conversation is the one
+    ``session`` read; read in one statement, so a Zerar landing in between is never missed."""
+    stored = (
+        await db.execute(
+            select(IRSession.version, IRSession.messages, IRSession.archive_id).where(
+                IRSession.id == session.id
+            )
+        )
+    ).one()
+    if stored.archive_id is not None or stored.messages != session.messages:
+        return False
+    set_committed_value(session, "version", stored.version)
+    return True
 
 
 async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
@@ -670,7 +706,7 @@ async def append_exchange(
         guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
-    return await _land(db, session, values, commit=commit)
+    return await _land(db, session, values, commit=commit, again_if_unmoved=True)
 
 
 def _the_turns_times() -> dict[str, int]:
@@ -1212,6 +1248,8 @@ async def save_back_translation(
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
+
+    The state written is the standing version's check too, in the same transaction (ADR 0081).
     """
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
@@ -1235,6 +1273,7 @@ async def save_back_translation(
     for name, value in vars(BackTranslationState.model_validate(written)).items():
         if getattr(state, name) != value:
             setattr(state, name, value)
+    await keep_the_check_on_the_standing_release(db, session, state)
     if commit:
         await db.commit()
         await db.refresh(session)

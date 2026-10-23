@@ -20,9 +20,9 @@ from app.db.models.auth import App
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.release import build_internalization_release
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import final_segments
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.sessions import create_session, get_session
 from tests.baker import (
     make_app,
     make_role,
@@ -37,6 +37,7 @@ from tests.release_harness import (
     checked_telling_back,
     desk_release,
     desk_release_at,
+    judged_packet,
     ready_session,
     releases_of,
     reported_playback,
@@ -218,7 +219,7 @@ async def test_a_mother_tongue_whose_name_leaves_nothing_to_slug_is_named_lrl(
 async def test_a_session_that_names_no_team_composes_a_packet_whose_language_is_null(db_session):
     session = await ready_session(db_session, project_id=None)
 
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
 
     assert packet["language"] is None
 
@@ -268,7 +269,7 @@ async def test_a_release_stored_before_this_deploy_is_returned_unchanged_on_appr
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_in(db_session, project.id)
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
     legacy_id = str(uuid.uuid4())
     for key in ("language", "session_language", "audio_format"):
         packet.pop(key, None)
@@ -297,19 +298,20 @@ async def test_a_release_stored_before_this_deploy_is_returned_unchanged_on_appr
     assert not {"language", "session_language", "audio_format"} & served.keys()
 
 
-async def test_the_desks_live_read_names_the_approved_release_by_its_stored_name(
-    client, db_session, room_app
-):
+async def test_the_live_packet_names_the_approved_release_by_its_stored_name(client, db_session):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_in(db_session, project.id)
-    desk, _user = await at_the_desk(db_session, room_app, project)
 
-    before = await client.get(desk_release(session.id), headers=desk)
-    assert before.json()["release_id"] is None
+    before, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
+    assert before["release_id"] is None
     await approved(client, credential, session)
-    after = await client.get(desk_release(session.id), headers=desk)
+    after, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
 
-    assert after.json()["release_id"] == "internalize-terena-p03-v1"
+    assert after["release_id"] == "internalize-terena-p03-v1"
 
 
 async def test_a_release_whose_every_rehearsal_part_is_wav_states_the_wav_audio_format(

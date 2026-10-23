@@ -29,7 +29,8 @@ from app.services.internalization_room.takes import (
 )
 
 
-def _stands(release: IRRelease, parts: list[IRTake]) -> bool:
+def stands_on(release: IRRelease, parts: list[IRTake]) -> bool:
+    """Whether these current parts are exactly the takes the release judged, digest for digest."""
     stored = (release.packet.get("audio") or {}).get("rehearsal_takes", [])
     return [take.get("sha256") for take in stored] == [part.sha256 for part in parts]
 
@@ -57,11 +58,13 @@ async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | No
     ones the session's parts stand on now, by fingerprint in order: read off the rows, never
     composed, so asking costs the same whatever the telling-back holds and never fails a read
     or an open. The takes are read off the stored packet the same way whatever schema it was
-    written in, never through its ``package_sha256``. The panorama, the demo team and a
-    session that names no team are answered none.
+    written in, never through its ``package_sha256``. The panorama, the demo team, a session
+    that names no team and one a Zerar archived (its work is retired, and the passage waits
+    for its new session to approve) are answered none.
     """
     if (
         session.project_id is None
+        or session.archive_id is not None
         or is_panorama(session.pericope)
         or await is_the_demo_team(db, session.project_id)
     ):
@@ -70,7 +73,7 @@ async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | No
     if latest is None or latest.session_id != session.id:
         return None
     parts = current_parts(await takes_of(db, session.id))
-    return latest if _stands(latest, parts) else None
+    return latest if stands_on(latest, parts) else None
 
 
 async def refuse_to_reopen_the_approved_draft(db: AsyncSession, session: IRSession) -> None:
@@ -140,5 +143,5 @@ async def standing_approvals(
     return {
         pericope
         for pericope, release in latest.items()
-        if _stands(release, current_parts(takes[release.session_id]))
+        if stands_on(release, current_parts(takes[release.session_id]))
     }

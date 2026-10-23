@@ -356,7 +356,9 @@ async def test_a_forced_passage_reads_its_release_id_with_forced_at_set(
 ) -> None:
     team, _tablet = await a_claimed_device(db_session, language_name="Guarani")
     desk, _ = await at_the_desk(db_session, room_app, team)
-    session = await ready_session(db_session, project_id=team.id)
+    session = await ready_session(
+        db_session, project_id=team.id, tell=told_back_with_an_open_finding
+    )
     forced = await room.post(desk_release(session.id), headers=desk, json={"force": True})
     assert forced.status_code == 200, forced.text[:300]
 

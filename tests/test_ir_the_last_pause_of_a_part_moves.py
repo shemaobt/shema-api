@@ -154,20 +154,22 @@ async def test_a_conferida_passage_keeps_its_last_pause_where_it_was(
     assert transcribed == [], "a passagem conferida ainda deixava mover a pausa"
 
 
+def _a_release_judging(session: IRSession, takes: list[IRTake]) -> IRRelease:
+    return IRRelease(
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        version=1,
+        package_sha256="a" * 64,
+        packet={"audio": {"rehearsal_takes": [{"sha256": take.sha256} for take in takes]}},
+    )
+
+
 async def test_an_approved_passage_keeps_its_last_pause_even_once_it_is_no_longer_conferida(
     client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
 ) -> None:
-    session, _ = await _rehearsed(db_session)
-    db_session.add(
-        IRRelease(
-            session_id=session.id,
-            project_id=session.project_id,
-            pericope=session.pericope,
-            version=1,
-            package_sha256="a" * 64,
-            packet={},
-        )
-    )
+    session, parts = await _rehearsed(db_session)
+    db_session.add(_a_release_judging(session, parts))
     await db_session.commit()
     last = (await final_segments(db_session, session.id))[-1]
 
@@ -176,6 +178,20 @@ async def test_an_approved_passage_keeps_its_last_pause_even_once_it_is_no_longe
     assert refused.status_code == 400, refused.text
     assert refused.json()["code"] == "PAUSE_CANNOT_STAND_THERE"
     assert transcribed == [], "o rascunho aprovado ainda deixava mover a pausa"
+
+
+async def test_a_passage_re_opened_after_its_approval_moves_its_last_pause_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    """ENG-1260: only a draft that stands approved keeps its pauses (ADR 0081)."""
+    session, parts = await _rehearsed(db_session)
+    db_session.add(_a_release_judging(session, parts[:1]))
+    await db_session.commit()
+    last = (await final_segments(db_session, session.id))[-1]
+
+    moved = await _move(client, session.id, last, ends_ms=4200)
+
+    assert moved.status_code == 200, moved.text
 
 
 async def test_a_pause_moved_to_within_a_fifth_of_a_second_of_the_start_is_refused(

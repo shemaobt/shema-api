@@ -136,7 +136,7 @@ A rehearsal take that a later take under the same part's number replaced. It is 
 _Avoid_: kept take (kept names a telling kept for the team), replaced take, old take, Substituída (in prose); **Superseded** alone is a telling-back attempt
 
 **Recording grain** (`recording_grain`):
-Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
+Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers. The **Manifest** says it in her words as `grain`: `scene` for parts, `whole`.
 _Avoid_: granularity, mode, shape, Granularidade
 
 **Joined recording** (`origin`):
@@ -413,8 +413,12 @@ The number of a release within its pericope and project, from one, never reused.
 _Avoid_: revision, pass (the count of tellings of a stretch), v-number
 
 **Packet**:
-The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone. Its frases and pinned takes name their **Part key**.
-_Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
+The stored record of one approval: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone. Its frases and pinned takes name their **Part key**. It is never handed to Refine; Refine reads the **Manifest**, and the packet is read back by its **Version**.
+_Avoid_: package, artifact (the code's older name), handoff, Pacote
+
+**Manifest** (`manifesto`):
+The document Refine receives for an approved passage, named after its release: Marcia's fields in her order (release, passage, reference, language, the room's language, the **Meaning Map** read at the session's pin, the grain, each current **Part** as a clip with its file name and an hour-long link, when and how many times it was approved, the sessions, the audio format, the fingerprint rule, the external check, her **Check block**, warnings, when it was read). It never carries a frase's words, a note, a nuance's quote or story, a **Superseded take**, who forced it, an order clock or a **Clock offset**. It exists only for a **Draft** approved as it stands; the **Packet** stays the stored record of each approval.
+_Avoid_: packet, export, handoff, artifact, Manifesto (in prose)
 
 **Blocker**:
 One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor is a fact of the ledger, never a blocker). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
@@ -425,8 +429,8 @@ A **Release** a facilitator minted past the gate, addressed to the passage: ever
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):
-The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Beside `forced`, and in our names rather than hers, a **Forced release** says who forced it (`forcedBy`), when (`forcedAt`) and the blockers it passed (`forcedBlockers`), each null when nobody forced. Never the analyst's note.
-_Avoid_: check state, manifest check, conferência
+The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Beside `forced`, and in our names rather than hers, a **Forced release** says who forced it (`forcedBy`), when (`forcedAt`) and the blockers it passed (`forcedBlockers`), each null when nobody forced. Never the analyst's note. The **Manifest** carries it in her keys only, without `forcedBy`, `forcedAt` and `forcedBlockers`, and with `nuances` absent when none stood.
+_Avoid_: check state, conferência
 
 **Checagem externa** (`ir_external_checks`):
 The record that a team opened the external check of one approved **Version**: one row per **Release**, created by the team's first open and answered to every later one, never closed, locked or deleted. It keeps the version's parts (take id and **Part key**) and frases as the release's packet holds them, copied at the first open. A new version opens a new one; a Zerar stamps it with the passage's **Archive** (ADR 0082; the app's ADR 0111).
