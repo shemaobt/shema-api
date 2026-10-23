@@ -1201,6 +1201,9 @@ class SceneRehearsalFacts(BaseModel):
     scene_said: Literal["recording", "later"] | None = None
     duration_ms: int | None = None
     content_type: str
+    #: The sha256 of the rehearsal's bytes, in hex: what a join sends as the part's fingerprint,
+    #: so the room keeps exactly those bytes.
+    sha256: str
     verified: bool = False
     recorded_at: str = ""
     sent_at: str | None = None

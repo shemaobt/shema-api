@@ -404,12 +404,18 @@ async def test_a_part_joined_after_a_take_was_recorded_is_the_part(
     client, db_session, room_app, team, session
 ):
     project, credential = team
-    await send(
+    before = await send(
         client, credential, session.id, recording(2, 1), pass_number=1, recorded_at=an_hour_ago()
     )
     origin = await a_scene_rehearsal(db_session, session)
     joined = await send(
-        client, credential, session.id, recording(2, 2), pass_number=1, origin=origin.id
+        client,
+        credential,
+        session.id,
+        recording(2, 2),
+        pass_number=1,
+        origin=origin.id,
+        over_take=before["take_id"],
     )
 
     assert (
