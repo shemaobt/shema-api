@@ -1091,8 +1091,12 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRS
     the room — and the moment of the visit is the whole of what this field is for.
 
     ``by`` is None when nobody went: the server stamps a demo team's halt itself (ADR 0064).
+
+    ``updated_at`` is written its own value: a visit is not the team's act, and the team's
+    Current book reads its latest session by that column (ADR 0094).
     """
     _visited(session, by=by)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
@@ -1109,12 +1113,14 @@ async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
     """Withdraw the mark: nobody went. The stamps clear and the status is not written.
 
     A halted room is back on the queue, and a warning the visit ended stands again: it stands
-    while ``warned_at`` is set and nobody is marked as having gone.
+    while ``warned_at`` is set and nobody is marked as having gone. ``updated_at`` is left as
+    it was, as the visit left it.
     """
     if session.attended_at is None:
         return session
     session.attended_at = None
     session.attended_by = None
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session

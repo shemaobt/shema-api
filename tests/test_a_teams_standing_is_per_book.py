@@ -68,7 +68,10 @@ async def team_at_the_desk(db_session: AsyncSession, room_app):
 
 async def the_latest(db: AsyncSession, session_id: str) -> None:
     """Stamp this session as the team's most recent activity, past every other one."""
-    moment = datetime.now(UTC) + timedelta(days=1, minutes=next(_later))
+    await last_touched(db, session_id, datetime.now(UTC) + timedelta(days=1, minutes=next(_later)))
+
+
+async def last_touched(db: AsyncSession, session_id: str, moment: datetime) -> None:
     await db.execute(update(IRSession).where(IRSession.id == session_id).values(updated_at=moment))
     await db.commit()
 
@@ -94,12 +97,15 @@ async def having_closed(db: AsyncSession, team_id: str, *passages: str) -> IRSes
 
 async def having_closed_and_approved(
     db: AsyncSession, room: httpx.AsyncClient, tablet: str, team_id: str, *passages: str
-) -> None:
+) -> IRSession:
+    session = None
     for passage in passages:
         session = await ready_session(db, pericope=passage, project_id=team_id)
         approved = await room.post(team_release(session.id), headers=team_headers(tablet))
         assert approved.status_code == 200, approved.text[:300]
         await having_finished_the_passage(db, session)
+    assert session is not None
+    return session
 
 
 async def the_panorama_opened_and_heard(
@@ -312,10 +318,11 @@ def test_the_standing_of_a_book_the_team_is_not_in_has_no_current_passage(book: 
 
 
 async def test_every_desk_door_reads_the_book_the_team_is_in(
-    desk_client, db_session, team_at_the_desk
+    room, desk_client, db_session, team_at_the_desk
 ) -> None:
-    team, _tablet, desk = team_at_the_desk
-    await the_latest(db_session, (await having_closed(db_session, team.id, "J01")).id)
+    team, tablet, desk = team_at_the_desk
+    jonah = await having_closed_and_approved(db_session, room, tablet, team.id, "J01")
+    await the_latest(db_session, jonah.id)
 
     card = await the_card(desk_client, desk, team.id)
     listed = positions(await the_pericopes(desk_client, desk, team.id))
@@ -332,7 +339,7 @@ async def test_every_desk_door_reads_the_book_the_team_is_in(
         "J05": "future",
     }
     assert list(listed) == JONAH
-    assert detail["approved_total"] == 0
+    assert detail["approved_total"] == 1
     assert detail["closed_total"] == 1
     assert coverage.status_code == 200, coverage.text[:300]
     assert [bead["key"] for bead in coverage.json()] == element_keys("J02")
@@ -393,6 +400,7 @@ async def test_a_stored_session_naming_a_pericope_no_served_book_holds_is_passed
 ) -> None:
     team, _tablet, desk = team_at_the_desk
     await having_closed(db_session, team.id, "P01")
+    await the_latest(db_session, (await having_closed(db_session, team.id, "J01")).id)
     stray = IRSession(
         pericope="Q01",
         project_id=team.id,
@@ -409,7 +417,7 @@ async def test_a_stored_session_naming_a_pericope_no_served_book_holds_is_passed
     card = await the_card(desk_client, desk, team.id)
 
     assert card is not None
-    assert card["active_passage"]["pericope"] == "P02"
+    assert card["active_passage"]["pericope"] == "J02"
 
 
 async def test_a_session_on_a_closed_passage_of_a_finished_book_leaves_the_team_in_the_next_book_with_a_passage_left(  # noqa: E501
@@ -427,3 +435,52 @@ async def test_a_session_on_a_closed_passage_of_a_finished_book_leaves_the_team_
     assert card["active_passage"]["pericope"] == "E01"
     assert card["state"] == "in_progress"
     assert [entry["pericope"] for entry in listed] == ESTHER
+
+
+async def a_visit_to_an_old_room_after_the_team_moved_to_jonah(
+    room: httpx.AsyncClient, db: AsyncSession, team_id: str, desk: dict
+) -> IRSession:
+    """Warned on P05, done P05, then J01 done: the facilitator visits the old P05 room."""
+    ruth = await having_closed(db, team_id, "P05")
+    await db.execute(
+        update(IRSession).where(IRSession.id == ruth.id).values(warned_at=datetime.now(UTC))
+    )
+    await last_touched(db, ruth.id, datetime.now(UTC) - timedelta(hours=2))
+    jonah = await having_closed(db, team_id, "J01")
+    await last_touched(db, jonah.id, datetime.now(UTC) - timedelta(hours=1))
+    visited = await room.post(f"{PREFIX}/facilitator/sessions/{ruth.id}/attended", headers=desk)
+    assert visited.status_code == 200, visited.text[:300]
+    return ruth
+
+
+async def test_a_facilitators_visit_to_an_old_room_does_not_move_the_team_back_to_its_book(
+    room, desk_client, db_session, team_at_the_desk
+) -> None:
+    team, tablet, desk = team_at_the_desk
+    await a_visit_to_an_old_room_after_the_team_moved_to_jonah(room, db_session, team.id, desk)
+
+    card = await the_card(desk_client, desk, team.id)
+    listed = await the_pericopes(desk_client, desk, team.id)
+    opened = await an_open_naming_no_passage(room, tablet)
+
+    assert card is not None
+    assert card["active_passage"]["pericope"] == "J02"
+    assert [entry["pericope"] for entry in listed] == JONAH
+    assert opened.status_code == 200, opened.text[:300]
+    assert opened.json()["pericope"] == "J02"
+
+
+async def test_undoing_a_facilitators_visit_to_an_old_room_does_not_move_the_team_back_to_its_book(
+    room, desk_client, db_session, team_at_the_desk
+) -> None:
+    team, _tablet, desk = team_at_the_desk
+    ruth = await a_visit_to_an_old_room_after_the_team_moved_to_jonah(
+        room, db_session, team.id, desk
+    )
+
+    undone = await room.delete(f"{PREFIX}/facilitator/sessions/{ruth.id}/attended", headers=desk)
+    card = await the_card(desk_client, desk, team.id)
+
+    assert undone.status_code == 200, undone.text[:300]
+    assert card is not None
+    assert card["active_passage"]["pericope"] == "J02"
