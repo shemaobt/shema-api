@@ -262,9 +262,7 @@ async def label_the_scene(
     rehearsal = await _locked(db, rehearsal.id)
     if scene != rehearsal.scene:
         if await _is_a_current_origin(db, rehearsal):
-            rehearsal_id = rehearsal.id
-            await db.rollback()
-            raise RehearsalJoined(f"Scene rehearsal {rehearsal_id} is joined as a part")
+            raise RehearsalJoined(f"Scene rehearsal {rehearsal.id} is joined as a part")
         rehearsal.scene = scene
         rehearsal.scene_said = IRSceneSaid.LATER
     await db.commit()

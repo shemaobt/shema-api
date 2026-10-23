@@ -65,11 +65,11 @@ ERROR_CODE_UNKNOWN_SCENE: Final = "UNKNOWN_SCENE"
 #: A frase, restart or send for a scene rehearsal whose send landed: never accepted, never
 #: retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
-#: A scene label given to a scene rehearsal that is a current part's origin: never accepted.
-ERROR_CODE_REHEARSAL_JOINED: Final = "REHEARSAL_JOINED"
 #: A frase, restart or send for a scene rehearsal another send is still taking to the voice:
 #: retried, since that send may fail and leave the rehearsal open.
 ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
+#: A scene label given to a scene rehearsal that is a current part's origin: never accepted.
+ERROR_CODE_REHEARSAL_JOINED: Final = "REHEARSAL_JOINED"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
@@ -211,19 +211,19 @@ class SceneRehearsalSent(ConflictError):
     """
 
 
-class RehearsalJoined(ConflictError):
-    """A different scene label for a scene rehearsal that is the origin of a current part.
-
-    Its own exception so the tablet can tell it from a conflict worth retrying: the label holds
-    until that part is recorded again.
-    """
-
-
 class SceneRehearsalSending(ConflictError):
     """A send for a scene rehearsal another turn is still sending to the voice, landed nowhere yet.
 
     Its own exception so the tablet's outbox retries it: that turn may still fail and leave the
     rehearsal sendable.
+    """
+
+
+class RehearsalJoined(ConflictError):
+    """A different scene label for a scene rehearsal that is the origin of a current part.
+
+    Its own exception so the tablet can tell it from a conflict worth retrying: the label holds
+    until that part is recorded again.
     """
 
 
@@ -638,19 +638,19 @@ async def handle_scene_rehearsal_sent(_request: Request, exc: SceneRehearsalSent
     )
 
 
-async def handle_rehearsal_joined(_request: Request, exc: RehearsalJoined) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=_error_body(str(exc), ERROR_CODE_REHEARSAL_JOINED),
-    )
-
-
 async def handle_scene_rehearsal_sending(
     _request: Request, exc: SceneRehearsalSending
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_SCENE_REHEARSAL_SENDING),
+    )
+
+
+async def handle_rehearsal_joined(_request: Request, exc: RehearsalJoined) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_REHEARSAL_JOINED),
     )
 
 
