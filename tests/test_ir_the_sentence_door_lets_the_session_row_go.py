@@ -44,6 +44,9 @@ from tests.turn_claim_harness import OPENING, Guide, a_voice, speak, the_guide_i
 
 APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
+#: The visit's halt check, which holds the row until its own commit and touches no bucket
+#: (ADR 0091).
+THE_VISITS_HALT = "app/services/internalization_room/sessions.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -319,7 +322,9 @@ def _on_the_session_row(call: ast.Call) -> bool:
     return named or (isinstance(first, ast.Name) and first.id == "session")
 
 
-def test_the_session_row_is_taken_for_update_in_one_place_the_sentence_doors_write() -> None:
+def test_the_session_row_is_taken_for_update_only_by_the_sentence_door_and_the_visits_halt() -> (
+    None
+):
     locking = sorted(
         str(path.relative_to(APP.parent))
         for path in APP.rglob("*.py")
@@ -327,6 +332,6 @@ def test_the_session_row_is_taken_for_update_in_one_place_the_sentence_doors_wri
         if isinstance(node, ast.Call) and _takes_a_row_lock(node) and _on_the_session_row(node)
     )
 
-    assert locking == [THE_SENTENCE_DOOR], (
-        "a linha da sessão era travada em mais de um lugar, e cada um pode segurá-la pelo bucket"
+    assert locking == sorted([THE_SENTENCE_DOOR, THE_VISITS_HALT]), (
+        "a linha da sessão era travada fora dos dois lugares que não a seguram pelo bucket"
     )
