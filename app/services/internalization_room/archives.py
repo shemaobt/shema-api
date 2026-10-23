@@ -19,6 +19,9 @@ from app.db.models.internalization_room import (
     IRArchive,
     IRCoverageEvent,
     IRExternalCheck,
+    IRExternalListener,
+    IRExternalMark,
+    IRExternalRecording,
     IRRelease,
     IRSceneFrase,
     IRSceneRehearsal,
@@ -45,6 +48,9 @@ _HANGING_OFF_A_SESSION = (
     IRSceneFrase,
     IRSceneRestart,
     IRExternalCheck,
+    IRExternalListener,
+    IRExternalRecording,
+    IRExternalMark,
 )
 
 

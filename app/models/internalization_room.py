@@ -513,6 +513,80 @@ class ExternalCheckView(BaseModel):
     frases: list[ExternalCheckFrase]
 
 
+class ListenerRecordingView(BaseModel):
+    """A **Listener recording** as stored; no field ever carries its words."""
+
+    recording_id: str
+    kind: str
+    #: The frase a ``frase`` comment is on, as the tablet named it, and its **Frase number** in
+    #: the check (null on a stretch never numbered, or on a part).
+    segment_id: str | None
+    frase: int | None
+    content_type: str
+    duration_ms: int | None
+    size_bytes: int
+    sha256: str
+    stored_at: str
+
+
+class ListenerFraseView(BaseModel):
+    """One frase a listener answered: ok only when marked «está boa» with no comment."""
+
+    segment_id: str
+    frase: int | None
+    ok: bool
+    comments: list[ListenerRecordingView]
+
+
+class ListenerView(BaseModel):
+    """An **Outside listener**, known by the number alone, with what they recorded."""
+
+    number: int
+    started_at: str
+    finished_at: str | None
+    completed: bool
+    #: The newest retelling; the earlier ones stay stored.
+    retelling: ListenerRecordingView | None
+    whole: list[ListenerRecordingView]
+    frases: list[ListenerFraseView]
+
+
+class ListenerFactsFrase(BaseModel):
+    segment_id: str
+    frase: int | None
+    ok: bool
+    comments: int
+
+
+class ListenerFacts(BaseModel):
+    """What the team reads back of a listener: facts, never a recording of theirs."""
+
+    number: int
+    started_at: str
+    finished_at: str | None
+    completed: bool
+    retold: bool
+    whole: int
+    frases: list[ListenerFactsFrase]
+
+
+class ExternalCheckListenersView(BaseModel):
+    """A version's **Checagem externa** with its outside listeners, for the facilitator."""
+
+    check_id: str
+    version: int
+    opened_at: str
+    listeners: list[ListenerView]
+
+
+class MarkRequest(BaseModel):
+    segment_id: str
+
+
+class FinishRequest(BaseModel):
+    completed: bool
+
+
 class SessionStateResponse(BaseModel):
     session_id: str
     pericope: str

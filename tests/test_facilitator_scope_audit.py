@@ -54,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
+    IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
     IRSession,
@@ -208,6 +209,15 @@ async def _a_recorded_session_of(db: AsyncSession, owner: Facilitator, tag: str)
     return session.id, take.id
 
 
+async def _an_opened_check_of(db: AsyncSession, session_id: str) -> None:
+    db.add(
+        IRExternalCheck(
+            release_id=f"r-{session_id}", session_id=session_id, version=1, takes=[], frases=[]
+        )
+    )
+    await db.commit()
+
+
 async def _claim_of(db: AsyncSession, owner: Facilitator, tag: str) -> dict:
     minted = await create_device(db)
     return {"json": {"code": minted.claim_code, "project_id": owner.project.id}}
@@ -248,6 +258,7 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     await question_service._store().put(owned_key, b"a equipe perguntou", "audio/mp4")
     absent_key = "internalization-room/questions/nao-existe-em-lugar-nenhum.m4a"
     session_id, take_id = await _a_recorded_session_of(db, owner, f"t{tag}")
+    await _an_opened_check_of(db, session_id)
     # One session per route: the mark and its undo are the same claim written and
     # withdrawn, so sharing a session would make each case depend on the other's order.
     attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
@@ -464,6 +475,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: file saying almost nothing rather than none at all. Nothing has to be built for
             #: it — no gate, no version, no analyst — so asking for 200 costs this audit
             #: nothing and is what makes the refusal beside it mean scope.
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/external-check/1", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/external-check/1", {}),
             "ids": (session_id, absent),
         },
         {
