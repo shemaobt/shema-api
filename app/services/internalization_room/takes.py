@@ -266,7 +266,15 @@ async def store_take(
     )
     key = storage_key(session_id, kind, checked.sha256, content_type)
 
-    already = await _the_same_take(db, session_id, kind, checked.sha256)
+    already = await _the_same_take(
+        db,
+        session_id,
+        kind,
+        checked.sha256,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        joined=origin is not None,
+    )
     if already is not None:
         return already
     await db.commit()
@@ -307,7 +315,15 @@ async def store_take(
         async with db.begin_nested():
             db.add(take)
     except IntegrityError:
-        winner = await _the_same_take(db, session_id, kind, checked.sha256)
+        winner = await _the_same_take(
+            db,
+            session_id,
+            kind,
+            checked.sha256,
+            ordinal=ordinal,
+            pass_number=pass_number,
+            joined=origin is not None,
+        )
         if winner is None:
             raise
         return winner
@@ -316,17 +332,54 @@ async def store_take(
 
 
 async def the_take_already_kept(
-    db: AsyncSession, session_id: str, kind: IRTakeKind, audio: bytes
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    audio: bytes,
+    *,
+    ordinal: int | None = None,
+    pass_number: int | None = None,
+    joined: bool = False,
 ) -> IRTake | None:
-    return await _the_same_take(db, session_id, kind, recording_digest(audio))
+    return await _the_same_take(
+        db,
+        session_id,
+        kind,
+        recording_digest(audio),
+        ordinal=ordinal,
+        pass_number=pass_number,
+        joined=joined,
+    )
 
 
 async def _the_same_take(
-    db: AsyncSession, session_id: str, kind: IRTakeKind, sha256: str
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    ordinal: int | None = None,
+    pass_number: int | None = None,
+    joined: bool = False,
 ) -> IRTake | None:
+    """The take these bytes already are: a resend, or a second tablet's same join.
+
+    A part laid in from a scene rehearsal is that take only under the same number and pass as
+    well, because a swap back to an earlier rehearsal sends bytes the session already holds and
+    is a new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
+    """
+    same = (
+        (
+            IRTake.origin.is_not(None),
+            IRTake.ordinal.is_not_distinct_from(ordinal),
+            IRTake.pass_number.is_not_distinct_from(pass_number),
+        )
+        if joined
+        else (IRTake.origin.is_(None),)
+    )
     found: IRTake | None = await db.scalar(
         select(IRTake).where(
-            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256
+            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256, *same
         )
     )
     return found

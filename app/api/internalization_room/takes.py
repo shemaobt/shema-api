@@ -194,7 +194,13 @@ async def keep_take(
     ordinal = None if take_kind is IRTakeKind.RETRO else chunk_index
     if not reopens_the_approved_draft and not of_the_grain_left_behind(session, take_kind, ordinal):
         await refuse_a_keep_that_reopens_the_approved_draft(
-            db, session, kind=take_kind, origin=origin, chunk_index=chunk_index, audio=audio
+            db,
+            session,
+            kind=take_kind,
+            origin=origin,
+            chunk_index=chunk_index,
+            pass_number=pass_number,
+            audio=audio,
         )
     take = await store_take(
         db,
