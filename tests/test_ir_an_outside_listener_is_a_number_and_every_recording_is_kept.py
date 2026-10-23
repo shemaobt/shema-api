@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import outside_listeners as outside_listeners_api
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import hearing
 from app.services.internalization_room import outside_listeners as outside_listeners_module
@@ -225,14 +226,14 @@ async def test_an_approved_version_with_no_listeners_gives_listener_one(
     assert body["number"] == 1
     assert body["finished_at"] is None
     assert body["completed"] is False
-    assert set(body) == {
-        "number",
-        "started_at",
-        "finished_at",
-        "completed",
-        "retelling",
-        "whole",
-        "frases",
+    assert body == {
+        "number": 1,
+        "started_at": body["started_at"],
+        "finished_at": None,
+        "completed": False,
+        "retold": False,
+        "whole": 0,
+        "frases": [],
     }
     assert [heard["number"] for heard in (await read(room, session_id, 1))["listeners"]] == [1]
 
@@ -354,9 +355,12 @@ async def test_a_frase_only_heard_has_no_entry_and_a_frase_marked_good_with_no_c
     marked = await mark(room, session_id, 1, 1, by_number[4])
 
     assert marked.status_code == 200, marked.text
-    expected = [{"segment_id": by_number[4], "frase": 4, "ok": True, "comments": []}]
-    assert marked.json()["frases"] == expected
-    assert heard_one((await read(room, session_id, 1))["listeners"], 1)["frases"] == expected
+    assert marked.json()["frases"] == [
+        {"segment_id": by_number[4], "frase": 4, "ok": True, "comments": 0}
+    ]
+    assert heard_one((await read(room, session_id, 1))["listeners"], 1)["frases"] == [
+        {"segment_id": by_number[4], "frase": 4, "ok": True, "comments": []}
+    ]
 
 
 async def test_a_comment_on_a_frase_makes_it_not_ok_before_or_after_the_mark(
@@ -687,3 +691,65 @@ async def test_the_team_reads_a_listeners_facts_and_never_their_audio(
             {"segment_id": by_number[3], "frase": 3, "ok": False, "comments": 1},
         ],
     }
+
+
+async def test_a_finish_that_lands_while_another_is_written_keeps_the_first_ending(
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second finish read the listener unfinished, and the first finish commits before it
+    writes.
+
+    Staged by sending «terminar agora» from the other tablet as the second finish's read of the
+    listener returns; the read, both writes and the answers are real.
+    """
+    session_id, _check = await an_open_check(room, db_session)
+    await listener(room, session_id, 1)
+    the_real_read = outside_listeners_api.the_listener
+    held = {"still": True}
+    first: list[httpx.Response] = []
+
+    async def _read_and_then_the_other_finish_lands(*args: Any, **kwargs: Any):
+        read = await the_real_read(*args, **kwargs)
+        if held.pop("still", False):
+            first.append(
+                await finish(room, session_id, 1, 1, completed=False, headers=room.tablet_b)
+            )
+        return read
+
+    monkeypatch.setattr(
+        outside_listeners_api, "the_listener", _read_and_then_the_other_finish_lands
+    )
+    second = await finish(room, session_id, 1, 1, completed=True)
+
+    assert second.status_code == 200, second.text
+    ending = (first[0].json()["completed"], first[0].json()["finished_at"])
+    assert ending[0] is False
+    assert (second.json()["completed"], second.json()["finished_at"]) == ending
+    one = heard_one((await read(room, session_id, 1))["listeners"], 1)
+    assert (one["completed"], one["finished_at"]) == ending
+
+
+async def test_a_recording_that_lands_while_the_passage_is_zerada_carries_the_archive_stamp(
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id, _check = await an_open_check(room, db_session)
+    await listener(room, session_id, 1)
+    the_real_put = room.bucket.put
+    archived: list[str] = []
+
+    async def _zerada_while_uploading(key: str, data: bytes, content_type: str) -> None:
+        zerado = await room.client.post(
+            f"{IR}/facilitator/projects/{TABLET_TEAM}/passages/{P}/archive", headers=room.desk
+        )
+        archived.append(zerado.json()["archive"]["id"])
+        await the_real_put(key, data, content_type)
+
+    monkeypatch.setattr(room.bucket, "put", _zerada_while_uploading)
+    sent_during = await send(room, session_id, 1, 1, RETELLING, "retell")
+
+    assert sent_during.status_code == 200, sent_during.text
+    stamped = await db_session.execute(
+        text("SELECT archive_id FROM ir_external_recordings WHERE session_id = :v"),
+        {"v": session_id},
+    )
+    assert list(stamped.scalars()) == archived

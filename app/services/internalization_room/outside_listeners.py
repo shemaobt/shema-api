@@ -11,7 +11,7 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,8 @@ from app.db.models.internalization_room import (
     IRSession,
 )
 from app.models.internalization_room import (
+    ListenerFacts,
+    ListenerFactsFrase,
     ListenerFraseView,
     ListenerRecordingView,
     ListenerView,
@@ -146,6 +148,9 @@ async def keep_a_listener_recording(
 ) -> IRExternalRecording:
     """Store the bytes, then attach them: a recording that dies in the upload leaves no row.
 
+    The row takes its listener's **Archive** as it stands once the bytes are safe, so a Zerar
+    that lands during the upload stamps it too.
+
     The same bytes sent again by this listener are the recording already kept, whether the
     resend comes after the first landed or meets it at the unique index.
     """
@@ -182,6 +187,9 @@ async def keep_a_listener_recording(
         sha256=stored.sha256,
         crc32c=stored.crc32c,
         verified_at=stored.verified_at,
+        archive_id=await db.scalar(
+            select(IRExternalListener.archive_id).where(IRExternalListener.id == listener_id)
+        ),
     )
     try:
         async with db.begin_nested():
@@ -215,11 +223,13 @@ async def mark_the_frase_good(
 async def finish_the_listener(
     db: AsyncSession, listener: IRExternalListener, *, completed: bool
 ) -> None:
-    """The first finish is how the listener ended; a resend with another value changes nothing."""
-    if listener.finished_at is not None:
-        return
-    listener.finished_at = datetime.now(UTC)
-    listener.completed = completed
+    """The first finish is how the listener ended; a resend with another value, or one landing
+    at once, changes nothing."""
+    await db.execute(
+        update(IRExternalListener)
+        .where(IRExternalListener.id == listener.id, IRExternalListener.finished_at.is_(None))
+        .values(finished_at=datetime.now(UTC), completed=completed)
+    )
     await db.commit()
 
 
@@ -260,6 +270,32 @@ async def the_listeners_of(
         _listener_view(check, listener, kept[listener.id], marked, numbers)
         for listener in listeners
     ]
+
+
+async def a_listeners_facts(db: AsyncSession, check: IRExternalCheck, number: int) -> ListenerFacts:
+    """What the team reads back of a listener: how many of each recording were kept and on
+    which frases, and the marks; never a recording id, a fingerprint or a way to the audio."""
+    heard = await the_listeners_of(db, check, number=number)
+    if not heard:
+        raise NotFoundError(f"No outside listener {number} in check {check.id}")
+    (listener,) = heard
+    return ListenerFacts(
+        number=listener.number,
+        started_at=listener.started_at,
+        finished_at=listener.finished_at,
+        completed=listener.completed,
+        retold=listener.retelling is not None,
+        whole=len(listener.whole),
+        frases=[
+            ListenerFactsFrase(
+                segment_id=frase.segment_id,
+                frase=frase.frase,
+                ok=frase.ok,
+                comments=len(frase.comments),
+            )
+            for frase in listener.frases
+        ],
+    )
 
 
 def _listener_view(

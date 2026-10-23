@@ -9,13 +9,12 @@ from app.models.internalization_room import (
     ExternalCheckListenersView,
     FinishRequest,
     ListenerFacts,
-    ListenerFactsFrase,
     ListenerRecordingView,
-    ListenerView,
     MarkRequest,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.outside_listeners import (
+    a_listeners_facts,
     a_new_listener,
     finish_the_listener,
     keep_a_listener_recording,
@@ -40,30 +39,26 @@ async def _the_teams_check(
     return await the_check_of_version(db, session, version)
 
 
-async def _as_it_stands(db: AsyncSession, check: IRExternalCheck, number: int) -> ListenerView:
-    (listener,) = await the_listeners_of(db, check, number=number)
-    return listener
-
-
-@router.post(LISTENERS, response_model=ListenerView, dependencies=[linked_tablet_dep])
+@router.post(LISTENERS, response_model=ListenerFacts, dependencies=[linked_tablet_dep])
 async def a_new_listener_route(
     session_id: str,
     version: int,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
-) -> ListenerView:
+) -> ListenerFacts:
     """The team's tablet asks for the next **Outside listener** of this version's check.
 
     No body: the number is the room's to give, never the tablet's to send, and nothing names
-    the person. 404 for a version whose check the team never opened.
+    the person. Answers the new listener's facts. 404 for a version whose check the team never
+    opened.
     """
     check = await _the_teams_check(db, session_id, version, project_id)
     listener = await a_new_listener(db, check)
-    return await _as_it_stands(db, check, listener.number)
+    return await a_listeners_facts(db, check, listener.number)
 
 
 @router.get(LISTENERS + "/{number}", response_model=ListenerFacts, dependencies=[linked_tablet_dep])
-async def a_listeners_facts(
+async def a_listeners_facts_route(
     session_id: str,
     version: int,
     number: int,
@@ -77,25 +72,7 @@ async def a_listeners_facts(
     an unknown listener or a version never opened.
     """
     check = await _the_teams_check(db, session_id, version, project_id)
-    await the_listener(db, check, number)
-    heard = await _as_it_stands(db, check, number)
-    return ListenerFacts(
-        number=heard.number,
-        started_at=heard.started_at,
-        finished_at=heard.finished_at,
-        completed=heard.completed,
-        retold=heard.retelling is not None,
-        whole=len(heard.whole),
-        frases=[
-            ListenerFactsFrase(
-                segment_id=frase.segment_id,
-                frase=frase.frase,
-                ok=frase.ok,
-                comments=len(frase.comments),
-            )
-            for frase in heard.frases
-        ],
-    )
+    return await a_listeners_facts(db, check, number)
 
 
 @router.post(
@@ -153,7 +130,7 @@ async def keep_a_listener_recording_route(
 
 
 @router.post(
-    LISTENERS + "/{number}/marks", response_model=ListenerView, dependencies=[linked_tablet_dep]
+    LISTENERS + "/{number}/marks", response_model=ListenerFacts, dependencies=[linked_tablet_dep]
 )
 async def mark_the_frase_good_route(
     session_id: str,
@@ -162,17 +139,18 @@ async def mark_the_frase_good_route(
     body: MarkRequest,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
-) -> ListenerView:
+) -> ListenerFacts:
     """The listener says «está boa» on one frase; a comment on it, before or after, still
-    makes it not ok. 400 for a frase not of this version, 404 as the other doors."""
+    makes it not ok. Answers the listener's facts; 400 for a frase not of this version, 404 as
+    the other doors."""
     check = await _the_teams_check(db, session_id, version, project_id)
     listener = await the_listener(db, check, number)
     await mark_the_frase_good(db, check, listener, body.segment_id)
-    return await _as_it_stands(db, check, number)
+    return await a_listeners_facts(db, check, number)
 
 
 @router.post(
-    LISTENERS + "/{number}/finish", response_model=ListenerView, dependencies=[linked_tablet_dep]
+    LISTENERS + "/{number}/finish", response_model=ListenerFacts, dependencies=[linked_tablet_dep]
 )
 async def finish_the_listener_route(
     session_id: str,
@@ -181,12 +159,13 @@ async def finish_the_listener_route(
     body: FinishRequest,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
-) -> ListenerView:
+) -> ListenerFacts:
     """The listener is done: `completed` true when the last frase was answered, false after
-    «terminar agora». The first finish is kept; a resend with another value changes nothing."""
+    «terminar agora». The first finish is kept; a resend with another value changes nothing.
+    Answers the listener's facts."""
     check = await _the_teams_check(db, session_id, version, project_id)
     await finish_the_listener(db, await the_listener(db, check, number), completed=body.completed)
-    return await _as_it_stands(db, check, number)
+    return await a_listeners_facts(db, check, number)
 
 
 @router.get(
