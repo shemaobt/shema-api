@@ -28,10 +28,11 @@ async def record_audit_event(
     route just read from: the failures left over (a concurrently deleted project, a dropped
     connection) are ones the caller should hear about, not ones worth serving through.
 
-    ``ip`` is not a parameter. Behind Cloud Run's proxy the address available is the entry the
-    proxy appended (ADR 0093), which is the front end's egress address when the caller is one of
-    our own front ends, and a number that reads like the caller's address but is not is worse in
-    an evidence log than an absent one.
+    ``ip`` is not a parameter. Behind Cloud Run's proxy ``request.client.host`` is usually the
+    entry the proxy appended (ADR 0093); the socket address when the request carries several
+    ``X-Forwarded-For`` lines or runs off Cloud Run. It is the front end's egress address when the
+    caller is one of our own front ends, and a number that reads like the caller's address but is
+    not is worse in an evidence log than an absent one.
     """
     row = SnAuditEvent(
         occurred_at=datetime.now(UTC),

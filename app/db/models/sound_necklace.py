@@ -418,9 +418,10 @@ class SnAuditEvent(Base):
     hit 83 and forced that column from 64 to 128 (20260713_0001).
 
     ``ip`` stays null. This runs on Cloud Run, behind a proxy: the raw ``X-Forwarded-For`` is
-    appended to whatever the caller sent, so it is forgeable. ``request.client.host`` is the
-    entry the proxy appended (ADR 0093), but a number in an evidence log reads like a fact, and
-    that one is the front end's egress address when the caller is one of our own front ends.
+    appended to whatever the caller sent, so it is forgeable. ``request.client.host`` is usually
+    the entry the proxy appended (ADR 0093); the socket address when the request carries several
+    ``X-Forwarded-For`` lines or runs off Cloud Run. A number in an evidence log reads like a fact,
+    and that one is the front end's egress address when the caller is one of our own front ends.
     The column exists because adding it later means a migration on a database six production
     apps share; filling it needs a trusted-proxy policy, which is its own work.
 
