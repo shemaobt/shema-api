@@ -4,13 +4,13 @@ import base64
 import hashlib
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, UnaryExpression, case, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -253,10 +253,12 @@ async def store_take(
 
     The **Recording time** is the tablet's when it sent one, a joined part's included: the moment
     the team chose it (ADR 0085). A joined part's `sent_at`, the tablet's clock as it built that
-    send, measures the **Clock offset**. Two uploads of the same bytes at once both pass the
-    first look: the unique index refuses the second row, and its upload answers with the first.
-    The insert sits in a savepoint, so the refusal undoes it alone and leaves the caller's
-    objects as they were.
+    send, measures the **Clock offset**. A take sent with no time has none of its own: its
+    arrival stands in for one, and both are stamped from the same clock reading, which is how a
+    reader tells it apart (`has_its_own_recording_time`). Two uploads of the same bytes at once
+    both pass the first look: the unique index refuses the second row, and its upload answers
+    with the first. The insert sits in a savepoint, so the refusal undoes it alone and leaves the
+    caller's objects as they were.
 
     The server's clock is read once, before the bytes are measured or stored: the take's
     arrival and its offset are both read on it, so neither counts as the tablet's.
@@ -461,11 +463,59 @@ async def refuse_a_take_that_is_no_longer_a_part(
         raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
-READING_ORDER = (
-    IRTake.ordinal.asc().nulls_first(),
-    IRTake.pass_number.asc().nulls_first(),
-    IRTake.created_at,
-)
+def has_its_own_recording_time(spliced: Collection[str] = ()) -> ColumnElement[bool]:
+    """Whether a take's `recorded_at` is its own **Recording time**, read off what every server
+    that ever wrote a take stores, so a take written before this rule reads the same.
+
+    A joined part names its `origin`. A tablet's time is never its arrival, which the server
+    stamps from one clock reading for a take sent with none. A spliced part is stamped like a
+    take sent with none, so the row cannot say it; the sentence laid into it can, and `spliced`
+    is the takes that sentence makes one (`_spliced_into_a_timed_part`).
+    """
+    own = or_(IRTake.origin.is_not(None), IRTake.recorded_at != IRTake.created_at)
+    return or_(own, IRTake.id.in_(spliced)) if spliced else own
+
+
+def reading_order(spliced: Collection[str] = ()) -> tuple[UnaryExpression[Any], ...]:
+    return (
+        IRTake.ordinal.asc().nulls_first(),
+        case((has_its_own_recording_time(spliced), IRTake.recorded_at), else_=None)
+        .asc()
+        .nulls_first(),
+        IRTake.pass_number.asc().nulls_first(),
+        IRTake.created_at.asc(),
+    )
+
+
+READING_ORDER = reading_order()
+
+
+async def _spliced_into_a_timed_part(db: AsyncSession, session_id: str) -> set[str]:
+    """The spliced parts of a session whose part had its own **Recording time**.
+
+    Each sentence laid in names the take it was laid into, and every server that ever spliced
+    wrote that, so this is read the same for a splice made before the rule. Walked in the order
+    the sentences were laid, so a sentence laid again over a splice inherits through it.
+    """
+    told = await db.scalar(select(IRSession.back_translation).where(IRSession.id == session_id))
+    laid = [(one["previous_take_id"], one["take_id"]) for one in (told or {}).get("sentences", [])]
+    if not laid:
+        return set()
+    timed = set(
+        (
+            await db.execute(
+                select(IRTake.id).where(
+                    IRTake.id.in_({previous for previous, _ in laid}),
+                    has_its_own_recording_time(),
+                )
+            )
+        ).scalars()
+    )
+    spliced: set[str] = set()
+    for previous, take_id in laid:
+        if previous in timed or previous in spliced:
+            spliced.add(take_id)
+    return spliced
 
 
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
@@ -474,16 +524,23 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
 
-    Both columns are nullable and the placement is named rather than left to the engine:
-    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
-    that captured none — and a take with no pass predates the room sending one, so either
-    is the earliest thing in its own group. Unnamed, SQLite
-    read that the same way and PostgreSQL read it upside down, which put the oldest
-    recording of a session at the bottom of the packet on the only database that serves
-    a real team.
+    Under one ordinal the take recorded last reads last, by its **Recording time**, and the
+    pass then the arrival break a tie. A take with no Recording time of its own — sent with
+    none, stored before ENG-1273 and not joined, or spliced into a part like it — reads before
+    every take that has one, and among its kind by the pass, which is the order it was read
+    in before.
+
+    Every key but the arrival is nullable, and its placement is named rather than left to the
+    engine: a take with no ordinal belongs to no stretch — the undivided passage, or a
+    recording that captured none — a take with no pass predates the room sending one, and a
+    take with no Recording time of its own has nothing to be compared by, so each is the
+    earliest thing in its own group. Unnamed, SQLite read that the same way and PostgreSQL read
+    it upside down, which put the oldest recording of a session at the bottom of the packet on
+    the only database that serves a real team.
     """
+    spliced = await _spliced_into_a_timed_part(db, session_id)
     result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
+        select(IRTake).where(IRTake.session_id == session_id).order_by(*reading_order(spliced))
     )
     return list(result.scalars().all())
 
@@ -502,11 +559,12 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     history, kept with its stretches and findings and no longer a part anybody is asked for.
 
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
-    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
-    alone it would be wrong, and this module says why two functions up: that stamp is when the
-    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
-    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
-    its own recordings and does not move with the link.
+    the one recorded last by its **Recording time**, with the pass breaking a tie. Keyed on the
+    arrival it would be wrong: the outbox drains whenever the link comes back, so the rehearsal
+    that arrives last is sometimes the one the team abandoned, and the Recording time does not
+    move with the link. Keyed on the pass it would be wrong too: a reinstalled tablet, or a
+    second one, counts its passes from 1 again, so its newer take would read below an older
+    pass 2. A take with no Recording time of its own keeps the pass order and reads first.
 
     So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
     parts come back in the reading order and no caller sorts them again.

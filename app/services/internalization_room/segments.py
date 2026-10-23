@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import TypeGuard
 
-from sqlalchemy import ColumnElement, select, update
+from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -493,10 +493,45 @@ async def final_segments(
     team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
+    history = _not_the_part(takes if takes is not None else await takes_of(db, session_id))
     return [
-        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in set_aside
+        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in history
     ]
+
+
+def _not_the_part(takes: list[IRTake]) -> set[str]:
+    """The rehearsal takes no stretch counts on: every one that is not a current part.
+
+    Recording a part again retires the stretches of the take it replaced. A take can also stop
+    being the part with nobody recording anything, when the order that chooses the part changes
+    under stored rows (ENG-1760); its stretches stay standing on it, and read as the part's they
+    would carry one recording's telling-back and findings beside another recording's audio. So
+    a stretch counts only on the take that is the part now, and the rest are history.
+    """
+    parts = {part.id for part in current_parts(takes)}
+    return {take.id for take in takes if take.kind is IRTakeKind.ENSAIO and take.id not in parts}
+
+
+async def the_check_still_stands(
+    db: AsyncSession, state: BackTranslationState, takes: list[IRTake]
+) -> bool:
+    """Whether the stored check is still about the parts the session has now.
+
+    A check holds only while every stretch it read is on a take that is still the part. When
+    the order makes another take the part of any number (`_not_the_part`), nothing retired the
+    stretches the check read, so the stored check and its findings are about a recording the
+    passage no longer has: the gate reads it as not checked until the team tells and checks
+    again.
+    """
+    if not state.checked:
+        return False
+    history = _not_the_part(takes)
+    if not history or not state.analysed_segment_ids:
+        return True
+    read = await db.execute(
+        select(IRSegment.take_id).where(IRSegment.id.in_(state.analysed_segment_ids))
+    )
+    return history.isdisjoint(read.scalars().all())
 
 
 def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
@@ -509,14 +544,24 @@ def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
 async def set_aside_segment_ids(
     db: AsyncSession, session_id: str, takes: list[IRTake] | None = None
 ) -> set[str]:
-    """Every stored stretch told over a whole that stepped aside, retired or not.
+    """Every stored stretch told over a whole that stepped aside, retired or not, and every
+    standing one on a take that is no longer the part (`_not_the_part`): its findings and nuances
+    are history, stored and never carried.
 
     `takes` is the session's takes in `takes_of`'s order, for a caller that already read them.
     """
-    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
-    if not set_aside:
+    takes = takes if takes is not None else await takes_of(db, session_id)
+    history = _not_the_part(takes)
+    if not history:
         return set()
-    rows = await db.execute(select(IRSegment.id).where(IRSegment.take_id.in_(set_aside)))
+    rows = await db.execute(
+        select(IRSegment.id).where(
+            or_(
+                IRSegment.take_id.in_(_wholes_set_aside(takes)),
+                IRSegment.take_id.in_(history) & IRSegment.superseded_at.is_(None),
+            )
+        )
+    )
     return set(rows.scalars().all())
 
 

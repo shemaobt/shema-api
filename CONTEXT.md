@@ -76,11 +76,11 @@ The slice of the passage checked in one reading by the analyst, which can be sma
 _Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
-An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's number is that part; the earlier ones stay as history.
+An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The rehearsal take under a part's number recorded last, by its **Recording time**, is that part. The pass breaks a tie, and the earlier ones stay as history.
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
 **Recording time** (`recorded_at`):
-When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined part keeps the tablet's clock at the moment the team chose it. A spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time.
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined part keeps the tablet's clock at the moment the team chose it. A spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. A take that was not joined and was sent with no time or stored before ENG-1273, and a part spliced into one of these, have none of its own: the arrival stands in where it is served, and it is never what makes a take the part. Such takes keep their pass order among themselves and come before every take that has one (ENG-1760).
 _Avoid_: upload time, created_at (when the upload landed), timestamp
 
 **Clock offset** (`device_clock_offset_ms`):
