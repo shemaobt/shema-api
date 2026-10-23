@@ -24,7 +24,6 @@ SESSION = "a0000000-0000-0000-0000-000000000001"
 OTHER_SESSION = "a0000000-0000-0000-0000-000000000002"
 ARRIVED_ONLY = "b0000000-0000-0000-0000-000000000001"
 TABLET_TIMED = "b0000000-0000-0000-0000-000000000002"
-JOINED = "b0000000-0000-0000-0000-000000000003"
 SPLICED = "b0000000-0000-0000-0000-000000000004"
 SPLICED_AGAIN = "b0000000-0000-0000-0000-000000000005"
 SPLICED_INTO_AN_ARRIVAL = "b0000000-0000-0000-0000-000000000006"
@@ -122,30 +121,6 @@ async def test_a_take_stored_with_only_its_arrival_has_no_recording_time_of_its_
 
     assert up.returncode == 0, up.stderr
     assert await known(url, ARRIVED_ONLY) is False
-
-
-async def test_a_take_the_tablet_timed_has_its_recording_time_after_the_migration(
-    before_the_migration,
-) -> None:
-    url = before_the_migration
-    await _insert_take(url, TABLET_TIMED, recorded_at=RECORDED_ON_THE_TABLET)
-
-    up = run_alembic(url, "upgrade", REVISION)
-
-    assert up.returncode == 0, up.stderr
-    assert await known(url, TABLET_TIMED) is True
-
-
-async def test_a_joined_part_has_its_recording_time_after_the_migration(
-    before_the_migration,
-) -> None:
-    url = before_the_migration
-    await _insert_take(url, JOINED, origin="c0000000-0000-0000-0000-000000000001")
-
-    up = run_alembic(url, "upgrade", REVISION)
-
-    assert up.returncode == 0, up.stderr
-    assert await known(url, JOINED) is True
 
 
 async def test_a_spliced_part_has_a_recording_time_only_when_the_part_it_was_laid_into_has_one(

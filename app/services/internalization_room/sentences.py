@@ -31,6 +31,7 @@ from app.services.internalization_room.segments import current_segments, final_s
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
     TakeStore,
+    has_its_own_recording_time,
     is_wav,
     storage_key,
     store_recording,
@@ -219,7 +220,7 @@ async def lay_in_a_sentence(
         origin=part.origin,
         created_at=now,
         recorded_at=now,
-        recorded_at_known=part.recorded_at_known,
+        recorded_at_known=has_its_own_recording_time(part),
         duration_ms=await measure_ms_bounded(spliced.audio),
     )
     db.add(take)

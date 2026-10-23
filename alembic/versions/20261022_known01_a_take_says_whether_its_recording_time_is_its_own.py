@@ -2,11 +2,10 @@
 
 A stored take has its own **Recording time** when the tablet sent one, which is every row whose
 `recorded_at` differs from its arrival, and when it is a joined part (its `origin`), whose time
-is the server's by ADR 0072. A spliced part (named as `take_id` by a sentence laid into its
-session) has one exactly when the part it was laid into has one, read in the order the
-sentences were laid. Every other row was stamped with its arrival in place of one — sent with no
-time, or stored before ENG-1273 — and stays false, so it keeps the pass order it was read in
-until now.
+is the server's by ADR 0072. Both are read off the row and need no mark. A spliced part (named as
+`take_id` by a sentence laid into its session) has one exactly when the part it was laid into
+has one, which the row cannot show: the mark is set for those, read in the order the sentences
+were laid. Every other row stays false.
 
 Revision ID: 20261022_known01
 Revises: 20261021_opfor01
@@ -49,7 +48,12 @@ def _spliced_into_a_known_part(laid: list[tuple[str, str]]) -> set[str]:
     bases = {previous for previous, _ in laid}
     known = set(
         op.get_bind()
-        .execute(sa.select(TAKES.c.id).where(TAKES.c.id.in_(bases), TAKES.c.recorded_at_known))
+        .execute(
+            sa.select(TAKES.c.id).where(
+                TAKES.c.id.in_(bases),
+                sa.or_(TAKES.c.origin.is_not(None), TAKES.c.recorded_at != TAKES.c.created_at),
+            )
+        )
         .scalars()
     )
     spliced: set[str] = set()
@@ -64,11 +68,6 @@ def upgrade() -> None:
         batch.add_column(
             sa.Column("recorded_at_known", sa.Boolean(), nullable=False, server_default=sa.false())
         )
-    op.execute(
-        TAKES.update()
-        .where(sa.or_(TAKES.c.origin.is_not(None), TAKES.c.recorded_at != TAKES.c.created_at))
-        .values(recorded_at_known=sa.true())
-    )
     laid = _laid_in_sentences()
     spliced = _spliced_into_a_known_part(laid) if laid else set()
     if spliced:

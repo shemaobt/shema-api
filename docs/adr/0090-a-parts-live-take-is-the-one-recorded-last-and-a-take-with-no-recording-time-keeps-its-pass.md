@@ -22,11 +22,16 @@ Decided (ENG-1760, Henok on 2026-10-22):
   text-seam part and a take stored before ENG-1273 that was neither joined nor spliced into a
   part with a Recording time have none: they keep the pass order among themselves and read
   before every take that has one.
-- The take says which it is in a stored mark, `recorded_at_known`, written when the take is
-  stored and backfilled for the rows already kept: true for a joined part, for a row whose
-  Recording time differs from its arrival, and for a take a laid-in sentence names when the
-  take it was laid into is true, read in the order the sentences were laid. Every other row
-  stays false and keeps the order it was read in until now.
+- Which takes have one is read off what every writer already stores: a joined part names its
+  `origin`, and a tablet's time is never its arrival, which the server stamps from one clock
+  reading for a take sent with none. So a take written by a server that predates this decision,
+  through a held deploy or a rollback, reads the same. A stored mark, `recorded_at_known`,
+  carries only what the row cannot show: a splice of a part that had one. The migration
+  backfills it for the takes a laid-in sentence names, in the order the sentences were laid.
+- A stretch counts only on the take that is the part now. Recording a part again retires the
+  stretches of the take it replaced, but a take can stop being the part with nobody recording
+  anything, when this order changes under stored rows or is rolled back. The stretches standing
+  on it are history: never told and never checked for the current part.
 - One order serves every reader: the part, the gate, the **Packet**, the listening ledger, the
   downloads' names, the tablet's list and the consultant's read. Retro takes read it too. The
   mark is never served, and the Recording time served is unchanged.

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import case, select
+from sqlalchemy import case, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -252,7 +252,8 @@ async def store_take(
 
     The **Recording time** is the tablet's when it sent one for a take recorded on it, and the
     server's for a joined part, whose tablet time only measures the **Clock offset**. A take sent
-    with no time has none of its own, and is marked so: its arrival only stands in for one. Two
+    with no time has none of its own: its arrival stands in for one, and both are stamped from
+    the same clock reading, which is how a reader tells it apart (`has_its_own_recording_time`). Two
     uploads of the same bytes at once both pass the first look: the unique index refuses the
     second row, and its upload answers with the first. The insert sits in a savepoint, so the
     refusal undoes it alone and leaves the caller's objects as they were.
@@ -300,7 +301,6 @@ async def store_take(
         origin=origin,
         created_at=arrived,
         recorded_at=recording_time(None if origin is not None else sent_recorded_at, arrived),
-        recorded_at_known=origin is not None or sent_recorded_at is not None,
         duration_ms=checked.duration_ms,
         device_clock_offset_ms=offset,
     )
@@ -463,9 +463,22 @@ async def refuse_a_take_that_is_no_longer_a_part(
         raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
 
 
+#: Read off what every writer stores — a joined part's `origin`, a tablet's time that is never
+#: its arrival — so a take written by a server that predates the mark reads the same; the stored
+#: mark carries only the one case the row cannot show, a splice of a part that had one.
+HAS_ITS_OWN_RECORDING_TIME = or_(
+    IRTake.origin.is_not(None), IRTake.recorded_at != IRTake.created_at, IRTake.recorded_at_known
+)
+
+
+def has_its_own_recording_time(take: IRTake) -> bool:
+    """`HAS_ITS_OWN_RECORDING_TIME`, asked of a take already read."""
+    return take.origin is not None or take.recorded_at != take.created_at or take.recorded_at_known
+
+
 READING_ORDER = (
     IRTake.ordinal.asc().nulls_first(),
-    case((IRTake.recorded_at_known, IRTake.recorded_at), else_=None).asc().nulls_first(),
+    case((HAS_ITS_OWN_RECORDING_TIME, IRTake.recorded_at), else_=None).asc().nulls_first(),
     IRTake.pass_number.asc().nulls_first(),
     IRTake.created_at,
 )
@@ -483,14 +496,13 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     every take that has one, and among its kind by the pass, which is the order it was read
     in before.
 
-    Every key is nullable and the placement is named rather than left to the engine:
-    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
-    that captured none — a take with no pass predates the room sending one, and a take with
-    no Recording time of its own has nothing to be compared by, so each is the earliest thing
-    in its own group. Unnamed, SQLite
-    read that the same way and PostgreSQL read it upside down, which put the oldest
-    recording of a session at the bottom of the packet on the only database that serves
-    a real team.
+    Every key but the arrival is nullable, and its placement is named rather than left to the
+    engine: a take with no ordinal belongs to no stretch — the undivided passage, or a
+    recording that captured none — a take with no pass predates the room sending one, and a
+    take with no Recording time of its own has nothing to be compared by, so each is the
+    earliest thing in its own group. Unnamed, SQLite read that the same way and PostgreSQL read
+    it upside down, which put the oldest recording of a session at the bottom of the packet on
+    the only database that serves a real team.
     """
     result = await db.execute(
         select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)

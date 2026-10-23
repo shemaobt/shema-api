@@ -493,10 +493,23 @@ async def final_segments(
     team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    set_aside = _wholes_set_aside(takes if takes is not None else await takes_of(db, session_id))
+    history = _not_the_part(takes if takes is not None else await takes_of(db, session_id))
     return [
-        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in set_aside
+        row for row, divided in _read_in_order(rows) if not divided and row.take_id not in history
     ]
+
+
+def _not_the_part(takes: list[IRTake]) -> set[str]:
+    """The rehearsal takes no stretch counts on: every one that is not a current part.
+
+    Recording a part again retires the stretches of the take it replaced. A take can also stop
+    being the part with nobody recording anything, when the order that chooses the part changes
+    under stored rows (ENG-1760); its stretches stay standing on it, and read as the part's they
+    would carry one recording's telling-back and findings beside another recording's audio. So
+    a stretch counts only on the take that is the part now, and the rest are history.
+    """
+    parts = {part.id for part in current_parts(takes)}
+    return {take.id for take in takes if take.kind is IRTakeKind.ENSAIO and take.id not in parts}
 
 
 def _wholes_set_aside(takes: list[IRTake]) -> set[str]:
