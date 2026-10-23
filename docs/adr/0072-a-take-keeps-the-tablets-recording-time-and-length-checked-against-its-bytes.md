@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0085: a joined part keeps the tablet's recording time, and its clock offset is read from `sent_at`
 date: 2026-10-19
 ---
 

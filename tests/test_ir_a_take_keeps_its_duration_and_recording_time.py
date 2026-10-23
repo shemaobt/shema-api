@@ -1,8 +1,10 @@
 """ENG-1273 — each take keeps its duration and its recording time.
 
 A take recorded on the tablet keeps the tablet's own clock as its **Recording time**, however
-late its upload lands; a joined or spliced **Part**, and a take sent with no time, keep the
-server's. The tablet's fingerprint and length are checked against the bytes and refused when
+late its upload lands, and so does a joined **Part**, whose time is the moment the team chose
+it (Definer Q67); a spliced part and a take sent with no time keep the server's. A joined
+part's **Clock offset** is read from `sent_at`, the tablet's clock as it built that send. The
+tablet's fingerprint and length are checked against the bytes and refused when
 they differ, never corrected. Every case sends real 16 kHz mono WAV through the room's doors and
 reads what the tablet, the consultant and the **Packet** are served.
 """
@@ -290,23 +292,25 @@ async def test_a_take_sent_with_no_time_nor_length_keeps_the_servers_clock_and_i
     assert answer["duration_ms"] == 2500
 
 
-async def test_a_joined_part_keeps_the_servers_clock_and_the_packet_carries_no_tablet_time(
+async def test_a_joined_part_keeps_the_moment_the_team_chose_it_and_the_packet_no_offset(
     client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession
 ) -> None:
     origin = await a_scene_rehearsal(db_session, session)
-    before = the_second_now()
-    tablet_time = (before - timedelta(minutes=1)).isoformat()
-    answer = await kept(
-        client, session.id, recording(3, 7), origin=origin.id, recorded_at=tablet_time
-    )
-    after = datetime.now(UTC)
+    chosen = the_second_now() - timedelta(minutes=1)
 
-    assert before <= instant(answer["recorded_at"]) <= after
+    answer = await kept(
+        client,
+        session.id,
+        recording(3, 7),
+        origin=origin.id,
+        recorded_at=chosen.isoformat(),
+        sent_at=the_second_now().isoformat(),
+    )
+
+    assert instant(answer["recorded_at"]) == chosen
     packet = await ready_to_release(db_session, session)
     (take,) = packet["audio"]["rehearsal_takes"]
-    assert before <= instant(take["recorded_at"]) <= after
-    assert tablet_time not in json.dumps(packet)
-    assert tablet_time.replace("+00:00", "Z") not in json.dumps(packet)
+    assert instant(take["recorded_at"]) == chosen
     assert "device_clock_offset_ms" not in take
 
 
@@ -319,7 +323,7 @@ async def test_a_joined_part_from_a_tablet_8_minutes_behind_keeps_the_offset_for
     origin = await a_scene_rehearsal(db_session, session)
     behind = (datetime.now(UTC) - timedelta(minutes=8)).isoformat()
 
-    answer = await kept(client, session.id, recording(3, 8), origin=origin.id, recorded_at=behind)
+    answer = await kept(client, session.id, recording(3, 8), origin=origin.id, sent_at=behind)
 
     (observed,) = await consultant_read(client, consultant, session.id)
     assert abs(observed["device_clock_offset_ms"] - -480_000) <= 5_000
@@ -340,7 +344,7 @@ async def test_a_joined_part_from_a_tablet_four_minutes_off_keeps_no_offset(
     origin = await a_scene_rehearsal(db_session, session)
     ahead = (datetime.now(UTC) + timedelta(minutes=4)).isoformat()
 
-    await kept(client, session.id, recording(3, 9), origin=origin.id, recorded_at=ahead)
+    await kept(client, session.id, recording(3, 9), origin=origin.id, sent_at=ahead)
 
     (observed,) = await consultant_read(client, consultant, session.id)
     assert observed["device_clock_offset_ms"] is None
@@ -537,7 +541,7 @@ async def test_a_joined_part_from_a_tablet_whose_clock_reads_1970_is_kept_with_i
     behind_ms = (epoch - datetime.now(UTC)).total_seconds() * 1000
 
     answer = await kept(
-        client, session.id, recording(3, 22), origin=origin.id, recorded_at=epoch.isoformat()
+        client, session.id, recording(3, 22), origin=origin.id, sent_at=epoch.isoformat()
     )
 
     row = await take_named(db_session, answer["take_id"])
@@ -587,7 +591,7 @@ async def test_a_joined_parts_offset_does_not_count_the_time_spent_storing_it(
     origin = await a_scene_rehearsal(db_session, session)
     behind = (datetime.now(UTC) - timedelta(minutes=8)).isoformat()
 
-    await kept(client, session.id, recording(3, 24), origin=origin.id, recorded_at=behind)
+    await kept(client, session.id, recording(3, 24), origin=origin.id, sent_at=behind)
 
     (observed,) = await consultant_read(client, consultant, session.id)
     assert abs(observed["device_clock_offset_ms"] - -480_000) < 1_000

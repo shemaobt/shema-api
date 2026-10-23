@@ -635,6 +635,33 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
     await db.flush()
 
 
+async def abandon_the_segments_of(
+    db: AsyncSession, session_id: str, *, take_ids: set[str]
+) -> list[IRSegment]:
+    """Stop the stretches of these recordings counting, pieces included, and mark none stale.
+
+    The **Bring-back**'s half of the verb below: the stretches go as **Abandoned** history and
+    nobody is invited to tell them again, because the rehearsal's frases are laid in their place.
+    """
+    going = _with_their_pieces(await current_segments(db, session_id), take_ids)
+    _stop_counting(going)
+    await db.flush()
+    return going
+
+
+async def stop_waiting_on_the_segments_of(db: AsyncSession, *, take_ids: set[str]) -> None:
+    """The stale stretches of these recordings stop waiting to be told again, and stay retired.
+
+    A part whose frases were laid over it is told: the stretches its earlier takes left waiting
+    would invite the team to tell that ground a second time.
+    """
+    await db.execute(
+        update(IRSegment)
+        .where(IRSegment.take_id.in_(take_ids), IRSegment.stale.is_(True))
+        .values(stale=False)
+    )
+
+
 async def retire_the_segments_of(
     db: AsyncSession, session_id: str, *, take_ids: set[str]
 ) -> list[IRSegment]:
@@ -659,7 +686,18 @@ async def retire_the_segments_of(
     are one fact about one upload: committed apart, a failure between them leaves the room
     carrying findings about audio nobody will hear again.
     """
-    rows = await current_segments(db, session_id)
+    going = _with_their_pieces(await current_segments(db, session_id), take_ids)
+    if not going:
+        return going
+    _stop_counting(going)
+    for row in going:
+        row.stale = True
+    await db.flush()
+    return going
+
+
+def _with_their_pieces(rows: list[IRSegment], take_ids: set[str]) -> list[IRSegment]:
+    """Of `rows`, the slices of these recordings and every piece divided out of them."""
     children: dict[str | None, list[IRSegment]] = {}
     for row in rows:
         children.setdefault(row.parent_id, []).append(row)
@@ -672,14 +710,7 @@ async def retire_the_segments_of(
                 leaving.add(piece.id)
                 walking.append(piece)
 
-    going = [row for row in rows if row.id in leaving]
-    if not going:
-        return going
-    _stop_counting(going)
-    for row in going:
-        row.stale = True
-    await db.flush()
-    return going
+    return [row for row in rows if row.id in leaving]
 
 
 async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:

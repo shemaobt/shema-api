@@ -458,6 +458,14 @@ class BackTranslationProgress(BaseModel):
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    bring_back: list[int] = Field(
+        default_factory=list,
+        description=(
+            "The numbers of the joined parts whose scene rehearsal's frases «trazer de volta as "
+            "traduções do ensaio desta cena» can lay again: none of them stands on the part, no "
+            "sentence was re-recorded in it, and the rehearsal is of this session (ADR 0085)."
+        ),
+    )
     awaiting_segment_id: str | None = Field(
         default=None,
         description=(

@@ -24,6 +24,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.joined_parts import lay_the_rehearsals_frases
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
@@ -93,9 +94,16 @@ async def keep_take(
     recorded_at: SentRecordingTime | None = Form(
         default=None,
         description=(
-            "When the recording stopped, by the tablet's clock, with its offset. It is the "
-            "take's recording time however late the upload lands; a joined part keeps the "
-            "server's clock instead, and this only measures how far the tablet's is off."
+            "When the recording stopped, by the tablet's clock, with its offset; for a joined "
+            "part, when the team chose it. It is the take's recording time however late the "
+            "upload lands."
+        ),
+    ),
+    sent_at: SentRecordingTime | None = Form(
+        default=None,
+        description=(
+            "The tablet's clock as it built this send, with its offset. On a joined part it "
+            "measures how far the tablet's clock is off the server's; elsewhere it is ignored."
         ),
     ),
     duration_ms: int | None = Form(
@@ -139,8 +147,9 @@ async def keep_take(
     it as well — and what follows from a part arriving is the room's question, not storage's.
 
     The tablet's fingerprint and length are checked against the bytes and refused when they
-    disagree, never corrected. A joined part keeps the server's clock as its recording time,
-    and a resend answers with the row already kept, its time unmoved.
+    disagree, never corrected. A joined part keeps the moment the team chose it as its recording
+    time, and a resend answers with the row already kept, its time unmoved. A joined part lands
+    with its rehearsal's frases as told stretches (ADR 0085).
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
@@ -163,8 +172,11 @@ async def keep_take(
         sent_sha256=sha256,
         sent_duration_ms=duration_ms,
         sent_recorded_at=recorded_at,
+        sent_at=sent_at,
     )
     await room.retire_the_part_recorded_again(db, session, take)
+    if origin is not None:
+        await lay_the_rehearsals_frases(db, session, take)
     nudge(session.project_id, "takes")
     return _view(take)
 

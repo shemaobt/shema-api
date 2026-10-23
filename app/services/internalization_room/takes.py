@@ -239,6 +239,7 @@ async def store_take(
     sent_sha256: str | None = None,
     sent_duration_ms: int | None = None,
     sent_recorded_at: datetime | None = None,
+    sent_at: datetime | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -250,11 +251,12 @@ async def store_take(
     they are computed here rather than trusted from the request; what the tablet sent of them
     is checked before anything is stored.
 
-    The **Recording time** is the tablet's when it sent one for a take recorded on it, and the
-    server's for a joined part, whose tablet time only measures the **Clock offset**. Two
-    uploads of the same bytes at once both pass the first look: the unique index refuses the
-    second row, and its upload answers with the first. The insert sits in a savepoint, so the
-    refusal undoes it alone and leaves the caller's objects as they were.
+    The **Recording time** is the tablet's when it sent one, a joined part's included: the moment
+    the team chose it (ADR 0085). A joined part's `sent_at`, the tablet's clock as it built that
+    send, measures the **Clock offset**. Two uploads of the same bytes at once both pass the
+    first look: the unique index refuses the second row, and its upload answers with the first.
+    The insert sits in a savepoint, so the refusal undoes it alone and leaves the caller's
+    objects as they were.
 
     The server's clock is read once, before the bytes are measured or stored: the take's
     arrival and its offset are both read on it, so neither counts as the tablet's.
@@ -274,9 +276,7 @@ async def store_take(
         audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
     offset = (
-        noted_clock_offset(sent_recorded_at, arrived)
-        if origin is not None and sent_recorded_at is not None
-        else None
+        noted_clock_offset(sent_at, arrived) if origin is not None and sent_at is not None else None
     )
     if offset is not None:
         logger.warning("A tablet joining in session %s is %d ms off the server", session_id, offset)
@@ -298,7 +298,7 @@ async def store_take(
         verified_at=stored.verified_at,
         origin=origin,
         created_at=arrived,
-        recorded_at=recording_time(None if origin is not None else sent_recorded_at, arrived),
+        recorded_at=recording_time(sent_recorded_at, arrived),
         duration_ms=checked.duration_ms,
         device_clock_offset_ms=offset,
     )

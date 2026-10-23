@@ -57,6 +57,7 @@ ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+ERROR_CODE_NOTHING_TO_BRING_BACK: Final = "NOTHING_TO_BRING_BACK"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
@@ -196,6 +197,11 @@ class IdempotencyKeyInFlight(ConflictError):
 
 class PassageClosed(ConflictError):
     pass
+
+
+class NothingToBringBack(ConflictError):
+    """A Bring-back over a part whose rehearsal's frases cannot be laid on it: not joined, joined
+    from another session, a sentence re-recorded in it, or no frase to bring."""
 
 
 class CanonNotKept(ConflictError):
@@ -540,6 +546,13 @@ async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONRe
     )
 
 
+async def handle_nothing_to_bring_back(_request: Request, exc: NothingToBringBack) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_BRING_BACK),
+    )
+
+
 async def handle_canon_not_kept(_request: Request, exc: CanonNotKept) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -811,6 +824,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
+    app.add_exception_handler(NothingToBringBack, handle_nothing_to_bring_back)  # type: ignore[arg-type]
     app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
