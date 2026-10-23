@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0091: the visit and its undo name the halt they answer
 date: 2026-10-21
 ---
 

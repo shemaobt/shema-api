@@ -28,6 +28,8 @@ class DeskSession(BaseModel):
     ended_at: datetime | None
     attended_at: datetime | None
     attended_by: str | None
+    halts_raised: int
+    warned_at: datetime | None
     turns: int
     engaged_elements: int | None
     total_elements: int | None

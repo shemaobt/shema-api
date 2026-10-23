@@ -28,6 +28,7 @@ from app.services.internalization_room.approved_draft import (
     refuse_a_keep_that_reopens_the_approved_draft,
 )
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.joined_parts import lay_the_rehearsals_frases
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
@@ -41,6 +42,7 @@ from app.services.internalization_room.takes import (
     grain_in_force,
     listen_url,
     of_the_grain_left_behind,
+    refuse_a_join_over_a_moved_part,
     set_aside_moment,
     store_take,
     take_for_reader,
@@ -115,6 +117,14 @@ async def keep_take(
             "it, and the listen may check it with no tap. Absent on a part recorded as itself."
         ),
     ),
+    over_take: str | None = Form(
+        default=None,
+        description=(
+            "On a join, the part's live take when the team chose the join, absent over an empty "
+            "scene. Refused with TAKE_MOVED when the part's live take is another; nothing is "
+            "stored."
+        ),
+    ),
     recorded_at: SentRecordingTime | None = Form(
         default=None,
         description=(
@@ -174,7 +184,8 @@ async def keep_take(
 
     The tablet's fingerprint and length are checked against the bytes and refused when they
     disagree, never corrected. A joined part keeps the server's clock as its recording time,
-    and a resend answers with the row already kept, its time unmoved.
+    and a resend answers with the row already kept, its time unmoved. A joined part lands
+    with its rehearsal's frases as told stretches (ADR 0085).
 
     **Over an approved draft, a join, a swap and a whole take over a joined recording re-open
     it only with the team's armed tap** (`reopens_the_approved_draft`, ADR 0081), and without
@@ -190,9 +201,12 @@ async def keep_take(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     take_kind = _kind(kind)
+    audio = await file.read()
     if origin is not None:
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
-    audio = await file.read()
+        await refuse_a_join_over_a_moved_part(
+            db, session.id, ordinal=chunk_index, over_take=over_take, audio=audio
+        )
     ordinal = None if take_kind is IRTakeKind.RETRO else chunk_index
     left_behind = of_the_grain_left_behind(session, take_kind, ordinal)
     if not reopens_the_approved_draft and not left_behind:
@@ -219,6 +233,8 @@ async def keep_take(
     )
     await room.set_aside_by_the_grain_in_force(db, session, take)
     await room.retire_the_part_recorded_again(db, session, take)
+    if origin is not None:
+        await lay_the_rehearsals_frases(db, session, take)
     nudge(session.project_id, "takes")
     return _view(take)
 

@@ -24,7 +24,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
-from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    HaltMoved,
+    NotFoundError,
+    PassageClosed,
+    ValidationError,
+)
 from app.core.room_enums import HaltKind
 from app.core.served_books import SERVED_BOOKS
 from app.core.stage_clock import current_clock
@@ -161,11 +167,12 @@ async def create_session(
     heard the book's panorama and asks for it again is opened the panorama (ENG-1237, folded
     from ENG-1282). Only a silence is filled, never a request overruled.
 
-    Raises ``ConflictError`` when the team has closed every passage that opens and none was
-    named. That is the end of the book, and it is a defined state rather than a wrap-around:
-    the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
-    a passage is the way back in. The end it names is the end of the walkable book, which is
-    the only end a team can reach — a passage `require_walkable` refuses can never be closed.
+    Raises ``ConflictError`` when the team has closed every passage that opens in every served
+    book and none was named. That is the end of the walk, and it is a defined state rather than
+    a wrap-around: the request is well formed and the team exists, so 409 rather than 400 or
+    404, and naming a passage is the way back in. The end it names is the end of the walkable
+    books, the only end a team can reach — a passage `require_walkable` refuses can never be
+    closed.
 
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A
@@ -179,7 +186,7 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        book=ROOM_BOOK,
+        book=None,
     )
     session = await _minted(
         db,
@@ -231,7 +238,8 @@ async def open_session(
     stands, because a facilitator's visit is its only exit (ADR 0039).
 
     An open that names no passage lands on the team's next passage of the book of the session
-    it came from, ``after``, and of Ruth when it came from none (ADR 0066).
+    it came from, ``after``, and of the team's Current book when it came from none (ADR 0066,
+    ADR 0094).
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -239,7 +247,7 @@ async def open_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        book=book_of(after.pericope) if after is not None else ROOM_BOOK,
+        book=book_of(after.pericope) if after is not None else None,
     )
     session = await _pointed(db, project_id, pericope, spoken)
     created = False
@@ -357,7 +365,7 @@ async def _resolved(
     after_panorama: bool,
     project_id: str | None,
     language: str | None,
-    book: str,
+    book: str | None,
 ) -> tuple[str, bool, str]:
     """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
@@ -1054,7 +1062,9 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     if await is_the_demo_team(db, session.project_id):
         await db.flush()
         await db.refresh(session, ["status", "halts_raised", "warned_at", "attended_at"])
-        return await attend(db, session, by=None)
+        return await attend(
+            db, session, by=None, halts_raised=session.halts_raised, warned_at=session.warned_at
+        )
     return await _written(db, session, commit=True)
 
 
@@ -1136,20 +1146,38 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     return session.person_arrived_at
 
 
-async def attend(db: AsyncSession, session: IRSession, *, by: str | None) -> IRSession:
+async def attend(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    by: str | None,
+    halts_raised: int,
+    warned_at: datetime | None,
+) -> IRSession:
     """A facilitator says they went to this room: a Visit, which writes nothing on the status.
 
     The visit is the only exit a warning has (ADR 0039): it ends because ``attended_at`` is now
-    set, and undoing the visit brings it back. A blocking halt is the team's to lift, and the
+    set, and undoing the visit brings it back, except on a demo team, whose undo is attended
+    again at once (ADR 0064). A blocking halt is the team's to lift, and the
     visit only takes the room off the queue (ADR 0076).
+
+    **It names the halt it answers** (ADR 0091): ``halts_raised`` and ``warned_at`` as the
+    Desk read them. The count moves with a blocking halt only (ADR 0039), and ``warned_at``
+    with a warning. The stamp is written only while both are still the room's, under the
+    row's lock, so a halt raised after the read is never hidden by a visit to the one before.
 
     **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
     every tap would record when somebody last touched the Desk rather than when they went to
     the room — and the moment of the visit is the whole of what this field is for.
 
     ``by`` is None when nobody went: the server stamps a demo team's halt itself (ADR 0064).
+
+    ``updated_at`` is written its own value: a visit is not the team's act, and the team's
+    Current book reads its latest session by that column (ADR 0094).
     """
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
     _visited(session, by=by)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
@@ -1162,19 +1190,57 @@ def _visited(session: IRSession, *, by: str | None) -> None:
         session.attended_by = by
 
 
-async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
+async def unattend(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> IRSession:
     """Withdraw the mark: nobody went. The stamps clear and the status is not written.
 
     A halted room is back on the queue, and a warning the visit ended stands again: it stands
-    while ``warned_at`` is set and nobody is marked as having gone.
+    while ``warned_at`` is set and nobody is marked as having gone. A demo team's halt is
+    stamped again by the server at once, because it never calls a person (ADR 0064); a visit
+    to a demo room that never halted clears like any other. Whether a halt stands is read
+    under the row's lock, so a halt raised or lifted after ``session`` was read is the one it
+    answers.
+
+    Like the visit, it names the halt the Desk read (ADR 0091): an undo of a visit to an older
+    halt would clear a colleague's visit to the newer one.
+
+    ``updated_at`` is left as it was, as the visit left it (ADR 0094). The demo read comes
+    before the stamps clear, because a read flushes what is pending and the flush would move it.
     """
+    demo = await is_the_demo_team(db, session.project_id)
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
     if session.attended_at is None:
         return session
     session.attended_at = None
     session.attended_by = None
+    if demo and halt.standing(session) is not None:
+        _visited(session, by=None)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def _the_halt_held(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> None:
+    """Read the room again under its row lock, and refuse a write naming a halt that moved.
+
+    The lock holds until the visit's commit, so nothing raises or lifts a halt between this
+    comparison and the write. ``warned_at`` is compared as the instant it is, never as stored
+    text, which a row written by SQL may spell differently from a bound value.
+    """
+    held = (
+        await db.execute(
+            select(IRSession)
+            .where(IRSession.id == session.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if (held.halts_raised, held.warned_at) != (halts_raised, warned_at):
+        raise HaltMoved(held.halts_raised, held.warned_at)
 
 
 def back_translation_of(session: IRSession) -> BackTranslationState:

@@ -145,3 +145,14 @@ def test_nothing_in_it_merges() -> None:
     assert "merge-method" not in text
     assert "auto-merge" not in text
     assert "enable-pull-request-automerge" not in text
+
+
+def test_the_scheduled_sync_runs_the_sync_and_never_the_prune() -> None:
+    runs = [step["run"] for step in _steps() if "run" in step]
+    canon_runs = [run for run in runs if "sync_internalization_canon.py" in run]
+
+    assert canon_runs, "the control: the workflow runs the canon script"
+    assert all("--sync" in run or "--check" in run for run in canon_runs)
+    assert not [run for run in runs if "--prune" in run], (
+        "o agendamento apagava canon sem os pins vivos de produção"
+    )

@@ -55,6 +55,8 @@ DESK = "/api/facilitator"
 P = "P03"
 AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 FORCE = {"json": {"force": True}}
+#: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
+NEVER_HALTED = {"params": {"halt": 0}}
 
 
 class Bucket:
@@ -238,8 +240,8 @@ def _writes_on(team: Team, claim_code: str) -> list[tuple[str, str, dict]]:
     return [
         ("POST", f"{IR}/facilitator/questions/{team.question}/reply", AUDIO),
         ("POST", f"{IR}/facilitator/questions/{team.question}/resolve", {}),
-        ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", {}),
-        ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", {}),
+        ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
+        ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
         ("POST", f"{DESK}/devices/{team.device}/attended", {}),
         ("DELETE", f"{DESK}/devices/{team.device}/attended", {}),
         ("POST", f"{DESK}/devices/claim", {"json": {"code": claim_code, "project_id": team.id}}),
@@ -465,7 +467,9 @@ async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attende
         f"{IR}/facilitator/questions/{desk['a'].question}/reply", headers=reader, **AUDIO
     )
     attended = await client.post(
-        f"{IR}/facilitator/sessions/{desk['a'].session}/attended", headers=reader
+        f"{IR}/facilitator/sessions/{desk['a'].session}/attended",
+        params={"halt": 0},
+        headers=reader,
     )
     device_attended = await client.post(
         f"{DESK}/devices/{desk['a'].device}/attended", headers=reader

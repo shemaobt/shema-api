@@ -109,6 +109,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
         "POST",
         "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}/release",
     ): {"json": {"force": True}},
+    ("GET", "/api/internalization-room/facilitator/canon-pins"): {},
 }
 
 _STREAMS = {("GET", "/api/facilitator/teams/{team_id}/nudges")}

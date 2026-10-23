@@ -30,6 +30,7 @@ from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.joined_parts import bring_back_the_rehearsals_frases
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
@@ -144,6 +145,41 @@ async def restart(
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     await room.start_the_translation_over(db, session)
+    nudge(session.project_id, "stretches")
+    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+
+
+@router.post(
+    "/sessions/{session_id}/parts/{number}/bring-back",
+    response_model=SegmentsResponse,
+    dependencies=[linked_tablet_dep],
+    responses={
+        400: {"description": "`PANORAMA_RECORDS_NOTHING`: a panorama records nothing"},
+        401: {"description": "`UNAUTHORIZED`: no linked tablet's credential"},
+        404: {"description": "`NOT_FOUND`: no such session for this team, or no part `number`"},
+        409: {
+            "description": "`NOTHING_TO_BRING_BACK`: the part was not joined from a scene "
+            "rehearsal of this session, a sentence was re-recorded in it, or the rehearsal "
+            "has no frase; nothing is written"
+        },
+    },
+)
+async def bring_back(
+    session_id: str,
+    number: int,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SegmentsResponse:
+    """«trazer de volta as traduções do ensaio desta cena»: the rehearsal's frases laid again.
+
+    Offered on a joined part none of whose rehearsal's frases stands, after «recomeçar a
+    tradução» or when they never landed. The stretches told here on that part are abandoned,
+    kept as history and never deleted, and the check starts over as after any telling. A part
+    whose frases already stand answers as it is, so a second tap lays once.
+    """
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    await bring_back_the_rehearsals_frases(db, session, number)
     nudge(session.project_id, "stretches")
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
