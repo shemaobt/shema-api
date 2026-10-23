@@ -32,7 +32,6 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
-    build_internalization_release,
 )
 from app.services.internalization_room.segments import (
     capture_segment,
@@ -53,6 +52,7 @@ from tests.release_harness import (
     TABLET,
     P,
     ensaio_take,
+    judged_packet,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -627,7 +627,7 @@ async def press_terminei(
 
 
 async def release_packet(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    return await build_internalization_release(db, await get_session(db, session.id))
+    return await judged_packet(db, await get_session(db, session.id))
 
 
 async def release_blockers(db: AsyncSession, session: IRSession) -> list[str]:

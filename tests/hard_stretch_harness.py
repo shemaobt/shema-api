@@ -33,10 +33,10 @@ from app.services import internalization_room as full_room
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
-from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM
+from tests.release_harness import judged_packet
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
@@ -233,7 +233,7 @@ async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -
 
 
 async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """Everything `build_internalization_release` asks for besides the telling-back itself.
+    """Everything `judged_packet` asks for besides the telling-back itself.
 
     What the caller told back is left exactly as they told it: only coverage and the
     playback report are added here, and none of them is what these cases are about —
@@ -265,4 +265,4 @@ async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, A
         clip_duration_ms=clip_end,
     )
 
-    return await build_internalization_release(db, session)
+    return await judged_packet(db, session)

@@ -388,7 +388,11 @@ async def label_scene_rehearsal(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SceneRehearsalView:
-    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`.
+
+    Another scene for a rehearsal that is a current part's origin is refused with 409
+    `REHEARSAL_JOINED`.
+    """
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
     with reading_the_canon_of(session.canon_pin):
