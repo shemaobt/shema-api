@@ -470,7 +470,9 @@ async def refuse_a_join_over_a_moved_part(
     """Refuse a join when its part's live take is not the one the team chose it over.
 
     `over_take` is that take, or None when the team chose the join over an empty scene. A join
-    whose bytes are already kept is its own resend, answered by the storing with that take.
+    whose bytes are already kept is its own resend, answered by the storing with that take, which
+    may no longer be the part: the tablet reads the answer against the part. The look and the
+    storing hold no lock (ADR 0089), so two joins at once over one take may both land.
     """
     if await the_take_already_kept(db, session_id, IRTakeKind.ENSAIO, audio) is not None:
         return

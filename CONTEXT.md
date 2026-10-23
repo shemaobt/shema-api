@@ -140,7 +140,7 @@ Whether the rehearsal reaching Refine was told whole or in parts, read off the c
 _Avoid_: granularity, mode, shape, Granularidade
 
 **Joined recording** (`origin`):
-A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A recording no join touched is checked exactly as any other.
+A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A join names the take it was chosen over (none over an empty scene) and is refused as `TAKE_MOVED` when the part's live take is another. A recording no join touched is checked exactly as any other.
 _Avoid_: assembled recording (the server's old composed takes), merged, Junção (in prose)
 
 **Canon code**:

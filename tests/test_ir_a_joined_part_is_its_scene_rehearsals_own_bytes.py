@@ -204,7 +204,9 @@ async def test_a_join_over_the_parts_live_take_replaces_it(
 
     assert joined.status_code == 200, joined.text
     parts = [p for p in await _parts(room, session_id, room.tablet_b) if p["ordinal"] == 2]
-    assert parts[-1]["take_id"] == joined.json()["take_id"], "a junção não virou a parte"
+    assert [p["take_id"] for p in parts] == [by_hand, joined.json()["take_id"]], (
+        "a junção não ficou por último no seu número, que é ser a parte"
+    )
 
 
 async def test_a_join_over_a_take_that_is_no_longer_the_part_is_refused_as_take_moved(
