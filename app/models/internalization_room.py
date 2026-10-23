@@ -1743,3 +1743,10 @@ class SessionCoverageResponse(BaseModel):
     panorama: bool
     no_elements: bool
     ledger: str | None
+
+
+class CanonPinsResponse(BaseModel):
+    environment: str
+    deployed_pin: str
+    answered_at: datetime
+    pins: list[str]

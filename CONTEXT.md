@@ -362,6 +362,10 @@ _Avoid_: reset, zero, clear, wipe
 What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. No release is minted on an archived session, by the team or by a facilitator's force. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
 _Avoid_: soft delete, trash, backup, Arquivo
 
+**Kept canon** (`canon/kept/<pin>/`):
+The canon a re-pin replaced. It is kept in the repository under its pin, together with the element labels and Portuguese titles it was read with, so that a live **Session** opened under that pin keeps reading it. A sync never removes one. Only a prune removes kept trees, and only after it has been given the pins that live sessions hold, as production's `canon-pins` read answers them. The prune keeps every one of those pins, the pin production serves and the deployed pin (ADR 0088). Once a pin is pruned, a session that still names it is refused with `CANON_NOT_KEPT` on every read of the canon.
+_Avoid_: old canon, archived canon (an **Archive** is a Zerar's), cache
+
 **Needs a person** (`needs_person`):
 A blocking halt, not an end: it travels beside the status, never inside it. It is lifted only by the team's own return: a turn that lands, or a tablet opening the session.
 _Avoid_: error, failure, status, Precisa de pessoa
