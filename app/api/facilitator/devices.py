@@ -188,6 +188,8 @@ async def undo_device_attended_route(
 ) -> DeviceAttendedResponse:
     """Nobody went after all: the stamps clear and the tablet asks again, from when it asked.
 
+    A demo team's halted tablet is attended again at once, by the server (ADR 0064).
+
     A tablet nobody marked answers 200 and changes nothing — there is no claim to withdraw,
     and treating the absence as an error would make an idempotent undo impossible to write on
     the Desk.

@@ -502,7 +502,7 @@ The code the server mints for one tablet before it belongs to any team; a facili
 _Avoid_: código, pairing code, device code, credential
 
 **Demo team** (`is_demo_team`):
-The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server stamps a visit on its halts at once, so none reaches the queue) and never releases to Refine, with or without the configuration.
+The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server stamps a visit on its halts at once, and again when a facilitator undoes one, so none reaches the queue) and never releases to Refine, with or without the configuration.
 _Avoid_: test team, sandbox, reviewer team, equipe demo
 
 **Device credential** (`X-Device-Credential`):

@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.auth import User
 from app.db.models.device import Device
+from app.services.device.demo_team import is_the_demo_team
 from app.services.device.get_device import get_device
 from app.services.project.facilitates_project import facilitates_project
 
@@ -97,6 +98,9 @@ async def unattend_device(db: AsyncSession, *, user: User, device_id: str) -> De
     A tablet nobody marked answers 200 and changes nothing: there is no claim to withdraw, and
     treating the absence as an error would make an idempotent undo impossible to write on the
     Desk.
+
+    A demo team's tablet whose halt the undo put back is stamped again by the server at once,
+    which lifts it, because it never calls a person (ADR 0064).
     """
     device = await _device_to_attend(db, user=user, device_id=device_id)
     if device.attended_at is None:
@@ -108,6 +112,8 @@ async def unattend_device(db: AsyncSession, *, user: User, device_id: str) -> De
     device.attended_lifted_since = None
     if lifted is not None and device.needs_person_since is None:
         device.needs_person_since = lifted
+    if device.needs_person_since is not None and await is_the_demo_team(db, device.project_id):
+        visited(device, by=None)
 
     await db.commit()
     await db.refresh(device)
