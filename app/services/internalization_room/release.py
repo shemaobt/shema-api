@@ -929,7 +929,7 @@ async def approve_release(
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
     forced = was_forced(forced_by, blockers)
-    signed_by = forced_by if forced else None
+    who_forced = forced_by if forced else None
     passed = sorted(set(blockers)) if forced else None
 
     row_id = str(uuid.uuid4())
@@ -940,7 +940,7 @@ async def approve_release(
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
-    packet["check"]["forcedBy"] = signed_by
+    packet["check"]["forcedBy"] = who_forced
     packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
     packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
@@ -952,7 +952,7 @@ async def approve_release(
         package_sha256=packet["package_sha256"],
         packet=packet,
         device_id=device_id,
-        forced_by=signed_by,
+        forced_by=who_forced,
         forced_at=forced_at,
         forced_blockers=passed,
         forced_open_findings=(
