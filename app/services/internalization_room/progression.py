@@ -80,7 +80,6 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTak
 from app.models.internalization_room import PassageRelease, PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
 from app.services.internalization_room.live import live
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
@@ -117,6 +116,7 @@ def standing(
     finished: Collection[str],
     *,
     releases: Mapping[str, PassageRelease],
+    approved: Collection[str],
     findings: Mapping[str, int],
     book: str = ROOM_BOOK,
 ) -> list[PericopeStanding]:
@@ -134,9 +134,10 @@ def standing(
     still offers and this panel calls closed is one screen telling a facilitator the team is
     past work the room is about to hand them again.
 
-    Approved is a different fact again: a passage with a release (ENG-1228). A finished session
-    without one approves nothing, so `closed` and `approved` are both served and never derived
-    from each other.
+    Approved is a different fact again: a passage whose draft stands under its latest live
+    release (ADR 0081), so a re-opened draft is not approved while its release stays listed. A
+    finished session without one approves nothing, so `closed` and `approved` are both served
+    and never derived from each other.
     """
     here = resolve(finished, book=book)
     return [
@@ -147,7 +148,7 @@ def standing(
             position=_position(meaning_map.pericope_num, finished, here),
             release=releases.get(meaning_map.pericope_num),
             open_findings=findings.get(meaning_map.pericope_num, 0),
-            approved=meaning_map.pericope_num in releases,
+            approved=meaning_map.pericope_num in approved,
         )
         for meaning_map in load_book(book)
     ]
@@ -246,16 +247,3 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     for project_id, pericope in result.all():
         closed.setdefault(project_id, set()).add(pericope)
     return closed
-
-
-async def team_standing(
-    db: AsyncSession, project_id: str, *, book: str = ROOM_BOOK
-) -> list[PericopeStanding]:
-    """The fourteen as this team stands on them, each with its latest release and open findings."""
-    finished = await finished_passages(db, project_ids=[project_id])
-    return standing(
-        finished.get(project_id, set()),
-        releases=await latest_releases(db, project_id),
-        findings=await open_findings(db, project_id),
-        book=book,
-    )

@@ -226,6 +226,7 @@ async def test_a_passage_approved_as_v1_reads_approved_v1_with_the_approvals_nam
         "release_id": approval["release_id"],
         "approved_at": approval["approved_at"],
         "forced": False,
+        "listeners": 0,
     }
 
 

@@ -242,9 +242,11 @@ async def test_the_team_detail_counts_approved_passages(
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     for pericope in ("P02", "P03"):
+        await having_finished_the_passage(
+            db_session, await open_ir_session(db_session, pericope=pericope, project_id=team.id)
+        )
         session = await ready_session(db_session, pericope=pericope, project_id=team.id)
         await approved_by_the_team(room, tablet, session)
-        await having_finished_the_passage(db_session, session)
     await having_finished_the_passage(
         db_session, await open_ir_session(db_session, pericope=FIRST, project_id=team.id)
     )
@@ -254,6 +256,38 @@ async def test_the_team_detail_counts_approved_passages(
     assert detail.status_code == 200, detail.text[:300]
     assert detail.json()["approved_total"] == 2
     assert detail.json()["closed_total"] == 3
+
+
+async def test_a_passage_whose_draft_was_re_opened_reads_not_approved_and_keeps_its_release(
+    room, desk_client, db_session, room_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ENG-1260: the team recorded the passage again over its approved v1."""
+    the_bucket_is_in_memory(monkeypatch)
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    sessions = {}
+    for pericope in ("P02", "P03"):
+        sessions[pericope] = await ready_session(db_session, pericope=pericope, project_id=team.id)
+        await approved_by_the_team(room, tablet, sessions[pericope])
+    before = (await listed(desk_client, desk, team.id))["P03"]
+    assert (before["approved"], before["release"]["version"]) == (True, 1)
+    assert (await desk_client.get(f"/api/facilitator/teams/{team.id}", headers=desk)).json()[
+        "approved_total"
+    ] == 2
+
+    again = await upload_a_part(
+        room,
+        sessions["P03"].id,
+        part=None,
+        audio=b"a passagem gravada de novo",
+        headers=team_headers(tablet),
+    )
+    assert again.status_code == 200, again.text[:300]
+
+    after = (await listed(desk_client, desk, team.id))["P03"]
+    assert (after["approved"], after["release"]["version"]) == (False, 1)
+    detail = await desk_client.get(f"/api/facilitator/teams/{team.id}", headers=desk)
+    assert detail.json()["approved_total"] == 1
 
 
 async def stored_release_id(db: AsyncSession, team_id: str, version: int) -> str:

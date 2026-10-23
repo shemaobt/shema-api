@@ -43,8 +43,8 @@ from app.services.internalization_room.progression import (
     active_passages,
     resolve,
     standing,
-    team_standing,
 )
+from app.services.project.read_facilitator_team import team_standing
 from tests.baker import (
     having_finished_the_passage,
     keep_a_take,
@@ -129,7 +129,7 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
 
 
 def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> None:
-    positions = standing(set(), releases={}, findings={})
+    positions = standing(set(), releases={}, approved=set(), findings={})
 
     assert [entry.pericope for entry in positions] == CANON
     assert positions[0].reference and positions[0].title
@@ -138,7 +138,8 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
 def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
     """`closed · current · future` resolved here, so no screen decides where a team stands."""
     positions = {
-        entry.pericope: entry.position for entry in standing({FIRST}, releases={}, findings={})
+        entry.pericope: entry.position
+        for entry in standing({FIRST}, releases={}, approved=set(), findings={})
     }
 
     assert positions[FIRST] is PericopePosition.CLOSED
@@ -154,7 +155,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
     """
     positions = {
         entry.pericope: entry.position
-        for entry in standing({FIRST, THIRD}, releases={}, findings={})
+        for entry in standing({FIRST, THIRD}, releases={}, approved=set(), findings={})
     }
 
     assert positions[SECOND] is PericopePosition.CURRENT
@@ -163,7 +164,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
 
 def test_a_finished_team_has_no_current_passage() -> None:
     """ENG-469's criterion: a complete team shows its last passage as closed, not current."""
-    positions = standing(set(CANON), releases={}, findings={})
+    positions = standing(set(CANON), releases={}, approved=set(), findings={})
 
     assert all(entry.position is PericopePosition.CLOSED for entry in positions)
 

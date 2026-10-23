@@ -28,6 +28,7 @@ from app.services.internalization_room.back_translation import (
     frase_numbers,
     unheard_parts,
 )
+from app.services.internalization_room.release import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.segments import current_segments, final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
@@ -76,6 +77,7 @@ async def _part_to_splice(
     *,
     sentence_id: str,
     audio: bytes,
+    reopens_the_approved_draft: bool,
 ) -> IRTake | None:
     await db.refresh(session)
     await db.execute(
@@ -103,6 +105,8 @@ async def _part_to_splice(
     part = await take_by_id(db, segment.take_id)
     if not is_wav(part.content_type):
         raise _not_wav(part.id)
+    if not reopens_the_approved_draft:
+        await refuse_to_reopen_the_approved_draft(db, session)
     awaiting = await the_sentence_awaiting(db, session)
     if awaiting is not None and awaiting.segment_id != segment.id:
         raise SentenceRefused(
@@ -159,8 +163,16 @@ async def lay_in_a_sentence(
     audio: bytes,
     device_id: str,
     store: TakeStore,
+    reopens_the_approved_draft: bool = False,
 ) -> None:
-    part = await _part_to_splice(db, session, segment, sentence_id=sentence_id, audio=audio)
+    part = await _part_to_splice(
+        db,
+        session,
+        segment,
+        sentence_id=sentence_id,
+        audio=audio,
+        reopens_the_approved_draft=reopens_the_approved_draft,
+    )
     if part is None:
         return
     spliced_at = (part.id, segment.starts_ms, segment.ends_ms)
@@ -184,7 +196,14 @@ async def lay_in_a_sentence(
     )
     duration_ms = await measure_ms_bounded(spliced.audio)
     await db.execute(select(IRSession.id).where(IRSession.id == session.id).with_for_update())
-    part = await _part_to_splice(db, session, segment, sentence_id=sentence_id, audio=audio)
+    part = await _part_to_splice(
+        db,
+        session,
+        segment,
+        sentence_id=sentence_id,
+        audio=audio,
+        reopens_the_approved_draft=reopens_the_approved_draft,
+    )
     if part is None:
         return
     if (part.id, segment.starts_ms, segment.ends_ms) != spliced_at:

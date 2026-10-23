@@ -290,7 +290,8 @@ router.add_api_route(
             "`SENTENCE_ID_REUSED`: the id already names another recording; "
             "`ANOTHER_SENTENCE_AWAITS` (with `frases`): another frase awaits its translation; "
             "`PART_CHANGED`: the frase's part changed while the sentence was laid in; nothing "
-            "was written, send it again"
+            "was written, send it again; `DRAFT_APPROVED`: the draft is approved and the team "
+            "did not arm the tap that re-opens it"
         },
         413: {"description": "`SENTENCE_TOO_LONG`: the recording weighs over 4 MB"},
     },
@@ -300,6 +301,13 @@ async def re_record_the_sentence(
     segment_id: str,
     sentence_id: str = Form(..., pattern=r"^[A-Za-z0-9_-]{8,64}$"),
     file: UploadFile = File(...),
+    reopens_the_approved_draft: bool = Form(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, the sentence is refused DRAFT_APPROVED."
+        ),
+    ),
     asking_for_stale: bool = include_stale_dep,
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -330,7 +338,10 @@ async def re_record_the_sentence(
     `frases: [n]`) while another frase awaits its translation, one sentence at a time — the
     awaiting frase itself may be recorded again; `PART_CHANGED` (409) when the frase's part or
     its span changed while the sentence was spliced and stored, where nothing is written and the
-    tablet offers to send the same sentence again.
+    tablet offers to send the same sentence again; `DRAFT_APPROVED` (409) over an approved draft
+    when the team did not arm the tap that re-opens it (`reopens_the_approved_draft`), asked
+    after the format and before the awaiting frase, as hers is (splice.ts:157). A sentence
+    already laid in is answered before it, so a resend after a landing is never refused.
     """
     audio = await file.read(SENTENCE_LIMIT_BYTES + 1)
     refuse_a_sentence_too_long(audio)
@@ -345,6 +356,7 @@ async def re_record_the_sentence(
         audio=audio,
         device_id=device_id,
         store=store,
+        reopens_the_approved_draft=reopens_the_approved_draft,
     )
     return SentenceLaidInResponse(
         session_id=session.id,

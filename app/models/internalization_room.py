@@ -484,6 +484,9 @@ class ApprovedDraftView(BaseModel):
     release_id: str
     approved_at: str
     forced: bool
+    #: How many outside listeners this version's Checagem externa has heard; none until
+    #: listeners are kept (ENG-1422).
+    listeners: int = 0
 
 
 class SessionStateResponse(BaseModel):

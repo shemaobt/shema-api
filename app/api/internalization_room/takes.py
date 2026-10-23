@@ -25,6 +25,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.release import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
 )
@@ -33,12 +34,14 @@ from app.services.internalization_room.take_downloads import take_downloads_of
 from app.services.internalization_room.takes import (
     LONGEST_TAKE_MS,
     TakeStore,
+    current_parts,
     listen_url,
     store_take,
     take_for_reader,
     take_in_session,
     take_store,
     takes_of,
+    the_take_already_kept,
 )
 from app.utils.stored_time import as_utc
 
@@ -74,6 +77,12 @@ def _kind(raw: str) -> IRTakeKind:
     "/sessions/{session_id}/takes",
     response_model=TakeResponse,
     dependencies=[linked_tablet_dep],
+    responses={
+        409: {
+            "description": "`DRAFT_APPROVED`: a joined or swapped part, or a whole take over a "
+            "joined recording, over an approved draft the team did not arm the tap to re-open"
+        }
+    },
 )
 async def keep_take(
     session_id: str,
@@ -114,6 +123,15 @@ async def keep_take(
             "it is not theirs; nothing is stored."
         ),
     ),
+    reopens_the_approved_draft: bool = Form(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, a joined or swapped part and a whole take over "
+            "a joined recording are refused DRAFT_APPROVED; a part recorded on the recording "
+            "screen never needs it."
+        ),
+    ),
     file: UploadFile = File(...),
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -141,12 +159,32 @@ async def keep_take(
     The tablet's fingerprint and length are checked against the bytes and refused when they
     disagree, never corrected. A joined part keeps the server's clock as its recording time,
     and a resend answers with the row already kept, its time unmoved.
+
+    **Over an approved draft, a join, a swap and a whole take over a joined recording re-open
+    it only with the team's armed tap** (`reopens_the_approved_draft`, ADR 0081), and without
+    it are refused `DRAFT_APPROVED` (409) with nothing stored. A part recorded on the recording
+    screen carries no origin and takes one tap, as hers does, and a take already kept brings
+    nothing new, so neither is ever refused.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     refuse_a_panorama(session.pericope)
     take_kind = _kind(kind)
     if origin is not None:
         await refuse_an_origin_that_is_no_scene_rehearsal(db, session, origin)
+    audio = await file.read()
+    if (
+        take_kind is IRTakeKind.ENSAIO
+        and not reopens_the_approved_draft
+        and (
+            origin is not None
+            or (
+                chunk_index is None
+                and any(part.origin for part in current_parts(await takes_of(db, session.id)))
+            )
+        )
+        and await the_take_already_kept(db, session.id, take_kind, audio) is None
+    ):
+        await refuse_to_reopen_the_approved_draft(db, session)
     take = await store_take(
         db,
         session_id=session.id,
@@ -155,7 +193,7 @@ async def keep_take(
         pericope=session.pericope,
         kind=take_kind,
         scope=scope,
-        audio=await file.read(),
+        audio=audio,
         pass_number=pass_number,
         ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",

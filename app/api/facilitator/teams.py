@@ -36,11 +36,11 @@ from app.models.internalization_room import (
 )
 from app.models.team import FacilitatorTeamDetail, TeamFilter, TeamListingResponse
 from app.services.device.list_team_devices import list_team_devices
-from app.services.internalization_room.progression import active_passage, team_standing
+from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.team_coverage import team_necklace
 from app.services.internalization_room.team_sessions import list_team_sessions
 from app.services.project.list_facilitator_teams import list_facilitator_teams
-from app.services.project.read_facilitator_team import read_facilitator_team
+from app.services.project.read_facilitator_team import read_facilitator_team, team_standing
 from app.services.project.reads_project import reads_project
 
 facilitator_teams_router = APIRouter()

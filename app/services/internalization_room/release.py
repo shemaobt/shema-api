@@ -24,6 +24,7 @@ import json
 import re
 import unicodedata
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -31,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CanonNotKept, ConflictError, NotFoundError
+from app.core.exceptions import CanonNotKept, ConflictError, DraftApproved, NotFoundError
 from app.db.models.internalization_room import (
     IRQuestion,
     IRRelease,
@@ -714,6 +715,43 @@ async def approved_draft(db: AsyncSession, session: IRSession) -> IRRelease | No
     except CanonNotKept:
         return None
     return latest if artifact["version"] == latest.version else None
+
+
+async def refuse_to_reopen_the_approved_draft(db: AsyncSession, session: IRSession) -> None:
+    """Refuse a change a door would land on a draft that stands approved (ADR 0081).
+
+    The door asks only when the team did not arm the tap that re-opens it.
+    """
+    if await approved_draft(db, session) is not None:
+        raise DraftApproved("This draft is approved; the team re-opens it with the armed tap")
+
+
+async def standing_approvals(
+    db: AsyncSession, project_id: str, *, among: Collection[str] | None = None
+) -> set[str]:
+    """The pericopes whose draft stands approved under the team's latest live release (ADR 0081).
+
+    A release stays in the history after a re-open, so having one is not being approved: each
+    released passage asks ``approved_draft`` of the session that wrote its latest release.
+    ``among`` is the passages a caller already read releases of, so it pays nothing twice.
+    """
+    if among is None:
+        among = set(
+            await db.scalars(
+                select(IRRelease.pericope).where(
+                    IRRelease.project_id == project_id, IRRelease.archive_id.is_(None)
+                )
+            )
+        )
+    standing = set()
+    for pericope in among:
+        latest = await _latest_release(db, project_id, pericope)
+        if latest is None or latest.archive_id is not None:
+            continue
+        session = await db.get(IRSession, latest.session_id)
+        if session is not None and await approved_draft(db, session) is not None:
+            standing.add(pericope)
+    return standing
 
 
 async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
