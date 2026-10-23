@@ -49,7 +49,7 @@ from app.services.internalization_room.back_translation import (
     unheard_parts,
 )
 from app.services.internalization_room.hard_stretches import hard_stretches_of
-from app.services.internalization_room.release import releases_of_passage
+from app.services.internalization_room.release import releases_of_passage, was_forced
 from app.services.internalization_room.segments import (
     current_segments,
     divided_segments,
@@ -106,13 +106,14 @@ def _telling_view(row: IRSegment) -> RetroverificationTelling:
 
 
 def _release_view(release: IRRelease) -> RetroverificationRelease:
+    forced = was_forced(release.forced_by, release.forced_blockers)
     return RetroverificationRelease(
         version=release.version,
         session_id=release.session_id,
         approved_at=release.approved_at.isoformat(),
         device_id=release.device_id,
-        forced_by=release.forced_by,
-        forced_at=_moment(release.forced_at),
+        forced_by=release.forced_by if forced else None,
+        forced_at=_moment(release.forced_at) if forced else None,
         forced_open_findings=[
             RetroverificationFinding.model_validate(finding)
             for finding in release.forced_open_findings or []

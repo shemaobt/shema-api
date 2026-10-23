@@ -31,6 +31,13 @@ Decided by the Definer on 2026-10-22 (recorded on ENG-1259):
   with `forcedBy`, `forcedAt` and `forcedBlockers` null. A force that waives any blocker stays
   forced, including ADR 0075's clean check with a part not heard, which still reads `conferida`
   with `forced` true and the listening among the blockers passed.
+- Whether a release was forced is derived from its blockers on every read (the Definer,
+  2026-10-23): forced when it names who forced it and its `forced_blockers` is not an empty
+  list. Releases stored before this deploy keep what they recorded, who pressed and when; one
+  whose `forced_blockers` is `[]` waived nothing and reads as an ordinary approval on the
+  session read, the Desk, the retroverification file and the stored packet's check block, which
+  is outside the hash (ADR 0020). One whose `forced_blockers` is null predates the column and
+  stays forced (ENG-1305). No row is rewritten.
 
 Rejected:
 
@@ -61,3 +68,5 @@ Consequences:
   the same way.
 - A clean force no longer records who pressed it. The Desk already draws a null `forced_at` as a
   release nobody forced.
+- A reader that reads `forced_at`, `forced_by` or the packet's `check.forced` on its own would
+  call an old clean force forced again; every reader asks the one derivation.

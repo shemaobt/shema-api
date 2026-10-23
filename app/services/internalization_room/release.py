@@ -57,6 +57,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -314,6 +315,28 @@ def _take_view(take: IRTake) -> dict[str, Any]:
 #: The three words a check can be in, and the whole of them. Closed because they are Marcia's
 #: and a fourth is a conversation with her rather than a value.
 CheckStatus = Literal["conferida", "forcada", "sem_conferencia"]
+
+
+def packet_as_read(release: IRRelease) -> dict[str, Any]:
+    """The stored packet with its check block's force derived by `was_forced` (ADR 0080).
+
+    The check block is outside the hash (ADR 0020), so deriving it rewrites nothing that a
+    **Version** promises; the content is served as it was approved.
+    """
+    check = release.packet.get("check")
+    if check is None or was_forced(release.forced_by, release.forced_blockers):
+        return release.packet
+    return {
+        **release.packet,
+        "check": {
+            **check,
+            "forced": False,
+            "status": _check_status(check["conferida"], False),
+            "forcedBy": None,
+            "forcedAt": None,
+            "forcedBlockers": None,
+        },
+    }
 
 
 def _check_status(conferida: bool, forced: bool) -> CheckStatus:
@@ -905,7 +928,7 @@ async def approve_release(
         return latest
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
-    forced = forced_by is not None and bool(blockers)
+    forced = was_forced(forced_by, blockers)
     signed_by = forced_by if forced else None
     passed = sorted(set(blockers)) if forced else None
 
