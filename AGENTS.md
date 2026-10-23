@@ -30,7 +30,7 @@ seven commands the old `lint` job ran, in order, the canon smoke, then the `fres
 three files that each open a clean interpreter to prove something the suite's own process
 cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in
-place the thirty-two migration-walking files would run against that Postgres instead of the
+place the thirty-six migration-walking files would run against that Postgres instead of the
 SQLite file each builds for itself. The line after it is that job's step against its own
 Postgres: the app sets `lock_timeout` and `statement_timeout` in every transaction, and only a
 real Postgres can show it (ADR 0079). The three selections partition the whole suite, pinned in

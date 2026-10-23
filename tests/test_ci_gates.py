@@ -69,7 +69,7 @@ TOO_BROAD = {"**", "*", "main", "master"}
 #: blocks no merge and no deploy. No gate may reach these.
 ALWAYS_TOO_BROAD = TOO_BROAD - {"main"}
 
-#: ENG-980's own lists, and every migration test added since: the thirty-two files that walk a
+#: ENG-980's own lists, and every migration test added since: the thirty-six files that walk a
 #: migration and the three that open a fresh interpreter, read here rather than derived, so a
 #: file the ticket names and the repo marks wrong is what
 #: `test_the_files_carry_the_marker_the_ticket_gives_them` catches instead of something this
@@ -321,7 +321,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
 
 def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cleared() -> None:
     """G3 (criterion 4): a step `env` cannot unset a job-level `env` in Actions — only the
-    `run` line can, and without it the thirty-two would run serially, against the job's
+    `run` line can, and without it the thirty-six would run serially, against the job's
     Postgres, on top of the schema the previous step just migrated."""
     steps = _workflow("migrations.yml")["jobs"]["migrations"]["steps"]
     running = [step for step in steps if "-m migration" in step.get("run", "")]
