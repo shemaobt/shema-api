@@ -838,7 +838,9 @@ async def test_the_file_names_and_the_download_list_agree(client, db_session, ro
     assert {clip["takeId"]: clip["filename"] for clip in manifest["clips"]} == listed
 
 
-def in_the_old_shape(packet: dict[str, Any], *, named: bool, checked: bool) -> dict[str, Any]:
+def in_the_old_shape(
+    packet: dict[str, Any], *, named: bool, checked: bool, open_points: int = 0
+) -> dict[str, Any]:
     """A packet as a schema before v0.7 stored it: with the comprehension block, before the
     takes carried a duration or a key and the frases a scene (ADR 0056, 0072, 0078); without
     Marcia's name and the keys beside it before ADR 0048, and without the check before ADR 0020.
@@ -850,8 +852,19 @@ def in_the_old_shape(packet: dict[str, Any], *, named: bool, checked: bool) -> d
         "total_units": 1,
         "practiced_scene_ids": ["S1"],
         "events": [],
-        "open_points": [],
+        "open_points": [
+            {
+                "unit_id": f"being:S1:B{n}",
+                "reason": "not_yet_evidenced",
+                "checkpoint_kind": "being",
+                "scene_id": "S1",
+                "source_id": f"B{n}",
+                "canonical": "Noemi",
+            }
+            for n in range(1, open_points + 1)
+        ],
     }
+    old["open_questions"] = packet["open_questions"] + open_points
     old["audio"] = {
         **packet["audio"],
         "rehearsal_takes": [
@@ -875,7 +888,13 @@ def in_the_old_shape(packet: dict[str, Any], *, named: bool, checked: bool) -> d
 
 
 async def stored_in_the_old_shape(
-    db: AsyncSession, session: IRSession, project: Project, *, named: bool, checked: bool
+    db: AsyncSession,
+    session: IRSession,
+    project: Project,
+    *,
+    named: bool,
+    checked: bool,
+    open_points: int = 0,
 ) -> str:
     packet = await judged_packet(db, session)
     packet["release_id"] = RUTH_P01_V1
@@ -890,7 +909,7 @@ async def stored_in_the_old_shape(
             pericope=P01,
             version=1,
             package_sha256=packet["package_sha256"],
-            packet=in_the_old_shape(packet, named=named, checked=checked),
+            packet=in_the_old_shape(packet, named=named, checked=checked, open_points=open_points),
             device_id=TABLET,
         )
     )
@@ -930,6 +949,21 @@ async def test_a_passage_approved_under_a_schema_before_v0_7_still_gets_its_mani
     assert manifest["releaseId"] == RUTH_P01_V1
     assert manifest["check"]["status"] == "conferida"
     assert "warnings" not in manifest
+
+
+async def test_a_v0_6_approval_whose_comprehension_left_open_points_still_gets_its_manifest(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    await stored_in_the_old_shape(
+        db_session, session, project, named=True, checked=True, open_points=2
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["releaseId"] == RUTH_P01_V1
 
 
 async def test_a_passage_approved_before_the_check_was_recorded_gets_her_warning(

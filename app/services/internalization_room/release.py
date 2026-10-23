@@ -181,6 +181,10 @@ _BESIDE_THE_DRAFT = frozenset(
     }
 )
 
+#: Counted off the draft rather than part of it: v0.6 counted its comprehension's open points
+#: in ``open_questions`` and v0.7 stopped, so the count moved under a draft nobody changed.
+_COUNTED = frozenset({"open_questions"})
+
 #: Read off the draft rather than part of it, so a schema can add or reshape them freely.
 _DERIVED = frozenset({"key", "scene", "index", "frase", "voiced", "duration_ms"})
 
@@ -195,7 +199,7 @@ def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
     content = {
         k: v
         for k, v in packet.items()
-        if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
+        if k not in _BESIDE_THE_DRAFT | _COUNTED and k not in ("audio", "back_translation")
     }
     content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
     if packet.get("check") is not None:

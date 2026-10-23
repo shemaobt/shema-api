@@ -25,8 +25,10 @@ Decided (ENG-1274):
   to reload and no blocker to name. A session whose kept canon is gone is never told it is not
   approved: the read answers `CANON_NOT_KEPT`.
 - **An approval stored in an older shape stays an approval.** Whether a stored release is this
-  draft compares only what the stored packet and the composed one both hold, so a packet stored
-  before v0.7 (with its `comprehension` block) or before the check was recorded (with no
+  draft compares only what the stored packet and the composed one both hold, and never the
+  counts read off the draft (`open_questions`, which v0.6 swelled with its comprehension's open
+  points), so a packet stored before v0.7 (with its `comprehension` block) or before the check
+  was recorded (with no
   `check`, and so no word on whether every part was heard) still answers its manifest. The one
   with no check carries her warning that no check state was recorded. A take changed since
   still un-approves it, as it does any release.
