@@ -509,6 +509,10 @@ _Avoid_: room key, api key, token, session
 The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.
 _Avoid_: version (a pericope's release), revision
 
+**Minimum build** (`minimum_app`):
+The oldest app build (the app's Store build) the room accepts, per platform: the iOS build number and the Android version code, the `+N` of `pubspec.yaml` (one number on both platforms, ADR 0110 of the app), served on `/api/version` as `minimum_app: {ios, android}`. 0 means no minimum. It is raised by hand, in the production deploy file, at a release. A tablet whose own build number is below it shows the app's Update screen. A build that carries no number (0, a laptop build) is never below it.
+_Avoid_: minimum version (the `x.y.z` is not compared), app version, forced update
+
 ### Other subsystems
 
 **Sound Necklace**:
