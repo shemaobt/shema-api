@@ -140,8 +140,12 @@ Whether the rehearsal reaching Refine was told whole or in parts, read off the c
 _Avoid_: granularity, mode, shape, Granularidade
 
 **Joined recording** (`origin`):
-A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A recording no join touched is checked exactly as any other.
+A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A recording no join touched is checked exactly as any other. A part landing with `origin` from a scene rehearsal of its own session comes with that rehearsal's current frases as its told stretches, each telling the frase's own audio (ENG-1405).
 _Avoid_: assembled recording (the server's old composed takes), merged, Junção (in prose)
+
+**Bring-back** («trazer de volta as traduções do ensaio desta cena»):
+The armed tap on a joined Scene row that lays its Scene rehearsal's frases over the Part again, when none of them stands there: after the translation was restarted, or when they never came. The stretches told here for that scene are kept as history, never deleted. The room says which parts can take it: never a part a sentence was re-recorded in, nor one joined from the other language's session.
+_Avoid_: reimport, restore, undo
 
 **Canon code**:
 The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
@@ -387,8 +391,12 @@ The halt kind that only calls somebody over: the session goes on while it stands
 _Avoid_: needs a person, notice, alert, Aviso
 
 **Visit** (`attended_at`):
-A facilitator's mark on the Desk that somebody went to a room. It is a record: it writes nothing on the session's status and lifts no blocking halt. A halted room with a visit leaves the queue, and undoing the visit puts it back. It is the only end of a Warning. A new halt clears it.
+A facilitator's mark on the Desk that somebody went to a room. It is a record: it writes nothing on the session's status and lifts no blocking halt. A halted room with a visit leaves the queue, and undoing the visit puts it back. It is the only end of a Warning. A new halt clears it. It names the halt it answers, its **Halt count** and its Warning; one naming an older one is refused and the Desk reads again.
 _Avoid_: attend lifts, resolve, Atendido
+
+**Halt count** (`halts_raised`):
+How many blocking halts a room has raised; a Warning does not move it. A visit and its undo name the count and the Warning the Desk read. A write naming another is refused, so a visit always answers the halt somebody saw.
+_Avoid_: version, revision
 
 **Station**:
 The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. A session the team left keeps the station it stopped in.

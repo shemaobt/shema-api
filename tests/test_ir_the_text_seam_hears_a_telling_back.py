@@ -360,7 +360,10 @@ async def test_a_visit_while_the_crossing_round_is_read_keeps_its_warning_ended(
         if visits and visits[-1] == "armed":
             factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
             async with factory() as rival:
-                await room.attend(rival, await room.get_session(rival, visits[0]), by="ana")
+                read = await room.get_session(rival, visits[0])
+                await room.attend(
+                    rival, read, by="ana", halts_raised=read.halts_raised, warned_at=read.warned_at
+                )
             visits.append("went")
         return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
 

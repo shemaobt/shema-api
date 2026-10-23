@@ -467,6 +467,14 @@ class BackTranslationProgress(BaseModel):
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
+    bring_back: list[int] = Field(
+        default_factory=list,
+        description=(
+            "The numbers of the joined parts whose scene rehearsal's frases «trazer de volta as "
+            "traduções do ensaio desta cena» can lay again: none of them stands on the part, no "
+            "sentence was re-recorded in it, and the rehearsal is of this session (ADR 0085)."
+        ),
+    )
     awaiting_segment_id: str | None = Field(
         default=None,
         description=(
@@ -984,6 +992,10 @@ class FacilitatorSessionView(BaseModel):
     project_id: str
     team_name: str
     halt: str | None = None
+    #: The halt count a visit or its undo names (ADR 0091).
+    halts_raised: int
+    #: The standing warning's moment, ISO-8601 with an offset; a visit names it beside the halt
+    #: count (ADR 0091).
     warned_at: str | None = None
     #: ISO-8601 with an offset, like every other instant this module serves.
     attended_at: str | None = None

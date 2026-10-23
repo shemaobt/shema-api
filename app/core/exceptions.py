@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI, Request, status
@@ -62,6 +63,7 @@ ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
 #: A change that would re-open an approved draft, sent without the team's armed tap (ADR 0081).
 ERROR_CODE_DRAFT_APPROVED: Final = "DRAFT_APPROVED"
+ERROR_CODE_NOTHING_TO_BRING_BACK: Final = "NOTHING_TO_BRING_BACK"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
@@ -77,6 +79,9 @@ ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
 ERROR_CODE_REHEARSAL_JOINED: Final = "REHEARSAL_JOINED"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
+#: A visit or its undo naming a halt count or a warning that is no longer the room's: the Desk
+#: reads again.
+ERROR_CODE_HALT_MOVED: Final = "HALT_MOVED"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
@@ -219,6 +224,11 @@ class DraftApproved(ConflictError):
     """A change that would re-open an approved draft, sent without the team's armed tap."""
 
 
+class NothingToBringBack(ConflictError):
+    """A Bring-back over a part whose rehearsal's frases cannot be laid on it: not joined, joined
+    from another session, a sentence re-recorded in it, or no frase to bring."""
+
+
 class CanonNotKept(ConflictError):
     pass
 
@@ -251,6 +261,19 @@ class RestartOutOfOrder(ConflictError):
 
     Its own exception so the tablet's outbox retries it once its predecessor has landed.
     """
+
+
+class HaltMoved(ConflictError):
+    """A visit or its undo naming a halt the room has moved past (ADR 0091).
+
+    Its own exception because the Desk reads again on it instead of saying it could not, and
+    the body carries the room's halt count and warning so the newer halt is the one drawn.
+    """
+
+    def __init__(self, halts_raised: int, warned_at: datetime | None) -> None:
+        super().__init__("The room halted again since it was read.")
+        self.halts_raised = halts_raised
+        self.warned_at = warned_at
 
 
 class RoleError(Exception):
@@ -583,6 +606,13 @@ async def handle_draft_approved(_request: Request, exc: DraftApproved) -> JSONRe
     )
 
 
+async def handle_nothing_to_bring_back(_request: Request, exc: NothingToBringBack) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_BRING_BACK),
+    )
+
+
 async def handle_canon_not_kept(_request: Request, exc: CanonNotKept) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -691,6 +721,17 @@ async def handle_restart_out_of_order(_request: Request, exc: RestartOutOfOrder)
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_RESTART_OUT_OF_ORDER),
+    )
+
+
+async def handle_halt_moved(_request: Request, exc: HaltMoved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_HALT_MOVED)
+        | {
+            "halts_raised": exc.halts_raised,
+            "warned_at": exc.warned_at.isoformat() if exc.warned_at is not None else None,
+        },
     )
 
 
@@ -863,6 +904,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
     app.add_exception_handler(DraftApproved, handle_draft_approved)  # type: ignore[arg-type]
+    app.add_exception_handler(NothingToBringBack, handle_nothing_to_bring_back)  # type: ignore[arg-type]
     app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
@@ -879,6 +921,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
+    app.add_exception_handler(HaltMoved, handle_halt_moved)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
     app.add_exception_handler(SentenceRefused, handle_sentence_refused)  # type: ignore[arg-type]

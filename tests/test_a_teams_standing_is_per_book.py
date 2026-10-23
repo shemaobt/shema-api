@@ -24,6 +24,7 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.progression import resolve, standing
 from app.services.internalization_room.sessions import apply_coverage
 from tests.baker import having_finished_the_passage, make_app, make_role, open_ir_session
+from tests.halt_harness import the_halt_of
 from tests.opening_harness import a_scripted_room, desk_routes
 from tests.release_harness import (
     APP_KEY,
@@ -459,7 +460,11 @@ async def a_visit_to_an_old_room_after_the_team_moved_to_jonah(
     await last_touched(db, ruth.id, datetime.now(UTC) - timedelta(hours=2))
     jonah = await having_closed(db, team_id, "J01")
     await last_touched(db, jonah.id, datetime.now(UTC) - timedelta(hours=1))
-    visited = await room.post(f"{PREFIX}/facilitator/sessions/{ruth.id}/attended", headers=desk)
+    visited = await room.post(
+        f"{PREFIX}/facilitator/sessions/{ruth.id}/attended",
+        params=await the_halt_of(db, ruth.id),
+        headers=desk,
+    )
     assert visited.status_code == 200, visited.text[:300]
     return ruth
 
@@ -489,7 +494,11 @@ async def test_undoing_a_facilitators_visit_to_an_old_room_does_not_move_the_tea
         room, db_session, team.id, desk
     )
 
-    undone = await room.delete(f"{PREFIX}/facilitator/sessions/{ruth.id}/attended", headers=desk)
+    undone = await room.delete(
+        f"{PREFIX}/facilitator/sessions/{ruth.id}/attended",
+        params=await the_halt_of(db_session, ruth.id),
+        headers=desk,
+    )
     card = await the_card(desk_client, desk, team.id)
 
     assert undone.status_code == 200, undone.text[:300]
@@ -513,7 +522,11 @@ async def test_undoing_the_visit_to_an_old_room_of_a_demo_team_does_not_move_the
     jonah = await having_closed(db_session, team.id, "J01")
     await last_touched(db_session, jonah.id, datetime.now(UTC) - timedelta(hours=1))
 
-    undone = await room.delete(f"{PREFIX}/facilitator/sessions/{ruth.id}/attended", headers=desk)
+    undone = await room.delete(
+        f"{PREFIX}/facilitator/sessions/{ruth.id}/attended",
+        params=await the_halt_of(db_session, ruth.id),
+        headers=desk,
+    )
     card = await the_card(desk_client, desk, team.id)
 
     assert undone.status_code == 200, undone.text[:300]

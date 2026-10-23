@@ -46,6 +46,7 @@ APP = Path(__file__).resolve().parent.parent / "app"
 THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
 #: The approval holds the row from before it composes, and touches no bucket (ADR 0081).
 THE_APPROVAL = "app/services/internalization_room/sessions.py"
+THE_HALT_VISIT = "app/services/internalization_room/sessions.py"
 THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
@@ -330,7 +331,7 @@ def test_the_session_row_is_taken_for_update_only_by_the_sentence_door_and_the_a
         if isinstance(node, ast.Call) and _takes_a_row_lock(node) and _on_the_session_row(node)
     )
 
-    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL]), (
+    assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL, THE_HALT_VISIT]), (
         "a linha da sessão era travada num lugar novo, que ninguém conferiu contra o bucket"
     )
 

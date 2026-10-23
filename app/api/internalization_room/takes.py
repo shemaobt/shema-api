@@ -27,6 +27,7 @@ from app.services.internalization_room.approved_draft import (
     refuse_a_keep_that_reopens_the_approved_draft,
 )
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.joined_parts import lay_the_rehearsals_frases
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
@@ -158,7 +159,8 @@ async def keep_take(
 
     The tablet's fingerprint and length are checked against the bytes and refused when they
     disagree, never corrected. A joined part keeps the server's clock as its recording time,
-    and a resend answers with the row already kept, its time unmoved.
+    and a resend answers with the row already kept, its time unmoved. A joined part lands
+    with its rehearsal's frases as told stretches (ADR 0085).
 
     **Over an approved draft, a join, a swap and a whole take over a joined recording re-open
     it only with the team's armed tap** (`reopens_the_approved_draft`, ADR 0081), and without
@@ -194,6 +196,8 @@ async def keep_take(
         sent_recorded_at=recorded_at,
     )
     await room.retire_the_part_recorded_again(db, session, take)
+    if origin is not None:
+        await lay_the_rehearsals_frases(db, session, take)
     nudge(session.project_id, "takes")
     return _view(take)
 
