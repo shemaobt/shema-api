@@ -12,7 +12,11 @@ from app.models.internalization_room import (
     TakeDownload,
     TakeDownloadsResponse,
 )
-from app.services.internalization_room.approved_draft import approved_draft, latest_release
+from app.services.internalization_room.approved_draft import (
+    approved_draft,
+    latest_release,
+    stands_on,
+)
 from app.services.internalization_room.release import (
     _mother_tongue,
     release_name,
@@ -30,12 +34,13 @@ from app.services.internalization_room.takes import (
 from app.utils.stored_time import as_utc
 
 
-async def _release_id(db: AsyncSession, session: IRSession) -> str:
+async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake]) -> str:
     """The id of the version this draft stands approved under, or the name the next will have.
 
     A file names a release only while the draft stands under it (ADR 0081): after a re-open the
     takes are the next version's draft, numbered on from the passage's last. A session a Zerar
-    archived is no draft any more, and keeps the name of the release its takes were approved as.
+    archived is no draft any more, and keeps the name of the release its takes were approved
+    as, while they still stand on it.
     """
     standing = await approved_draft(db, session)
     if standing is not None:
@@ -47,7 +52,7 @@ async def _release_id(db: AsyncSession, session: IRSession) -> str:
             .order_by(IRRelease.version.desc())
             .limit(1)
         )
-        if own is not None:
+        if own is not None and stands_on(own, parts):
             return released_as(own)
     latest = (
         None
@@ -95,7 +100,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
     keys = part_keys_by_number(parts)
-    release_id = await _release_id(db, session)
+    release_id = await _release_id(db, session, parts)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
     replaced_at = {

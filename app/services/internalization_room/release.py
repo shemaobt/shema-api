@@ -699,7 +699,7 @@ async def approve_release(
     only while the session's ``version`` is still the one read here (ADR 0052, ADR 0066).
     """
     assert session.project_id is not None
-    await hold_the_session_row(db, session.id)
+    await hold_the_session_row(db, session)
     await refuse_if_archived(db, session)
 
     packet, blockers = await compose_internalization_release(db, session)

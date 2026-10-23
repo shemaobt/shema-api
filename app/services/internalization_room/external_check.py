@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DraftNotApproved
 from app.db.models.internalization_room import IRExternalCheck, IRRelease, IRSession
 from app.services.internalization_room.approved_draft import approved_draft
+from app.services.internalization_room.sessions import hold_the_session_row
 from app.utils.stored_time import as_utc
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ async def open_the_external_check(
     writer wins. Only the open that creates it writes the log line, and nothing else tells the
     facilitator.
     """
-    await db.refresh(session, with_for_update=True)
+    await hold_the_session_row(db, session)
     release = await approved_draft(db, session)
     if release is None:
         raise DraftNotApproved(
