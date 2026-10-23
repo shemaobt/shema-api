@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; extended by ADR 0095: a take laid in from a scene rehearsal is the same take only under the same bytes, number and pass
 date: 2026-10-19
 ---
 
