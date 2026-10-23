@@ -70,6 +70,8 @@ ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
 ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
+#: A join chosen over a take that is no longer its part's live one: never stored, never retried.
+ERROR_CODE_TAKE_MOVED: Final = "TAKE_MOVED"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
@@ -222,6 +224,14 @@ class RestartOutOfOrder(ConflictError):
     """A restart that closes an attempt which is not the rehearsal's current one.
 
     Its own exception so the tablet's outbox retries it once its predecessor has landed.
+    """
+
+
+class TakeMoved(ConflictError):
+    """A join whose part's live take is no longer the one the team chose it over.
+
+    Its own exception so the tablet's outbox gives the join up instead of laying it over a take
+    nobody chose to replace.
     """
 
 
@@ -645,6 +655,13 @@ async def handle_restart_out_of_order(_request: Request, exc: RestartOutOfOrder)
     )
 
 
+async def handle_take_moved(_request: Request, exc: TakeMoved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_TAKE_MOVED),
+    )
+
+
 async def handle_frase_out_of_place(_request: Request, exc: FraseOutOfPlace) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -827,6 +844,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
+    app.add_exception_handler(TakeMoved, handle_take_moved)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
     app.add_exception_handler(SentenceRefused, handle_sentence_refused)  # type: ignore[arg-type]

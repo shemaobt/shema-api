@@ -36,6 +36,7 @@ async def _joined(
     sha256: str,
     audio: bytes,
     pass_number: int | None = None,
+    over_take: str | None = None,
     headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     return await client.post(
@@ -48,9 +49,27 @@ async def _joined(
             "origin": origin,
             "sha256": sha256,
             **({} if pass_number is None else {"pass_number": str(pass_number)}),
+            **({} if over_take is None else {"over_take": over_take}),
         },
         files={"file": ("cena.wav", audio, "audio/wav")},
     )
+
+
+async def _recorded_by_hand(
+    client: httpx.AsyncClient, session_id: str, *, part: int, pass_number: int, audio: bytes
+) -> str:
+    kept = await client.post(
+        f"{IR}/sessions/{session_id}/takes",
+        data={
+            "kind": "ensaio",
+            "scope": f"parte-{part}",
+            "chunk_index": str(part),
+            "pass_number": str(pass_number),
+        },
+        files={"file": ("parte.wav", audio, "audio/wav")},
+    )
+    assert kept.status_code == 200, kept.text
+    return str(kept.json()["take_id"])
 
 
 async def _rehearsed(room: Room, session_id: str, audio: bytes) -> tuple[str, str]:
@@ -160,3 +179,137 @@ async def test_the_same_rehearsal_joined_from_two_tablets_is_one_take(
     assert second.json() == first.json(), "a segunda junção mudou a gravação que já existia"
     parts = await _parts(room, session_id, room.tablet_b)
     assert [p["take_id"] for p in parts] == [first.json()["take_id"]]
+
+
+async def test_a_join_over_the_parts_live_take_replaces_it(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 12)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    by_hand = await _recorded_by_hand(
+        room.client, session_id, part=2, pass_number=1, audio=recording(4, 13)
+    )
+
+    joined = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=2,
+        over_take=by_hand,
+    )
+
+    assert joined.status_code == 200, joined.text
+    parts = [p for p in await _parts(room, session_id, room.tablet_b) if p["ordinal"] == 2]
+    assert parts[-1]["take_id"] == joined.json()["take_id"], "a junção não virou a parte"
+
+
+async def test_a_join_over_a_take_that_is_no_longer_the_part_is_refused_as_take_moved(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 14)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    chosen_over = await _recorded_by_hand(
+        room.client, session_id, part=2, pass_number=1, audio=recording(4, 15)
+    )
+    await _recorded_by_hand(room.client, session_id, part=2, pass_number=2, audio=recording(4, 16))
+    parts_before = await _parts(room, session_id, room.tablet_b)
+    stored_before = dict(room.bucket.objects)
+
+    refused = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=3,
+        over_take=chosen_over,
+    )
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "TAKE_MOVED"
+    assert await _parts(room, session_id, room.tablet_b) == parts_before
+    assert room.bucket.objects == stored_before, "a junção recusada guardou os bytes"
+
+
+async def test_a_join_naming_no_take_over_an_empty_scene_is_kept(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 17)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    await _recorded_by_hand(room.client, session_id, part=1, pass_number=1, audio=recording(4, 18))
+
+    joined = await _joined(
+        room.client, session_id, part=2, origin=rehearsal_id, sha256=fingerprint, audio=audio
+    )
+
+    assert joined.status_code == 200, joined.text
+    parts = [p for p in await _parts(room, session_id, room.tablet_b) if p["ordinal"] == 2]
+    assert [p["take_id"] for p in parts] == [joined.json()["take_id"]]
+
+
+async def test_a_join_naming_no_take_over_a_scene_that_now_has_one_is_refused_as_take_moved(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 19)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    await _recorded_by_hand(room.client, session_id, part=2, pass_number=1, audio=recording(4, 20))
+    parts_before = await _parts(room, session_id, room.tablet_b)
+    stored_before = dict(room.bucket.objects)
+
+    refused = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=2,
+    )
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "TAKE_MOVED"
+    assert await _parts(room, session_id, room.tablet_b) == parts_before
+    assert room.bucket.objects == stored_before, "a junção recusada guardou os bytes"
+
+
+async def test_a_join_sent_again_after_it_landed_answers_the_join_kept(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    audio = recording(4, 21)
+    rehearsal_id, fingerprint = await _rehearsed(room, session_id, audio)
+    by_hand = await _recorded_by_hand(
+        room.client, session_id, part=2, pass_number=1, audio=recording(4, 22)
+    )
+    first = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=2,
+        over_take=by_hand,
+    )
+
+    again = await _joined(
+        room.client,
+        session_id,
+        part=2,
+        origin=rehearsal_id,
+        sha256=fingerprint,
+        audio=audio,
+        pass_number=2,
+        over_take=by_hand,
+    )
+
+    assert (first.status_code, again.status_code) == (200, 200), (first.text, again.text)
+    assert again.json() == first.json(), "o reenvio da mesma junção não achou a que já estava"

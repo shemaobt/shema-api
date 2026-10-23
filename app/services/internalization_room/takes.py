@@ -22,6 +22,7 @@ from app.core.exceptions import (
     NotFoundError,
     RecordingRefused,
     StretchNoLongerCounts,
+    TakeMoved,
     UnknownReferenceError,
     ValidationError,
 )
@@ -461,6 +462,24 @@ async def refuse_a_take_that_is_no_longer_a_part(
 ) -> None:
     if take.id not in {part.id for part in current_parts(await takes_of(db, session_id))}:
         raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
+
+
+async def refuse_a_join_over_a_moved_part(
+    db: AsyncSession, session_id: str, *, ordinal: int | None, over_take: str | None, audio: bytes
+) -> None:
+    """Refuse a join when its part's live take is not the one the team chose it over.
+
+    `over_take` is that take, or None when the team chose the join over an empty scene. A join
+    whose bytes are already kept is its own resend, answered by the storing with that take.
+    """
+    if await the_take_already_kept(db, session_id, IRTakeKind.ENSAIO, audio) is not None:
+        return
+    live = next(
+        (p.id for p in current_parts(await takes_of(db, session_id)) if p.ordinal == ordinal),
+        None,
+    )
+    if live != over_take:
+        raise TakeMoved("This part's live take is no longer the one the join was chosen over")
 
 
 def has_its_own_recording_time(spliced: Collection[str] = ()) -> ColumnElement[bool]:
