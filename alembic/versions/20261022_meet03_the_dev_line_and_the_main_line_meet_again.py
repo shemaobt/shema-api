@@ -1,15 +1,16 @@
 """the dev line and the main line meet again
 
 Revision ID: 20261022_meet03
-Revises: 20261009_shema575, 20261021_opfor01
+Revises: 20261009_shema575, 20261022_swap01
 Create Date: 2026-10-22 12:00:00.000000
 
 Two heads, for the reason `20261004_meet02` had two: after it, `dev` and `main` grew apart
 again. `dev` went on through five revisions of the PME and the Shemá module (the app URL,
 the strategist's retirement, the Pulse image, the change log, the prayer release) to
-`20261009_shema575`; `main` went through twenty-two, the room's (earlier passages, archives,
-the canon pin, the demo team, scene rehearsals, retellings, takes, forced releases) and two of
-the oral collector's, to `20261021_opfor01`. Bringing `main` into `dev` puts both at the end
+`20261009_shema575`; `main` went through twenty-six, the room's (earlier passages, archives,
+the canon pin, the demo team, scene rehearsals, retellings, takes, forced releases, the external
+check and its outside listeners, grain switches) and two of the oral collector's, to
+`20261022_swap01`. Bringing `main` into `dev` puts both at the end
 of the graph with nothing after them, and Alembic refuses `upgrade head` while they stand
 apart.
 
@@ -27,7 +28,7 @@ migrations job walks the newest migration of each line down and back up with no 
 """
 
 revision: str = "20261022_meet03"
-down_revision: tuple[str, str] = ("20261009_shema575", "20261021_opfor01")
+down_revision: tuple[str, str] = ("20261009_shema575", "20261022_swap01")
 branch_labels = None
 depends_on = None
 
