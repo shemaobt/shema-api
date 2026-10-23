@@ -47,15 +47,21 @@ def the_turn_is_scripted(
     monkeypatch.setattr(sessions_api, "settle_coverage", settled)
 
 
-async def the_team_says(
+async def a_turn_is_sent(
     client: httpx.AsyncClient, credential: str, session_id: str, turn_id: str
 ) -> httpx.Response:
-    response = await client.post(
+    return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
         headers=team_headers(credential),
         data={"turn_id": turn_id},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
+
+
+async def the_team_says(
+    client: httpx.AsyncClient, credential: str, session_id: str, turn_id: str
+) -> httpx.Response:
+    response = await a_turn_is_sent(client, credential, session_id, turn_id)
     assert response.status_code == 200, response.text[:300]
     return response
 

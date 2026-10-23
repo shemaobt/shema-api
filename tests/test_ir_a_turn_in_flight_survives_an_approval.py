@@ -22,7 +22,6 @@ from app.services.internalization_room.release import approve_release
 from app.services.internalization_room.sessions import append_exchange, get_session
 from app.services.internalization_room.voice_handles import from_handle
 from tests.release_harness import (
-    PREFIX,
     TABLET,
     a_claimed_device,
     ready_session,
@@ -31,7 +30,7 @@ from tests.release_harness import (
     team_release,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory
-from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
+from tests.tablet_turn_harness import a_turn_is_sent, the_team_says, the_turn_is_scripted
 
 WORDS = "A Noemi voltou com a Rute."
 REPLY = "Isso. E o que a Rute disse para ela?"
@@ -101,15 +100,6 @@ def _another_turn_lands_meanwhile(per_request, session_id: str) -> Meanwhile:
     return speak
 
 
-async def _a_turn(client, tablet: str, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(tablet),
-        data={"turn_id": "turno-1"},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
-    )
-
-
 async def _stored_messages(per_request, session_id: str) -> list[dict[str, Any]]:
     async with per_request() as fresh:
         return list((await get_session(fresh, session_id)).messages or [])
@@ -130,7 +120,7 @@ async def test_a_team_turn_whose_guide_is_answering_when_the_teams_approval_land
     tablet, session_id = await _a_session_ready_for_release(db_session)
     while_the_guide_answers.append(_the_team_approves_meanwhile(per_request, session_id))
 
-    answered = await _a_turn(client, tablet, session_id)
+    answered = await a_turn_is_sent(client, tablet, session_id, "turno-1")
 
     assert answered.status_code == 200, (
         f"a aprovação levou a versão e o turno em voo perdeu a fala do Guia: {answered.text[:300]}"
@@ -166,7 +156,7 @@ async def test_a_team_turn_whose_conversation_another_turn_moved_is_still_refuse
     tablet, session_id = await _a_session_ready_for_release(db_session)
     while_the_guide_answers.append(_another_turn_lands_meanwhile(per_request, session_id))
 
-    refused = await _a_turn(client, tablet, session_id)
+    refused = await a_turn_is_sent(client, tablet, session_id, "turno-1")
 
     assert refused.status_code == 409, refused.text[:300]
     assert refused.json()["code"] == "CONFLICT"
