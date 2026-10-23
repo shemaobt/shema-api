@@ -837,29 +837,74 @@ async def test_the_file_names_and_the_download_list_agree(client, db_session, ro
     assert {clip["takeId"]: clip["filename"] for clip in manifest["clips"]} == listed
 
 
-async def test_a_release_stored_before_adr_0048_names_the_manifest_and_its_files_by_its_uuid(
-    client, db_session, room_app
-):
-    project, credential = await a_claimed_device(db_session, language_name="Terena")
-    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
-    packet = await judged_packet(db_session, session)
-    legacy_id = str(uuid.uuid4())
-    for named_since_adr_0048 in ("release_id", "language", "session_language", "audio_format"):
-        packet.pop(named_since_adr_0048)
+def in_the_old_shape(packet: dict[str, Any], *, named: bool, checked: bool) -> dict[str, Any]:
+    """A packet as a schema before v0.7 stored it: with the comprehension block, before the
+    takes carried a duration or a key and the frases a scene (ADR 0056, 0072, 0078); without
+    Marcia's name and the keys beside it before ADR 0048, and without the check before ADR 0020.
+    """
+    old = {**packet, "schema_version": "tripod.internalization-release.v0.6"}
+    old["comprehension"] = {
+        "outcome": "ready_for_refine",
+        "supported_unit_ids": ["S1"],
+        "total_units": 1,
+        "practiced_scene_ids": ["S1"],
+        "events": [],
+        "open_points": [],
+    }
+    old["audio"] = {
+        **packet["audio"],
+        "rehearsal_takes": [
+            {k: v for k, v in take.items() if k not in ("key", "duration_ms")}
+            for take in packet["audio"]["rehearsal_takes"]
+        ],
+    }
+    old["back_translation"] = {
+        **packet["back_translation"],
+        "segments": [
+            {k: v for k, v in frase.items() if k != "scene"}
+            for frase in packet["back_translation"]["segments"]
+        ],
+    }
+    if not named:
+        for named_since_adr_0048 in ("release_id", "language", "session_language", "audio_format"):
+            old.pop(named_since_adr_0048)
+    if not checked:
+        old.pop("check")
+    return old
+
+
+async def stored_in_the_old_shape(
+    db: AsyncSession, session: IRSession, project: Project, *, named: bool, checked: bool
+) -> str:
+    packet = await judged_packet(db, session)
+    packet["release_id"] = RUTH_P01_V1
     packet["version"] = 1
-    db_session.add(
+    packet["check"] = {**packet["check"], "version": 1}
+    row_id = str(uuid.uuid4())
+    db.add(
         IRRelease(
-            id=legacy_id,
+            id=row_id,
             session_id=session.id,
             project_id=project.id,
             pericope=P01,
             version=1,
             package_sha256=packet["package_sha256"],
-            packet=packet,
+            packet=in_the_old_shape(packet, named=named, checked=checked),
             device_id=TABLET,
         )
     )
-    await db_session.commit()
+    await db.commit()
+    return row_id
+
+
+async def test_a_release_stored_before_adr_0048_names_the_manifest_and_its_files_by_its_uuid(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    legacy_id = await stored_in_the_old_shape(
+        db_session, session, project, named=False, checked=True
+    )
     desk, _user = await at_the_desk(db_session, room_app, project)
 
     manifest = await manifest_of(client, desk, session)
@@ -869,6 +914,38 @@ async def test_a_release_stored_before_adr_0048_names_the_manifest_and_its_files
     assert manifest["language"] == "Terena"
     assert {clip["takeId"]: clip["filename"] for clip in manifest["clips"]} == listed
     assert all(clip["filename"].startswith(f"{legacy_id}-") for clip in manifest["clips"])
+
+
+async def test_a_passage_approved_under_a_schema_before_v0_7_still_gets_its_manifest(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    await stored_in_the_old_shape(db_session, session, project, named=True, checked=True)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["releaseId"] == RUTH_P01_V1
+    assert manifest["check"]["status"] == "conferida"
+    assert "warnings" not in manifest
+
+
+async def test_a_passage_approved_before_the_check_was_recorded_gets_her_warning(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    await stored_in_the_old_shape(db_session, session, project, named=True, checked=False)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["check"] is None
+    assert manifest["warnings"] == [
+        "this release was approved before the approval record existed: no check state "
+        "(conferida / forçada / findings) is recorded for it"
+    ]
 
 
 async def test_a_passage_whose_canon_is_gone_is_refused_by_its_canon_and_not_as_unapproved(

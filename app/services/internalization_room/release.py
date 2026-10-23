@@ -198,7 +198,8 @@ def _content(packet: dict[str, Any], *, nuances: bool) -> dict[str, Any]:
         if k not in _BESIDE_THE_DRAFT and k not in ("audio", "back_translation")
     }
     content["takes"] = [take.get("sha256") for take in audio.get("rehearsal_takes", [])]
-    content["heard_complete"] = (packet.get("check") or {}).get("heardComplete")
+    if packet.get("check") is not None:
+        content["heard_complete"] = packet["check"].get("heardComplete")
     content["back_translation"] = {
         **{k: v for k, v in told.items() if k not in ("segments", "retro_takes", "played_by_take")},
         "segments": [_without_derived(frase) for frase in told.get("segments", [])],
@@ -223,10 +224,13 @@ def same_draft(stored: dict[str, Any], composed: dict[str, Any]) -> bool:
 
     Nuances are compared only where the stored packet recorded them: one approved before they
     reached the record says nothing about them, and a nuance moves only with a new reading,
-    which only new content brings.
+    which only new content brings. So is all the rest: only what both sides hold is compared,
+    so a key an older schema had and a newer one dropped (``comprehension``), or one it lacked
+    (the check, and with it whether every part was heard), never un-approves a draft.
     """
     recorded = "nuances" in (stored.get("check") or {})
-    return _content(stored, nuances=recorded) == _content(composed, nuances=recorded)
+    old, new = _content(stored, nuances=recorded), _content(composed, nuances=recorded)
+    return all(old[key] == new[key] for key in old.keys() & new.keys())
 
 
 #: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like
