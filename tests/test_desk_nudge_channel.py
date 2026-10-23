@@ -24,7 +24,8 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
-from tests.hard_stretch_harness import MemoryStore, a_new_recording, voice
+from tests.halt_harness import queued
+from tests.hard_stretch_harness import Facilitator, MemoryStore, a_new_recording, voice
 from tests.release_harness import ready_session
 from tests.room_harness import nothing_is_read_ahead
 from tests.stream_harness import Listening, listening
@@ -453,9 +454,9 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
 
 
 async def queued_row(client: httpx.AsyncClient, team: Team, session_id: str) -> dict:
-    listed = await client.get(f"{IR}/facilitator/sessions", headers=team.desk)
-    assert listed.status_code == 200, listed.text
-    return next(row for row in listed.json()["sessions"] if row["session_id"] == session_id)
+    row = await queued(client, Facilitator("", team.team_id, team.desk), session_id)
+    assert row is not None, "a sala não está na fila"
+    return row
 
 
 async def test_a_refused_visit_writes_nothing_and_nudges_nothing(

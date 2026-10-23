@@ -671,7 +671,7 @@ async def test_the_desks_undo_of_a_mistaken_visit_on_a_demo_room_that_never_halt
 async def test_an_undo_read_before_a_demo_teams_warning_leaves_the_warning_attended(
     client, configured: Team, db_session: AsyncSession, rival_factory
 ) -> None:
-    from app.core.exceptions import ConflictError
+    from app.core.exceptions import HaltMoved
     from app.services.internalization_room import sessions as room
 
     tablet = await a_tablet_linked_through_the_page(client)
@@ -681,7 +681,7 @@ async def test_an_undo_read_before_a_demo_teams_warning_leaves_the_warning_atten
         read_before_the_warning = await room.get_session(undoing, session_id)
         await room.raise_a_warning(warning, await room.get_session(warning, session_id))
 
-        with pytest.raises(ConflictError):
+        with pytest.raises(HaltMoved):
             await room.unattend(
                 undoing,
                 read_before_the_warning,

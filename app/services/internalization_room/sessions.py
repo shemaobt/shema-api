@@ -1172,14 +1172,16 @@ async def _the_halt_held(
     comparison and the write. ``warned_at`` is compared as the instant it is, never as stored
     text, which a row written by SQL may spell differently from a bound value.
     """
-    await db.execute(
-        select(IRSession)
-        .where(IRSession.id == session.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if (session.halts_raised, session.warned_at) != (halts_raised, warned_at):
-        raise HaltMoved(session.halts_raised, session.warned_at)
+    held = (
+        await db.execute(
+            select(IRSession)
+            .where(IRSession.id == session.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if (held.halts_raised, held.warned_at) != (halts_raised, warned_at):
+        raise HaltMoved(held.halts_raised, held.warned_at)
 
 
 def back_translation_of(session: IRSession) -> BackTranslationState:

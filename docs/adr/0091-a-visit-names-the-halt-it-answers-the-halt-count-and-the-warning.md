@@ -49,7 +49,6 @@ Rejected:
 - A guarded `UPDATE … WHERE warned_at IS NOT DISTINCT FROM :warning`. It compares the stored
   text, and a row written by SQL (the ADR 0039 migration on SQLite) spells the same instant
   differently: the write matched nothing and answered 200 having written nothing.
-
 - A guard inside the request on the API alone (Henok, 2026-10-22). It leaves the poll window
   open.
 - The count in a body on the DELETE. Proxies and clients treat it unevenly, and a query reads

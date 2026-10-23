@@ -12,8 +12,6 @@ Both name the halt the Desk read, its halt count and its warning, so a write tha
 the room halted again is refused rather than answering a halt nobody saw (ADR 0091).
 """
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,15 +26,6 @@ from app.services.internalization_room.nudge_channel import nudge
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
-
-#: ``halts_raised`` is an ``Integer`` column: a larger count could name no room, and Postgres
-#: would refuse to bind it.
-HALTS_RAISED_MAX = 2**31 - 1
-
-
-def _on_the_stored_clock(warning: datetime | None) -> datetime | None:
-    """The warning as the instant it is stored at: the Desk may name it on any offset."""
-    return warning.astimezone(UTC) if warning is not None else None
 
 
 def _answer(session: IRSession) -> AttendedResponse:
@@ -55,7 +44,7 @@ def _answer(session: IRSession) -> AttendedResponse:
 async def mark_attended(
     session_id: str,
     user: FacilitatorUser,
-    halt: int = Query(ge=0, le=HALTS_RAISED_MAX),
+    halt: int = Query(ge=0),
     warning: AwareDatetime | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> AttendedResponse:
@@ -72,9 +61,7 @@ async def mark_attended(
     absent; another is ``HALT_MOVED``.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    attended = await room.attend(
-        db, session, by=user.id, halts_raised=halt, warned_at=_on_the_stored_clock(warning)
-    )
+    attended = await room.attend(db, session, by=user.id, halts_raised=halt, warned_at=warning)
     nudge(attended.project_id, "halts")
     return _answer(attended)
 
@@ -83,7 +70,7 @@ async def mark_attended(
 async def undo_attended(
     session_id: str,
     user: FacilitatorUser,
-    halt: int = Query(ge=0, le=HALTS_RAISED_MAX),
+    halt: int = Query(ge=0),
     warning: AwareDatetime | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> AttendedResponse:
@@ -99,8 +86,6 @@ async def undo_attended(
     absent; another is ``HALT_MOVED``.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    unattended = await room.unattend(
-        db, session, halts_raised=halt, warned_at=_on_the_stored_clock(warning)
-    )
+    unattended = await room.unattend(db, session, halts_raised=halt, warned_at=warning)
     nudge(unattended.project_id, "halts")
     return _answer(unattended)

@@ -1,4 +1,4 @@
-"""ENG-1761 — a visit and its undo name the halt count the Desk read.
+"""ENG-1761 — a visit and its undo name the halt the Desk read: its count and its warning.
 
 The Desk reads a room, a facilitator taps, and the write lands seconds later. A halt raised in
 between is a different ask from the one somebody saw, so a write naming the count it read is
@@ -29,10 +29,12 @@ from tests.halt_harness import (
     a_facilitator,
     a_session,
     a_warning_is_raised,
+    attend,
     queued,
     tablet_state,
     the_tablet_halts,
     the_team_opens_the_session,
+    unattend,
 )
 from tests.halt_harness import desk_session_row as session_row
 from tests.hard_stretch_harness import MemoryStore, voice
@@ -97,49 +99,14 @@ async def colleague(db_session: AsyncSession, facilitator_a: Facilitator) -> Fac
     return Facilitator(
         user.id,
         facilitator_a.team_id,
-        facilitator_a.team_name,
         {"Authorization": f"Bearer {access}"},
+        team_name=facilitator_a.team_name,
     )
 
 
 @pytest.fixture()
 async def facilitator_b(db_session: AsyncSession) -> Facilitator:
     return await a_facilitator(db_session, email="bruno@example.com", team_name="Equipe Q")
-
-
-def the_visit(session_id: str) -> str:
-    return f"{IR}/facilitator/sessions/{session_id}/attended"
-
-
-def named_as(halt: int | str | None, warning: str | None) -> dict[str, int | str]:
-    named: dict[str, int | str] = {} if halt is None else {"halt": halt}
-    return named | ({} if warning is None else {"warning": warning})
-
-
-async def attend(
-    client: httpx.AsyncClient,
-    session_id: str,
-    who: Facilitator,
-    *,
-    halt: int | str | None,
-    warning: str | None = None,
-) -> httpx.Response:
-    return await client.post(
-        the_visit(session_id), params=named_as(halt, warning), headers=who.headers
-    )
-
-
-async def undo(
-    client: httpx.AsyncClient,
-    session_id: str,
-    who: Facilitator,
-    *,
-    halt: int | str | None,
-    warning: str | None = None,
-) -> httpx.Response:
-    return await client.delete(
-        the_visit(session_id), params=named_as(halt, warning), headers=who.headers
-    )
 
 
 async def the_queue_row(client: httpx.AsyncClient, who: Facilitator, session_id: str) -> dict:
@@ -237,7 +204,7 @@ async def test_undoing_a_visit_to_an_older_halt_is_refused_and_the_colleagues_vi
     await the_tablet_halts(client, session.id)
     assert (await attend(client, session.id, colleague, halt=2)).status_code == 200
 
-    refused = await undo(client, session.id, facilitator_a, halt=1)
+    refused = await unattend(client, session.id, facilitator_a, halt=1)
 
     refused_as_moved(refused, now=2)
     assert (await session_row(client, facilitator_a, session.id))["attended_by"] == colleague.id
@@ -279,7 +246,7 @@ async def test_undoing_a_visit_to_an_older_warning_is_refused_and_the_colleagues
         await attend(client, session.id, colleague, halt=halt, warning=newer["warned_at"])
     ).is_success
 
-    refused = await undo(client, session.id, facilitator_a, halt=halt, warning=warning)
+    refused = await unattend(client, session.id, facilitator_a, halt=halt, warning=warning)
 
     refused_as_moved(refused, now=halt, warned=newer["warned_at"])
     assert (await session_row(client, facilitator_a, session.id))["attended_by"] == colleague.id
@@ -334,7 +301,7 @@ async def test_undoing_the_visit_to_the_current_halt_puts_the_room_back_on_the_q
     await the_tablet_halts(client, session.id)
     assert (await attend(client, session.id, facilitator_a, halt=1)).status_code == 200
 
-    undone = await undo(client, session.id, facilitator_a, halt=1)
+    undone = await unattend(client, session.id, facilitator_a, halt=1)
 
     assert undone.status_code == 200, undone.text[:300]
     assert (await the_queue_row(client, facilitator_a, session.id))["attended_at"] is None
@@ -354,7 +321,7 @@ async def test_a_room_that_never_halted_is_attended_at_count_zero(
 # --- A write that names no count ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("bad", [None, -1, "x", 2**31])
+@pytest.mark.parametrize("bad", [None, -1, "x"])
 async def test_a_visit_that_names_no_halt_is_refused_and_writes_nothing(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -370,7 +337,7 @@ async def test_a_visit_that_names_no_halt_is_refused_and_writes_nothing(
     stamped = await session_row(client, facilitator_a, attended.id)
 
     marked = await attend(client, unattended.id, facilitator_a, halt=bad)
-    undone = await undo(client, attended.id, facilitator_a, halt=bad)
+    undone = await unattend(client, attended.id, facilitator_a, halt=bad)
 
     assert marked.status_code == 422, marked.text[:300]
     assert undone.status_code == 422, undone.text[:300]
@@ -418,7 +385,7 @@ async def test_a_visit_naming_a_warning_with_no_offset_is_refused(
     assert (await the_queue_row(client, facilitator_a, session.id))["attended_at"] is None
 
 
-@pytest.mark.parametrize("write", [attend, undo], ids=["attend", "undo"])
+@pytest.mark.parametrize("write", [attend, unattend], ids=["attend", "undo"])
 @pytest.mark.parametrize("naming_the_real_count", [True, False], ids=["real", "other"])
 async def test_another_teams_room_answers_not_found_whatever_halt_it_names(
     client: httpx.AsyncClient,

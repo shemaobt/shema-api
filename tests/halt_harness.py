@@ -23,23 +23,13 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
-from tests.hard_stretch_harness import a_new_recording, row
+from tests.hard_stretch_harness import Facilitator, a_new_recording, row
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
 SESSIONS = "/api/facilitator/sessions"
 DEVICE = "tablet-da-equipe-1"
 P = "P03"
-
-
-class Facilitator:
-    """Somebody who holds the room's facilitator role and facilitates exactly one team."""
-
-    def __init__(self, user_id: str, team_id: str, team_name: str, headers: dict[str, str]) -> None:
-        self.id = user_id
-        self.team_id = team_id
-        self.team_name = team_name
-        self.headers = headers
 
 
 async def a_facilitator(db: AsyncSession, *, email: str, team_name: str) -> Facilitator:
@@ -51,7 +41,9 @@ async def a_facilitator(db: AsyncSession, *, email: str, team_name: str) -> Faci
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)
     access, _refresh = await issue_tokens(db, user)
-    return Facilitator(user.id, project.id, team_name, {"Authorization": f"Bearer {access}"})
+    return Facilitator(
+        user.id, project.id, {"Authorization": f"Bearer {access}"}, team_name=team_name
+    )
 
 
 async def a_session(db: AsyncSession, *, team_id: str):
@@ -102,6 +94,10 @@ async def desk_session_row(client: httpx.AsyncClient, who: Facilitator, session_
     return next(row for row in page.json()["sessions"] if row["session_id"] == session_id)
 
 
+#: Name what the Desk reads for the room right now, rather than a halt the case chose.
+AS_THE_DESK_READS = "as the Desk reads"
+
+
 async def the_halt_the_desk_reads(
     client: httpx.AsyncClient, who: Facilitator, session_id: str
 ) -> dict[str, int | str]:
@@ -114,30 +110,52 @@ async def the_halt_the_desk_reads(
     return naming(row["halts_raised"], row["warned_at"])
 
 
-def naming(halt: int, warning: str | None = None) -> dict[str, int | str]:
-    return {"halt": halt} | ({"warning": warning} if warning is not None else {})
+def naming(halt: int | str | None, warning: str | None = None) -> dict[str, int | str]:
+    """The query a visit sends; ``None`` leaves that parameter out."""
+    named: dict[str, int | str] = {} if halt is None else {"halt": halt}
+    return named | ({} if warning is None else {"warning": warning})
+
+
+async def _named(
+    client: httpx.AsyncClient,
+    session_id: str,
+    who: Facilitator,
+    halt: int | str | None,
+    warning: str | None,
+) -> dict[str, int | str]:
+    if halt == AS_THE_DESK_READS:
+        return await the_halt_the_desk_reads(client, who, session_id)
+    return naming(halt, warning)
 
 
 async def attend(
-    client: httpx.AsyncClient, session_id: str, who: Facilitator, *, halt: int | None = None
+    client: httpx.AsyncClient,
+    session_id: str,
+    who: Facilitator,
+    *,
+    halt: int | str | None = AS_THE_DESK_READS,
+    warning: str | None = None,
 ) -> httpx.Response:
-    """A visit naming ``halt``, or, unnamed, the halt the Desk reads right now."""
-    named = (
-        naming(halt) if halt is not None else await the_halt_the_desk_reads(client, who, session_id)
-    )
+    """A visit naming ``halt`` and ``warning``, or by default the halt the Desk reads."""
     return await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", params=named, headers=who.headers
+        f"{IR}/facilitator/sessions/{session_id}/attended",
+        params=await _named(client, session_id, who, halt, warning),
+        headers=who.headers,
     )
 
 
 async def unattend(
-    client: httpx.AsyncClient, session_id: str, who: Facilitator, *, halt: int | None = None
+    client: httpx.AsyncClient,
+    session_id: str,
+    who: Facilitator,
+    *,
+    halt: int | str | None = AS_THE_DESK_READS,
+    warning: str | None = None,
 ) -> httpx.Response:
-    named = (
-        naming(halt) if halt is not None else await the_halt_the_desk_reads(client, who, session_id)
-    )
     return await client.delete(
-        f"{IR}/facilitator/sessions/{session_id}/attended", params=named, headers=who.headers
+        f"{IR}/facilitator/sessions/{session_id}/attended",
+        params=await _named(client, session_id, who, halt, warning),
+        headers=who.headers,
     )
 
 
