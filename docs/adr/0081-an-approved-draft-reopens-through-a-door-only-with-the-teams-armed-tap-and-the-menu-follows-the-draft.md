@@ -23,7 +23,8 @@ are a version's, every door naming it serves its stored packet, hash unchanged, 
 that lands over it is written into that release's check block, outside the hash (ADR 0020),
 keeping who forced it: every write of the telling-back reaches it in the same transaction, so
 there is one check state for every reader, and only on the stretches that version carries, so its
-frase numbers keep naming its own. The approval holds the session's row from before it composes,
+frase numbers keep naming its own; a version stored before its stretches or its check block were
+kept stays as stored. The approval holds the session's row, and reads it again under it, from before it composes,
 so a verdict landing meanwhile is seen by one or the other; it is the second place the row is
 taken `FOR UPDATE` beside the sentence door's write (ADR 0089), and like it holds the row across
 no bucket. Asking is a comparison of takes read off the rows,

@@ -48,6 +48,7 @@ THE_SENTENCE_DOOR = "app/services/internalization_room/sentences.py"
 THE_APPROVAL = "app/services/internalization_room/sessions.py"
 #: The open of the Checagem externa takes the row around a read and an insert, with no bucket.
 THE_EXTERNAL_CHECK_OPEN = "app/services/internalization_room/external_check.py"
+THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -333,4 +334,20 @@ def test_the_session_row_is_taken_for_update_only_by_doors_that_hold_no_bucket()
 
     assert locking == sorted([THE_SENTENCE_DOOR, THE_APPROVAL, THE_EXTERNAL_CHECK_OPEN]), (
         "a linha da sessão era travada num lugar novo, que ninguém conferiu contra o bucket"
+    )
+
+
+def test_the_session_row_the_approval_holds_is_taken_only_by_the_approval() -> None:
+    """Each caller of the helper that takes the row holds it across no bucket call (ADR 0089)."""
+    holding = sorted(
+        str(path.relative_to(APP.parent))
+        for path in APP.rglob("*.py")
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "hold_the_session_row"
+    )
+
+    assert holding == [THE_APPROVAL_SERVICE], (
+        "a linha da sessão era segurada por um chamador novo, que ninguém conferiu contra o bucket"
     )

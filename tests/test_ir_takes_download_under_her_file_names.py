@@ -425,6 +425,27 @@ async def test_a_session_a_zerar_archived_names_its_files_by_the_release_its_tak
     assert listed["release_id"] == RELEASE_V1
 
 
+async def test_a_session_re_opened_then_archived_names_its_files_by_the_next_version(
+    client, db_session, room_app
+):
+    """The archived name holds only while its takes still stand on that release."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    zeroed = await ready_to_approve(db_session, project.id, ("audio/wav",))
+    await approved(client, credential, zeroed)
+    await record_the_part_again(
+        db_session,
+        zeroed,
+        await the_one_part_of(db_session, zeroed),
+        sha256=hashlib.sha256(recording(1, 9)).hexdigest(),
+    )
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+
+    listed = await read_downloads(client, desk, zeroed.id)
+
+    assert listed["release_id"] == RELEASE_V2
+
+
 async def test_a_release_stored_before_adr_0048_names_the_files_by_its_uuid(
     client, db_session, room_app
 ):

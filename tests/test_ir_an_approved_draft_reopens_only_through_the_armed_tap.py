@@ -11,6 +11,7 @@ the draft, and a join that finds the same take already kept brings nothing new.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -25,6 +26,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     FindingKind,
+    Nuance,
 )
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
@@ -44,6 +46,7 @@ from tests.release_harness import (
     desk_release,
     desk_release_at,
     desk_retro,
+    releases_of,
     reported_playback,
     team_release,
 )
@@ -533,3 +536,129 @@ async def test_a_verdict_landing_while_the_passage_is_approved_is_the_versions_c
     else:
         stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
         assert [one["idx"] for one in stored["check"]["findings"]] == [told[0].id]
+
+
+async def test_a_nuance_on_a_stretch_told_after_the_approval_leaves_the_versions_check_as_it_was(
+    client, db_session, room_app
+) -> None:
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    await checked_heard_and_approved(client, db_session, session.id)
+    restarted = await client.post(f"{PREFIX}/sessions/{session.id}/back-translation/restart")
+    assert restarted.status_code == 200, restarted.text
+    after_the_restart = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+    part_2 = after_the_restart["audio"]["rehearsal_takes"][1]["take_id"]
+    await db_session.refresh(session)
+    told_again = await capture_segment(
+        db_session,
+        session,
+        take_id=part_2,
+        starts_ms=0,
+        ends_ms=PART_MS,
+        bridge_take_id="retro-de-novo",
+        transcript="a cena 2 contada de novo",
+    )
+    await db_session.refresh(session)
+    state = back_translation_of(session)
+    state.nuances = [
+        Nuance(
+            note="uma nuance",
+            chunk=1,
+            segment_id=told_again.id,
+            quote="contada de novo",
+            story="a equipe disse de outro jeito",
+            take_id=part_2,
+            starts_ms=0,
+            ends_ms=PART_MS,
+        )
+    ]
+    await save_back_translation(db_session, session, state)
+
+    stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+
+    assert stored["check"]["nuances"] == after_the_restart["check"]["nuances"]
+
+
+async def test_a_verdict_committed_before_the_approval_takes_the_row_is_read_by_it(
+    client, db_session, room_app, test_engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The approval reads the session under the row it holds, never as the route loaded it."""
+    team = await db_session.get(Project, TABLET_TEAM)
+    assert team is not None
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session, _ = await _recorded(client, db_session, joined=False)
+    told = await final_segments(db_session, session.id)
+    await reported_playback(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+    elsewhere = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    holding = release_service.hold_the_session_row
+
+    async def a_verdict_commits_then_the_row_is_taken(db: AsyncSession, held: Any) -> None:
+        async with elsewhere() as other:
+            stored = await get_session(other, session.id)
+            state = back_translation_of(stored)
+            state.findings = [
+                Finding(kind=FindingKind.ADDITION, note="a mais", segment_id=told[0].id, chunk=1)
+            ]
+            state.checked = False
+            await save_back_translation(other, stored, state)
+        await holding(db, held)
+
+    monkeypatch.setattr(
+        release_service, "hold_the_session_row", a_verdict_commits_then_the_row_is_taken
+    )
+
+    approved = await client.post(team_release(session.id))
+
+    assert approved.status_code == 200, approved.text
+    if approved.json()["version"] is None:
+        assert "telling_back_not_checked" in approved.json()["blockers"]
+    else:
+        stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
+        assert [one["idx"] for one in stored["check"]["findings"]] == [told[0].id]
+
+
+def _without_segments(packet: dict[str, Any]) -> dict[str, Any]:
+    told = {k: v for k, v in packet["back_translation"].items() if k != "segments"}
+    return {**packet, "back_translation": told}
+
+
+def _without_the_check(packet: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in packet.items() if k != "check"}
+
+
+@pytest.mark.parametrize(
+    "legacy", [_without_segments, _without_the_check], ids=["no segments", "no check"]
+)
+async def test_a_version_stored_in_an_older_shape_keeps_its_packet_through_a_later_verdict(
+    client, db_session, legacy
+) -> None:
+    """A packet stored before its stretches or its check block were kept stays as stored."""
+    session, _ = await _recorded(client, db_session, joined=False)
+    await checked_heard_and_approved(client, db_session, session.id)
+    [row] = await releases_of(db_session, session.id)
+    row.packet = legacy(row.packet)
+    await db_session.commit()
+    as_stored = json.dumps(row.packet, sort_keys=True)
+    told = await final_segments(db_session, session.id)
+    await db_session.refresh(session)
+    state = back_translation_of(session)
+    state.findings = [
+        Finding(kind=FindingKind.ADDITION, note="a mais", segment_id=told[0].id, chunk=1)
+    ]
+    state.checked = False
+    await save_back_translation(db_session, session, state)
+
+    [row] = await releases_of(db_session, session.id)
+    await db_session.refresh(row)
+    assert json.dumps(row.packet, sort_keys=True) == as_stored
