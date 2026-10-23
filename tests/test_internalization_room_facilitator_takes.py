@@ -257,12 +257,11 @@ async def test_a_take_with_no_pass_holds_its_place_on_either_database(
 ) -> None:
     """A rehearsal recorded before the room sent a pass has to stay where it is.
 
-    `ordinal`, the **Recording time** a take has of its own and `pass_number` are all
-    nullable, and an unqualified ASC leaves where the NULLs land to the engine: SQLite puts
-    them first, PostgreSQL last. The suite only ever ran the first, so the oldest recording of
-    a session read as the newest on the one database a team is actually served by. The order
-    is named in the query now, and this reads the statement itself, because no fixture on
-    SQLite can tell the two apart.
+    `ordinal` and `pass_number` are both nullable, and an unqualified ASC leaves where
+    the NULLs land to the engine: SQLite puts them first, PostgreSQL last. The suite only
+    ever ran the first, so the oldest recording of a session read as the newest on the one
+    database a team is actually served by. The order is named in the query now, and this
+    reads the statement itself, because no fixture on SQLite can tell the two apart.
     """
     emitted: list[str] = []
 
@@ -277,7 +276,7 @@ async def test_a_take_with_no_pass_holds_its_place_on_either_database(
 
     ordered = [statement for statement in emitted if "ORDER BY" in statement]
     assert ordered, "takes_of tem de ter chegado ao banco para haver o que ler"
-    assert ordered[-1].count("NULLS FIRST") == 3, (
-        "as três chaves anuláveis precisam dizer onde o nulo cai, senão o pacote sai em "
+    assert ordered[-1].count("NULLS FIRST") == 2, (
+        "as duas colunas anuláveis precisam dizer onde o nulo cai, senão o pacote sai em "
         "uma ordem no teste e na oposta em produção"
     )
