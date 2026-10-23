@@ -27,7 +27,6 @@ from app.db.models.auth import App
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.release import build_internalization_release
 from app.services.internalization_room.segments import final_segments
 from tests.baker import (
     grant_room_app_role,
@@ -46,6 +45,7 @@ from tests.release_harness import (
     P,
     a_claimed_device,
     at_the_desk,
+    judged_packet,
     reported_playback,
     team_headers,
     team_release,
@@ -376,7 +376,7 @@ async def test_a_release_stored_before_adr_0048_names_the_files_by_its_uuid(
 ):
     project, _credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_to_approve(db_session, project.id, ("audio/wav",))
-    packet = await build_internalization_release(db_session, session)
+    packet = await judged_packet(db_session, session)
     legacy_id = str(uuid.uuid4())
     packet["release_id"] = legacy_id
     packet["version"] = 1

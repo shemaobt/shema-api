@@ -20,7 +20,9 @@ from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
 from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.sessions import get_session
 from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
@@ -373,7 +375,9 @@ async def test_a_check_that_comes_back_clean_over_a_forced_v1_is_the_one_check_e
     assert pressed.status_code == 200, pressed.text
 
     read = await _approval(client, session.id)
-    live = (await client.get(desk_release(session.id), headers=desk)).json()
+    live, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
     retro = (await client.get(desk_retro(session.id), headers=desk)).json()
 

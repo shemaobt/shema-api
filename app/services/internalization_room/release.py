@@ -61,6 +61,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -108,8 +109,8 @@ UNFORCEABLE_BLOCKERS = frozenset({"no_rehearsal_audio"})
 #: strings live once rather than at every site that asks whether a blocker carries ground.
 GROUNDED_BLOCKERS = frozenset({"playback_did_not_cover_the_clip", "untold_stretch"})
 
-#: Where the facilitator and the consultant read everything the check learned about a session.
-#: The route is a later slice's; the packet says where it will be so the two land together.
+#: Where the facilitator and the consultant read everything the check learned about a session:
+#: the retroverification read, which the packet and the manifest both point to.
 RETRO_ROUTE = "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao"
 
 
@@ -160,6 +161,11 @@ def _slug(name: str | None) -> str:
 def release_name(language: str | None, pericope: str, version: int) -> str:
     """What a release is called to Refine and to Marcia's check: language, passage, draft."""
     return f"internalize-{_slug(language)}-{pericope.lower()}-v{version}"
+
+
+def released_as(release: IRRelease) -> str:
+    """The name a stored release goes by: its own, or its row id when stored before ADR 0048."""
+    return str(release.packet.get("release_id") or release.id)
 
 
 def _package_sha256(artifact: dict[str, Any]) -> str:
@@ -257,6 +263,28 @@ def _take_view(take: IRTake) -> dict[str, Any]:
 #: The three words a check can be in, and the whole of them. Closed because they are Marcia's
 #: and a fourth is a conversation with her rather than a value.
 CheckStatus = Literal["conferida", "forcada", "sem_conferencia"]
+
+
+def packet_as_read(release: IRRelease) -> dict[str, Any]:
+    """The stored packet with its check block's force derived by `was_forced` (ADR 0080).
+
+    The check block is outside the hash (ADR 0020), so deriving it rewrites nothing that a
+    **Version** promises; the content is served as it was approved.
+    """
+    check = release.packet.get("check")
+    if check is None or was_forced(release.forced_by, release.forced_blockers):
+        return release.packet
+    return {
+        **release.packet,
+        "check": {
+            **check,
+            "forced": False,
+            "status": _check_status(check["conferida"], False),
+            "forcedBy": None,
+            "forcedAt": None,
+            "forcedBlockers": None,
+        },
+    }
 
 
 def _check_status(conferida: bool, forced: bool) -> CheckStatus:
@@ -370,9 +398,33 @@ def _check_block(
 def _judge(blockers: list[str], waived: frozenset[str]) -> None:
     """Refuse over whatever the waiver did not name, and say nothing otherwise.
 
-    One sentence in one place because two callers ask it: the build, whose whole job after
-    composing is this, and the approval, which has to compare the packet before it gets
-    here. A waiver filters the refusal and never the packet.
+    The gate is Marcia's, whole: "Adote o meu portão inteiro, agora: sem achado em aberto e
+    com a gravação toda ouvida, senão não aprova; só o código do facilitador força."
+
+    ``checked`` says one whole reading returned no finding (ADR 0013), so a question the team
+    chose not to answer makes it false and ``telling_back_not_checked`` refuses the release.
+    This module used to argue the other way at length — that carrying the questions to Refine
+    was the one outcome the room existed to reach — and that argument lost on what a disputed
+    finding is. It is one of three things: the map wrong, which is rare and worth having; the
+    team not understanding; the recogniser erring. Only the first deserves to travel, and a
+    door open to all three sends the other two downstream as a passage the room approved, to
+    be heard as approved at the community's check.
+
+    The team that disagrees has a road, and it is older than this one: the raised hand, active
+    the whole session, answered by a person. If that person agrees with the team, a facilitator
+    forces the release with their own code, and the force is recorded on the row.
+    ``UNFORCEABLE_BLOCKERS`` is the whole of what a force never sets aside, and
+    ``approve_release`` is where it is applied, because that is where somebody decided it;
+    ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
+    is out of reach of any of it, because a panorama is not a draft of a passage at all.
+
+    What a forced packet says is unchanged: ``checked`` false and every open finding in
+    ``findings``. Judging the quality of a telling-back is not this packet's job — carrying
+    it honestly is, and the decision that it may travel anyway was a person's and is recorded
+    on the release rather than dressed up here.
+
+    The approval is the one caller: it compares the packet before it gets here, and a waiver
+    filters the refusal and never the packet.
     """
     standing = [code for code in blockers if code not in waived]
     if standing:
@@ -386,20 +438,16 @@ async def compose_internalization_release(
 
     **A draft that stands approved is answered with its release's stored packet** (ADR 0081):
     while the takes are that version's, every door naming it serves exactly the packet it
-    names, its hash unchanged. What stands in its way is judged as for any draft, so a version
-    a person forced over an open finding still reads by its number and nowhere else.
+    names, its hash unchanged, and nothing stands in its way: only a change of takes re-opens
+    it, so blockers are read only when no version stands.
 
     Composing and judging are two acts, and separating them is what lets the approval ask
     whether the takes changed before it asks whether the gate is shut. The hash never
     depended on the gate — a blocker filters the refusal and not a single key of the
     artifact — so a packet composed here is the same packet either caller would have got.
 
-    It is a name anyone may say. `build_internalization_release` used to take a set of
-    blockers to waive, which no caller in the application ever passed: what wanted it was a
-    reader that had already decided the gate was not its subject, and that reader is asking
-    for the composition and not for a softer judgement. Answering with the two apart says so,
-    and it is the only door onto a blocked session's live packet — the Desk's own route
-    rebuilds under the whole list and refuses.
+    It is a name anyone may say, and it is the only door onto a session's live packet: the
+    approval judges what this composes, and no route serves it (ADR 0086).
 
     ``panorama_sessions_never_release`` is raised rather than listed, before anything is
     read, because a panorama is not a draft of a passage at all: there is nothing to compose
@@ -496,7 +544,9 @@ async def compose_internalization_release(
     with reading_the_canon_of(session.canon_pin):
         artifact, blockers = await _composed(db, session)
     standing = await approved_draft(db, session)
-    return (dict(standing.packet) if standing is not None else artifact), blockers
+    if standing is not None:
+        return packet_as_read(standing), []
+    return artifact, blockers
 
 
 async def _standing(
@@ -676,7 +726,7 @@ async def keep_the_check_on_the_standing_release(db: AsyncSession, session: IRSe
     with reading_the_canon_of(session.canon_pin):
         live, _blockers = await _composed(db, session)
     stored = release.packet.get("check") or {}
-    forced = bool(stored.get("forced"))
+    forced = was_forced(release.forced_by, release.forced_blockers)
     release.packet = {
         **release.packet,
         "check": {
@@ -684,9 +734,9 @@ async def keep_the_check_on_the_standing_release(db: AsyncSession, session: IRSe
             "version": release.version,
             "status": _check_status(live["check"]["conferida"], forced),
             "forced": forced,
-            "forcedBy": stored.get("forcedBy"),
-            "forcedAt": stored.get("forcedAt"),
-            "forcedBlockers": stored.get("forcedBlockers"),
+            "forcedBy": stored.get("forcedBy") if forced else None,
+            "forcedAt": stored.get("forcedAt") if forced else None,
+            "forcedBlockers": stored.get("forcedBlockers") if forced else None,
         },
     }
     await db.commit()
@@ -752,9 +802,10 @@ async def approve_release(
     ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
     together: a force comes from the Desk, where there is a person and no device.
 
-    A force with nothing to waive is still a force and is still recorded as one, with empty
-    lists of findings and of blockers passed. The act was the facilitator's, and a row that
-    hid that would say the team approved a draft the team did not approve.
+    A force with nothing to waive is an ordinary approval: no who, no when, no findings and no
+    blockers passed, and the check block's ``forced`` false. Her finalize records a force only
+    when the gate was shut, and a clean passage that read as forced would tell the consultant a
+    check was overruled that never was (ADR 0080).
 
     What is open at that moment is dumped from the state the packet was composed from and not
     copied out of the packet's own list, which is what lets the two differ by the analyst's
@@ -821,18 +872,19 @@ async def approve_release(
     latest = await latest_release(db, session.project_id, session.pericope)
 
     _judge(blockers, frozenset(blockers) - UNFORCEABLE_BLOCKERS if forced_by else frozenset())
-    passed = sorted(set(blockers)) if forced_by else None
+    forced = was_forced(forced_by, blockers)
+    who_forced = forced_by if forced else None
+    passed = sorted(set(blockers)) if forced else None
 
     row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
-    forced = forced_by is not None
     forced_at = datetime.now(UTC) if forced else None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
-    packet["check"]["forcedBy"] = forced_by
+    packet["check"]["forcedBy"] = who_forced
     packet["check"]["forcedAt"] = forced_at.isoformat() if forced_at else None
     packet["check"]["forcedBlockers"] = passed
     release = IRRelease(
@@ -844,7 +896,7 @@ async def approve_release(
         package_sha256=packet["package_sha256"],
         packet=packet,
         device_id=device_id,
-        forced_by=forced_by,
+        forced_by=who_forced,
         forced_at=forced_at,
         forced_blockers=passed,
         forced_open_findings=(
@@ -854,7 +906,7 @@ async def approve_release(
                     await _standing(db, session, await takes_of(db, session.id))
                 ).findings
             ]
-            if forced_by
+            if forced
             else None
         ),
     )

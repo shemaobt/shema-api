@@ -31,7 +31,9 @@ from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.sessions import get_session
 from tests.baker import make_app, make_role
 from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import (
@@ -635,15 +637,16 @@ async def test_the_release_door_serves_v1s_stored_packet_after_a_hand_is_answere
     answered = await client.post(f"{PREFIX}/facilitator/questions/{hand.id}/resolve", headers=desk)
     assert answered.status_code == 200, answered.text[:300]
 
-    live = await client.get(desk_release(session.id), headers=desk)
-    stored = await client.get(
-        f"{PREFIX}/facilitator/sessions/{session.id}/releases/1", headers=desk
+    live, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
     )
+    stored = (
+        await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/releases/1", headers=desk)
+    ).json()
 
-    assert live.status_code == 200, live.text[:300]
-    assert live.json()["version"] == 1
-    assert live.json()["package_sha256"] == stored.json()["package_sha256"]
-    assert live.json()["raised_questions"] == stored.json()["raised_questions"]
+    assert live["version"] == 1
+    assert live["package_sha256"] == stored["package_sha256"]
+    assert live["raised_questions"] == stored["raised_questions"]
 
 
 async def test_the_translation_started_over_after_approval_leaves_the_draft_approved_as_v1(

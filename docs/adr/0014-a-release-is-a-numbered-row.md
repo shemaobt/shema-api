@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0086: Refine reads the manifest, the packet is the record
 date: 2026-09-10
 ---
 

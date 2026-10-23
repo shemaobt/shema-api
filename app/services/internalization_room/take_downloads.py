@@ -15,6 +15,7 @@ from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.release import (
     _mother_tongue,
     release_name,
+    released_as,
 )
 from app.services.internalization_room.takes import (
     DOWNLOAD_LINK_SECONDS,
@@ -35,15 +36,34 @@ async def _release_id(db: AsyncSession, session: IRSession) -> str:
         else await latest_release(db, session.project_id, session.pericope)
     )
     if latest is not None:
-        return str(latest.packet.get("release_id") or latest.id)
+        return released_as(latest)
     return release_name(await _mother_tongue(db, session), session.pericope, 1)
+
+
+def part_keys_by_number(parts: list[IRTake]) -> dict[int | None, str]:
+    """The **Part key** under each number the current parts carry, `whole` when told whole."""
+    return {
+        None: "whole",
+        **{
+            ordinal: "whole" if position is None else f"S{position}"
+            for ordinal, position in part_positions(parts).items()
+        },
+    }
+
+
+def file_name(release_id: str, key: str, take: IRTake, *, superseded: bool = False) -> str:
+    """The name a take downloads under, and the name the **Manifest** gives it (ADR 0073)."""
+    stem = f"{release_id}-{key}"
+    if superseded:
+        stem += f"-substituida-{take.id}"
+    return f"{stem}.{extension(take.content_type)}"
 
 
 def _with_bytes(take: IRTake) -> bool:
     return take.kind is IRTakeKind.ENSAIO and not is_declared(take)
 
 
-def _link(take: IRTake, filename: str) -> Awaitable[str]:
+def download_link(take: IRTake, filename: str) -> Awaitable[str]:
     return signed_url(
         take.storage_key,
         take.content_type,
@@ -56,13 +76,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     """The session's rehearsal takes named the way Refine receives them, with hour-long links."""
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    keys = {
-        None: "whole",
-        **{
-            ordinal: "whole" if position is None else f"S{position}"
-            for ordinal, position in part_positions(parts).items()
-        },
-    }
+    keys = part_keys_by_number(parts)
     release_id = await _release_id(db, session)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
@@ -80,15 +94,12 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
             later = [at for at in numbered_at if at > as_utc(take.created_at)]
             replaced_at[take.id] = (later or numbered_at)[0].isoformat()
 
-    def filename(take: IRTake) -> str:
-        stem = f"{release_id}-{keys[take.ordinal]}"
-        if take.id not in live_ids:
-            stem += f"-substituida-{take.id}"
-        return f"{stem}.{extension(take.content_type)}"
-
-    names = [filename(take) for take in rehearsals]
+    names = [
+        file_name(release_id, keys[take.ordinal], take, superseded=take.id not in live_ids)
+        for take in rehearsals
+    ]
     links = await asyncio.gather(
-        *(_link(take, name) for take, name in zip(rehearsals, names, strict=True))
+        *(download_link(take, name) for take, name in zip(rehearsals, names, strict=True))
     )
     live: list[TakeDownload] = []
     superseded: list[SupersededTakeDownload] = []

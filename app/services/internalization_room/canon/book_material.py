@@ -240,3 +240,27 @@ def story_so_far(book: str, current_pericope: str, not_worked: frozenset[str] = 
 def vendor_pin() -> str:
     pin = canon_path(VENDOR) / "VENDOR_PIN"
     return pinned_commit(pin.read_text(encoding="utf-8")) if pin.exists() else "unpinned"
+
+
+def meaning_map_ref(pericope: str) -> dict[str, str] | None:
+    """The vendored **Meaning Map** of this pericope as the sync recorded it, or none.
+
+    Read off the sync's own record rather than hashed again, as hers is: the record is what
+    the copy was checked against. Through ``canon_path``, so a session reading a kept canon
+    names the pin and the file it read.
+    """
+    record = canon_path(VENDOR / "VENDOR_MANIFEST.json")
+    if not record.exists():
+        return None
+    manifest = json.loads(record.read_text(encoding="utf-8"))
+    prefix = f"meaning-map/{pericope}-"
+    for entry in manifest["files"]:
+        path = entry["path"]
+        if path.startswith(prefix) and path.endswith(".md"):
+            return {
+                "id": path.removeprefix("meaning-map/").removesuffix(".md"),
+                "file": path,
+                "pin": manifest["pin_commit"],
+                "sha256": entry["sha256"],
+            }
+    return None
