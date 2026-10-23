@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ADR 0080: forced only when the gate was shut
 date: 2026-10-20
 ---
 
