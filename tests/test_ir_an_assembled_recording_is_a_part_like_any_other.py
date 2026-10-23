@@ -72,6 +72,7 @@ async def test_an_old_composed_row_still_yields_one_take_per_number(
     state this slice leaves behind and the reason the row is unremarkable.
     """
     session, (one, two, three) = await rehearsed_in_parts(db_session, 3)
+    told_on_two = await stretch_on(db_session, session, two)
     assembled = ensaio_take(
         session.id,
         scope="composed",
@@ -82,7 +83,6 @@ async def test_an_old_composed_row_still_yields_one_take_per_number(
     )
     db_session.add(assembled)
     await db_session.commit()
-    told_on_two = await stretch_on(db_session, session, two)
     told_on_two.take_id = assembled.id
     await db_session.commit()
     await _pressed_terminei(client, db_session, session.id)

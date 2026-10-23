@@ -29,33 +29,39 @@ from httpx import ASGITransport
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ProjectRole
 from app.core.exceptions import PassageClosed
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
-from tests.baker import (
-    a_language,
-    grant_facilitator_app_role,
-    make_project,
-    make_project_user_access,
-    make_user,
-)
 from tests.device_harness import a_linked_tablet
-from tests.hard_stretch_harness import a_new_recording
+from tests.halt_harness import (
+    DESK,
+    IR,
+    SESSIONS,
+    Facilitator,
+    P,
+    a_facilitator,
+    a_rehearsal,
+    a_session,
+    a_warning_is_raised,
+    attend,
+    history_row,
+    queued,
+    tablet_state,
+    tell_back_again,
+    the_queue,
+    the_tablet_halts,
+    the_team_opens_the_session,
+    unattend,
+)
 from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 
-IR = "/api/internalization-room"
-DESK = "/api/facilitator/teams"
-DEVICE = "tablet-da-equipe-1"
-
-P = "P03"
 ENGAGED = CoverageStatus.ENGAGED.value
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 FIRST_QUESTION = "Quem aparece nesta parte?"
@@ -113,6 +119,7 @@ async def client(
     """
     from fastapi import FastAPI
 
+    from app.api.facilitator.sessions import facilitator_sessions_router
     from app.api.facilitator.teams import facilitator_teams_router
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
@@ -139,6 +146,7 @@ async def client(
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
     test_app.include_router(facilitator_teams_router, prefix=DESK)
+    test_app.include_router(facilitator_sessions_router, prefix=SESSIONS)
     register_exception_handlers(test_app)
 
     async def _get_db():
@@ -156,28 +164,6 @@ async def client(
 # --- the two facilitators and their teams -------------------------------------------------
 
 
-class Facilitator:
-    """Somebody who holds the room's facilitator role and facilitates exactly one team."""
-
-    def __init__(self, user_id: str, team_id: str, team_name: str, headers: dict[str, str]) -> None:
-        self.id = user_id
-        self.team_id = team_id
-        self.team_name = team_name
-        self.headers = headers
-
-
-async def a_facilitator(db: AsyncSession, *, email: str, team_name: str) -> Facilitator:
-    from app.services.auth.issue_tokens import issue_tokens
-
-    user = await make_user(db, email=email)
-    language = await a_language(db, name=f"Lingua {team_name}")
-    project = await make_project(db, language.id, name=team_name)
-    await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    await grant_facilitator_app_role(db, user.id)
-    access, _refresh = await issue_tokens(db, user)
-    return Facilitator(user.id, project.id, team_name, {"Authorization": f"Bearer {access}"})
-
-
 @pytest.fixture()
 async def facilitator_a(db_session: AsyncSession) -> Facilitator:
     return await a_facilitator(db_session, email="ana@example.com", team_name="Equipe P")
@@ -191,62 +177,6 @@ async def facilitator_b(db_session: AsyncSession) -> Facilitator:
 
 
 # --- what the tablet and the facilitator do -----------------------------------------------
-
-
-async def a_session(db: AsyncSession, *, team_id: str):
-    """A conversation, for cases about attending or halting rather than about ENG-964's own
-    boundary. It lands one turn unconditionally (ENG-964) so every case here keeps reading
-    as a room the team held; this file's own subject is attending and halting, not that
-    boundary, and none of its cases need a session without one.
-    """
-    session = await room.create_session(
-        db,
-        pericope=P,
-        project_id=team_id,
-    )
-    return await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
-
-
-async def the_tablet_halts(client: httpx.AsyncClient, session_id: str) -> None:
-    """The room in front of the team says it cannot go on without a person."""
-    asked = await client.post(f"{IR}/sessions/{session_id}/needs-person")
-    assert asked.status_code == 200, asked.text[:300]
-
-
-async def tablet_state(client: httpx.AsyncClient, session_id: str) -> dict:
-    answer = await client.get(f"{IR}/sessions/{session_id}")
-    assert answer.status_code == 200, answer.text[:300]
-    return answer.json()
-
-
-async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -> httpx.Response:
-    return await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=who.headers
-    )
-
-
-async def unattend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -> httpx.Response:
-    return await client.delete(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=who.headers
-    )
-
-
-async def the_queue(client: httpx.AsyncClient, who: Facilitator) -> list[dict]:
-    listed = await client.get(f"{IR}/facilitator/sessions", headers=who.headers)
-    assert listed.status_code == 200, listed.text[:300]
-    return listed.json()["sessions"]
-
-
-async def queued(client: httpx.AsyncClient, who: Facilitator, session_id: str) -> dict | None:
-    return next(
-        (row for row in await the_queue(client, who) if row["session_id"] == session_id), None
-    )
-
-
-async def history_row(client: httpx.AsyncClient, who: Facilitator, session_id: str) -> dict:
-    answer = await client.get(f"{DESK}/{who.team_id}/sessions", headers=who.headers)
-    assert answer.status_code == 200, answer.text[:300]
-    return next(card for card in answer.json() if card["session_id"] == session_id)
 
 
 # --- Case 1 — the visit is a record, and the halt stays the team's ----------------------
@@ -312,7 +242,7 @@ async def test_a_facilitator_of_another_team_cannot_mark_this_room_attended(
     session = await a_session(db_session, team_id=facilitator_a.team_id)
     await the_tablet_halts(client, session.id)
 
-    refused = await attend(client, session.id, facilitator_b)
+    refused = await attend(client, session.id, facilitator_b, halt=1)
 
     assert refused.status_code == 404, refused.text[:300]
 
@@ -346,7 +276,7 @@ async def test_another_teams_facilitator_cannot_undo_a_mark_either(
     await the_tablet_halts(client, session.id)
     assert (await attend(client, session.id, facilitator_a)).status_code == 200
 
-    refused = await unattend(client, session.id, facilitator_b)
+    refused = await unattend(client, session.id, facilitator_b, halt=1)
 
     assert refused.status_code == 404, refused.text[:300]
     card = await history_row(client, facilitator_a, session.id)
@@ -546,8 +476,13 @@ async def test_a_halt_asked_while_a_visit_was_landing_is_still_listed(
     """The visit a new halt clears may have landed after the ask read the room."""
     async with rival_factory() as asking, rival_factory() as visiting:
         read_before_the_visit = await room.get_session(asking, waiting_room.id)
+        read = await room.get_session(visiting, waiting_room.id)
         await room.attend(
-            visiting, await room.get_session(visiting, waiting_room.id), by=facilitator_a.id
+            visiting,
+            read,
+            by=facilitator_a.id,
+            halts_raised=read.halts_raised,
+            warned_at=read.warned_at,
         )
 
         await room.mark_needs_person(asking, read_before_the_visit)
@@ -568,8 +503,13 @@ async def test_a_warning_raised_while_a_visit_was_landing_is_still_listed(
     session_id = waiting_room.id
     async with rival_factory() as warning, rival_factory() as visiting:
         read_before_the_visit = await room.get_session(warning, session_id)
+        read = await room.get_session(visiting, session_id)
         await room.attend(
-            visiting, await room.get_session(visiting, session_id), by=facilitator_a.id
+            visiting,
+            read,
+            by=facilitator_a.id,
+            halts_raised=read.halts_raised,
+            warned_at=read.warned_at,
         )
 
         await room.raise_a_warning(warning, read_before_the_visit)
@@ -593,8 +533,13 @@ async def test_a_warning_a_visit_ended_while_a_halt_was_asked_stays_ended(
         await room.raise_a_warning(warning, await room.get_session(warning, waiting_room.id))
     async with rival_factory() as asking, rival_factory() as visiting:
         read_before_the_visit = await room.get_session(asking, waiting_room.id)
+        read = await room.get_session(visiting, waiting_room.id)
         await room.attend(
-            visiting, await room.get_session(visiting, waiting_room.id), by=facilitator_a.id
+            visiting,
+            read,
+            by=facilitator_a.id,
+            halts_raised=read.halts_raised,
+            warned_at=read.warned_at,
         )
 
         await room.mark_needs_person(asking, read_before_the_visit)
@@ -633,12 +578,6 @@ async def test_undoing_a_visit_after_the_team_came_back_does_not_stop_them_again
     )
     assert state["halt"] is None
     assert await queued(client, facilitator_a, waiting_room.id) is None
-
-
-async def the_team_opens_the_session(client: httpx.AsyncClient) -> dict:
-    opened = await client.post(f"{IR}/sessions", json={"pericope": P, "language": "pt"})
-    assert opened.status_code == 200, opened.text[:300]
-    return opened.json()
 
 
 async def test_only_the_teams_return_lifts_the_halt_and_it_keeps_the_visit(
@@ -692,33 +631,6 @@ async def test_the_tablets_own_halt_is_a_blocking_one(
     assert standing["halt"] == BLOCKING
 
 
-async def _a_rehearsal(client: httpx.AsyncClient, session_id: str) -> str:
-    kept = await client.post(
-        f"{IR}/sessions/{session_id}/takes",
-        headers={"X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": P},
-        files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
-    )
-    assert kept.status_code == 200, kept.text[:300]
-    return kept.json()["take_id"]
-
-
-async def _tell_back_again(
-    client: httpx.AsyncClient, session_id: str, take_id: str
-) -> httpx.Response:
-    return await client.post(
-        f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Device": DEVICE},
-        data={
-            "take_id": take_id,
-            "starts_ms": "0",
-            "ends_ms": "9000",
-            "retelling": "true",
-        },
-        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
-    )
-
-
 async def test_a_hard_stretch_is_a_warning_and_not_a_block(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -732,16 +644,16 @@ async def test_a_hard_stretch_is_a_warning_and_not_a_block(
     they are different walks.
     """
     session = await a_session(db_session, team_id=facilitator_a.team_id)
-    take_id = await _a_rehearsal(client, session.id)
+    take_id = await a_rehearsal(client, session.id)
 
     for _ in range(RETELLS_BEFORE_A_WARNING - 1):
-        telling = await _tell_back_again(client, session.id, take_id)
+        telling = await tell_back_again(client, session.id, take_id)
         assert telling.status_code == 200, telling.text[:300]
         assert telling.json()["needs_person"] is False, (
             "a sala pediu uma pessoa antes da terceira contagem do trecho"
         )
 
-    spent = await _tell_back_again(client, session.id, take_id)
+    spent = await tell_back_again(client, session.id, take_id)
 
     assert spent.status_code == 200, spent.text[:300]
     assert spent.json()["needs_person"] is True, (
@@ -952,15 +864,6 @@ def the_telling_is_heard(monkeypatch: pytest.MonkeyPatch) -> None:
         return "a equipe contou o trecho"
 
     monkeypatch.setattr(bt_api, "heard", _words)
-
-
-async def a_warning_is_raised(client: httpx.AsyncClient, session_id: str) -> None:
-    """The team tells the same stretch back until it becomes a hard stretch."""
-    take_id = await _a_rehearsal(client, session_id)
-    for _ in range(RETELLS_BEFORE_A_WARNING):
-        telling = await _tell_back_again(client, session_id, take_id)
-        assert telling.status_code == 200, telling.text[:300]
-    assert telling.json()["needs_person"] is True, "o trecho difícil não levantou o aviso"
 
 
 async def test_a_standing_warning_reads_as_a_warning_while_the_room_goes_on(

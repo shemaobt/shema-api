@@ -81,6 +81,10 @@ async def _keep(
         data["pass_number"] = str(pass_number)
     if origin is not None:
         data["origin"] = origin
+    if origin is not None and part is not None:
+        listed = await _takes_of_part(client, session_id, part)
+        if listed:
+            data["over_take"] = listed[-1]["take_id"]
     if reopens:
         data["reopens_the_approved_draft"] = "true"
     return await client.post(

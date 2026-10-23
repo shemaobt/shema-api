@@ -331,7 +331,13 @@ async def test_a_halt_that_never_had_a_turn_outlives_being_attended(client, db_s
     halted = await a_session(db_session, project_id=project.id, entered=False)
     await room.mark_needs_person(db_session, halted)
 
-    await room.attend(db_session, halted, by="quem-foi")
+    await room.attend(
+        db_session,
+        halted,
+        by="quem-foi",
+        halts_raised=halted.halts_raised,
+        warned_at=halted.warned_at,
+    )
 
     history = await read_history(client, project.id, headers)
 

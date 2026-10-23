@@ -216,9 +216,9 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     the team is working on — one take per part — and the earlier one is history, which the
     **Retroverification file** is where the facilitator and the consultant read.
 
-    Which of the two is the part is the pass the tablet counted, and not the moment the upload
-    landed: the outbox drains whenever the link comes back, so the abandoned take can be written
-    down *after* the take that replaced it, and it is written down that way here on purpose.
+    Which of the two is the part is the one the room accepted last, and not the pass the tablet
+    counted: a reinstalled tablet, or a second one, counts from 1 again (ENG-1760). The later
+    arrival is pass 1 here on purpose.
 
     The whole-passage take `ready_session` leaves is history once a numbered part exists, so
     the packet carries only the numbered one.
@@ -258,10 +258,10 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
-    assert seen == [(1, 2, "c" * 64)], (
+    assert seen == [(1, 1, "b" * 64)], (
         "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
-        "nos rótulos dizia qual era qual; e pela chegada a escolha sairia trocada, porque a "
-        "passada 1 foi anotada depois da 2"
+        "nos rótulos dizia qual era qual; e pela passada a escolha sairia trocada, porque a "
+        "passada 1 chegou depois da 2"
     )
     assert "b" * 64 in [take.sha256 for take in file.takes], (
         "e a tomada abandonada continua inteira no arquivo de retroverificação"

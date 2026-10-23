@@ -23,19 +23,20 @@ STALLED_AFTER = timedelta(days=21)
 
 def team_state(
     *,
-    book_closed: bool,
+    every_book_closed: bool,
     last_activity_at: datetime | None,
     now: datetime,
 ) -> TeamState:
     """Where a team stands, from whether they have anywhere left to go and when they last went.
 
-    ``book_closed`` was ``passage_done`` and meant the latest session had finished its passage.
-    ENG-450 made that a passing moment: a closed passage moves the team straight to the next
-    one, so the only way to have nothing left is to have closed every passage of the book. The
-    parameter carries the new meaning under a name that says it, because the two readings agree
-    on almost every team and part on the only ones this state is about.
+    ``every_book_closed`` was ``passage_done`` and meant the latest session had finished its
+    passage. ENG-450 made that a passing moment: a closed passage moves the team straight to the
+    next one, so the only way to have nothing left is to have closed every passage. ENG-1709
+    made it every passage of every served book: a team done with one book still has the others
+    (ADR 0094). The parameter carries the meaning under a name that says it, because the
+    readings agree on almost every team and part on the only ones this state is about.
 
-    A team at the end of the book is never stalled, however long ago they got there: stalled
+    A team at the end of every book is never stalled, however long ago they got there: stalled
     means the work stopped, not that the team went quiet, and a team that finished is nobody
     to chase.
 
@@ -43,7 +44,7 @@ def team_state(
     "stopped" — a team still waiting for its first session would otherwise arrive at the top
     of a facilitator's queue with nothing to be chased about.
     """
-    if book_closed:
+    if every_book_closed:
         return TeamState.COMPLETE
 
     if last_activity_at is not None and as_utc(last_activity_at) < now - STALLED_AFTER:
