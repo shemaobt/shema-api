@@ -18,8 +18,12 @@ Decided by the ticket's rule (ENG-1709) and the Definer's answers of 2026-10-22:
   entered first, then the most recent), while that book still has an unclosed passage.
   Otherwise it is the first of Ruth, Esther and Jonah that has one. A session whose pericope
   no served book holds is passed over.
-- When the book a team is in is done, the server moves the team to the next book that has a
-  passage left. So a team that closed Ruth and opened nothing else is in Esther, on E01.
+- When the book a team is in is done, the server moves the team to the first of Ruth, Esther
+  and Jonah that has a passage left, whichever book it was in. So a team that closed Ruth and
+  opened nothing else is in Esther, on E01.
+- A facilitator's visit is not the team's act and does not move it: marking a room attended,
+  or undoing the mark, leaves the session's `updated_at` as it was, as the other writes that
+  are not the team's already do.
 - There is one current passage per team, in its Current book. Every unclosed passage of any
   other book is future.
 - A team is COMPLETE only when every passage of every served book is closed. Complete means

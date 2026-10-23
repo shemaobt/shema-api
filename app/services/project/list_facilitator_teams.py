@@ -188,9 +188,14 @@ async def list_facilitator_teams(
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
-    here = await where_teams_stand(db, project_ids=[row.id for row in rows])
+    whereabouts = await where_teams_stand(db, project_ids=[row.id for row in rows])
     pins = await canon_pins_of(
-        db, [(row.id, pericope) for row in rows if (pericope := here[row.id].passage) is not None]
+        db,
+        [
+            (row.id, pericope)
+            for row in rows
+            if (pericope := whereabouts[row.id].passage) is not None
+        ],
     )
     facilitated = await writable_project_ids(db, user)
 
@@ -199,9 +204,9 @@ async def list_facilitator_teams(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(row.id, here[row.id].passage, pins),
+            active_passage=_passage(row.id, whereabouts[row.id].passage, pins),
             state=team_state(
-                every_book_closed=here[row.id].complete,
+                every_book_closed=whereabouts[row.id].complete,
                 last_activity_at=row.last_activity_at,
                 now=moment,
             ),
@@ -226,10 +231,9 @@ def _passage(
     """The passage by both its names, or nothing at all at the end of every served book.
 
     `None` is the answer for a team that has closed every passage of every served book, and it
-    is a position rather
-    than a missing value: there is no passage they are on. A card drawn for such a team shows
-    its last one closed, which is ENG-469's criterion and is only sayable if `active_passage`
-    can be absent.
+    is a position rather than a missing value: there is no passage they are on. A card drawn
+    for such a team shows its last one closed, which is ENG-469's criterion and is only
+    sayable if `active_passage` can be absent.
 
     A team with no session yet is not that case — it is on the first passage, because that is
     where the resolution puts it, and the card is drawn on the passage its first session will

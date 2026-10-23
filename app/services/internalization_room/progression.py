@@ -110,13 +110,17 @@ Finished = set[str]
 
 @dataclass(frozen=True)
 class TeamWhereabouts:
-    """Where one team stands: its Current book, its passage there, what it closed, and whether
-    every served book is closed."""
+    """Where one team stands: its Current book, its passage there, what it closed, and which
+    served books it closed every passage of."""
 
     book: str
     passage: str | None
     finished: Finished
-    complete: bool
+    closed_books: frozenset[str]
+
+    @property
+    def complete(self) -> bool:
+        return self.closed_books >= set(served_books())
 
 
 def resolve(finished: Collection[str], *, book: str) -> str | None:
@@ -189,7 +193,7 @@ def standing(
 
 
 def book_standings(
-    finished: Collection[str], *, releases: Mapping[str, PassageRelease]
+    whereabouts: TeamWhereabouts, *, releases: Mapping[str, PassageRelease]
 ) -> list[BookStanding]:
     """Each served book's count, in the order GET /books serves them: «N de 14», «N de 18»,
     «N de 5». Complete means closed, the fact the resolution reads, never approved."""
@@ -200,7 +204,7 @@ def book_standings(
             approved_total=sum(
                 1 for meaning_map in load_book(book) if meaning_map.pericope_num in releases
             ),
-            complete=resolve(finished, book=book) is None,
+            complete=book in whereabouts.closed_books,
         )
         for book in served_books()
     ]
@@ -231,16 +235,6 @@ async def active_passage(
     return resolve(finished.get(project_id, set()), book=book)
 
 
-async def active_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> dict[str, str | None]:
-    """Each team's passage in its Current book."""
-    return {
-        project_id: whereabouts.passage
-        for project_id, whereabouts in (
-            await where_teams_stand(db, project_ids=project_ids)
-        ).items()
-    }
-
-
 async def where_teams_stand(
     db: AsyncSession, *, project_ids: Sequence[str]
 ) -> dict[str, TeamWhereabouts]:
@@ -256,22 +250,25 @@ async def where_teams_stand(
     whereabouts = {}
     for project_id in project_ids:
         closed = finished.get(project_id, set())
-        book = _current_book(closed, latest.get(project_id))
+        closed_books = frozenset(
+            book for book in served_books() if resolve(closed, book=book) is None
+        )
+        book = _current_book(closed_books, latest.get(project_id))
         whereabouts[project_id] = TeamWhereabouts(
             book=book,
             passage=resolve(closed, book=book),
             finished=closed,
-            complete=all(resolve(closed, book=each) is None for each in served_books()),
+            closed_books=closed_books,
         )
     return whereabouts
 
 
-def _current_book(finished: Collection[str], latest: str | None) -> str:
-    if latest is not None and resolve(finished, book=latest) is not None:
+def _current_book(closed_books: frozenset[str], latest: str | None) -> str:
+    if latest is not None and latest not in closed_books:
         return latest
     walking_order = [ROOM_BOOK, *(book for book in served_books() if book != ROOM_BOOK)]
     for book in walking_order:
-        if resolve(finished, book=book) is not None:
+        if book not in closed_books:
             return book
     return latest or ROOM_BOOK
 

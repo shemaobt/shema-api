@@ -40,10 +40,10 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.progression import (
     PericopePosition,
     active_passage,
-    active_passages,
     resolve,
     standing,
     team_standing,
+    where_teams_stand,
 )
 from tests.baker import (
     having_finished_the_passage,
@@ -385,9 +385,12 @@ async def test_two_teams_at_different_points_progress_independently(
         db_session, project_id=behind.id, pericope=FIRST, moved=at_the_floor(FIRST)
     )
 
-    resolved = await active_passages(db_session, project_ids=[ahead.id, behind.id])
+    resolved = await where_teams_stand(db_session, project_ids=[ahead.id, behind.id])
 
-    assert resolved == {ahead.id: SECOND, behind.id: FIRST}
+    assert {team: where.passage for team, where in resolved.items()} == {
+        ahead.id: SECOND,
+        behind.id: FIRST,
+    }
 
 
 async def test_another_teams_work_does_not_move_this_team(db_session: AsyncSession) -> None:
@@ -430,11 +433,11 @@ async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
         read.append(" ".join(statement.split()))
 
     try:
-        resolved = await active_passages(db_session, project_ids=[team.id for team in teams])
+        resolved = await where_teams_stand(db_session, project_ids=[team.id for team in teams])
     finally:
         event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
 
-    assert set(resolved.values()) == {SECOND}
+    assert {where.passage for where in resolved.values()} == {SECOND}
     assert len(read) == 2, f"a resolucao custou {len(read)} statements para 14 equipes: {read}"
 
 

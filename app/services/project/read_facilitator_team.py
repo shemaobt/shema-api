@@ -106,7 +106,7 @@ async def read_facilitator_team(
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
         approved_total=sum(1 for entry in passages if entry.approved),
-        books=book_standings(whereabouts.finished, releases=releases),
+        books=book_standings(whereabouts, releases=releases),
         scene_the_team_is_in=await _scene_they_are_in(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
