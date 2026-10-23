@@ -133,6 +133,7 @@ def _take_view(take: IRTake) -> RetroverificationTake:
         sha256=take.sha256,
         recorded_at=_moment(take.recorded_at),
         url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
+        set_aside_at=_moment(take.set_aside_at),
     )
 
 

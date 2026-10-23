@@ -59,6 +59,7 @@ TEAM_DOORS = [
     ("POST", "/sessions/{session_id}/external-check/{version}/listeners/{number}/finish"),
     ("POST", "/sessions/{session_id}/external-check/{version}/listeners/{number}/marks"),
     ("POST", "/sessions/{session_id}/external-check/{version}/listeners/{number}/recordings"),
+    ("POST", "/sessions/{session_id}/grain"),
     ("POST", "/sessions/{session_id}/needs-person"),
     ("POST", "/sessions/{session_id}/person-arrived"),
     ("POST", "/sessions/{session_id}/release"),

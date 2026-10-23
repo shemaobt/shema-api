@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,10 +100,12 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     """The session's rehearsal takes named the way Refine receives them, with hour-long links."""
     takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    keys = part_keys_by_number(parts)
     release_id = await _release_id(db, session, parts)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
+    by_number = part_keys_by_number(parts)
+    keys = {take.id: by_number[take.ordinal] for take in rehearsals if take.set_aside_at is None}
+    keys |= _keys_as_they_stood(rehearsals)
     replaced_at = {
         take.id: as_utc(successor.created_at).isoformat()
         for take, successor in _each_with_its_successor(takes)
@@ -113,12 +116,14 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         if take.kind is IRTakeKind.ENSAIO and take.ordinal is not None
     )
     for take in rehearsals:
-        if take.id not in live_ids and take.id not in replaced_at:
+        if take.set_aside_at is not None:
+            replaced_at[take.id] = as_utc(take.set_aside_at).isoformat()
+        elif take.id not in live_ids and take.id not in replaced_at:
             later = [at for at in numbered_at if at > as_utc(take.created_at)]
             replaced_at[take.id] = (later or numbered_at)[0].isoformat()
 
     names = [
-        file_name(release_id, keys[take.ordinal], take, superseded=take.id not in live_ids)
+        file_name(release_id, keys[take.id], take, superseded=take.id not in live_ids)
         for take in rehearsals
     ]
     links = await asyncio.gather(
@@ -129,7 +134,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     for take, name, link in zip(rehearsals, names, links, strict=True):
         entry = TakeDownload(
             take_id=take.id,
-            key=keys[take.ordinal],
+            key=keys[take.id],
             filename=name,
             url=link,
             sha256=take.sha256,
@@ -141,7 +146,13 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
             live.append(entry)
         else:
             superseded.append(
-                SupersededTakeDownload(**entry.model_dump(), superseded_at=replaced_at[take.id])
+                SupersededTakeDownload(
+                    **entry.model_dump(),
+                    superseded_at=replaced_at[take.id],
+                    set_aside_at=None
+                    if take.set_aside_at is None
+                    else as_utc(take.set_aside_at).isoformat(),
+                )
             )
     return TakeDownloadsResponse(
         session_id=session.id,
@@ -150,6 +161,26 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         takes=live,
         superseded_takes=superseded,
     )
+
+
+def _keys_as_they_stood(takes: list[IRTake]) -> dict[str, str]:
+    """Each take a **Grain switch** set aside, keyed by its place among the takes it stamped.
+
+    The current parts no longer hold its number, so its key is read off the takes the same
+    switch set aside with it: the numbers among them in reading order, from one.
+    """
+    stamped: dict[datetime, list[IRTake]] = {}
+    for take in takes:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is not None:
+            stamped.setdefault(take.set_aside_at, []).append(take)
+    keys: dict[str, str] = {}
+    for group in stamped.values():
+        numbers = sorted({take.ordinal for take in group if take.ordinal is not None})
+        for take in group:
+            keys[take.id] = (
+                "whole" if take.ordinal is None else f"S{numbers.index(take.ordinal) + 1}"
+            )
+    return keys
 
 
 def _each_with_its_successor(takes: list[IRTake]) -> list[tuple[IRTake, IRTake]]:

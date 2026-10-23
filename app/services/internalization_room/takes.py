@@ -27,6 +27,7 @@ from app.core.exceptions import (
 )
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
+    IRGrain,
     IRSceneFrase,
     IRSceneRehearsal,
     IRSession,
@@ -501,6 +502,10 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     while the session holds no numbered part. Once the team has recorded by scene the whole is
     history, kept with its stretches and findings and no longer a part anybody is asked for.
 
+    A take a **Grain switch** set aside is no part, whatever its number: after a switch the parts
+    are the newest grain's alone, so a whole recorded after a switch to the whole passage is the
+    one part even beside numbered takes, which the switch stamped (ADR 0096).
+
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
     the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
     alone it would be wrong, and this module says why two functions up: that stamp is when the
@@ -513,12 +518,25 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     """
     newest: dict[int | None, IRTake] = {}
     for take in takes:
-        if take.kind is IRTakeKind.ENSAIO:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is None:
             newest[take.ordinal] = take
     if any(ordinal is not None for ordinal in newest):
         newest.pop(None, None)
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
+
+
+def grain_of(take: IRTake) -> IRGrain:
+    return IRGrain.WHOLE if take.ordinal is None else IRGrain.SCENE
+
+
+def grain_in_force(session: IRSession, parts: list[IRTake]) -> IRGrain | None:
+    """The grain the last **Grain switch** chose, else the one the current parts were told in."""
+    if session.grain is not None:
+        return session.grain
+    if any(part.ordinal is not None for part in parts):
+        return IRGrain.SCENE
+    return IRGrain.WHOLE if parts else None
 
 
 def part_positions(parts: list[IRTake]) -> dict[int | None, int | None]:

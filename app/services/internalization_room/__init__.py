@@ -64,8 +64,10 @@ from app.services.internalization_room.sessions import (
     session_for_room_caller,
     session_is_done,
     sessions_waiting_on_a_person,
+    set_aside_by_the_grain_in_force,
     start_the_translation_over,
     stored_as_done,
+    switch_the_grain,
     unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -141,10 +143,12 @@ __all__ = [
     "session_for_room_caller",
     "session_is_done",
     "sessions_waiting_on_a_person",
+    "set_aside_by_the_grain_in_force",
     "set_aside_segment_ids",
     "stale_segments",
     "start_the_translation_over",
     "stored_as_done",
+    "switch_the_grain",
     "synthesize_facilitator_speech",
     "the_finding_that_leads",
     "the_round_is_heard_at_once",

@@ -45,6 +45,11 @@ _SESSION_STATUS_TYPE = Enum(
 )
 
 
+class IRGrain(enum.StrEnum):
+    WHOLE = "whole"
+    SCENE = "scene"
+
+
 class IRSession(Base):
     __tablename__ = "ir_sessions"
     __table_args__ = (Index("ix_ir_sessions_status_created", "status", "created_at"),)
@@ -185,6 +190,21 @@ class IRSession(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: The **Grain** the team chose by its last **Grain switch**. Null on a session never
+    #: switched, whose parts are read off their numbers as before.
+    grain: Mapped[IRGrain | None] = mapped_column(
+        Enum(
+            IRGrain,
+            native_enum=False,
+            length=8,
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=True,
+    )
+    #: When that switch reached the server. Every take it set aside carries the same instant.
+    grain_switched_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
 
 
 class IRTeamSession(Base):
@@ -439,6 +459,9 @@ class IRTake(Base):
     #: The **Clock offset** of the tablet that sent this joined part, kept only at five minutes
     #: or more; the consultant's alone.
     device_clock_offset_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: When a **Grain switch** set this take aside, null while no switch has. Set once and never
+    #: cleared: a switch back does not restore it.
+    set_aside_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
 
 
 class IRSceneSaid(enum.StrEnum):
