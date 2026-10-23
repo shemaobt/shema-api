@@ -1116,14 +1116,17 @@ async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
     A halted room is back on the queue, and a warning the visit ended stands again: it stands
     while ``warned_at`` is set and nobody is marked as having gone. A demo team's halt is
     stamped again by the server at once, because it never calls a person (ADR 0064); a visit
-    to a demo room that never halted clears like any other. ``updated_at`` is left as it was,
-    as the visit left it.
+    to a demo room that never halted clears like any other.
+
+    ``updated_at`` is left as it was, as the visit left it (ADR 0094). The demo read comes
+    before the stamps clear, because a read flushes what is pending and the flush would move it.
     """
     if session.attended_at is None:
         return session
+    demo = await is_the_demo_team(db, session.project_id)
     session.attended_at = None
     session.attended_by = None
-    if halt.standing(session) is not None and await is_the_demo_team(db, session.project_id):
+    if demo and halt.standing(session) is not None:
         _visited(session, by=None)
     session.updated_at = IRSession.updated_at
     await db.commit()

@@ -17,6 +17,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.project import Project
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.progression import resolve, standing
@@ -84,6 +85,12 @@ async def the_guide_spoke_last_in(db: AsyncSession, session_id: str) -> None:
     )
     await db.commit()
     await the_latest(db, session_id)
+
+
+def flushing_before_every_read_as_deployed(db: AsyncSession) -> None:
+    """The deployed sessions autoflush; the suite's do not, and a flush is what moves the
+    team's latest activity."""
+    db.sync_session.autoflush = True
 
 
 async def having_closed(db: AsyncSession, team_id: str, *passages: str) -> IRSession:
@@ -482,5 +489,30 @@ async def test_undoing_a_facilitators_visit_to_an_old_room_does_not_move_the_tea
     card = await the_card(desk_client, desk, team.id)
 
     assert undone.status_code == 200, undone.text[:300]
+    assert card is not None
+    assert card["active_passage"]["pericope"] == "J02"
+
+
+async def test_undoing_the_visit_to_an_old_room_of_a_demo_team_does_not_move_the_team_back_to_its_book(  # noqa: E501
+    room, desk_client, db_session, team_at_the_desk
+) -> None:
+    team, _tablet, desk = team_at_the_desk
+    flushing_before_every_read_as_deployed(db_session)
+    await db_session.execute(update(Project).where(Project.id == team.id).values(is_demo_team=True))
+    ruth = await having_closed(db_session, team.id, "P05")
+    await db_session.execute(
+        update(IRSession)
+        .where(IRSession.id == ruth.id)
+        .values(warned_at=datetime.now(UTC), attended_at=datetime.now(UTC))
+    )
+    await last_touched(db_session, ruth.id, datetime.now(UTC) - timedelta(hours=2))
+    jonah = await having_closed(db_session, team.id, "J01")
+    await last_touched(db_session, jonah.id, datetime.now(UTC) - timedelta(hours=1))
+
+    undone = await room.delete(f"{PREFIX}/facilitator/sessions/{ruth.id}/attended", headers=desk)
+    card = await the_card(desk_client, desk, team.id)
+
+    assert undone.status_code == 200, undone.text[:300]
+    assert undone.json()["attended_at"] is not None
     assert card is not None
     assert card["active_passage"]["pericope"] == "J02"
