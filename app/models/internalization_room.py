@@ -13,6 +13,7 @@ from pydantic import (
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
+from app.models.internalization_room_text_seam import Outcome
 
 
 class LabelledElement(BaseModel):
@@ -1888,6 +1889,27 @@ class SessionCoverageResponse(BaseModel):
     panorama: bool
     no_elements: bool
     ledger: str | None
+
+
+class SessionRetroCheckFinding(BaseModel):
+    kind: str
+    frase: int | None
+
+
+class SessionRetroCheck(BaseModel):
+    at: str
+    outcome: Outcome
+    conferida: bool
+    spoken: str
+    findings: list[SessionRetroCheckFinding]
+
+
+class SessionRetroResponse(BaseModel):
+    session_id: str
+    status: Literal["conferida", "forcada", "sem_conferencia"]
+    version: int | None
+    approved_at: str | None
+    checks: list[SessionRetroCheck]
 
 
 class CanonPinsResponse(BaseModel):
