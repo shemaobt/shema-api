@@ -220,7 +220,9 @@ async def test_a_request_carrying_the_old_retelling_flag_is_answered_like_one_wi
         await tell(client, session_id, take_id, 1, saying="o trecho 1")
         again = await tell(client, session_id, take_id, 1, saying="o trecho 1 de novo", again=flag)
         assert again.status_code == 200, again.text
-        answers.append({k: v for k, v in again.json().items() if k != "session_id"})
+        answers.append(
+            {k: v for k, v in again.json().items() if k not in ("session_id", "segment_id")}
+        )
         rows.append(
             [
                 (one.starts_ms, one.ends_ms, one.ordinal, one.tellings)
