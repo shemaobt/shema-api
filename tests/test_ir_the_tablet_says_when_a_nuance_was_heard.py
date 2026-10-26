@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -281,11 +279,6 @@ async def test_a_part_recorded_again_makes_its_said_nuance_sayable_even_in_the_s
     assert [_handed(speaker, brief) for brief in range(len(speaker.briefs))] == [[2], [2]], (
         "a parte foi gravada de novo e a nuance do áudio antigo calava a do novo"
     )
-
-
-@asynccontextmanager
-async def _the_same(db: AsyncSession) -> AsyncIterator[AsyncSession]:
-    yield db
 
 
 async def test_a_nuance_alone_reaches_the_speaker_and_still_confers(
