@@ -237,6 +237,59 @@ def test_a_hang_in_the_tests_is_stopped_at_twelve_minutes_whatever_setup_took() 
     assert timeout == 12, f"the pytest step's timeout-minutes is {timeout}, not 12"
 
 
+def _the_install_step() -> dict:
+    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
+    named = [step for step in steps if step.get("name") == "Install ffmpeg"]
+    assert len(named) == 1, f"test.yml has {len(named)} steps named Install ffmpeg"
+    return named[0]
+
+
+def _the_install_runs(tmp_path: Path, mirror_answers: list[int]) -> tuple[int, str, dict]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "answers").write_text("".join(f"{code}\n" for code in mirror_answers))
+    tools = {
+        "sudo": 'exec "$@"',
+        "timeout": f'echo "$1" >> {tmp_path}/limits\nshift\nexec "$@"',
+        "apt-get": (
+            f'echo "$*" >> {tmp_path}/apt\n'
+            'case " $* " in\n'
+            "  *' update '*)\n"
+            f"    code=$(head -n 1 {tmp_path}/answers)\n"
+            f"    sed -i.bak 1d {tmp_path}/answers\n"
+            '    exit "$code" ;;\n'
+            "esac"
+        ),
+        "ffmpeg": 'echo "ffmpeg version 6.1.1-fake Copyright"\necho "built with fake"',
+    }
+    for name, body in tools.items():
+        tool = bin_dir / name
+        tool.write_text(f"#!/bin/sh\n{body}\n")
+        tool.chmod(0o755)
+    done = subprocess.run(
+        ["bash", "-e", "-c", _the_install_step()["run"]],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    logs = {
+        name: (tmp_path / name).read_text().splitlines() if (tmp_path / name).exists() else []
+        for name in ("limits", "apt")
+    }
+    return done.returncode, done.stdout, logs
+
+
+def test_each_try_at_the_mirror_is_given_minutes_not_as_long_as_the_mirror_takes(
+    tmp_path: Path,
+) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [0])
+
+    assert code == 0
+    assert logs["limits"], "no apt attempt runs under `timeout`"
+    assert all(int(limit) <= 300 for limit in logs["limits"]), logs["limits"]
+
+
 def _checks_steps() -> list[dict]:
     jobs = _workflow("checks.yml")["jobs"]
     assert "checks" in jobs, f"checks.yml defines {sorted(jobs)}, not a single `checks` job"
