@@ -35,6 +35,7 @@ from app.models.internalization_room import (
     RetroverificationListening,
     RetroverificationNuance,
     RetroverificationRelease,
+    RetroverificationRound,
     RetroverificationStretch,
     RetroverificationTake,
     RetroverificationTelling,
@@ -395,6 +396,16 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
                 played_by_take=list(attempt.played_by_take),
                 played_ranges=[list(span) for span in attempt.played_ranges],
                 clip_duration_ms=attempt.clip_duration_ms,
+                checks=[
+                    RetroverificationRound(
+                        at=check.at.isoformat(),
+                        outcome=check.outcome,
+                        conferida=check.conferida,
+                        spoken=check.spoken,
+                        findings=[_finding_view(finding) for finding in check.findings],
+                    )
+                    for check in attempt.checks
+                ],
             )
             for attempt in telling_back.superseded
         ],
