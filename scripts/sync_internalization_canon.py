@@ -24,11 +24,10 @@ pin and manifest, and the element labels beside it, are copied to `canon/kept/<o
 session keeps the canon it was opened with for as long as the Desk shows it, archived by a
 Zerar included, and that copy is the only place its canon still exists once the pin moves.
 The sync removes no kept tree: which pins a session holds needs a production read, and the
-sync takes none. A kept tree
-leaves only through `--prune --live-pins <file>`, the file being production's answer to
-`GET /api/internalization-room/facilitator/canon-pins`; the prune keeps every pin the file
-names, the pin production serves and the deployed pin, and drops every other kept tree (ADRs
-0088 and 0099).
+sync takes none. A kept tree leaves only through `--prune --live-pins <file>`, the file being
+production's answer to `GET /api/internalization-room/facilitator/canon-pins`; the prune keeps
+every pin the file names, the pin production serves and the deployed pin, and drops every
+other kept tree (ADRs 0088 and 0099).
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
 compiler's main line, when the pin leaves no consumable passage at all, and when a names
@@ -207,6 +206,11 @@ def sync(pin: str | None = None) -> int:
     held = pinned_commit(PIN_FILE.read_text()) if PIN_FILE.exists() else sha
     if held != sha:
         _keep(held)
+        for tree in sorted(
+            path.name for path in (VENDOR.parent / "kept").iterdir() if path.is_dir()
+        ):
+            if tree != held:
+                print(f"  kept kept/{tree}: left as it was, since only a prune removes one")
     files = []
     for kind in KINDS:
         target = VENDOR / kind
