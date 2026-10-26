@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import httpx
@@ -40,6 +41,8 @@ THE_ANALYSTS_NOTE = "NOTA-DO-ANALISTA-9c24"
 FIRST_LINE = "Na frase 1 vocês disseram que Noemi voltou alegre. Ouçam de novo esse trecho."
 SECOND_LINE = "Ficou muito bom. A tradução de vocês conta a passagem inteira."
 NUANCE_LINE = "Na frase 1 falta dizer que Noemi voltou de Moabe."
+THE_TEAMS_QUOTE = "CITACAO-DA-EQUIPE-9c24"
+THE_MAPS_STORY = "HISTORIA-DO-MAPA-9c24"
 
 
 @pytest.fixture()
@@ -146,8 +149,8 @@ async def _a_missing_element_and_a_nuance(
         note=THE_ANALYSTS_NOTE,
         chunk=1,
         segment_id=told.id,
-        quote="Noemi voltou com Rute",
-        story="Noemi voltou de Moabe com Rute",
+        quote=THE_TEAMS_QUOTE,
+        story=THE_MAPS_STORY,
         take_id=told.take_id,
         starts_ms=told.starts_ms,
         ends_ms=told.ends_ms,
@@ -338,3 +341,25 @@ async def test_an_approved_version_the_team_reopened_by_recording_again_reads_ap
             }
         ],
     }
+
+
+async def test_nowhere_in_the_block_is_the_analysts_note_a_nuances_words_or_a_veredito(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(
+        db_session, project_id=project.id, tell=_a_missing_element_and_a_nuance
+    )
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text
+    (row,) = await releases_of(db_session, session.id)
+    assert THE_ANALYSTS_NOTE in json.dumps(row.forced_open_findings)
+
+    served = (await client.get(desk_record_retro(session.id), headers=desk)).text
+
+    assert THE_ANALYSTS_NOTE not in served
+    assert THE_TEAMS_QUOTE not in served
+    assert THE_MAPS_STORY not in served
+    assert "veredito" not in served.lower()
+    assert json.loads(served)["status"] == "forcada"
