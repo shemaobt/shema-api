@@ -160,6 +160,21 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
         project_id=project.id,
         status=IRSessionStatus.NEEDS_PERSON,
         messages=[{"role": "guide", "text": "Vamos ouvir a história.", "voice_key": f"voz/{tag}"}],
+        back_translation={
+            "sentences": [
+                {
+                    "sentence_id": f"frase-{tag}",
+                    "segment_id": f"seg-{tag}",
+                    "previous_take_id": f"tk-{tag}-antes",
+                    "take_id": f"tk-{tag}",
+                    "starts_ms": 0,
+                    "ends_ms": 1000,
+                    "sha256": "0" * 64,
+                    "storage_key": f"internalization-room/takes/{tag}/sentence/frase.wav",
+                    "heard_before": False,
+                }
+            ]
+        },
     )
     db.add(session)
     await db.flush()
@@ -355,9 +370,10 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/takes/downloads",
         f"{IR}/facilitator/sessions/{session}/external-check/1",
         f"{IR}/facilitator/sessions/{session}/retro",
+        f"{IR}/facilitator/sessions/{session}/re-recorded-sentences",
     ]
 
-    values = {"session_id": session, "number": 0, "version": 1}
+    values = {"session_id": session, "number": 0, "version": 1, "sentence_id": "frase-b"}
     answers = {
         path: (
             await client.get(path.format(**values), headers=desk.readers["consultant"])
@@ -377,7 +393,17 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9], reads[11], reads[12]):
+    for url in (
+        reads[0],
+        reads[1],
+        reads[2],
+        reads[5],
+        reads[6],
+        reads[9],
+        reads[11],
+        reads[12],
+        reads[13],
+    ):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
@@ -400,6 +426,7 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"{IR}/facilitator/questions/{team.question}/reply/audio",
         f"{IR}/facilitator/takes/{team.take}/audio",
         f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
+        f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/audio",
     ]
     mounted = _audio_doors()
     covered = {template_of("GET", url) for url in doors}
@@ -408,7 +435,7 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
 
-    question, by_handle, reply, take, turn = [
+    question, by_handle, reply, take, turn, sentence = [
         await client.get(url, headers=reader) for url in doors
     ]
 
@@ -420,6 +447,7 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
     )
     assert take.status_code == 307, take.text[:300]
     assert turn.status_code == 307, turn.text[:300]
+    assert sentence.status_code == 307, sentence.text[:300]
     assert await _row(per_request, IRSession, team.session) == session_before
     assert await _row(per_request, IRQuestion, team.question) == question_before
 
@@ -534,6 +562,8 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
         (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes/downloads", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/audio", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
         (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),

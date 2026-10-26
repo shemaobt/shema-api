@@ -418,6 +418,25 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/re-recorded-sentences", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/re-recorded-sentences", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/re-recorded-sentences/frase-1/audio",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/re-recorded-sentences/frase-1/audio",
+                {},
+            ),
+            "ids": (session_id, absent),
+            "owner_expects": 404,
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/scene-rehearsals", {}),
             "ids": (session_id, absent),
