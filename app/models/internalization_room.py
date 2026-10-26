@@ -1579,6 +1579,15 @@ class RetroverificationRelease(BaseModel):
     package_sha256: str
 
 
+class RetroverificationRound(BaseModel):
+    at: str
+    outcome: Outcome
+    conferida: bool
+    spoken: str
+    findings: list[RetroverificationFinding]
+    nuances: list[RetroverificationNuance]
+
+
 class RetroverificationAttempt(BaseModel):
     """A telling-back the team replaced, and what it reported having listened to.
 
@@ -1598,6 +1607,7 @@ class RetroverificationAttempt(BaseModel):
     played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
+    checks: list[RetroverificationRound] = Field(default_factory=list)
 
 
 class RetroverificationTelling(BaseModel):
