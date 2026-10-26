@@ -139,3 +139,16 @@ async def test_the_archived_rounds_in_the_file_keep_their_nuances_and_whether_th
         (1, THE_SAID_QUOTE, "tornou", True),
         (1, THE_UNSAID_QUOTE, "tornou", False),
     ], "as nuances da rodada de antes sumiam"
+
+
+async def test_the_file_keeps_the_restarted_frases_with_their_words_apart_from_the_current_ones(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    session, desk = await _restarted(client, db_session, room_app)
+
+    the_file = await _the_file(client, session.id, desk)
+
+    assert [one["transcript"] for one in the_file["abandoned"]] == ["Noemi voltou alegre"], (
+        "a frase traduzida antes do recomeçar sumia do arquivo"
+    )
+    assert the_file["stretches"] == [], "a frase de antes ainda contava como a de agora"
