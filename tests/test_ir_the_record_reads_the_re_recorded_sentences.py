@@ -303,3 +303,16 @@ async def test_nowhere_in_the_record_of_a_re_recorded_sentence_is_a_word_of_eith
         "in_use",
         "awaiting_frase",
     }, "uma frase regravada ganhou um campo que não é áudio nem fato do processo"
+
+
+async def test_a_passage_with_no_sentence_recorded_again_has_none_even_after_a_part_recorded_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, room_app: App
+) -> None:
+    session, _, _ = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    again = await upload_a_part(client, session.id, part=2, audio=b"a cena 2 gravada de novo")
+    assert again.status_code == 200, again.text
+
+    assert await _the_sentences(client, session.id, desk) == [], (
+        "uma parte gravada de novo aparecia como frase regravada"
+    )
