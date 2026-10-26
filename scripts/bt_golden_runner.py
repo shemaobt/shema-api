@@ -81,6 +81,7 @@ class Script:
     clips: list[Clip]
     rounds: list[Round]
     why: str = ""
+    joined: bool = False
 
 
 @dataclass
@@ -105,6 +106,7 @@ def load_script(path: Path) -> Script:
         pericopeId=raw["pericopeId"],
         language=raw["language"],
         why=raw.get("why", ""),
+        joined=raw.get("joined") is True,
         clips=[
             Clip(key=one["key"], durationMs=one["durationMs"], contentType=one.get("contentType"))
             for one in raw["draft"]["clips"]
@@ -120,6 +122,7 @@ async def open_session(script: Script, client: httpx.AsyncClient) -> str:
             "pericopeId": script.pericopeId,
             "language": script.language,
             "clips": [asdict(clip) for clip in script.clips],
+            "joined": script.joined,
         },
     )
     declared.raise_for_status()
