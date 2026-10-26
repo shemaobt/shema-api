@@ -165,7 +165,7 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
                 {
                     "sentence_id": f"frase-{tag}",
                     "segment_id": f"seg-{tag}",
-                    "previous_take_id": f"tk-{tag}",
+                    "previous_take_id": f"tk-{tag}-antes",
                     "take_id": f"tk-{tag}",
                     "starts_ms": 0,
                     "ends_ms": 1000,
