@@ -29,7 +29,9 @@ from tests.release_harness import (
     APP_KEY,
     PREFIX,
     a_claimed_device,
+    a_p02_telling_with_the_swapped_cause,
     at_the_desk,
+    desk_release,
     one_stretch,
     ready_session,
     releases_of,
@@ -122,3 +124,21 @@ async def test_a_passage_approved_after_two_checks_reads_conferida_with_both_con
         ("addition", 1)
     ]
     assert retro["checks"][1]["findings"] == []
+
+
+async def test_a_forced_approval_reads_forcada_at_the_moment_the_facilitator_forced_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text
+
+    retro = await _the_retro(client, session.id, desk)
+
+    (row,) = await releases_of(db_session, session.id)
+    assert row.forced_at is not None
+    assert retro["status"] == "forcada"
+    assert retro["forced_at"] == row.forced_at.isoformat()
+    assert retro["version"] == 1

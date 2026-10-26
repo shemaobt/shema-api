@@ -1907,6 +1907,7 @@ class SessionRetroCheck(BaseModel):
 class SessionRetroResponse(BaseModel):
     session_id: str
     status: Literal["conferida", "forcada", "sem_conferencia"]
+    forced_at: str | None
     version: int | None
     approved_at: str | None
     checks: list[SessionRetroCheck]
