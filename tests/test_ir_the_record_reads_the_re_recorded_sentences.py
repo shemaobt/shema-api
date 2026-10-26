@@ -5,19 +5,22 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import segments as segments_api
 from app.core.config import get_settings
 from app.db.models.auth import App
+from app.db.models.internalization_room import IRTake
 from app.db.models.project import Project
 from app.services.internalization_room import takes as takes_service
+from app.services.internalization_room.segments import capture_segment
 from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import APP_KEY, PREFIX, at_the_desk
 from tests.room_harness import room_client, the_bucket_is_in_memory, upload_a_part
-from tests.sentence_harness import part_audio, re_record, rehearsed_in_wav, spoken
+from tests.sentence_harness import WAV, part_audio, re_record, rehearsed_in_wav, spoken
 
 SCENE_TWO = [[(0, 1000)], [(0, 42000), (42000, 49000), (49000, 50000)]]
 STORAGE = "https://storage.example/balde-de-teste/"
@@ -334,3 +337,39 @@ async def test_a_sentence_the_session_never_laid_in_is_not_found_rather_than_ano
     )
 
     assert answered.status_code == 404, answered.text
+
+
+async def test_a_sentence_laid_into_the_rehearsal_told_whole_reads_whole_and_first(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, room_app: App
+) -> None:
+    session, (whole,), ((_, second),) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000), (1000, 2000)]]
+    )
+    whole.ordinal, whole.scope = None, "passagem-inteira"
+    await db_session.commit()
+    desk = await _the_desk(db_session, room_app)
+    laid = await re_record(
+        client, session.id, second.id, spoken(0.6), sentence_id="na-passagem-inteira"
+    )
+    assert laid.status_code == 200, laid.text
+    scene = await upload_a_part(
+        client, session.id, part=1, audio=part_audio(1, 1000), content_type=WAV
+    )
+    assert scene.status_code == 200, scene.text
+    (part_one,) = [
+        take
+        for take in await db_session.scalars(select(IRTake).where(IRTake.session_id == session.id))
+        if take.ordinal == 1
+    ]
+    told = await capture_segment(
+        db_session, session, take_id=part_one.id, starts_ms=0, ends_ms=1000, transcript="cena 1"
+    )
+    laid = await re_record(client, session.id, told.id, spoken(0.6), sentence_id="na-cena-1")
+    assert laid.status_code == 200, laid.text
+
+    sentences = await _the_sentences(client, session.id, desk)
+
+    assert [(one["sentence_id"], one["scene"]) for one in sentences] == [
+        ("na-passagem-inteira", "whole"),
+        ("na-cena-1", "S1"),
+    ], "a frase regravada na passagem inteira não vinha primeiro, como passagem inteira"

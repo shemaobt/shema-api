@@ -19,10 +19,10 @@ from app.utils.stored_time import as_utc
 
 
 def _scene(take: IRTake, positions: dict[int | None, int | None]) -> str | None:
-    if take.ordinal not in positions:
-        return None
-    position = positions[take.ordinal]
-    return "whole" if position is None else f"S{position}"
+    if take.ordinal is None:
+        return "whole"
+    position = positions.get(take.ordinal)
+    return None if position is None else f"S{position}"
 
 
 async def re_recorded_sentences_of(
