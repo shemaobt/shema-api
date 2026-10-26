@@ -756,6 +756,7 @@ async def declare_rehearsal_parts(
     session: IRSession,
     keys: list[str],
     content_types: Mapping[str, str] | None = None,
+    origins: Mapping[str, str] | None = None,
 ) -> list[IRTake]:
     """Her draft clips as real rehearsal takes, declared rather than uploaded.
 
@@ -787,6 +788,7 @@ async def declare_rehearsal_parts(
             crc32c="",
             content_type=(content_types or {}).get(key, TEXT_SEAM_CONTENT_TYPE),
             ordinal=position,
+            origin=(origins or {}).get(key),
         )
         for position, key in enumerate(keys)
     ]

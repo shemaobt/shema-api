@@ -12,6 +12,8 @@ from app.core.config import get_settings
 from app.core.exceptions import ERROR_CODE_UPSTREAM, UpstreamServiceError
 from app.services import internalization_room as room
 from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.scene_rehearsals import scene_rehearsals_of_the_session
+from app.services.internalization_room.takes import takes_of
 from tests.text_seam_harness import RUNNER_KEY, the_app
 from tests.turn_harness import the_room_agent_is
 
@@ -157,6 +159,40 @@ async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validato
         "The drafted response answers this. Referring to these words is not a claim about the "
         f"passage.\n\n{HER_KICKOFF}"
     ) in speaker.validations[-1], "o Validador não lia o pontapé dela como o que a equipe disse"
+
+
+HER_JOINED_KICKOFF = (
+    "(The app joined the team's scene rehearsals into one recording and the team heard it "
+    "whole. The frases are the translations they made of each scene, with any they re-recorded "
+    "or translated again since. Speak the verdict now.)"
+)
+
+
+async def test_a_session_her_script_declares_joined_is_a_joined_recording_and_opens_on_her_kickoff(
+    client, speaker, db_session
+) -> None:
+    declared = await client.post(
+        f"{SEAM}/session",
+        json={"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS, "joined": True},
+    )
+    assert declared.status_code == 200, declared.text
+    session_id = str(declared.json()["sessionId"])
+
+    await _a_round(client, TELLING, session_id=session_id)
+
+    rehearsals = {one.id for one in await scene_rehearsals_of_the_session(db_session, session_id)}
+    origins = [part.origin for part in await takes_of(db_session, session_id)]
+    assert len(origins) == len(CLIPS) and all(origin in rehearsals for origin in origins), (
+        "a part her script declares joined must come from a scene rehearsal of its session, "
+        f"as a tablet join's does: {origins} against {rehearsals}"
+    )
+    assert speaker.drafts[-1]["user_content"] == HER_JOINED_KICKOFF, (
+        "her verdictKickoff (src/backtranslation/repair.ts:41-48 at 18fa7c4) opens a joined "
+        "recording's verdict on §8.3's text"
+    )
+    assert f"passage.\n\n{HER_JOINED_KICKOFF}" in speaker.validations[-1], (
+        "the Validator does not read her joined kickoff as what the team said"
+    )
 
 
 def _handed(speaker: Speaker, run: int = -1) -> str:
