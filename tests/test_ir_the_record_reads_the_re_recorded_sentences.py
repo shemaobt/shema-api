@@ -316,3 +316,21 @@ async def test_a_passage_with_no_sentence_recorded_again_has_none_even_after_a_p
     assert await _the_sentences(client, session.id, desk) == [], (
         "uma parte gravada de novo aparecia como frase regravada"
     )
+
+
+async def test_a_sentence_the_session_never_laid_in_is_not_found_rather_than_another_recording(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    room_app: App,
+    signed: None,
+) -> None:
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    await re_record(client, session.id, middle.id, spoken(8.6), sentence_id="sentence-0001")
+
+    answered = await client.get(
+        desk_sentence_audio(session.id, "sentence-0002"), headers=desk, follow_redirects=False
+    )
+
+    assert answered.status_code == 404, answered.text
