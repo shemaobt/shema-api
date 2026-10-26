@@ -9,6 +9,7 @@ touched checks exactly as before.
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -41,10 +42,20 @@ from tests.room_harness import (
     the_room_speaks,
 )
 from tests.sentence_harness import re_record, rehearsed_in_wav, spoken, take_named
+from tests.turn_harness import the_room_agent_is
 
 PART_MS = 4000
 CHECKING_BY_POSITION = "N1"
 UNTRANSLATED_BY_POSITION = "N2"
+HER_JOINED_KICKOFF = (
+    "(The app joined the team's scene rehearsals into one recording and the team heard it "
+    "whole. The frases are the translations they made of each scene, with any they re-recorded "
+    "or translated again since. Speak the verdict now.)"
+)
+HER_KICKOFF = (
+    "(The team heard their whole recording, told it back frase by frase, and tapped "
+    "'terminei'. Speak the verdict now.)"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -603,3 +614,32 @@ async def test_a_listen_with_a_re_recorded_sentence_awaiting_its_words_checks_no
         "a voz dizia o N-2 com uma frase regravada ainda sem tradução, e a conferência recusava"
     )
     assert body["fixed_line"] == ""
+
+
+@pytest.mark.parametrize(("joined", "kickoff"), [(True, HER_JOINED_KICKOFF), (False, HER_KICKOFF)])
+async def test_the_verdict_on_a_joined_recording_opens_on_her_joined_kickoff(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    joined: bool,
+    kickoff: str,
+) -> None:
+    opened: list[str] = []
+
+    async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        opened.append(user_content)
+        return "Vocês contaram bem."
+
+    the_room_agent_is(monkeypatch, turn=speaker)
+    session, parts = await _recorded(db_session, [[(0, PART_MS)], [(0, PART_MS)]], joined=joined)
+
+    answered = await press_terminei(client, session.id, report=_heard(parts))
+
+    assert answered.status_code == 200, answered.text
+    assert opened == [kickoff], (
+        "her verdictKickoff (src/backtranslation/repair.ts:41-48 at 18fa7c4) opens the verdict "
+        "on §8.3's text exactly when the recording was joined, and on the whole-recording "
+        "text when no join touched it"
+    )

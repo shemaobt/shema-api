@@ -8,7 +8,10 @@ from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
-from app.services.internalization_room.turn_instructions import VERDICT_KICKOFF
+from app.services.internalization_room.turn_instructions import (
+    JOINED_VERDICT_KICKOFF,
+    VERDICT_KICKOFF,
+)
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -25,6 +28,7 @@ async def run_verdict_turn(
     language_code: str = AUTHORED,
     settings: Settings | None = None,
     session_id: str = "?",
+    joined: bool = False,
 ) -> TurnOutcome:
     """Voice the back-translation verdict — one finding, then stop.
 
@@ -48,7 +52,7 @@ async def run_verdict_turn(
         session_language=session_language,
         language_code=language_code,
         opening=True,
-        opening_instruction=VERDICT_KICKOFF,
+        opening_instruction=JOINED_VERDICT_KICKOFF if joined else VERDICT_KICKOFF,
         settings=cfg,
         session_id=session_id,
         telling_back=telling_back,
