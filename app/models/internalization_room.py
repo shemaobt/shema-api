@@ -1585,6 +1585,7 @@ class RetroverificationRound(BaseModel):
     conferida: bool
     spoken: str
     findings: list[RetroverificationFinding]
+    nuances: list[RetroverificationNuance]
 
 
 class RetroverificationAttempt(BaseModel):

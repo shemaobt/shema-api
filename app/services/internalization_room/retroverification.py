@@ -403,6 +403,16 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
                         conferida=check.conferida,
                         spoken=check.spoken,
                         findings=[_finding_view(finding) for finding in check.findings],
+                        nuances=[
+                            RetroverificationNuance(
+                                chunk=nuance.chunk,
+                                segment_id=nuance.segment_id,
+                                quote=nuance.quote,
+                                story=nuance.story,
+                                said=nuance in nuances_said([check]),
+                            )
+                            for nuance in check.nuances
+                        ],
                     )
                     for check in attempt.checks
                 ],

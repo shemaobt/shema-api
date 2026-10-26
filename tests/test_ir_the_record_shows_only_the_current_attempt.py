@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import httpx
 import pytest
@@ -12,6 +13,7 @@ from app.services.internalization_room.back_translation import (
     CheckRound,
     Finding,
     FindingKind,
+    Nuance,
 )
 from tests.baker import make_app, make_role
 from tests.release_harness import (
@@ -28,6 +30,8 @@ from tests.room_harness import room_client
 
 THE_ANALYSTS_NOTE = "NOTA-DO-ANALISTA-1624"
 THE_VOICES_WORDS = "Na frase 1 vocês disseram que Noemi voltou alegre. Ouçam de novo esse trecho."
+THE_SAID_QUOTE = "CITACAO-DITA-1624"
+THE_UNSAID_QUOTE = "CITACAO-NAO-DITA-1624"
 
 
 @pytest.fixture()
@@ -48,6 +52,20 @@ async def _checked_once(db: AsyncSession, session: IRSession) -> BackTranslation
     finding = Finding(
         kind=FindingKind.ADDITION, note=THE_ANALYSTS_NOTE, segment_id=told.id, chunk=1
     )
+
+    def nuance(quote: str, voiced: Literal["now"] | None) -> Nuance:
+        return Nuance(
+            note="tornou, não voltou",
+            chunk=1,
+            segment_id=told.id,
+            quote=quote,
+            story="tornou",
+            take_id=told.take_id,
+            starts_ms=told.starts_ms,
+            ends_ms=told.ends_ms,
+            voiced=voiced,
+        )
+
     return BackTranslationState(
         scope=session.pericope,
         analysed_segment_ids=[told.id],
@@ -59,6 +77,8 @@ async def _checked_once(db: AsyncSession, session: IRSession) -> BackTranslation
                 spoken=THE_VOICES_WORDS,
                 outcome="pass",
                 conferida=False,
+                nuances=[nuance(THE_SAID_QUOTE, "now"), nuance(THE_UNSAID_QUOTE, None)],
+                heard_at=datetime(2026, 10, 20, 14, 6, tzinfo=UTC),
             )
         ],
     )
@@ -102,3 +122,20 @@ async def test_the_archived_attempt_in_the_file_keeps_its_rounds_with_the_voices
     assert [(one["kind"], one["note"], one["chunk"]) for one in round_["findings"]] == [
         ("addition", THE_ANALYSTS_NOTE, 1)
     ], "o achado da rodada de antes sumia"
+
+
+async def test_the_archived_rounds_in_the_file_keep_their_nuances_and_whether_the_voice_said_them(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    session, desk = await _restarted(client, db_session, room_app)
+
+    the_file = await _the_file(client, session.id, desk)
+
+    (attempt,) = the_file["superseded_attempts"]
+    (round_,) = attempt["checks"]
+    assert [
+        (one["chunk"], one["quote"], one["story"], one["said"]) for one in round_["nuances"]
+    ] == [
+        (1, THE_SAID_QUOTE, "tornou", True),
+        (1, THE_UNSAID_QUOTE, "tornou", False),
+    ], "as nuances da rodada de antes sumiam"
