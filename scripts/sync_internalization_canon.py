@@ -238,6 +238,7 @@ def _keep(pin: str) -> None:
     shutil.copytree(VENDOR, kept / "vendor", dirs_exist_ok=True)
     shutil.copytree(VENDOR.parent / "element-labels", kept / "element-labels", dirs_exist_ok=True)
     shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
+    print(f"  kept kept/{pin}: the canon this re-pin replaced, which its sessions still read")
 
 
 def _is_sha(value: object) -> bool:
