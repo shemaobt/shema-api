@@ -461,6 +461,22 @@ class RerecordedSentenceView(BaseModel):
     ends_ms: int
 
 
+class ReRecordedSentence(BaseModel):
+    sentence_id: str
+    segment_id: str
+    scene: str | None
+    at: str
+    starts_ms: int
+    replaced_ends_ms: int | None
+    ends_ms: int
+    previous_take_id: str
+
+
+class SessionReRecordedSentences(BaseModel):
+    session_id: str
+    sentences: list[ReRecordedSentence]
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 

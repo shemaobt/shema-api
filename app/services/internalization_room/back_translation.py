@@ -223,6 +223,7 @@ class LaidInSentence(BaseModel):
     sha256: str
     storage_key: str
     heard_before: bool
+    replaced_ends_ms: int | None = None
 
 
 class BackTranslationState(BaseModel):

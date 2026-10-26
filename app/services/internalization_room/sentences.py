@@ -265,6 +265,7 @@ async def lay_in_a_sentence(
             sha256=raw.sha256,
             storage_key=raw.storage_key,
             heard_before=heard_before,
+            replaced_ends_ms=old_end,
         )
     )
     for check in state.checks:

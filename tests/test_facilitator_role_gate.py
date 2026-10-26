@@ -72,6 +72,10 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/mother-tongue-takes"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes/downloads"): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/re-recorded-sentences",
+    ): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals"): {},
     ("GET", "/api/internalization-room/facilitator/takes/{take_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/release"): {},
