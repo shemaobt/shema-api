@@ -1891,8 +1891,11 @@ class SessionCoverageResponse(BaseModel):
     ledger: str | None
 
 
+RetroKind = Literal["missing", "addition", "silence", "unclear"]
+
+
 class SessionRetroFinding(BaseModel):
-    kind: str
+    kind: RetroKind
     frase: int | None
 
 
@@ -1902,7 +1905,7 @@ class SessionRetroNuance(BaseModel):
 
 
 class SessionRetroCheckFinding(BaseModel):
-    kind: str
+    kind: RetroKind
     frase: int | None
 
 

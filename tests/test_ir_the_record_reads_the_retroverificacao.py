@@ -180,3 +180,45 @@ async def test_a_missing_element_reads_as_an_open_finding_and_the_nuance_apart_f
     assert [(one["kind"], one["frase"]) for one in retro["findings"]] == [("missing", 1)]
     assert [(one["frase"], one["said"]) for one in retro["nuances"]] == [(1, True)]
     assert retro["status"] == "sem_conferencia"
+
+
+async def _one_finding_of_each_kind(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    told = await one_stretch(db, session)
+    findings = [
+        Finding(kind=kind, note=THE_ANALYSTS_NOTE, segment_id=told.id, chunk=1, fills_silence=fills)
+        for kind, fills in (
+            (FindingKind.MISSING, False),
+            (FindingKind.ADDITION, False),
+            (FindingKind.ADDITION, True),
+            (FindingKind.UNCLEAR, False),
+        )
+    ]
+    return BackTranslationState(
+        scope=session.pericope,
+        findings=findings,
+        checked=False,
+        analysed_segment_ids=[told.id],
+        checks=[
+            CheckRound(
+                at=datetime(2026, 10, 20, 14, 5, tzinfo=UTC),
+                findings=findings,
+                spoken=FIRST_LINE,
+                outcome="pass",
+                conferida=False,
+            )
+        ],
+    )
+
+
+async def test_an_addition_that_fills_a_silence_reads_as_a_filled_silence_beside_her_other_kinds(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_one_finding_of_each_kind)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    retro = await _the_retro(client, session.id, desk)
+
+    her_four = ["missing", "addition", "silence", "unclear"]
+    assert [one["kind"] for one in retro["findings"]] == her_four
+    assert [one["kind"] for one in retro["checks"][0]["findings"]] == her_four
