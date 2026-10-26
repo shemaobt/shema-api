@@ -46,12 +46,14 @@ class ScriptedAgent:
         self._script = list(script)
         self.guide_inputs: list[str] = []
         self.guide_systems: list[str] = []
+        self.guide_histories: list[list[Any]] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         validating = "corrected_response" in system_prompt
         if not validating:
             self.guide_inputs.append(user_content)
             self.guide_systems.append(system_prompt)
+            self.guide_histories.append(kwargs.get("conversation", []))
         planned = self._script.pop(0) if self._script else None
         if planned is not None:
             return planned

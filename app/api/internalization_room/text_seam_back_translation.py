@@ -46,6 +46,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.golden_rehearsal import keep_a_golden_rehearsal
 from app.services.internalization_room.hearing import spoken_words_only
 from app.services.internalization_room.sessions import resolve_pericope
 from app.services.internalization_room.takes import (
@@ -121,11 +122,17 @@ async def declare_back_translation_session(
     session = await room.create_session(
         db, pericope=payload.pericopeId, language=_language_code(payload.language)
     )
+    origins = (
+        {key: (await keep_a_golden_rehearsal(db, session, scene=key, pieces=[])).id for key in keys}
+        if payload.joined
+        else {}
+    )
     parts = await declare_rehearsal_parts(
         db,
         session,
         keys,
         {clip.key: clip.contentType for clip in payload.clips if clip.contentType},
+        origins,
     )
     await room.report_playback(
         db,

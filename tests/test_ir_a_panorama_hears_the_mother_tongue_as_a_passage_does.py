@@ -317,3 +317,29 @@ async def test_a_panorama_take_that_cut_the_guide_short_reaches_the_guide_and_th
         ("team", PORTUGUESE, False),
         ("guide", GUIDE_LINE, False),
     ]
+
+
+async def test_the_panorama_turn_after_a_cut_reads_her_note_and_the_words_as_one_turn_not_two(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_panorama(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9)
+    the_take_lasts(monkeypatch, 12_000)
+    await _the_team_sends_a_take(tablet, session, interrupted="1")
+    the_transcriber_hears(monkeypatch, "Pode continuar.", "pt", 0.9)
+
+    await _the_team_sends_a_take(tablet, session)
+
+    assert guide.guide_histories[-1] == [
+        {
+            "role": "user",
+            "text": "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e "
+            "está à mesa, pronta para conversar. Fale primeiro.]",
+        },
+        {"role": "assistant", "text": GUIDE_LINE},
+        {"role": "user", "text": f"{INTERRUPTION} {PORTUGUESE}"},
+        {"role": "assistant", "text": GUIDE_LINE},
+    ], "o histórico do Guia no Panorama partia o corte em duas falas, a nota e depois as palavras"

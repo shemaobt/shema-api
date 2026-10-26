@@ -29,6 +29,12 @@ VERDICT_KICKOFF = (
     "'terminei'. Speak the verdict now.)"
 )
 
+JOINED_VERDICT_KICKOFF = (
+    "(The app joined the team's scene rehearsals into one recording and the team heard it "
+    "whole. The frases are the translations they made of each scene, with any they re-recorded "
+    "or translated again since. Speak the verdict now.)"
+)
+
 
 def opening_note(pericope_num: str, language_code: str) -> str:
     if language_code == "pt":
