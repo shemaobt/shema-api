@@ -704,6 +704,7 @@ class FixedLineView(BaseModel):
 
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
+    segment_id: str
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has

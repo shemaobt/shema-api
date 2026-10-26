@@ -193,6 +193,7 @@ async def add_chunk(
     numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(
         session_id=session.id,
+        segment_id=captured.id,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
