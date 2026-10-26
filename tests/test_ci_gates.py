@@ -313,6 +313,13 @@ def test_apt_gives_up_on_a_silent_connection_in_seconds_not_the_default_two_minu
         assert int(patience[0].split("=")[1]) <= 60, call
 
 
+def test_the_log_names_the_ffmpeg_that_was_installed_in_one_line(tmp_path: Path) -> None:
+    code, printed, _ = _the_install_runs(tmp_path, [1, 0])
+
+    assert code == 0
+    assert printed.splitlines() == ["ffmpeg version 6.1.1-fake Copyright"]
+
+
 def test_a_mirror_that_fails_twice_fails_the_step_after_two_tries_and_no_more(
     tmp_path: Path,
 ) -> None:

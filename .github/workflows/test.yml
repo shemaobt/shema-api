@@ -43,6 +43,7 @@ jobs:
             sudo timeout 180 sh -c 'apt-get -o Acquire::http::Timeout=20 update && apt-get -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg' && break
             [ "$attempt" = 2 ] && exit 1
           done
+          ffmpeg -version | head -1
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
