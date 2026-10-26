@@ -174,6 +174,37 @@ async def test_an_interrupted_turn_tells_the_guide_it_was_cut(client, monkeypatc
     assert answered.json()["transcript"] == f"{INTERRUPTED_NOTE} {CUT_IN}"
 
 
+async def test_the_turn_after_a_cut_reads_her_note_and_the_words_as_one_turn_not_two(
+    client, monkeypatch
+) -> None:
+    session_id = await _an_open_session(client)
+
+    async def _reads_nothing(**_: Any) -> str:
+        return json.dumps({"decisions": []})
+
+    the_room_agent_is(monkeypatch, classifier=_reads_nothing)
+    cut = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": CUT_IN, "interrupted": True},
+    )
+    assert cut.status_code == 200, cut.text
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": TEAM_LINE}
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_histories == [
+        [
+            {"role": "user", "text": HER_OPENING_NOTE},
+            {"role": "assistant", "text": GUIDE_LINE},
+            {"role": "user", "text": f"{INTERRUPTED_NOTE} {CUT_IN}"},
+            {"role": "assistant", "text": GUIDE_LINE},
+        ]
+    ], "o histórico do Guia partia o corte em duas falas da equipe, a nota e depois as palavras"
+
+
 async def test_an_interruption_with_no_words_is_answered_with_d_1_and_never_reaches_the_guide(
     client, db_session, monkeypatch
 ) -> None:
