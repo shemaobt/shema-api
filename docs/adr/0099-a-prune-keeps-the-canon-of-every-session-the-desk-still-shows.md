@@ -17,6 +17,9 @@ Decided:
 
 - The `canon-pins` read names the pin of every session, archived ones included. A prune keeps
   a kept tree while any session names its pin, the pin production serves or the deployed pin.
+- The sync's log says what it kept and why: a re-pin names the tree it kept for the pin it
+  replaced and every kept tree it left in place, and the prune gives each tree it kept its
+  reasons, a session naming it, production serving it, or the checkout deploying it.
 
 Consequences:
 

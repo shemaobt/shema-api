@@ -103,15 +103,35 @@ def test_a_prune_says_which_kept_trees_it_dropped_and_which_it_kept(
 ) -> None:
     canon_dir = a_canon_deployed_beside_three_kept_trees
     live_pins = _the_read_answered(canon_dir, LIVE)
-    said_for = {LIVE: "kept", SHA: "kept", STALE: "dropped"}
     capsys.readouterr()
 
     assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 0
 
     said = capsys.readouterr().out.splitlines()
     assert [line for line in said if "kept/" in line] == [
-        f"  {said_for[pin]} kept/{pin}" for pin in sorted(said_for)
-    ], "o prune apagou canon sem dizer qual"
+        f"  kept kept/{SHA}: production serves it, this checkout deploys it",
+        f"  kept kept/{LIVE}: a session still names it",
+        f"  dropped kept/{STALE}",
+    ], "o prune apagou canon sem dizer qual, ou guardou sem dizer por quê"
+
+
+def test_a_prune_says_each_reason_it_kept_a_tree_for(
+    a_canon_deployed_beside_three_kept_trees: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    canon_dir = a_canon_deployed_beside_three_kept_trees
+    live_pins = _the_read_answered(canon_dir, STALE, serving=LIVE)
+    capsys.readouterr()
+
+    assert _prune(monkeypatch, "--live-pins", str(live_pins)) == 0
+
+    said = capsys.readouterr().out.splitlines()
+    assert [line for line in said if "kept/" in line] == [
+        f"  kept kept/{SHA}: this checkout deploys it",
+        f"  kept kept/{LIVE}: production serves it",
+        f"  kept kept/{STALE}: a session still names it",
+    ], "o prune guardava um canon sem dizer se era de uma sessão, de produção ou do deploy"
 
 
 def test_a_prune_without_a_file_refuses_and_removes_nothing(

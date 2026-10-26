@@ -319,7 +319,16 @@ def prune(live_pins: Path | None) -> int:
     if kept.is_dir():
         for tree in sorted(path for path in kept.iterdir() if path.is_dir()):
             if tree.name in keep:
-                print(f"  kept kept/{tree.name}")
+                why = [
+                    reason
+                    for held, reason in (
+                        (tree.name in live, "a session still names it"),
+                        (tree.name == serving, "production serves it"),
+                        (tree.name == deployed, "this checkout deploys it"),
+                    )
+                    if held
+                ]
+                print(f"  kept kept/{tree.name}: {', '.join(why)}")
             else:
                 shutil.rmtree(tree)
                 print(f"  dropped kept/{tree.name}")
