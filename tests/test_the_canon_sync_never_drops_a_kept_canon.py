@@ -60,6 +60,38 @@ def test_a_re_pin_keeps_the_pin_it_replaces_and_removes_no_other_kept_tree(
     assert {pin: _files_under(tmp_path / "kept" / pin) for pin in (LIVE, STALE)} == before
 
 
+def test_a_re_pin_says_every_kept_canon_it_left_and_why(
+    a_compiler_pinned_beside_two_kept_trees: Compiler, capsys: pytest.CaptureFixture[str]
+) -> None:
+    a_compiler_pinned_beside_two_kept_trees.sha = NEXT
+    capsys.readouterr()
+
+    assert canon.sync(pin=NEXT) == 0
+
+    said = capsys.readouterr().out.splitlines()
+    assert [line for line in said if "kept/" in line] == [
+        f"  kept kept/{SHA}: the canon this re-pin replaced, which its sessions still read",
+        f"  kept kept/{LIVE}: left as it was, since only a prune removes one",
+        f"  kept kept/{STALE}: left as it was, since only a prune removes one",
+    ], "o log do sync não dizia que os outros canons guardados continuavam, nem por quê"
+
+
+def test_a_re_pin_does_not_name_a_stray_file_under_kept_as_a_kept_canon(
+    a_compiler_pinned_beside_two_kept_trees: Compiler,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "kept" / ".DS_Store").write_text("")
+    a_compiler_pinned_beside_two_kept_trees.sha = NEXT
+    capsys.readouterr()
+
+    assert canon.sync(pin=NEXT) == 0
+
+    assert ".DS_Store" not in capsys.readouterr().out, (
+        "o log do sync dava um arquivo solto em kept/ como um canon guardado"
+    )
+
+
 def test_a_sync_on_the_pin_already_held_removes_no_kept_tree(
     a_compiler_pinned_beside_two_kept_trees: Compiler, tmp_path: Path
 ) -> None:

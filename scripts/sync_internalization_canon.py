@@ -21,13 +21,13 @@ a re-pin cannot delete them without a word.
 
 Before it overwrites, `--sync` keeps the canon it replaces: `vendor/` as it stands, with its
 pin and manifest, and the element labels beside it, are copied to `canon/kept/<old pin>/`. A
-session keeps the canon it was opened with while its session is live, and that copy is
-the only place its canon still exists once the pin moves. The sync removes no kept tree:
-which pins a live session holds needs a production read, and the sync takes none. A kept tree
-leaves only through `--prune --live-pins <file>`, the file being production's answer to
-`GET /api/internalization-room/facilitator/canon-pins`; the prune keeps every pin the file
-names, the pin production serves and the deployed pin, and drops every other kept tree (ADR
-0088).
+session keeps the canon it was opened with for as long as the Desk shows it, archived by a
+Zerar included, and that copy is the only place its canon still exists once the pin moves.
+The sync removes no kept tree: which pins a session holds needs a production read, and the
+sync takes none. A kept tree leaves only through `--prune --live-pins <file>`, the file being
+production's answer to `GET /api/internalization-room/facilitator/canon-pins`; the prune keeps
+every pin the file names, the pin production serves and the deployed pin, and drops every
+other kept tree (ADRs 0088 and 0099).
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
 compiler's main line, when the pin leaves no consumable passage at all, and when a names
@@ -206,6 +206,11 @@ def sync(pin: str | None = None) -> int:
     held = pinned_commit(PIN_FILE.read_text()) if PIN_FILE.exists() else sha
     if held != sha:
         _keep(held)
+        for tree in sorted(
+            path.name for path in (VENDOR.parent / "kept").iterdir() if path.is_dir()
+        ):
+            if tree != held:
+                print(f"  kept kept/{tree}: left as it was, since only a prune removes one")
     files = []
     for kind in KINDS:
         target = VENDOR / kind
@@ -237,6 +242,7 @@ def _keep(pin: str) -> None:
     shutil.copytree(VENDOR, kept / "vendor", dirs_exist_ok=True)
     shutil.copytree(VENDOR.parent / "element-labels", kept / "element-labels", dirs_exist_ok=True)
     shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
+    print(f"  kept kept/{pin}: the canon this re-pin replaced, which its sessions still read")
 
 
 def _is_sha(value: object) -> bool:
@@ -313,7 +319,16 @@ def prune(live_pins: Path | None) -> int:
     if kept.is_dir():
         for tree in sorted(path for path in kept.iterdir() if path.is_dir()):
             if tree.name in keep:
-                print(f"  kept kept/{tree.name}")
+                why = [
+                    reason
+                    for held, reason in (
+                        (tree.name in live, "a session still names it"),
+                        (tree.name == serving, "production serves it"),
+                        (tree.name == deployed, "this checkout deploys it"),
+                    )
+                    if held
+                ]
+                print(f"  kept kept/{tree.name}: {', '.join(why)}")
             else:
                 shutil.rmtree(tree)
                 print(f"  dropped kept/{tree.name}")

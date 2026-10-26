@@ -66,6 +66,20 @@ def test_a_re_pin_keeps_her_portuguese_titles_beside_the_canon_it_replaces(
     )
 
 
+def test_a_re_pin_says_it_kept_the_canon_it_replaced_and_why(
+    a_vendor_synced_once_beside_its_labels: Compiler, capsys: pytest.CaptureFixture[str]
+) -> None:
+    a_vendor_synced_once_beside_its_labels.sha = NEXT
+    capsys.readouterr()
+
+    assert canon.sync(pin=NEXT) == 0
+
+    said = capsys.readouterr().out.splitlines()
+    assert f"  kept kept/{SHA}: the canon this re-pin replaced, which its sessions still read" in (
+        said
+    ), "o log do sync não dizia que canon guardou nem por quê"
+
+
 def test_the_scheduled_sync_opens_its_change_with_the_canon_it_kept() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text())
     (opened,) = [
