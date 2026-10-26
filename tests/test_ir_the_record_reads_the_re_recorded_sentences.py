@@ -16,7 +16,7 @@ from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import APP_KEY, PREFIX, at_the_desk
 from tests.room_harness import room_client, the_bucket_is_in_memory
-from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
+from tests.sentence_harness import part_audio, re_record, rehearsed_in_wav, spoken
 
 SCENE_TWO = [[(0, 1000)], [(0, 42000), (42000, 49000), (49000, 50000)]]
 STORAGE = "https://storage.example/balde-de-teste/"
@@ -51,6 +51,10 @@ async def room_app(db_session: AsyncSession) -> App:
 
 def desk_re_recorded(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/re-recorded-sentences"
+
+
+def desk_take_audio(take_id: str) -> str:
+    return f"{PREFIX}/facilitator/takes/{take_id}/audio"
 
 
 def desk_sentence_audio(session_id: str, sentence_id: str) -> str:
@@ -139,3 +143,22 @@ async def test_the_sentence_as_the_team_recorded_it_plays_the_very_audio_they_se
     )
 
     assert played == sent, "o botão tocava outra coisa que não a frase como a equipe gravou"
+
+
+async def test_how_it_was_before_plays_the_part_as_the_team_first_recorded_it(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    room_app: App,
+    signed: None,
+) -> None:
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    await re_record(client, session.id, middle.id, spoken(8.6))
+
+    (sentence,) = await _the_sentences(client, session.id, desk)
+    played = await _what_plays(client, store, desk_take_audio(sentence["previous_take_id"]), desk)
+
+    assert played == part_audio(2, 50000), (
+        "«como era antes» tocava a parte já com a frase nova, ou nada"
+    )
