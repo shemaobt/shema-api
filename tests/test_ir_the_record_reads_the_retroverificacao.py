@@ -155,10 +155,11 @@ async def _a_missing_element_and_a_nuance(
         starts_ms=told.starts_ms,
         ends_ms=told.ends_ms,
     )
+    unsaid = nuance.model_copy(update={"quote": "OUTRA-CITACAO-9c24"})
     return BackTranslationState(
         scope=session.pericope,
         findings=[missing],
-        nuances=[nuance],
+        nuances=[nuance, unsaid],
         checked=False,
         analysed_segment_ids=[told.id],
         checks=[
@@ -186,7 +187,7 @@ async def test_a_missing_element_reads_as_an_open_finding_and_the_nuance_apart_f
     retro = await _the_retro(client, session.id, desk)
 
     assert [(one["kind"], one["frase"]) for one in retro["findings"]] == [("missing", 1)]
-    assert [(one["frase"], one["said"]) for one in retro["nuances"]] == [(1, True)]
+    assert [(one["frase"], one["said"]) for one in retro["nuances"]] == [(1, True), (1, False)]
     assert retro["status"] == "sem_conferencia"
 
 
