@@ -1,6 +1,7 @@
 """The fail-safe lines the room speaks: written in every language it claims, never naming the
 draft machinery, and rotated so a repeated failure does not repeat a sentence."""
 
+import hashlib
 import re
 
 import pytest
@@ -12,6 +13,18 @@ from app.services.internalization_room._default_prompts import (
 from app.services.internalization_room.fail_safe import FailSafe, choose, localized
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 
+HER_FINGERPRINT_AT_THE_FREEZE = "f2c73db37abb34f03cd9999bdea0caadc9a13a908829774559227772c698fddb"
+THE_FAMILIES_THE_ROOM_VOICES = (FailSafe.UNREPAIRABLE, FailSafe.INAUDIBLE, FailSafe.INSTANT_ACK)
+
+
+def test_the_lines_the_room_reads_are_her_file_at_the_freeze_and_nothing_beside_it() -> None:
+    read = hashlib.sha256(fail_safe_utterances().encode("utf-8")).hexdigest()
+
+    assert read == HER_FINGERPRINT_AT_THE_FREEZE, (
+        "o arquivo dela chegava à sala com o nosso suplemento colado atrás — H, I e o B, C e E "
+        "em português que ela nunca pôs na voz"
+    )
+
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
 def test_every_kind_the_room_claims_to_speak_is_written_in_it(spoken: str) -> None:
@@ -20,9 +33,7 @@ def test_every_kind_the_room_claims_to_speak_is_written_in_it(spoken: str) -> No
     Medido com `localized` e não com `utterances`: `utterances` cai para o bloco inglês e
     por isso nunca volta vazio, o que a torna segura para falar e inútil como medida.
     """
-    for kind in FailSafe:
-        if kind in (FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT):
-            continue
+    for kind in THE_FAMILIES_THE_ROOM_VOICES:
         written = localized(kind, spoken)
         assert written, (
             f"a sala diz que fala {spoken!r} e a família {kind} não tem falas escritas nesse "
@@ -33,7 +44,7 @@ def test_every_kind_the_room_claims_to_speak_is_written_in_it(spoken: str) -> No
 def test_the_room_keeps_no_fail_safe_draft_for_a_language_it_does_not_speak() -> None:
     on_disk = {path.name for path in _PROMPTS_DIR.glob("_fail_safe_*_supplement.md")}
 
-    assert on_disk == {"_fail_safe_pt_supplement.md"}
+    assert on_disk == set()
     assert {kind: localized(kind, "es") for kind in FailSafe if localized(kind, "es")} == {}
     assert "-es." not in fail_safe_utterances()
 

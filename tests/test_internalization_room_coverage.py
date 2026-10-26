@@ -154,18 +154,12 @@ def test_fail_safe_utterances_are_available_to_the_app() -> None:
 
 def test_no_fail_safe_ever_falls_back_to_english() -> None:
     """The room speaks Portuguese. A section without a `-pt` block would have the Facilitator
-    switch language at the worst moment — a question it cannot answer, a handoff, a hard stop.
+    switch language at the worst moment.
     """
-    for kind in FailSafe:
+    for kind in (FailSafe.UNREPAIRABLE, FailSafe.INAUDIBLE, FailSafe.INSTANT_ACK):
         in_pt = utterances(kind, "pt")
         assert in_pt, f"{kind.name} has no lines at all"
         assert in_pt != utterances(kind, "en"), f"{kind.name} would be spoken in English"
-
-
-def test_the_handoff_does_not_read_as_the_app_itself() -> None:
-    """The app is `o Facilitador Digital`; a bare `o facilitador` would point at itself."""
-    for line in utterances(FailSafe.HANDOFF, "pt") + utterances(FailSafe.HARD_STOP, "pt"):
-        assert "facilitador de vocês" in line or "Facilitador Digital" not in line
 
 
 def test_two_readings_of_the_same_spine_keep_the_further_one() -> None:
