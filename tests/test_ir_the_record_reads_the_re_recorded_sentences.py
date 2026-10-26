@@ -267,3 +267,39 @@ async def test_the_sentences_come_in_scene_order_whatever_order_they_were_record
         ("na-cena-1", "S1"),
         ("na-cena-2", "S2"),
     ], "as frases regravadas vinham na ordem em que foram gravadas, não na das cenas"
+
+
+async def test_nowhere_in_the_record_of_a_re_recorded_sentence_is_a_word_of_either_translation(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    room_app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a frase nova traduzida"
+
+    monkeypatch.setattr(segments_api, "heard", _heard)
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    laid = await re_record(client, session.id, middle.id, spoken(8.6))
+    await _told_again(client, session.id, middle.id, laid)
+
+    answered = await client.get(desk_re_recorded(session.id), headers=desk)
+    (sentence,) = answered.json()["sentences"]
+
+    assert "parte 2 frase 2" not in answered.text, "a tradução de antes aparecia no registro"
+    assert "a frase nova traduzida" not in answered.text, "a tradução nova aparecia no registro"
+    assert set(answered.json()) == {"session_id", "sentences"}
+    assert set(sentence) == {
+        "sentence_id",
+        "segment_id",
+        "scene",
+        "at",
+        "starts_ms",
+        "replaced_ends_ms",
+        "ends_ms",
+        "previous_take_id",
+        "in_use",
+        "awaiting_frase",
+    }, "uma frase regravada ganhou um campo que não é áudio nem fato do processo"
