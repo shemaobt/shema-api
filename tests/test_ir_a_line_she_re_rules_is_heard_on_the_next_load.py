@@ -457,6 +457,24 @@ async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     )
 
 
+@pytest.mark.parametrize("language", ["pt", "en"])
+async def test_her_pause_line_is_never_voiced_though_it_stands_in_her_file(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    language: str,
+) -> None:
+    async with room_client(db_session, monkeypatch) as client:
+        asked = await client.get(
+            f"{PREFIX}/fixed-lines/E0", params={"language": language}, headers=THE_TABLET
+        )
+
+    assert asked.status_code == 404, asked.text
+    assert elevenlabs.voiced == [], (
+        "a rota ainda falava a pausa que manda chamar o facilitador, que o app dela nunca diz"
+    )
+
+
 async def test_a_line_whose_voice_cannot_be_made_answers_no_sound_at_all(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
