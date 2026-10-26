@@ -320,6 +320,22 @@ def test_the_log_names_the_ffmpeg_that_was_installed_in_one_line(tmp_path: Path)
     assert printed.splitlines() == ["ffmpeg version 6.1.1-fake Copyright"]
 
 
+def test_the_install_is_still_ffmpeg_without_its_recommends(tmp_path: Path) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [0])
+
+    installs = [
+        call for call in logs["apt"] if call.endswith("install -y --no-install-recommends ffmpeg")
+    ]
+    assert len(installs) == 1, logs["apt"]
+
+
+def test_the_install_step_has_a_ceiling_of_its_own_that_still_fits_both_tries() -> None:
+    minutes = _the_install_step().get("timeout-minutes")
+
+    assert minutes is not None, "the Install ffmpeg step has no timeout-minutes of its own"
+    assert 7 <= minutes <= 10, f"the Install ffmpeg step's timeout-minutes is {minutes}"
+
+
 def test_a_mirror_that_fails_twice_fails_the_step_after_two_tries_and_no_more(
     tmp_path: Path,
 ) -> None:
