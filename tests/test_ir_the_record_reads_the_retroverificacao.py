@@ -14,6 +14,7 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     Nuance,
 )
+from app.services.internalization_room.segments import capture_segment
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -27,6 +28,7 @@ from tests.release_harness import (
     releases_of,
     team_headers,
     team_release,
+    the_one_part_of,
 )
 from tests.room_harness import room_client
 
@@ -222,3 +224,56 @@ async def test_an_addition_that_fills_a_silence_reads_as_a_filled_silence_beside
     her_four = ["missing", "addition", "silence", "unclear"]
     assert [one["kind"] for one in retro["findings"]] == her_four
     assert [one["kind"] for one in retro["checks"][0]["findings"]] == her_four
+
+
+FIVE_FRASES = (
+    ("Noemi ouviu que o Senhor tinha dado comida ao povo", 0, 12000, 1),
+    ("ela saiu de Moabe com as duas noras", 12000, 24000, 1),
+    ("no caminho ela disse para elas voltarem", 24000, 36000, 1),
+    ("Orfa beijou a sogra e voltou", 36000, 48000, 1),
+    ("Rute ficou com Noemi e não quis voltar", 48000, 55000, 2),
+)
+
+
+async def _told_in_five_frases(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    part = await the_one_part_of(db, session)
+    told = [
+        await capture_segment(
+            db,
+            session,
+            take_id=part.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=f"retro-{starts_ms}",
+            transcript=text,
+            pass_number=pass_number,
+        )
+        for text, starts_ms, ends_ms, pass_number in FIVE_FRASES
+    ]
+    await capture_segment(db, session, take_id=part.id, starts_ms=55000, ends_ms=61000)
+    return BackTranslationState(
+        scope=session.pericope, checked=True, analysed_segment_ids=[one.id for one in told]
+    )
+
+
+async def test_five_frases_told_read_as_five_translated_frases_with_their_stretch_and_words(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_in_five_frases)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    retro = await _the_retro(client, session.id, desk)
+
+    part = await the_one_part_of(db_session, session)
+    assert [
+        (one["frase"], one["transcript"], one["starts_ms"], one["ends_ms"], one["pass_number"])
+        for one in retro["frases"]
+    ] == [
+        (1, "Noemi ouviu que o Senhor tinha dado comida ao povo", 0, 12000, 1),
+        (2, "ela saiu de Moabe com as duas noras", 12000, 24000, 1),
+        (3, "no caminho ela disse para elas voltarem", 24000, 36000, 1),
+        (4, "Orfa beijou a sogra e voltou", 36000, 48000, 1),
+        (5, "Rute ficou com Noemi e não quis voltar", 48000, 55000, 2),
+    ]
+    assert {(one["take_id"], one["scene"]) for one in retro["frases"]} == {(part.id, "whole")}

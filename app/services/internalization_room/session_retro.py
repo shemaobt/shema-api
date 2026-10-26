@@ -8,6 +8,7 @@ from app.models.internalization_room import (
     SessionRetroCheck,
     SessionRetroCheckFinding,
     SessionRetroFinding,
+    SessionRetroFrase,
     SessionRetroNuance,
     SessionRetroResponse,
 )
@@ -23,7 +24,7 @@ from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.takes import takes_of
+from app.services.internalization_room.takes import current_parts, part_keys, takes_of
 
 
 def _her_kind(finding: Finding) -> RetroKind:
@@ -40,6 +41,7 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
     numbers = {one.segment_id: one.frase for one in record.stretches if one.frase is not None}
     told = told_back(await final_segments(db, session.id, takes))
     said = nuances_said(telling_back.checks)
+    keys = part_keys(current_parts(takes))
     return SessionRetroResponse(
         session_id=session.id,
         status=check_status(telling_back.checked, forced),
@@ -58,6 +60,20 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
                 frase=numbers.get(nuance.segment_id), said=said_before(nuance, said, told)
             )
             for nuance in telling_back.nuances
+        ],
+        frases=[
+            SessionRetroFrase(
+                frase=stretch.frase,
+                segment_id=stretch.segment_id,
+                take_id=stretch.take_id,
+                scene=keys.get(stretch.take_id),
+                starts_ms=stretch.starts_ms,
+                ends_ms=stretch.ends_ms,
+                pass_number=stretch.pass_number,
+                transcript=stretch.transcript,
+            )
+            for stretch in record.stretches
+            if stretch.transcript is not None
         ],
         checks=[
             SessionRetroCheck(

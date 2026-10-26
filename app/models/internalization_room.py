@@ -1904,6 +1904,17 @@ class SessionRetroNuance(BaseModel):
     said: bool
 
 
+class SessionRetroFrase(BaseModel):
+    frase: int | None
+    segment_id: str
+    take_id: str
+    scene: str | None
+    starts_ms: int
+    ends_ms: int
+    pass_number: int
+    transcript: str
+
+
 class SessionRetroCheckFinding(BaseModel):
     kind: RetroKind
     frase: int | None
@@ -1925,6 +1936,7 @@ class SessionRetroResponse(BaseModel):
     approved_at: str | None
     findings: list[SessionRetroFinding]
     nuances: list[SessionRetroNuance]
+    frases: list[SessionRetroFrase]
     checks: list[SessionRetroCheck]
 
 
