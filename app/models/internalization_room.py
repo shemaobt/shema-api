@@ -1934,6 +1934,7 @@ class SessionRetroResponse(BaseModel):
     forced_at: str | None
     version: int | None
     approved_at: str | None
+    heard_complete: bool
     findings: list[SessionRetroFinding]
     nuances: list[SessionRetroNuance]
     frases: list[SessionRetroFrase]

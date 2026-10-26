@@ -48,6 +48,7 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
         forced_at=forced_at.isoformat() if forced_at else None,
         version=approved.version if approved else None,
         approved_at=approved.approved_at.isoformat() if approved else None,
+        heard_complete=all(part.heard for part in record.listening),
         findings=[
             SessionRetroFinding(
                 kind=_her_kind(finding),

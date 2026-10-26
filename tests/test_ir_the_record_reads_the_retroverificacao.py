@@ -21,6 +21,7 @@ from tests.release_harness import (
     PREFIX,
     a_claimed_device,
     a_p02_telling_with_the_swapped_cause,
+    a_rehearsal_only_half_heard,
     at_the_desk,
     desk_release,
     one_stretch,
@@ -277,3 +278,15 @@ async def test_five_frases_told_read_as_five_translated_frases_with_their_stretc
         (5, "Rute ficou com Noemi e não quis voltar", 48000, 55000, 2),
     ]
     assert {(one["take_id"], one["scene"]) for one in retro["frases"]} == {(part.id, "whole")}
+
+
+async def test_a_rehearsal_heard_only_in_part_is_not_heard_whole_and_one_played_through_is(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    half = await a_rehearsal_only_half_heard(db_session, project)
+    whole = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    assert (await _the_retro(client, half.id, desk))["heard_complete"] is False
+    assert (await _the_retro(client, whole.id, desk))["heard_complete"] is True
