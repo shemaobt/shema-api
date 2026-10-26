@@ -363,3 +363,28 @@ async def test_nowhere_in_the_block_is_the_analysts_note_a_nuances_words_or_a_ve
     assert THE_MAPS_STORY not in served
     assert "veredito" not in served.lower()
     assert json.loads(served)["status"] == "forcada"
+
+
+async def test_the_block_comes_in_her_order_from_the_state_line_to_the_conferencias(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    retro = await _the_retro(client, session.id, desk)
+
+    assert list(retro) == [
+        "session_id",
+        "status",
+        "forced_at",
+        "version",
+        "approved_at",
+        "heard_complete",
+        "findings",
+        "nuances",
+        "release_check",
+        "frases",
+        "reopened",
+        "checks",
+    ]
