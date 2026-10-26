@@ -95,7 +95,6 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
 _VOICED: dict[str, FailSafe | ProcessFamily] = {
     "A": FailSafe.UNREPAIRABLE,
     "D": FailSafe.INAUDIBLE,
-    "E": FailSafe.HARD_STOP,
     "F": FailSafe.INSTANT_ACK,
     "P": "P",
     "X": "X",

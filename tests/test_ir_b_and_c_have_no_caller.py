@@ -16,9 +16,8 @@ across the tree instead of across the text.
 
 `fail_safe.py` itself is scanned too, not skipped: `OUTSIDE_MAP = "B"` and `HANDOFF = "C"` on
 the enum are assignment targets, not `ast.Attribute` nodes, so the enum's own declaration was
-never going to trip this — but a lookup inside the module reaching for a reserve line, the way
-`_VOICED` reaches for `FailSafe.HARD_STOP`, is exactly the attribute-access shape this walks
-for, and would have gone unseen behind a module-wide skip.
+never going to trip this — but a lookup inside the module reaching for a reserve line is exactly
+the attribute-access shape this walks for, and would have gone unseen behind a module-wide skip.
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app"
 
-RESERVE = {"OUTSIDE_MAP", "HANDOFF"}
+RESERVE = {"OUTSIDE_MAP", "HANDOFF", "HARD_STOP"}
 
 
 def _reserve_references(module: Path) -> list[str]:
@@ -43,12 +42,12 @@ def _reserve_references(module: Path) -> list[str]:
     return hits
 
 
-def test_b_and_c_have_no_caller() -> None:
+def test_b_c_and_e_have_no_caller() -> None:
     hits: list[str] = []
     for module in sorted(APP.rglob("*.py")):
         hits.extend(_reserve_references(module))
 
     assert hits == [], (
-        "B e C existem só como reserva — aprovadas para estar no arquivo, nunca para tocar — "
+        "B, C e E existem só como reserva — aprovadas para estar no arquivo, nunca para tocar — "
         f"e algo em produção agora as alcança: {hits}"
     )
