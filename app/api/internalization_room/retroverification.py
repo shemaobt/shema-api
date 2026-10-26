@@ -3,9 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.models.internalization_room import RetroverificationFile
+from app.models.internalization_room import RetroverificationFile, SessionRetroResponse
 from app.services import internalization_room as room
 from app.services.internalization_room.retroverification import retroverification_file
+from app.services.internalization_room.session_retro import retro_of
 
 router = APIRouter()
 
@@ -30,3 +31,14 @@ async def read_the_retroverification_file(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await retroverification_file(db, session)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/retro",
+    response_model=SessionRetroResponse,
+)
+async def read_the_retro(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> SessionRetroResponse:
+    session = await room.get_session_for_reader(db, user, session_id)
+    return await retro_of(db, session)
