@@ -152,3 +152,22 @@ async def test_the_file_keeps_the_restarted_frases_with_their_words_apart_from_t
         "a frase traduzida antes do recomeçar sumia do arquivo"
     )
     assert the_file["stretches"] == [], "a frase de antes ainda contava como a de agora"
+
+
+async def test_the_record_after_a_restart_reads_only_the_frase_told_since(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    session, desk = await _restarted(client, db_session, room_app)
+    await db_session.refresh(session)
+    await one_stretch(db_session, session, "Noemi voltou de Moabe")
+
+    answered = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/retro", headers=desk)
+
+    assert answered.status_code == 200, answered.text
+    retro = answered.json()
+    assert [one["transcript"] for one in retro["frases"]] == ["Noemi voltou de Moabe"], (
+        "o registro mostrava a frase traduzida antes do recomeçar"
+    )
+    assert (retro["findings"], retro["nuances"], retro["checks"]) == ([], [], []), (
+        "o registro mostrava a conferência de antes do recomeçar"
+    )
