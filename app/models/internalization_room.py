@@ -1891,6 +1891,16 @@ class SessionCoverageResponse(BaseModel):
     ledger: str | None
 
 
+class SessionRetroFinding(BaseModel):
+    kind: str
+    frase: int | None
+
+
+class SessionRetroNuance(BaseModel):
+    frase: int | None
+    said: bool
+
+
 class SessionRetroCheckFinding(BaseModel):
     kind: str
     frase: int | None
@@ -1910,6 +1920,8 @@ class SessionRetroResponse(BaseModel):
     forced_at: str | None
     version: int | None
     approved_at: str | None
+    findings: list[SessionRetroFinding]
+    nuances: list[SessionRetroNuance]
     checks: list[SessionRetroCheck]
 
 

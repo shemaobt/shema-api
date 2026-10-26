@@ -6,11 +6,20 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import (
     SessionRetroCheck,
     SessionRetroCheckFinding,
+    SessionRetroFinding,
+    SessionRetroNuance,
     SessionRetroResponse,
 )
 from app.services.internalization_room.approved_draft import approved_draft
+from app.services.internalization_room.back_translation import (
+    finding_frase,
+    nuances_said,
+    said_before,
+)
 from app.services.internalization_room.check_block import check_status, standing_state
 from app.services.internalization_room.forced import was_forced
+from app.services.internalization_room.retroverification import retroverification_file
+from app.services.internalization_room.segments import final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.takes import takes_of
 
@@ -20,12 +29,29 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
     telling_back = await standing_state(db, session.id, back_translation_of(session), takes)
     approved = await approved_draft(db, session)
     forced = approved is not None and was_forced(approved.forced_by, approved.forced_blockers)
+    record = await retroverification_file(db, session)
+    numbers = {one.segment_id: one.frase for one in record.stretches if one.frase is not None}
+    told = told_back(await final_segments(db, session.id, takes))
+    said = nuances_said(telling_back.checks)
     return SessionRetroResponse(
         session_id=session.id,
         status=check_status(telling_back.checked, forced),
         forced_at=approved.forced_at.isoformat() if forced and approved.forced_at else None,
         version=approved.version if approved else None,
         approved_at=approved.approved_at.isoformat() if approved else None,
+        findings=[
+            SessionRetroFinding(
+                kind=finding.kind.value,
+                frase=finding_frase(finding, telling_back.analysed_segment_ids, numbers),
+            )
+            for finding in telling_back.findings
+        ],
+        nuances=[
+            SessionRetroNuance(
+                frase=numbers.get(nuance.segment_id), said=said_before(nuance, said, told)
+            )
+            for nuance in telling_back.nuances
+        ],
         checks=[
             SessionRetroCheck(
                 at=check.at.isoformat(),

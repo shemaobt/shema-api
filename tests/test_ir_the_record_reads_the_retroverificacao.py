@@ -1,14 +1,3 @@
-"""ENG-1343 — the record reads a session's retroverificação in her order, without the analyst.
-
-Marcia's observation room shows the check as one block: its state, the open findings, the
-nuances apart, the release check line, every translated frase, the re-opened approved version
-and every conferência with the voice's words, and never the analyst's note. The retroverification
-file is the only read that carries any of it, and it carries the note, so the record reads a
-route of its own.
-
-Every case drives the real application through the door the Desk reads by.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -23,6 +12,7 @@ from app.services.internalization_room.back_translation import (
     CheckRound,
     Finding,
     FindingKind,
+    Nuance,
 )
 from tests.baker import make_app, make_role
 from tests.release_harness import (
@@ -40,12 +30,11 @@ from tests.release_harness import (
 )
 from tests.room_harness import room_client
 
-#: A note no other string in the answer contains, so a case can ask where the analyst's words
-#: travelled without matching anything else by accident.
 THE_ANALYSTS_NOTE = "NOTA-DO-ANALISTA-9c24"
 
 FIRST_LINE = "Na frase 1 vocês disseram que Noemi voltou alegre. Ouçam de novo esse trecho."
 SECOND_LINE = "Ficou muito bom. A tradução de vocês conta a passagem inteira."
+NUANCE_LINE = "Na frase 1 falta dizer que Noemi voltou de Moabe."
 
 
 @pytest.fixture()
@@ -72,7 +61,6 @@ async def _the_retro(client: httpx.AsyncClient, session_id: str, desk: dict[str,
 
 
 async def _checked_twice(db: AsyncSession, session: IRSession) -> BackTranslationState:
-    """One stretch the voice sent back once over an addition and passed on the second check."""
     told = await one_stretch(db, session)
     return BackTranslationState(
         scope=session.pericope,
@@ -142,3 +130,53 @@ async def test_a_forced_approval_reads_forcada_at_the_moment_the_facilitator_for
     assert retro["status"] == "forcada"
     assert retro["forced_at"] == row.forced_at.isoformat()
     assert retro["version"] == 1
+
+
+async def _a_missing_element_and_a_nuance(
+    db: AsyncSession, session: IRSession
+) -> BackTranslationState:
+    told = await one_stretch(db, session)
+    missing = Finding(kind=FindingKind.MISSING, note=THE_ANALYSTS_NOTE, segment_id=told.id, chunk=1)
+    nuance = Nuance(
+        note=THE_ANALYSTS_NOTE,
+        chunk=1,
+        segment_id=told.id,
+        quote="Noemi voltou com Rute",
+        story="Noemi voltou de Moabe com Rute",
+        take_id=told.take_id,
+        starts_ms=told.starts_ms,
+        ends_ms=told.ends_ms,
+    )
+    return BackTranslationState(
+        scope=session.pericope,
+        findings=[missing],
+        nuances=[nuance],
+        checked=False,
+        analysed_segment_ids=[told.id],
+        checks=[
+            CheckRound(
+                at=datetime(2026, 10, 20, 14, 5, tzinfo=UTC),
+                findings=[missing],
+                spoken=NUANCE_LINE,
+                outcome="pass",
+                conferida=False,
+                nuances=[nuance.model_copy(update={"voiced": "before"})],
+            )
+        ],
+    )
+
+
+async def test_a_missing_element_reads_as_an_open_finding_and_the_nuance_apart_from_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(
+        db_session, project_id=project.id, tell=_a_missing_element_and_a_nuance
+    )
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    retro = await _the_retro(client, session.id, desk)
+
+    assert [(one["kind"], one["frase"]) for one in retro["findings"]] == [("missing", 1)]
+    assert [(one["frase"], one["said"]) for one in retro["nuances"]] == [(1, True)]
+    assert retro["status"] == "sem_conferencia"
