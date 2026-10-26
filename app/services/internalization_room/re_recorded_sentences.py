@@ -63,7 +63,9 @@ async def re_recorded_sentences_of(
                 in_use=laid.take_id in in_use,
                 awaiting_frase=numbers.get(laid.segment_id) if laid.sentence_id == waits else None,
             )
-            for laid in laid_in
+            for laid in sorted(
+                laid_in, key=lambda one: positions.get(by_id[one.take_id].ordinal) or 0
+            )
         ],
     )
 

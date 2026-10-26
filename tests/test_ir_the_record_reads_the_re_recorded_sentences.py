@@ -72,6 +72,22 @@ async def _what_plays(
     return store.objects.get(location.removeprefix(STORAGE), b"")
 
 
+async def _told_again(
+    client: httpx.AsyncClient, session_id: str, segment_id: str, laid: httpx.Response
+) -> None:
+    (where,) = [one for one in laid.json()["segments"] if one["segment_id"] == segment_id]
+    told = await client.post(
+        f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",
+        data={
+            "take_id": where["take_id"],
+            "starts_ms": str(where["starts_ms"]),
+            "ends_ms": str(where["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text
+
+
 async def _the_desk(db: AsyncSession, room_app: App) -> dict[str, str]:
     team = await db.get(Project, TABLET_TEAM)
     assert team is not None
@@ -179,19 +195,9 @@ async def test_a_sentence_still_awaiting_its_translation_names_its_frase_until_i
     session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
     desk = await _the_desk(db_session, room_app)
     laid = await re_record(client, session.id, middle.id, spoken(8.6))
-    (where,) = [one for one in laid.json()["segments"] if one["segment_id"] == middle.id]
 
     (awaiting,) = await _the_sentences(client, session.id, desk)
-    told = await client.post(
-        f"{PREFIX}/sessions/{session.id}/segments/{middle.id}/replace",
-        data={
-            "take_id": where["take_id"],
-            "starts_ms": str(where["starts_ms"]),
-            "ends_ms": str(where["ends_ms"]),
-        },
-        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
-    )
-    assert told.status_code == 200, told.text
+    await _told_again(client, session.id, middle.id, laid)
     (translated,) = await _the_sentences(client, session.id, desk)
 
     assert awaiting["awaiting_frase"] == 3, "o registro não dizia que a frase 3 aguarda tradução"
@@ -236,3 +242,28 @@ async def test_a_sentence_in_a_part_the_team_recorded_again_whole_reads_out_of_u
     assert left["in_use"] is False, (
         "a frase de uma parte gravada de novo não dizia que a gravação saiu de uso"
     )
+
+
+async def test_the_sentences_come_in_scene_order_whatever_order_they_were_recorded_in(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    room_app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a frase nova traduzida"
+
+    monkeypatch.setattr(segments_api, "heard", _heard)
+    session, _, ((first,), (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    laid = await re_record(client, session.id, middle.id, spoken(8.6), sentence_id="na-cena-2")
+    await _told_again(client, session.id, middle.id, laid)
+    await re_record(client, session.id, first.id, spoken(0.6), sentence_id="na-cena-1")
+
+    sentences = await _the_sentences(client, session.id, desk)
+
+    assert [(one["sentence_id"], one["scene"]) for one in sentences] == [
+        ("na-cena-1", "S1"),
+        ("na-cena-2", "S2"),
+    ], "as frases regravadas vinham na ordem em que foram gravadas, não na das cenas"
