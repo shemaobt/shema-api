@@ -18,6 +18,7 @@ from app.services.internalization_room.segments import capture_segment
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
+    CLIP_MS,
     PREFIX,
     a_claimed_device,
     a_p02_telling_with_the_swapped_cause,
@@ -30,6 +31,7 @@ from tests.release_harness import (
     team_headers,
     team_release,
     the_one_part_of,
+    the_part_recorded_again,
 )
 from tests.room_harness import room_client
 
@@ -305,3 +307,34 @@ async def test_the_release_check_line_is_served_empty_until_a_release_check_exis
 
     assert "release_check" in retro
     assert retro["release_check"] is None
+
+
+async def test_an_approved_version_the_team_reopened_by_recording_again_reads_apart_with_its_frases(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    approved_part = await the_one_part_of(db_session, session)
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+    assert approved.status_code == 200, approved.text
+    assert (await _the_retro(client, session.id, desk))["reopened"] is None
+
+    await the_part_recorded_again(db_session, session)
+    retro = await _the_retro(client, session.id, desk)
+
+    (row,) = await releases_of(db_session, session.id)
+    assert retro["version"] is None
+    assert retro["reopened"] == {
+        "version": 1,
+        "approved_at": row.approved_at.isoformat(),
+        "frases": [
+            {
+                "frase": 1,
+                "take_id": approved_part.id,
+                "scene": "whole",
+                "starts_ms": 0,
+                "ends_ms": CLIP_MS,
+            }
+        ],
+    }

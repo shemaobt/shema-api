@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.models.internalization_room import (
     RetroKind,
     SessionRetroCheck,
@@ -10,9 +11,11 @@ from app.models.internalization_room import (
     SessionRetroFinding,
     SessionRetroFrase,
     SessionRetroNuance,
+    SessionRetroReopened,
+    SessionRetroReopenedFrase,
     SessionRetroResponse,
 )
-from app.services.internalization_room.approved_draft import approved_draft
+from app.services.internalization_room.approved_draft import approved_draft, stands_on
 from app.services.internalization_room.back_translation import (
     Finding,
     finding_frase,
@@ -31,6 +34,23 @@ def _her_kind(finding: Finding) -> RetroKind:
     return "silence" if finding.fills_silence else finding.kind.value
 
 
+def _reopened(release: IRRelease) -> SessionRetroReopened:
+    return SessionRetroReopened(
+        version=release.version,
+        approved_at=release.approved_at.isoformat(),
+        frases=[
+            SessionRetroReopenedFrase(
+                frase=one.get("frase"),
+                take_id=one["take_id"],
+                scene=one.get("scene"),
+                starts_ms=one["starts_ms"],
+                ends_ms=one["ends_ms"],
+            )
+            for one in (release.packet.get("back_translation") or {}).get("segments", [])
+        ],
+    )
+
+
 async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse:
     takes = await takes_of(db, session.id)
     telling_back = await standing_state(db, session.id, back_translation_of(session), takes)
@@ -41,7 +61,14 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
     numbers = {one.segment_id: one.frase for one in record.stretches if one.frase is not None}
     told = told_back(await final_segments(db, session.id, takes))
     said = nuances_said(telling_back.checks)
-    keys = part_keys(current_parts(takes))
+    parts = current_parts(takes)
+    keys = part_keys(parts)
+    own = await db.scalar(
+        select(IRRelease)
+        .where(IRRelease.session_id == session.id)
+        .order_by(IRRelease.version.desc())
+        .limit(1)
+    )
     return SessionRetroResponse(
         session_id=session.id,
         status=check_status(telling_back.checked, forced),
@@ -76,6 +103,7 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
             for stretch in record.stretches
             if stretch.transcript is not None
         ],
+        reopened=_reopened(own) if own is not None and not stands_on(own, parts) else None,
         checks=[
             SessionRetroCheck(
                 at=check.at.isoformat(),

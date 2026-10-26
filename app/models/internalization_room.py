@@ -1915,6 +1915,20 @@ class SessionRetroFrase(BaseModel):
     transcript: str
 
 
+class SessionRetroReopenedFrase(BaseModel):
+    frase: int | None
+    take_id: str
+    scene: str | None
+    starts_ms: int
+    ends_ms: int
+
+
+class SessionRetroReopened(BaseModel):
+    version: int
+    approved_at: str
+    frases: list[SessionRetroReopenedFrase]
+
+
 class SessionRetroCheckFinding(BaseModel):
     kind: RetroKind
     frase: int | None
@@ -1939,6 +1953,7 @@ class SessionRetroResponse(BaseModel):
     nuances: list[SessionRetroNuance]
     release_check: None = None
     frases: list[SessionRetroFrase]
+    reopened: SessionRetroReopened | None
     checks: list[SessionRetroCheck]
 
 
