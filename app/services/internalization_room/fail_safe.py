@@ -51,8 +51,7 @@ def utterances(kind: FailSafe | ProcessFamily, language_code: str = AUTHORED) ->
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
-    fail-safe: nothing generative stands between the failure and what the team hears. The
-    H family is the one exception, and it is not a fail-safe — see the supplement.
+    fail-safe: nothing generative stands between the failure and what the team hears.
 
     The file tags its blocks by primary language (`-pt`) while the room is configured with
     a locale (`pt-BR`), so the code is read through `room_language`: the region is dropped,
