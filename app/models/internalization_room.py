@@ -1937,6 +1937,7 @@ class SessionRetroResponse(BaseModel):
     heard_complete: bool
     findings: list[SessionRetroFinding]
     nuances: list[SessionRetroNuance]
+    release_check: None = None
     frases: list[SessionRetroFrase]
     checks: list[SessionRetroCheck]
 

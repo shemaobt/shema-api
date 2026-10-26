@@ -290,3 +290,18 @@ async def test_a_rehearsal_heard_only_in_part_is_not_heard_whole_and_one_played_
 
     assert (await _the_retro(client, half.id, desk))["heard_complete"] is False
     assert (await _the_retro(client, whole.id, desk))["heard_complete"] is True
+
+
+async def test_the_release_check_line_is_served_empty_until_a_release_check_exists(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+    assert approved.status_code == 200, approved.text
+
+    retro = await _the_retro(client, session.id, desk)
+
+    assert "release_check" in retro
+    assert retro["release_check"] is None
