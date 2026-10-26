@@ -38,12 +38,26 @@ jobs:
       # 16 s on the runner (measured on this job; a local ubuntu 24.04 container took 43 s,
       # so the runner's mirror is the difference — the number to trust is the runner's).
       - name: Install ffmpeg
-        timeout-minutes: 8
+        timeout-minutes: 10
+        env:
+          FFMPEG_TAG: autobuild-2026-07-31-14-10
+          FFMPEG_BUILD: ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1
+          FFMPEG_SHA256: c1e6caf48923dd8e6bc5e54d51ba70c321175b8162ae9c414c392990e72f0e79
         run: |
-          for attempt in 1 2; do
-            sudo timeout 180 sh -c 'apt-get -o Acquire::http::Timeout=20 update && apt-get -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg' && break
-            [ "$attempt" = 2 ] && exit 1
-          done
+          static_ffmpeg() {
+            dir=$(mktemp -d) &&
+            curl -fsSL --max-time 120 -o "$dir/ffmpeg.tar.xz" "https://github.com/BtbN/FFmpeg-Builds/releases/download/$FFMPEG_TAG/$FFMPEG_BUILD.tar.xz" &&
+            echo "$FFMPEG_SHA256  $dir/ffmpeg.tar.xz" | sha256sum -c - &&
+            tar -xJf "$dir/ffmpeg.tar.xz" -C "$dir" --strip-components=2 "$FFMPEG_BUILD/bin/ffmpeg" "$FFMPEG_BUILD/bin/ffprobe" &&
+            sudo install -m 0755 "$dir/ffmpeg" "$dir/ffprobe" /usr/local/bin
+          }
+          if ! static_ffmpeg; then
+            echo "::warning::the pinned static ffmpeg was not installed, so apt is installing it"
+            for attempt in 1 2; do
+              sudo timeout 180 sh -c 'apt-get -o Acquire::http::Timeout=20 update && apt-get -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg' && break
+              [ "$attempt" = 2 ] && exit 1
+            done
+          fi
           ffmpeg -version | head -1
 
       - name: Install uv
