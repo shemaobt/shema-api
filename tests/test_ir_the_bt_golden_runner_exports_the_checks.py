@@ -302,3 +302,20 @@ async def test_her_clips_declared_wav_reach_the_seam_as_wav_parts(seam, db_sessi
     assert [part.content_type for part in await takes_of(db_session, session_id)] == [
         "audio/wav"
     ] * 4, "o runner lia o roteiro dela sem o «contentType», e a costura via quatro textos"
+
+
+@pytest.mark.parametrize(
+    ("name", "joined"), [("P01-regravar-frase-acrescimo", True), ("P02-causa-a-mais", False)]
+)
+async def test_her_script_declared_joined_reaches_the_seam_as_a_joined_recording(
+    seam, db_session, name: str, joined: bool
+) -> None:
+    script = load_script(bt_golden_runner.BT_DIR / f"{name}.json")
+
+    session_id = await open_session(script, seam)
+
+    origins = [part.origin for part in await takes_of(db_session, session_id)]
+    assert origins and all((origin is not None) is joined for origin in origins), (
+        f"{name} says joined={joined} and her runner passes it on (src/golden/bt.ts:93 at "
+        f"18fa7c4), but the seam declared parts with origins {origins}"
+    )

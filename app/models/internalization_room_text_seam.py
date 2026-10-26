@@ -48,6 +48,7 @@ class DeclareBackTranslationSessionRequest(BaseModel):
     pericopeId: str = Field(max_length=120)
     language: str = Field(max_length=40)
     clips: list[DeclaredClip]
+    joined: bool = False
 
 
 class DeclaredPart(BaseModel):

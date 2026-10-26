@@ -237,6 +237,195 @@ def test_a_hang_in_the_tests_is_stopped_at_twelve_minutes_whatever_setup_took() 
     assert timeout == 12, f"the pytest step's timeout-minutes is {timeout}, not 12"
 
 
+def _the_install_step() -> dict:
+    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
+    named = [step for step in steps if step.get("name") == "Install ffmpeg"]
+    assert len(named) == 1, f"test.yml has {len(named)} steps named Install ffmpeg"
+    return named[0]
+
+
+def _the_install_runs(
+    tmp_path: Path, mirror_answers: list[int], download: int = 1, digest: int = 0
+) -> tuple[int, str, dict]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "answers").write_text("".join(f"{code}\n" for code in mirror_answers))
+    tools = {
+        "curl": f'echo "$*" >> {tmp_path}/curl\nexit {download}',
+        "sha256sum": f"cat >> {tmp_path}/sha256\nexit {digest}",
+        "tar": f'echo "$*" >> {tmp_path}/tar',
+        "install": f'echo "$*" >> {tmp_path}/install',
+        "sudo": f'echo "$*" >> {tmp_path}/sudo\nexec "$@"',
+        "timeout": f'echo "$1" >> {tmp_path}/limits\nshift\nexec "$@"',
+        "apt-get": (
+            f'echo "$*" >> {tmp_path}/apt\n'
+            'case " $* " in\n'
+            "  *' update '*)\n"
+            f"    code=$(head -n 1 {tmp_path}/answers)\n"
+            f"    sed -i.bak 1d {tmp_path}/answers\n"
+            '    exit "$code" ;;\n'
+            "esac"
+        ),
+        "ffmpeg": 'echo "ffmpeg version 6.1.1-fake Copyright"\necho "built with fake"',
+    }
+    for name, body in tools.items():
+        tool = bin_dir / name
+        tool.write_text(f"#!/bin/sh\n{body}\n")
+        tool.chmod(0o755)
+    done = subprocess.run(
+        ["bash", "-e", "-c", _the_install_step()["run"]],
+        env={
+            **_the_install_step().get("env", {}),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "TMPDIR": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    logs = {
+        name: (tmp_path / name).read_text().splitlines() if (tmp_path / name).exists() else []
+        for name in ("limits", "apt", "curl", "sha256", "tar", "install", "sudo")
+    }
+    return done.returncode, done.stdout, logs
+
+
+def test_the_binaries_are_put_in_usr_local_bin_by_root_and_only_the_two_are_unpacked(
+    tmp_path: Path,
+) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [1, 1], download=0)
+
+    assert [line for line in logs["sudo"] if line.startswith("install ")], logs["sudo"]
+    assert len(logs["tar"]) == 1, logs["tar"]
+    unpacked = logs["tar"][0].split()
+    assert "--strip-components=2" in unpacked, unpacked
+    assert unpacked[-2:] == [
+        "ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1/bin/ffmpeg",
+        "ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1/bin/ffprobe",
+    ], unpacked
+
+
+def test_a_download_that_works_never_asks_the_apt_mirror_for_anything(tmp_path: Path) -> None:
+    code, printed, logs = _the_install_runs(tmp_path, [1, 1], download=0)
+
+    assert code == 0
+    assert logs["apt"] == [], logs["apt"]
+    assert len(logs["install"]) == 1, logs["install"]
+    placed = logs["install"][0].split()
+    assert placed[-1] == "/usr/local/bin", placed
+    assert [Path(word).name for word in placed[2:-1]] == ["ffmpeg", "ffprobe"], placed
+    assert printed.splitlines() == ["ffmpeg version 6.1.1-fake Copyright"]
+
+
+def test_the_archive_is_one_dated_build_checked_against_the_digest_its_release_publishes(
+    tmp_path: Path,
+) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [1, 1], download=0)
+
+    assert len(logs["curl"]) == 1, logs["curl"]
+    assert logs["curl"][0].split()[-1] == (
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-31-14-10/"
+        "ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1.tar.xz"
+    )
+    assert len(logs["sha256"]) == 1, logs["sha256"]
+    assert logs["sha256"][0].split()[0] == (
+        "c1e6caf48923dd8e6bc5e54d51ba70c321175b8162ae9c414c392990e72f0e79"
+    )
+
+
+def test_the_download_is_given_two_minutes_at_most_before_apt_takes_over(tmp_path: Path) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [0], download=28)
+
+    words = logs["curl"][0].split()
+    assert "--max-time" in words, logs["curl"]
+    assert int(words[words.index("--max-time") + 1]) <= 120, logs["curl"]
+
+
+def test_an_archive_that_is_not_the_one_pinned_is_never_unpacked_and_apt_takes_over(
+    tmp_path: Path,
+) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [0], download=0, digest=1)
+
+    assert code == 0
+    assert logs["tar"] == [] and logs["install"] == [], (logs["tar"], logs["install"])
+    assert _updates(logs) == 1, logs["apt"]
+
+
+def test_a_download_that_fails_says_so_before_apt_takes_over(tmp_path: Path) -> None:
+    code, printed, logs = _the_install_runs(tmp_path, [0], download=22)
+
+    assert code == 0
+    assert _updates(logs) == 1, logs["apt"]
+    warned = [line for line in printed.splitlines() if line.startswith("::warning::")]
+    assert len(warned) == 1, printed
+
+
+def test_each_try_at_the_mirror_is_given_minutes_not_as_long_as_the_mirror_takes(
+    tmp_path: Path,
+) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [0])
+
+    assert code == 0
+    assert logs["limits"], "no apt attempt runs under `timeout`"
+    assert all(int(limit) <= 300 for limit in logs["limits"]), logs["limits"]
+
+
+def _updates(logs: dict) -> int:
+    return sum(1 for line in logs["apt"] if line.endswith("update"))
+
+
+def test_a_mirror_that_fails_once_is_asked_again_and_the_step_passes(tmp_path: Path) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [1, 0])
+
+    assert code == 0
+    assert _updates(logs) == 2, logs["apt"]
+
+
+def test_apt_gives_up_on_a_silent_connection_in_seconds_not_the_default_two_minutes(
+    tmp_path: Path,
+) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [0])
+
+    assert len(logs["apt"]) == 2, logs["apt"]
+    for call in logs["apt"]:
+        patience = [word for word in call.split() if word.startswith("Acquire::http::Timeout=")]
+        assert patience, f"apt-get {call} waits as long as apt's default"
+        assert int(patience[0].split("=")[1]) <= 60, call
+
+
+def test_the_log_names_the_ffmpeg_that_was_installed_in_one_line(tmp_path: Path) -> None:
+    code, printed, _ = _the_install_runs(tmp_path, [1, 0])
+
+    assert code == 0
+    said = [line for line in printed.splitlines() if not line.startswith("::warning::")]
+    assert said == ["ffmpeg version 6.1.1-fake Copyright"]
+
+
+def test_the_install_is_still_ffmpeg_without_its_recommends(tmp_path: Path) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [0])
+
+    installs = [
+        call for call in logs["apt"] if call.endswith("install -y --no-install-recommends ffmpeg")
+    ]
+    assert len(installs) == 1, logs["apt"]
+
+
+def test_the_install_step_has_a_ceiling_that_fits_the_download_and_both_tries() -> None:
+    minutes = _the_install_step().get("timeout-minutes")
+
+    assert minutes is not None, "the Install ffmpeg step has no timeout-minutes of its own"
+    assert 9 <= minutes <= 12, f"the Install ffmpeg step's timeout-minutes is {minutes}"
+
+
+def test_a_mirror_that_fails_twice_fails_the_step_after_two_tries_and_no_more(
+    tmp_path: Path,
+) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [1, 1, 0])
+
+    assert code != 0, "the step passed with no ffmpeg installed"
+    assert _updates(logs) == 2, logs["apt"]
+
+
 def _checks_steps() -> list[dict]:
     jobs = _workflow("checks.yml")["jobs"]
     assert "checks" in jobs, f"checks.yml defines {sorted(jobs)}, not a single `checks` job"

@@ -36,6 +36,7 @@ from app.services.internalization_room.back_translation import (
     findings_block,
     findings_on_stretches_that_count,
     findings_remaining,
+    is_joined,
     nuances_said,
     said_before,
     segments_block,
@@ -180,6 +181,7 @@ async def check_the_telling_back(
             language_code=language,
             settings=settings,
             session_id=session.id,
+            joined=is_joined(current_parts(takes)),
         )
 
     said_already = nuances_said(state.checks)
