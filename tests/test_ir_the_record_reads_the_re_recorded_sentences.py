@@ -7,8 +7,10 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.models.auth import App
 from app.db.models.project import Project
+from app.services.internalization_room import takes as takes_service
 from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
@@ -17,11 +19,21 @@ from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
 
 SCENE_TWO = [[(0, 1000)], [(0, 42000), (42000, 49000), (49000, 50000)]]
+STORAGE = "https://storage.example/balde-de-teste/"
 
 
 @pytest.fixture()
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     return the_bucket_is_in_memory(monkeypatch)
+
+
+@pytest.fixture()
+def signed(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _signed_download(bucket: str, key: str, **_: Any) -> str:
+        return f"https://storage.example/{bucket}/{key}"
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed_download)
 
 
 @pytest.fixture()
@@ -39,6 +51,20 @@ async def room_app(db_session: AsyncSession) -> App:
 
 def desk_re_recorded(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/re-recorded-sentences"
+
+
+def desk_sentence_audio(session_id: str, sentence_id: str) -> str:
+    return f"{desk_re_recorded(session_id)}/{sentence_id}/audio"
+
+
+async def _what_plays(
+    client: httpx.AsyncClient, store: MemoryStore, url: str, desk: dict[str, str]
+) -> bytes:
+    answered = await client.get(url, headers=desk, follow_redirects=False)
+    assert answered.status_code == 307, answered.text
+    location = answered.headers["location"]
+    assert location.startswith(STORAGE), location
+    return store.objects.get(location.removeprefix(STORAGE), b"")
 
 
 async def _the_desk(db: AsyncSession, room_app: App) -> dict[str, str]:
@@ -93,3 +119,23 @@ async def test_a_sentence_of_scene_two_recorded_again_reads_with_where_it_was_an
     assert before <= datetime.fromisoformat(sentence["at"]) <= after, (
         "o registro não dizia quando a frase foi regravada"
     )
+
+
+async def test_the_sentence_as_the_team_recorded_it_plays_the_very_audio_they_sent(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    room_app: App,
+    signed: None,
+) -> None:
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    sent = spoken(8.6)
+    await re_record(client, session.id, middle.id, sent, sentence_id="sentence-0042")
+
+    (sentence,) = await _the_sentences(client, session.id, desk)
+    played = await _what_plays(
+        client, store, desk_sentence_audio(session.id, sentence["sentence_id"]), desk
+    )
+
+    assert played == sent, "o botão tocava outra coisa que não a frase como a equipe gravou"

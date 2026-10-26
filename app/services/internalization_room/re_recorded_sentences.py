@@ -2,10 +2,17 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import ReRecordedSentence, SessionReRecordedSentences
+from app.services.internalization_room.sentences import WAV
 from app.services.internalization_room.sessions import back_translation_of
-from app.services.internalization_room.takes import current_parts, part_positions, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    part_positions,
+    signed_listen_url,
+    takes_of,
+)
 from app.utils.stored_time import as_utc
 
 
@@ -38,3 +45,13 @@ async def re_recorded_sentences_of(
             for laid in back_translation_of(session).sentences
         ],
     )
+
+
+async def re_recorded_sentence_url(session: IRSession, sentence_id: str) -> str:
+    laid = next(
+        (one for one in back_translation_of(session).sentences if one.sentence_id == sentence_id),
+        None,
+    )
+    if laid is None:
+        raise NotFoundError(f"No sentence {sentence_id} was recorded again in this session")
+    return await signed_listen_url(laid.storage_key, WAV)
