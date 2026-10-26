@@ -13,6 +13,7 @@ from pydantic import (
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
+from app.models.internalization_room_text_seam import Outcome
 
 
 class LabelledElement(BaseModel):
@@ -1906,6 +1907,72 @@ class SessionCoverageResponse(BaseModel):
     panorama: bool
     no_elements: bool
     ledger: str | None
+
+
+RetroKind = Literal["missing", "addition", "silence", "unclear"]
+
+
+class SessionRetroFinding(BaseModel):
+    kind: RetroKind
+    frase: int | None
+
+
+class SessionRetroNuance(BaseModel):
+    frase: int | None
+    said: bool
+
+
+class SessionRetroFrase(BaseModel):
+    frase: int | None
+    segment_id: str
+    take_id: str
+    scene: str | None
+    starts_ms: int
+    ends_ms: int
+    pass_number: int
+    transcript: str
+
+
+class SessionRetroReopenedFrase(BaseModel):
+    frase: int | None
+    take_id: str
+    scene: str | None
+    starts_ms: int
+    ends_ms: int
+
+
+class SessionRetroReopened(BaseModel):
+    version: int
+    approved_at: str
+    frases: list[SessionRetroReopenedFrase]
+
+
+class SessionRetroCheckFinding(BaseModel):
+    kind: RetroKind
+    frase: int | None
+
+
+class SessionRetroCheck(BaseModel):
+    at: str
+    outcome: Outcome
+    conferida: bool
+    spoken: str
+    findings: list[SessionRetroCheckFinding]
+
+
+class SessionRetroResponse(BaseModel):
+    session_id: str
+    status: Literal["conferida", "forcada", "sem_conferencia"]
+    forced_at: str | None
+    version: int | None
+    approved_at: str | None
+    heard_complete: bool
+    findings: list[SessionRetroFinding]
+    nuances: list[SessionRetroNuance]
+    release_check: None = None
+    frases: list[SessionRetroFrase]
+    reopened: SessionRetroReopened | None
+    checks: list[SessionRetroCheck]
 
 
 class CanonPinsResponse(BaseModel):
