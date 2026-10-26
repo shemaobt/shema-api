@@ -40,7 +40,7 @@ jobs:
       - name: Install ffmpeg
         run: |
           for attempt in 1 2; do
-            sudo timeout 180 sh -c 'apt-get update && apt-get install -y --no-install-recommends ffmpeg' && break
+            sudo timeout 180 sh -c 'apt-get -o Acquire::http::Timeout=20 update && apt-get -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg' && break
             [ "$attempt" = 2 ] && exit 1
           done
 

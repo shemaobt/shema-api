@@ -301,6 +301,18 @@ def test_a_mirror_that_fails_once_is_asked_again_and_the_step_passes(tmp_path: P
     assert _updates(logs) == 2, logs["apt"]
 
 
+def test_apt_gives_up_on_a_silent_connection_in_seconds_not_the_default_two_minutes(
+    tmp_path: Path,
+) -> None:
+    _, _, logs = _the_install_runs(tmp_path, [0])
+
+    assert len(logs["apt"]) == 2, logs["apt"]
+    for call in logs["apt"]:
+        patience = [word for word in call.split() if word.startswith("Acquire::http::Timeout=")]
+        assert patience, f"apt-get {call} waits as long as apt's default"
+        assert int(patience[0].split("=")[1]) <= 60, call
+
+
 def test_a_mirror_that_fails_twice_fails_the_step_after_two_tries_and_no_more(
     tmp_path: Path,
 ) -> None:
