@@ -93,11 +93,11 @@ aliases list under `app/services/internalization_room/canon/vendor/` — moves o
 `scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
 beside the copy. It keeps the canon it replaces, with the element labels, under
-`canon/kept/<pin>/`: a session reads the canon it opened with while it is live, until a Zerar
-archives it. The sync never removes a kept tree. Kept trees leave only by hand, through a
-prune (ADR 0088). From an up-to-date main checkout, fetch production's live pins with a Desk
-token, then prune with them at once (a file older than 15 minutes is refused) and open a pull
-request with what it removed:
+`canon/kept/<pin>/`: a session reads the canon it opened with for as long as the Desk shows
+it, after a Zerar archives it too (ADR 0099). The sync never removes a kept tree. Kept trees
+leave only by hand, through a prune (ADR 0088). From an up-to-date main checkout, fetch
+production's session pins with a Desk token, then prune with them at once (a file older than
+15 minutes is refused) and open a pull request with what it removed:
 
 ```sh
 curl -sf -H "Authorization: Bearer <token>" \

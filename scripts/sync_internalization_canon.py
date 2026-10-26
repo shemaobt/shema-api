@@ -21,13 +21,14 @@ a re-pin cannot delete them without a word.
 
 Before it overwrites, `--sync` keeps the canon it replaces: `vendor/` as it stands, with its
 pin and manifest, and the element labels beside it, are copied to `canon/kept/<old pin>/`. A
-session keeps the canon it was opened with while its session is live, and that copy is
-the only place its canon still exists once the pin moves. The sync removes no kept tree:
-which pins a live session holds needs a production read, and the sync takes none. A kept tree
+session keeps the canon it was opened with for as long as the Desk shows it, archived by a
+Zerar included, and that copy is the only place its canon still exists once the pin moves.
+The sync removes no kept tree: which pins a session holds needs a production read, and the
+sync takes none. A kept tree
 leaves only through `--prune --live-pins <file>`, the file being production's answer to
 `GET /api/internalization-room/facilitator/canon-pins`; the prune keeps every pin the file
-names, the pin production serves and the deployed pin, and drops every other kept tree (ADR
-0088).
+names, the pin production serves and the deployed pin, and drops every other kept tree (ADRs
+0088 and 0099).
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
 compiler's main line, when the pin leaves no consumable passage at all, and when a names

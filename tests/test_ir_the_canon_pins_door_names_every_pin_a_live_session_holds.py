@@ -1,8 +1,9 @@
-"""ENG-1753 — the canon-pins read names every pin a live session holds, across every team.
+"""ENG-1753 — the canon-pins read names every pin a session holds, across every team.
 
 Its answer, saved to a file, is what the prune is told to keep. A pin it left out is a canon
 the prune removes while a session still reads it, so the read is not scoped to the reader's
-teams and leaves out only the sessions a Zerar archived.
+teams, and since ENG-1626 it names the sessions a Zerar archived too: the Desk still reads
+them by id.
 """
 
 from __future__ import annotations
@@ -87,7 +88,7 @@ async def test_the_read_names_each_pin_a_live_session_holds_once(
     )
 
 
-async def test_an_archived_sessions_pin_is_not_named(
+async def test_an_archived_sessions_pin_is_still_named_since_the_desk_still_reads_it(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -95,6 +96,7 @@ async def test_an_archived_sessions_pin_is_not_named(
 ) -> None:
     team = await _a_team(db_session, "x")
     reader = await _a_reader(db_session, "x@example.com", role="facilitator", facilitates=(team,))
+    deployed = kept.deployed_pin()
     await _a_session(db_session, team, "P01")
     the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN)
     await _a_session(db_session, team, "P02")
@@ -103,8 +105,9 @@ async def test_an_archived_sessions_pin_is_not_named(
     )
     assert zerar.status_code == 200, zerar.text[:300]
 
-    assert (await _pins(client, reader))["pins"] == [NEW_PIN], (
-        "a leitura guardava o canon de uma sessão que o Zerar arquivou"
+    assert (await _pins(client, reader))["pins"] == sorted([deployed, NEW_PIN]), (
+        "a leitura deixava de fora o pin de uma sessão zerada, que o consultor ainda lê pela "
+        "Mesa, e o prune apagava o canon dela"
     )
 
 
