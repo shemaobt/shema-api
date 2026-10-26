@@ -16,7 +16,7 @@ from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import APP_KEY, PREFIX, at_the_desk
-from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.room_harness import room_client, the_bucket_is_in_memory, upload_a_part
 from tests.sentence_harness import part_audio, re_record, rehearsed_in_wav, spoken
 
 SCENE_TWO = [[(0, 1000)], [(0, 42000), (42000, 49000), (49000, 50000)]]
@@ -215,3 +215,24 @@ async def test_a_frase_recorded_again_twice_awaits_only_under_its_latest_sentenc
         ("sentence-0001", None),
         ("sentence-0002", 3),
     ], "a primeira frase regravada também dizia que aguarda tradução"
+    assert [one["in_use"] for one in sentences] == [True, True], (
+        "a primeira frase, debaixo da segunda na mesma gravação, lia como fora de uso"
+    )
+
+
+async def test_a_sentence_in_a_part_the_team_recorded_again_whole_reads_out_of_use(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, room_app: App
+) -> None:
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    await re_record(client, session.id, middle.id, spoken(8.6))
+
+    (standing,) = await _the_sentences(client, session.id, desk)
+    again = await upload_a_part(client, session.id, part=2, audio=b"a cena 2 gravada de novo")
+    assert again.status_code == 200, again.text
+    (left,) = await _the_sentences(client, session.id, desk)
+
+    assert standing["in_use"] is True, "a frase na gravação que vale lia como fora de uso"
+    assert left["in_use"] is False, (
+        "a frase de uma parte gravada de novo não dizia que a gravação saiu de uso"
+    )

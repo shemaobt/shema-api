@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import ReRecordedSentence, SessionReRecordedSentences
+from app.services.internalization_room.manifest import _chain
 from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.sentences import WAV, the_sentence_awaiting
 from app.services.internalization_room.sessions import back_translation_of
@@ -29,8 +30,11 @@ async def re_recorded_sentences_of(
 ) -> SessionReRecordedSentences:
     takes = await takes_of(db, session.id)
     by_id = {take.id: take for take in takes}
-    positions = part_positions(current_parts(takes))
+    parts = current_parts(takes)
+    positions = part_positions(parts)
     laid_in = back_translation_of(session).sentences
+    by_take = {one.take_id: one for one in laid_in}
+    in_use = {take_id for part in parts for take_id in _chain(part.id, by_take)}
     awaiting = await the_sentence_awaiting(db, session)
     waits = (
         None
@@ -56,6 +60,7 @@ async def re_recorded_sentences_of(
                 replaced_ends_ms=laid.replaced_ends_ms,
                 ends_ms=laid.ends_ms,
                 previous_take_id=laid.previous_take_id,
+                in_use=laid.take_id in in_use,
                 awaiting_frase=numbers.get(laid.segment_id) if laid.sentence_id == waits else None,
             )
             for laid in laid_in
