@@ -290,6 +290,26 @@ def test_each_try_at_the_mirror_is_given_minutes_not_as_long_as_the_mirror_takes
     assert all(int(limit) <= 300 for limit in logs["limits"]), logs["limits"]
 
 
+def _updates(logs: dict) -> int:
+    return sum(1 for line in logs["apt"] if line.endswith("update"))
+
+
+def test_a_mirror_that_fails_once_is_asked_again_and_the_step_passes(tmp_path: Path) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [1, 0])
+
+    assert code == 0
+    assert _updates(logs) == 2, logs["apt"]
+
+
+def test_a_mirror_that_fails_twice_fails_the_step_after_two_tries_and_no_more(
+    tmp_path: Path,
+) -> None:
+    code, _, logs = _the_install_runs(tmp_path, [1, 1, 0])
+
+    assert code != 0, "the step passed with no ffmpeg installed"
+    assert _updates(logs) == 2, logs["apt"]
+
+
 def _checks_steps() -> list[dict]:
     jobs = _workflow("checks.yml")["jobs"]
     assert "checks" in jobs, f"checks.yml defines {sorted(jobs)}, not a single `checks` job"
