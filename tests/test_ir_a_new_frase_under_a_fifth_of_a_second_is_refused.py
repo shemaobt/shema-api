@@ -20,7 +20,7 @@ from tests.hard_stretch_harness import (
     rehearse,
     retro_takes,
 )
-from tests.room_harness import nothing_is_read_ahead, rehearsed_in_parts_of
+from tests.room_harness import rehearsed_in_parts_of
 
 AUDIO = b"a equipe contou um trecho curto demais"
 
@@ -42,7 +42,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         return "algo que a equipe contou"
 
     monkeypatch.setattr(bt_api, "heard", _transcribe)
-    nothing_is_read_ahead(monkeypatch)
     bucket = MemoryStore()
     monkeypatch.setattr(takes_service, "_store", lambda *_, **__: bucket)
 

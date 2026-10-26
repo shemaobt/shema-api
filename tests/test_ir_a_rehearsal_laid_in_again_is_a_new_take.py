@@ -25,7 +25,6 @@ from tests.room_harness import (
     PART_MS,
     TABLET,
     a_scene_rehearsal,
-    nothing_is_read_ahead,
     rehearsed_in_parts,
     room_client,
     the_analyst_reads,
@@ -43,7 +42,6 @@ CENA_1 = b"o ensaio da cena 1"
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a frase traduzida"

@@ -76,7 +76,6 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     record_the_part_again,
     rehearsed_in_parts,
@@ -216,7 +215,6 @@ class Speaker:
 
 @pytest.fixture(autouse=True)
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return TOLD_WORDS

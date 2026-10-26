@@ -32,7 +32,6 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -83,7 +82,6 @@ def said(monkeypatch: pytest.MonkeyPatch) -> None:
 async def client(db_session: AsyncSession, test_engine, monkeypatch: pytest.MonkeyPatch):
     the_bucket_is_in_memory(monkeypatch)
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     per_request = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with room_client(db_session, monkeypatch, per_request=per_request) as c:
         yield c

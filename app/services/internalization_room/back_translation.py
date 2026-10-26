@@ -168,10 +168,6 @@ class BtAnalysis(BaseModel):
     nuances: list[Nuance] = Field(default_factory=list)
 
 
-class ReadAhead(BtAnalysis):
-    segment_ids: list[str]
-
-
 class SupersededAttempt(BaseModel):
     """A telling-back the team replaced by re-recording.
 
@@ -304,7 +300,6 @@ class BackTranslationState(BaseModel):
     #: the analyst and then failed before the team heard anything — that one saves nothing at
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
-    read_ahead: ReadAhead | None = None
     checks: list[CheckRound] = Field(default_factory=list)
     nuances: list[Nuance] = Field(default_factory=list)
     sentences: list[LaidInSentence] = Field(default_factory=list)
@@ -332,13 +327,6 @@ class BackTranslationState(BaseModel):
         return self.analysed_segment_ids is not None and self.analysed_segment_ids == [
             segment.id for segment in segments
         ]
-
-    def read_ahead_of(self, segments: list[IRSegment]) -> ReadAhead | None:
-        if self.read_ahead is None or self.read_ahead.segment_ids != [
-            segment.id for segment in segments
-        ]:
-            return None
-        return self.read_ahead
 
     def the_verdict_to_serve(self, told: list[IRSegment]) -> VoicedVerdict | None:
         if (

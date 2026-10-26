@@ -50,7 +50,6 @@ from tests.room_harness import (
     PART_MS,
     Analyst,
     a_scene_rehearsal,
-    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -69,7 +68,6 @@ HEADERS = {"X-Room-Device": TABLET}
 @pytest.fixture(autouse=True)
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho de volta"

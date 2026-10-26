@@ -13,7 +13,6 @@ from tests.room_harness import (
     PART_MS,
     a_piece_still_to_be_told,
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
@@ -90,7 +89,6 @@ async def test_a_stretch_told_again_answers_with_the_number_it_already_had(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def heard(*_: object, **__: object) -> str:
         return "Rute disse que iria aonde Noemi fosse."
@@ -144,7 +142,6 @@ async def test_the_telling_answer_numbers_a_stretch_told_between_two_others_as_t
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a segunda parte, contada de volta"])
     session, parts = await rehearsed_in_parts_of(db_session, [1, 0, 1])
 
@@ -163,7 +160,6 @@ async def test_a_stretch_told_again_through_the_telling_answer_keeps_its_number(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a primeira parte, contada outra vez"])
     session, parts = await rehearsed_in_parts_of(db_session, [1, 1, 1])
 
@@ -237,7 +233,6 @@ async def test_after_the_translation_starts_over_the_numbering_starts_over_with_
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a terceira parte, de novo", "a primeira parte, de novo"])
     session, parts = await rehearsed_in_parts_of(db_session, [1, 1, 1])
 
@@ -257,7 +252,6 @@ async def test_a_first_telling_sent_at_an_untold_pieces_address_is_answered_with
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a metade que faltava, contada de volta"])
     session, _parts = await rehearsed_in_parts(db_session, 2)
     standing = await final_segments(db_session, session.id)

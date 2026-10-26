@@ -19,12 +19,7 @@ from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from tests.release_harness import PREFIX
-from tests.room_harness import (
-    nothing_is_read_ahead,
-    rehearsed_in_parts_of,
-    room_client,
-    the_bucket_is_in_memory,
-)
+from tests.room_harness import rehearsed_in_parts_of, room_client, the_bucket_is_in_memory
 
 PART_LENGTH_MS = 5000
 
@@ -32,7 +27,6 @@ PART_LENGTH_MS = 5000
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     async with room_client(db_session, monkeypatch) as room:
         yield room
 

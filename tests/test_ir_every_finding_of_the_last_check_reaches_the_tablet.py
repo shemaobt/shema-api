@@ -12,7 +12,6 @@ from tests.room_harness import (
     Room,
     ScriptedAnalyst,
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -243,7 +242,6 @@ async def test_the_session_read_drops_the_mark_of_a_frase_translated_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def heard(*_: object, **__: object) -> str:
         return "Rute disse que iria aonde Noemi fosse."

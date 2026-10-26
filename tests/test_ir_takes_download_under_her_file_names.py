@@ -53,7 +53,6 @@ from tests.release_harness import (
     the_one_part_of,
 )
 from tests.room_harness import (
-    nothing_is_read_ahead,
     record_the_part_again,
     rehearsed_in_parts,
     room_client,
@@ -95,7 +94,6 @@ def saves_as(filename: str) -> str:
 
 @pytest.fixture(autouse=True)
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho de volta"

@@ -52,7 +52,6 @@ from tests.release_harness import (
     team_release,
 )
 from tests.room_harness import (
-    nothing_is_read_ahead,
     release_blockers,
     release_packet,
     room_client,
@@ -76,7 +75,6 @@ NEW_TABLET = "tablet-reinstalado"
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho de volta"

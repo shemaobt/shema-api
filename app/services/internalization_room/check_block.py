@@ -179,10 +179,10 @@ async def keep_the_check_on_the_standing_release(
     version stored before its stretches or its check block were kept stays as it was stored.
 
     Called by the one funnel every writer of the telling-back goes through, in its transaction,
-    so a verdict, a Restart, a report of listening and a reading ahead over a draft that
-    stands approved land on that version's check block too, or none of them do (ADR 0081). The
-    block sits outside the hash (ADR 0020), so no fingerprint moves, and who forced it, when
-    and what it passed stay as the approval wrote them.
+    so a verdict, a Restart and a report of listening over a draft that stands approved land on
+    that version's check block too, or none of them do (ADR 0081). The block sits outside the
+    hash (ADR 0020), so no fingerprint moves, and who forced it, when and what it passed stay
+    as the approval wrote them.
     """
     release = await approved_draft(db, session)
     if (

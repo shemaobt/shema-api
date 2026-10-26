@@ -14,7 +14,6 @@ from tests.room_harness import (
     ScriptedAnalyst,
     a_piece_still_to_be_told,
     heard_every_part,
-    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     record_the_part_again,
@@ -104,7 +103,6 @@ async def test_telling_an_untold_piece_moves_the_finding_up_with_its_frase(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a metade que faltava, contada de volta"])
     session, _parts = await rehearsed_in_parts(db_session, 3)
     told = await final_segments(db_session, session.id)
@@ -151,7 +149,6 @@ async def test_a_telling_placed_earlier_in_the_reading_moves_the_finding_up_with
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a segunda parte, contada de volta"])
     session, parts = await rehearsed_in_parts_of(db_session, [1, 0, 1])
     told = await final_segments(db_session, session.id)
@@ -173,7 +170,6 @@ async def test_the_check_that_could_not_read_answers_the_frase_the_session_read_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a segunda parte, contada de volta"])
     session, parts = await rehearsed_in_parts_of(db_session, [1, 0, 1])
     told = await final_segments(db_session, session.id)
@@ -234,7 +230,6 @@ async def test_a_finding_whose_numbered_stretch_was_told_again_keeps_its_stretch
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def heard(*_: object, **__: object) -> str:
         return "Rute disse que iria aonde Noemi fosse."

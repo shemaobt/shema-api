@@ -24,7 +24,6 @@ from app.services.internalization_room.sessions import back_translation_of, get_
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
 from tests.room_harness import (
-    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     room_client,
@@ -50,11 +49,6 @@ from tests.turn_harness import the_room_agent_is
 @pytest.fixture()
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     return the_bucket_is_in_memory(monkeypatch)
-
-
-@pytest.fixture(autouse=True)
-def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

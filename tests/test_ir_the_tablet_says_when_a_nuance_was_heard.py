@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room import background
 from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import capture_segment, final_segments
@@ -284,28 +281,18 @@ async def test_a_part_recorded_again_makes_its_said_nuance_sayable_even_in_the_s
     )
 
 
-@asynccontextmanager
-async def _the_same(db: AsyncSession) -> AsyncIterator[AsyncSession]:
-    yield db
-
-
-async def test_a_nuance_read_ahead_reaches_the_speaker_and_alone_still_confers(
-    client, analyst, speaker, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+async def test_a_nuance_alone_reaches_the_speaker_and_still_confers(
+    client, analyst, speaker, db_session: AsyncSession
 ) -> None:
-    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _the_same(db_session))
     session, _parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [{"findings": [ON_FRASE_2]}]
     speaker.line = NAMES_FRASE_2
-    await background.read_ahead(session_id=session.id)
 
     pressed = await press_terminei(
         client, session.id, report=await heard_every_part(db_session, session.id)
     )
 
-    assert len(analyst.shown) == 1, "terminei leu de novo em vez de usar a leitura antecipada"
-    assert _handed(speaker) == [2], (
-        "a leitura antecipada jogava a nuance fora e o tablet nunca a ouvia"
-    )
+    assert _handed(speaker) == [2], "a nuance era jogada fora e o tablet nunca a ouvia"
     answer = pressed.json()
     assert answer["checked"] is True, "uma nuance sozinha impedia a aprovação"
     assert answer["findings_remaining"] == 0, "a nuance entrava na conta dos achados em aberto"
