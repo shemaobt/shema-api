@@ -41,7 +41,6 @@ from app.services.internalization_room.back_translation import (
     segments_block,
     the_finding_that_leads,
 )
-from app.services.internalization_room.background import the_reading_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
@@ -121,7 +120,7 @@ async def check_the_telling_back(
     )
     told_back = segments_block(told, addresses, language)
     if not state.already_analysed(told):
-        read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
+        read = await analyse_telling_back(
             segments=told,
             scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,

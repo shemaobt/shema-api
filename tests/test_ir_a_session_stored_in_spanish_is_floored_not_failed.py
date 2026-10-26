@@ -19,8 +19,6 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import back_translation as back_translation_api
-from app.api.internalization_room import segments as segments_api
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRQuestion, IRSession
@@ -319,27 +317,6 @@ async def test_the_coverage_of_a_row_stored_in_spanish_is_classified_in_the_room
     )
 
 
-@pytest.mark.parametrize(("floor", "named"), FLOORS)
-async def test_the_reading_ahead_of_a_row_stored_in_spanish_is_read_in_the_rooms_language(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
-) -> None:
-    _the_floor_is(monkeypatch, floor)
-    analyst = the_analyst_is_scripted(monkeypatch)
-    codes = _the_codes_a_turn_was_given(monkeypatch, background, "analyse_telling_back")
-    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
-    session, _ = await rehearsed_in_parts(db_session, 1)
-    session.language = "es"
-    await db_session.commit()
-
-    await background.read_ahead(session_id=session.id)
-
-    assert analyst.shown
-    assert all(named in system for system in analyst.shown), (
-        "a leitura antecipada de uma sessão guardada em espanhol falhava em silêncio"
-    )
-    assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
-
-
 @pytest.mark.parametrize("floor", ["en", "pt"])
 async def test_the_note_a_verdict_keeps_on_a_row_stored_in_spanish_is_in_the_rooms_language(
     models: _Models, monkeypatch: pytest.MonkeyPatch, floor: str
@@ -431,13 +408,8 @@ def _the_hints_a_telling_back_was_heard_with(monkeypatch: pytest.MonkeyPatch) ->
         hints.append(language)
         return PORTUGUESE
 
-    async def unread(**_: Any) -> None:
-        return None
-
     bucket = MemoryStore()
     monkeypatch.setattr(hearing, "transcribe_audio", transcriber)
-    monkeypatch.setattr(back_translation_api, "read_ahead", unread)
-    monkeypatch.setattr(segments_api, "read_ahead", unread)
     monkeypatch.setattr(takes, "_store", lambda *_, **__: bucket)
     return hints
 

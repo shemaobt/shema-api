@@ -40,7 +40,6 @@ from tests.release_harness import (
 from tests.room_harness import (
     PART_MS,
     a_piece_still_to_be_told,
-    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -62,7 +61,6 @@ RETELLING = b"a equipe contou a parte regravada"
 @pytest.fixture(autouse=True)
 def voice(monkeypatch: pytest.MonkeyPatch) -> None:
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture()

@@ -30,7 +30,7 @@ from app.services.internalization_room.sessions import (
     get_session,
 )
 from tests.hard_stretch_harness import MemoryStore
-from tests.room_harness import nothing_is_read_ahead, room_client, the_bucket_is_in_memory
+from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.sentence_harness import (
     laid_in_and_told_again,
     re_record,
@@ -63,11 +63,6 @@ THE_BUCKET = ("get", "put", "stat")
 @pytest.fixture()
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     return the_bucket_is_in_memory(monkeypatch)
-
-
-@pytest.fixture(autouse=True)
-def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

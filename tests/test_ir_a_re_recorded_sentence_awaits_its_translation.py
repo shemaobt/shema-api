@@ -21,7 +21,6 @@ from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
 from tests.room_harness import (
     REHEARSED_AT,
-    nothing_is_read_ahead,
     press_terminei,
     room_client,
     the_analyst_reads,
@@ -36,11 +35,6 @@ from tests.sentence_harness import WAV, re_record, rehearsed_in_wav, seconds, sp
 @pytest.fixture()
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     return the_bucket_is_in_memory(monkeypatch)
-
-
-@pytest.fixture(autouse=True)
-def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

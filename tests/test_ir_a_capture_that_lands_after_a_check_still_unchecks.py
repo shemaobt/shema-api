@@ -32,7 +32,6 @@ from app.services.internalization_room.sessions import (
 )
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
-    nothing_is_read_ahead,
     rehearsed_in_parts_of,
     room_client,
     the_bucket_is_in_memory,
@@ -43,7 +42,6 @@ from tests.room_harness import (
 @pytest.fixture(autouse=True)
 def voice(monkeypatch: pytest.MonkeyPatch) -> None:
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture()

@@ -50,7 +50,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """
     from fastapi import FastAPI
 
-    from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
@@ -65,11 +64,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             raise answer
         return answer
 
-    async def _unread(**_: Any) -> None:
-        return None
-
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
-    monkeypatch.setattr(bt_api, "read_ahead", _unread)
     bucket = _MemoryStore()
     monkeypatch.setattr(takes_service, "_store", lambda *_, **__: bucket)
 

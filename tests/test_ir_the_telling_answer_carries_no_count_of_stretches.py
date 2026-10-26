@@ -8,7 +8,6 @@ from app.services.internalization_room.segments import final_segments
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     a_piece_still_to_be_told,
-    nothing_is_read_ahead,
     rehearsed_in_parts,
     room_client,
     the_bucket_is_in_memory,
@@ -28,7 +27,6 @@ async def test_the_telling_answer_counts_no_stretches_while_an_untold_piece_stan
     from app.main import app
 
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, ["a segunda parte, contada de volta"])
     session, _parts = await rehearsed_in_parts(db_session, 2)
     first, second = await final_segments(db_session, session.id)

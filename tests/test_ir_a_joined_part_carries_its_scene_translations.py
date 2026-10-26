@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tests.hard_stretch_harness import a_session
 from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
-    nothing_is_read_ahead,
     played_every_part,
     the_analyst_is_scripted,
     the_analyst_reads,
@@ -63,7 +62,6 @@ async def room(db_session: AsyncSession, rival_factory, monkeypatch: pytest.Monk
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
 
 def sha(audio: bytes) -> str:

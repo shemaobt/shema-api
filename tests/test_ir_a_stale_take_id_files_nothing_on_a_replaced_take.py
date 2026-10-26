@@ -18,7 +18,6 @@ from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
-    nothing_is_read_ahead,
     record_the_part_again,
     rehearsed_in_parts_of,
     room_client,
@@ -32,7 +31,6 @@ from tests.sentence_harness import re_record, rehearsed_in_wav, spoken
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     the_transcriber_says(monkeypatch, [])
     monkeypatch.setattr(segments_api, "heard", bt_api.heard)
-    nothing_is_read_ahead(monkeypatch)
     return the_bucket_is_in_memory(monkeypatch)
 
 

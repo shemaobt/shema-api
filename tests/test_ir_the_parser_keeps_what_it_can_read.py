@@ -48,7 +48,7 @@ from app.services.internalization_room.session_turns import turns_of
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
-from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
+from tests.room_harness import heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
@@ -73,11 +73,6 @@ MARK = "MARCA-7f3e"
 #: What the upstream handler writes. Case 5 is the positive control for case 3's negative:
 #: if the wording moves, case 5 fails loudly and case 3 does not go quietly vacuous.
 UPSTREAM_LOG_LINE = "Upstream service failure"
-
-
-@pytest.fixture(autouse=True)
-def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 def _besides_the_reply(caplog: pytest.LogCaptureFixture, reply: str) -> str:

@@ -27,7 +27,6 @@ from tests.device_harness import a_linked_tablet
 from tests.halt_harness import queued
 from tests.hard_stretch_harness import Facilitator, MemoryStore, a_new_recording, voice
 from tests.release_harness import ready_session
-from tests.room_harness import nothing_is_read_ahead
 from tests.stream_harness import Listening, listening
 from tests.turn_harness import the_room_agent_is
 
@@ -92,7 +91,6 @@ def desk_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, ears: li
 
     monkeypatch.setattr(bt_api, "heard", _heard)
     monkeypatch.setattr(segments_api, "heard", _heard)
-    nothing_is_read_ahead(monkeypatch)
     the_room_agent_is(monkeypatch, turn=_AgreeingModels())
 
     test_app = FastAPI()

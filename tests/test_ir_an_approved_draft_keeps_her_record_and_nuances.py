@@ -60,7 +60,6 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -129,7 +128,6 @@ async def room_app(db_session: AsyncSession) -> App:
 
 @pytest.fixture()
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho de volta"

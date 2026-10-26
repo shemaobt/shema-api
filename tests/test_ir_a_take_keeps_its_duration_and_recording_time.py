@@ -42,7 +42,6 @@ from tests.release_harness import (
     reported_playback,
 )
 from tests.room_harness import (
-    nothing_is_read_ahead,
     rehearsed_in_parts,
     release_packet,
     room_client,
@@ -66,7 +65,6 @@ WAV_FORMAT_OF_THE_TICKET = {
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho de volta"

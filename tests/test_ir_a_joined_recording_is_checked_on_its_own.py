@@ -30,7 +30,6 @@ from tests.room_harness import (
     a_piece_still_to_be_told,
     a_scene_rehearsal,
     another_rehearsal_take,
-    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -56,11 +55,6 @@ def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
 @pytest.fixture(autouse=True)
 def room(monkeypatch: pytest.MonkeyPatch) -> Room:
     return the_room_speaks(monkeypatch)
-
-
-@pytest.fixture(autouse=True)
-def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

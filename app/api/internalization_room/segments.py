@@ -6,7 +6,7 @@ had no door. These are the doors, and nothing else: choosing where to cut is the
 rules about where a cut may land are the service's, and neither is decided here.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import (
@@ -26,7 +26,6 @@ from app.models.internalization_room import (
     SentenceLaidInResponse,
 )
 from app.services import internalization_room as room
-from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
@@ -187,7 +186,6 @@ async def bring_back(
 async def replace(
     session_id: str,
     segment_id: str,
-    background: BackgroundTasks,
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
@@ -294,7 +292,6 @@ async def replace(
             replaces=segment,
         )
     nudge_stretches(session.project_id, warned=crossed)
-    background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(
         session_id=session.id,
         segments=await _units(db, session.id, include_stale=asking_for_stale),

@@ -54,7 +54,6 @@ from tests.room_harness import (
     PART_MS,
     a_scene_rehearsal,
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -73,7 +72,6 @@ REOPENS = {"reopens_the_approved_draft": "true"}
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a frase nova traduzida"

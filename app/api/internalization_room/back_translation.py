@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
@@ -26,7 +26,6 @@ from app.services.internalization_room.back_translation import (
     is_joined,
     untranslated_parts,
 )
-from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import process_line
@@ -84,7 +83,6 @@ def named_nuance_view(state: room.BackTranslationState) -> FindingView | None:
 
 async def add_chunk(
     session_id: str,
-    background: BackgroundTasks,
     file: UploadFile = File(...),
     take_id: str = Form(...),
     starts_ms: int = Form(...),
@@ -191,7 +189,6 @@ async def add_chunk(
             state=state,
         )
     nudge_stretches(session.project_id, warned=warned)
-    background.add_task(read_ahead, session_id=session.id)
     standing = await room.final_segments(db, session.id)
     numbers = room.frase_numbers(room.told_back(standing))
     return BackTranslationChunkResponse(

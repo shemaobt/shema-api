@@ -24,7 +24,6 @@ from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     another_rehearsal_take,
-    nothing_is_read_ahead,
     press_terminei,
     room_client,
     stored_telling_back,
@@ -54,7 +53,6 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     async def heard(*_: Any, **__: Any) -> str:
         return "algo que a equipe contou"
 
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, [])
     monkeypatch.setattr(segments_api, "heard", heard)
     return the_bucket_is_in_memory(monkeypatch)
