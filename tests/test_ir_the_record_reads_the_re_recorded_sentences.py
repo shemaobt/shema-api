@@ -7,6 +7,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import segments as segments_api
 from app.core.config import get_settings
 from app.db.models.auth import App
 from app.db.models.project import Project
@@ -162,3 +163,55 @@ async def test_how_it_was_before_plays_the_part_as_the_team_first_recorded_it(
     assert played == part_audio(2, 50000), (
         "«como era antes» tocava a parte já com a frase nova, ou nada"
     )
+
+
+async def test_a_sentence_still_awaiting_its_translation_names_its_frase_until_it_is_told_again(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    room_app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a frase nova traduzida"
+
+    monkeypatch.setattr(segments_api, "heard", _heard)
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    laid = await re_record(client, session.id, middle.id, spoken(8.6))
+    (where,) = [one for one in laid.json()["segments"] if one["segment_id"] == middle.id]
+
+    (awaiting,) = await _the_sentences(client, session.id, desk)
+    told = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{middle.id}/replace",
+        data={
+            "take_id": where["take_id"],
+            "starts_ms": str(where["starts_ms"]),
+            "ends_ms": str(where["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", b"a equipe traduziu a frase nova", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text
+    (translated,) = await _the_sentences(client, session.id, desk)
+
+    assert awaiting["awaiting_frase"] == 3, "o registro não dizia que a frase 3 aguarda tradução"
+    assert translated["awaiting_frase"] is None, (
+        "a frase traduzida de novo continuava aguardando no registro"
+    )
+
+
+async def test_a_frase_recorded_again_twice_awaits_only_under_its_latest_sentence(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, room_app: App
+) -> None:
+    session, _, (_, (_, middle, _)) = await rehearsed_in_wav(db_session, store, SCENE_TWO)
+    desk = await _the_desk(db_session, room_app)
+    await re_record(client, session.id, middle.id, spoken(8.6), sentence_id="sentence-0001")
+    again = await re_record(client, session.id, middle.id, spoken(1.6), sentence_id="sentence-0002")
+    assert again.status_code == 200, again.text
+
+    sentences = await _the_sentences(client, session.id, desk)
+
+    assert [(one["sentence_id"], one["awaiting_frase"]) for one in sentences] == [
+        ("sentence-0001", None),
+        ("sentence-0002", 3),
+    ], "a primeira frase regravada também dizia que aguarda tradução"

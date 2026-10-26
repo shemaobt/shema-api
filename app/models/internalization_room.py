@@ -470,6 +470,7 @@ class ReRecordedSentence(BaseModel):
     replaced_ends_ms: int | None
     ends_ms: int
     previous_take_id: str
+    awaiting_frase: int | None
 
 
 class SessionReRecordedSentences(BaseModel):
