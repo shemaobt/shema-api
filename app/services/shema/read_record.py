@@ -63,10 +63,11 @@ from app.services.shema._audit import ChangesSince, changes_since
 from app.services.shema._consent import request_as_read
 from app.services.shema._health_audience import health_as_read
 from app.services.shema._media_sharing import recorded_decision
-from app.services.shema._redaction import free_text_as_read
+from app.services.shema._redaction import free_text_as_read, listed_as_read
 from app.services.shema._scope import Readership, RegionScope
+from app.services.shema._sensitive_list import sensitive_countries
 from app.services.shema.get_project import get_project
-from app.utils.shema_derivations import derive
+from app.utils.shema_derivations import SensitiveCountries, derive
 
 
 async def _needs(db: AsyncSession, project_id: str) -> list[ShemaNeedItem]:
@@ -169,15 +170,18 @@ async def _health_history(db: AsyncSession, project_id: str) -> list[ShemaHealth
 
 
 def _record_as_read(
-    project: ShemaProject, record: ShemaProjectRecord, readership: Readership
+    project: ShemaProject,
+    record: ShemaProjectRecord,
+    readership: Readership,
+    listed: SensitiveCountries,
 ) -> dict[str, Any]:
     """What this reader may not read on the record, beyond the place — one update, or nothing.
 
     The place and the record's own free text are the shape's (``LeavingShape.read_by``). What
     else depends on who reads is asked here and nowhere else in this file, each of its own
     owner: the prayer request of ``_consent.py``, the text the needs and the assessments carry
-    into a withheld record of ``_redaction.py`` (OBT-556), and a team's health of
-    ``_health_audience.py`` (OBT-553).
+    into a withheld record of ``_redaction.py`` (OBT-556), the listed countries the place names
+    of ``_redaction.py`` too (OBT-616), and a team's health of ``_health_audience.py`` (OBT-553).
 
     **The health answer is spread last, and that order is the rule.** Both of the last two
     answer ``health_history``: the withheld record's history without its notes, and ``None`` for
@@ -189,6 +193,7 @@ def _record_as_read(
     return {
         **request_as_read(project, reads_withheld=readership.withheld_prayer),
         **free_text_as_read(project, readership.reader_of(project.region_key), record),
+        **listed_as_read(project, readership.reader_of(project.region_key), listed),
         **health_as_read(record, reads_health=readership.reads_health),
     }
 
@@ -224,7 +229,8 @@ async def build_record(
             "last_progress_date": history[-1].date if history else None,
         }
     )
-    record = joined.model_copy(update=_record_as_read(project, joined, readership))
+    listed = await sensitive_countries(db)
+    record = joined.model_copy(update=_record_as_read(project, joined, readership, listed))
     derived = derive(record, today, region=project.region_key)
     return record.model_copy(update={"derived": ShemaProjectDerived.of(derived)})
 

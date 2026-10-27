@@ -48,9 +48,11 @@ SQLAlchemy's ``version_id_col`` would do the same thing at the mapper and was re
 raises ``StaleDataError`` from *any* flush of this table, so BE-07's and BE-08's own writes
 would meet a SQLAlchemy exception with no handler and answer 500 where this answers 409.
 
-This file may read ``location``: it does so through ``_redaction.derive_region``, which is the
-column's one reader, so ``tests/test_shema/test_privacy_owners.py`` needs no allowlist entry
-for it. The same goes for the reader's refusal: *which* fields a reader may not write is
+This file may read ``location``: it does so through ``_redaction.derive_region`` — and, since
+OBT-616, through ``_redaction.flag_by_country``, which raises the flag of a place that names a
+sensitive country on every create and every save — and that file is the column's one reader, so
+``tests/test_shema/test_privacy_owners.py`` needs no allowlist entry for it. The same goes for
+the reader's refusal: *which* fields a reader may not write is
 ``_redaction.unwritable_fields``'s answer, from the names the payload set, and this file only
 raises it. The prayer request has the same two answers from its own owner (BE-09):
 ``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a reader outside its
@@ -108,6 +110,7 @@ from app.services.shema._redaction import (
     NEED_TEXT,
     STORY_PLACE,
     derive_region,
+    flag_by_country,
     log_reference,
     need_text_as_written,
     story_text_as_written,
@@ -120,9 +123,10 @@ from app.services.shema._scope import (
     refuse_out_of_scope,
     visible_projects,
 )
+from app.services.shema._sensitive_list import sensitive_countries
 from app.services.shema._submission_archive import erase_withdrawn_request
 from app.services.shema._submission_notices import announce_shared_request
-from app.utils.shema_derivations import completion_date_after
+from app.utils.shema_derivations import SensitiveCountries, completion_date_after
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +217,9 @@ def _rows(value: Any) -> list[dict[str, Any]]:
     ]
 
 
-def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any]:
+def _merged(
+    project: ShemaProject, payload: ShemaProjectUpdate, listed: SensitiveCountries
+) -> dict[str, Any]:
     """What the row would hold, built without touching it.
 
     Built and validated before a single attribute is applied, which is what makes *a partial
@@ -239,6 +245,10 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     ``needs_items`` leaves here because it is not a column of this row at all: it is a child
     table, and ``_needs.py`` is what merges it. ``_audit.NOT_COLUMNS`` names both departures in
     one place so the diff and this function cannot disagree about what a column is.
+
+    **The sensitive-country list is the last thing the merge asks** (OBT-616): a place that names
+    a listed country leaves the flag raised (``_redaction.flag_by_country``), here and not after
+    the diff, so the save's fourth step judges *changed nothing* with the rule already applied.
     """
     sent = {name: getattr(payload, name) for name in payload.model_fields_set}
     merged = {column: getattr(project, column) for column in _audit.AUDITED_COLUMNS}
@@ -267,6 +277,7 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     merged["community_checked_units"] = rolled.community
     merged["approved_units"] = rolled.approved
     merged["total_units"] = rolled.total
+    flag_by_country(merged, listed)
     return merged
 
 
@@ -481,6 +492,7 @@ async def save_project(
     day: date,
     source: ProgressSource | None = None,
     commit: bool = True,
+    listed: SensitiveCountries | None = None,
 ) -> ShemaProject:
     """Apply a partial write to one record, or refuse it — the module docstring's six steps.
 
@@ -501,7 +513,9 @@ async def save_project(
 
     ``day`` is the actor's local day and is the caller's to state; ``source`` is BE-12's, and
     is here so that an imported update and a typed one are one path. ``commit`` is BE-14's, for
-    the same reason: :func:`_settle` carries it.
+    the same reason: :func:`_settle` carries it. ``listed`` is OBT-616's sensitive-country list,
+    for a caller that writes many records and reads it once; left out, it is read here — the
+    rule is never skipped, only the read is shared.
     """
     project = (
         await db.execute(visible_projects(scope).where(ShemaProject.id == project_id))
@@ -532,7 +546,9 @@ async def save_project(
         raise await _conflict(db, project, expected_version, readership)
 
     before = _audit.snapshot(project)
-    merged = _merged(project, payload)
+    if listed is None:
+        listed = await sensitive_countries(db)
+    merged = _merged(project, payload, listed)
     _refuse_impossible_dates(merged)
     completed = completion_date_after(
         before["status"], merged["status"], project.completed_date, day
@@ -628,6 +644,7 @@ async def create_project(
     day: date,
     source: ProgressSource | None = None,
     commit: bool = True,
+    listed: SensitiveCountries | None = None,
 ) -> ShemaProject:
     """Mint the record at the id the client already holds, or refuse the id.
 
@@ -689,7 +706,9 @@ async def create_project(
     await db.flush()
 
     before = _audit.snapshot(project)
-    merged = _merged(project, payload)
+    if listed is None:
+        listed = await sensitive_countries(db)
+    merged = _merged(project, payload, listed)
     _refuse_impossible_dates(merged)
 
     for column in _audit.AUDITED_COLUMNS:

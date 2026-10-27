@@ -562,6 +562,11 @@ class ShemaProjectRecord(SessionShape):
     #: that exclude it, the record is where coordination reads and sets it. ``None`` is a record
     #: that could not say, which withholds and is written as ``true``.
     sensitive_country: bool | None = None
+    #: The countries on the sensitive list that the place names, in the list's words (OBT-616) —
+    #: what lets the ficha tell *sensível por causa do país* from *marca própria*. Not a column:
+    #: ``read_record`` joins it in from ``_redaction.listed_as_read``, for a reader of the truth
+    #: only, so a record built from a row alone, or for anybody else, says ``[]`` — nothing.
+    listed_countries: list[str] = Field(default_factory=list)
     status_comments: str = ""
     status_goal: str = ""
     org_role: str = ""

@@ -36,7 +36,14 @@ CONTRACT = json.loads((Path(__file__).parent / "projectContract.json").read_text
 #: contract's own keys in the emission vendored since OBT-413.
 #: ``languageNameWithheld`` and ``publicLanguageName`` are OBT-560's: the bit that the name is
 #: not the language's own, and the name coordination registers for the other readers.
-ADDED_BY_THE_SERVER = {"locationWithheld", "languageNameWithheld", "publicLanguageName"}
+#: ``listedCountries`` is OBT-616's: the countries on the sensitive list the place names, which
+#: lets the ficha tell the mark by country from the mark by project.
+ADDED_BY_THE_SERVER = {
+    "locationWithheld",
+    "languageNameWithheld",
+    "publicLanguageName",
+    "listedCountries",
+}
 
 
 def _wire_keys() -> set[str]:

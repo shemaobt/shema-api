@@ -45,13 +45,19 @@ the credit belongs to the fiscal year the project ended; partial scope earns not
 ``src/utils/etenCredits.ts``'s ``accountFor`` is the reference and FE-51 (OBT-530) moves it to
 the fiscal year; the departures in :func:`account_for` are the facts the server can see and the
 console cannot, and each is argued where it is made.
+
+**The sensitive-country list reads a place here too (OBT-616)**, right after :func:`get_region`,
+because the issue's own words are *pelo mesmo mapa que dá a região*: the same comma, the same
+synonyms. :class:`SensitiveCountries` is the list as a value; the rows are the Admin's, in
+``shema_sensitive_countries``, and ``app/services/shema/_sensitive_list.py`` is their one reader.
 """
 
 from __future__ import annotations
 
 import enum
 import re
-from collections.abc import Sequence
+import unicodedata
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Final, NamedTuple, Protocol
@@ -356,6 +362,71 @@ def get_region(location: str) -> ShemaRegionKey:
     """
     country = get_country(location)
     return COUNTRY_REGION.get(COUNTRY_SYNONYMS.get(country, country), FALLBACK_REGION)
+
+
+def country_key(name: str) -> str:
+    """A country's name as the sensitive list compares it: accents, case and spacing aside.
+
+    **A departure from the map's rule, and only for the list.** :data:`COUNTRY_SYNONYMS` is
+    *listed, not normalised*, because a normalisation that misfires there **moves** a record to
+    another region — a silent harm. Here a fold can only **raise** a flag, which is the safe
+    direction, and the failure that hurts is the opposite one: ``Siria`` typed without its
+    accent, ``india`` in lower case, escaping a list that names *Síria* and *Índia*.
+    """
+    bare = "".join(
+        char for char in unicodedata.normalize("NFKD", name) if not unicodedata.combining(char)
+    )
+    return " ".join(bare.casefold().split())
+
+
+def spelling_keys(name: str) -> frozenset[str]:
+    """Every key one spelling answers to: its own fold, and the fold of the map's spelling of it.
+
+    The second is what *pelo mesmo mapa* buys: a list that names *Egito* recognises the
+    ``Egipto`` the map knows as ``Egypt``, and no synonym the region reads can escape the flag.
+    """
+    spelling = name.strip()
+    return frozenset({country_key(spelling), country_key(COUNTRY_SYNONYMS.get(spelling, spelling))})
+
+
+@dataclass(frozen=True)
+class SensitiveCountries:
+    """The sensitive-country list as a value — every key a listed country answers to → its name.
+
+    Built from the rows by :meth:`of`; asked by :meth:`named_in`, which the write path's owner of
+    ``location`` (``app/services/shema/_redaction.py``) calls. A key that two countries share is
+    refused when the Admin saves the list, so the first one here is the only one.
+    """
+
+    by_key: Mapping[str, str]
+
+    @classmethod
+    def of(cls, entries: Iterable[tuple[str, Iterable[str]]]) -> SensitiveCountries:
+        """The list from ``(name, other spellings)`` pairs."""
+        by_key: dict[str, str] = {}
+        for name, spellings in entries:
+            for spelling in (name, *spellings):
+                for key in spelling_keys(spelling):
+                    if key:
+                        by_key.setdefault(key, name)
+        return cls(by_key)
+
+    def named_in(self, location: str) -> tuple[str, ...]:
+        """The listed countries ``location`` names, in the list's words, in the order it names them.
+
+        **Any position, and a position is what** :func:`countries_named` **says it is** — the comma
+        and only the comma, the one definition the region and BE-16's flag already share. A
+        substring search was the alternative and is refused: it reads *Turkey Creek* as Turkey and
+        *Lebanon, Pennsylvania* is already a country in its own first position. A part that only
+        *contains* a listed name (``Indiana``) is not that country.
+        """
+        named: list[str] = []
+        for part in countries_named(location):
+            for key in spelling_keys(part):
+                country = self.by_key.get(key)
+                if country is not None and country not in named:
+                    named.append(country)
+        return tuple(named)
 
 
 def get_progress(record: Derivable) -> float:

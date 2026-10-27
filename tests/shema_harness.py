@@ -7,6 +7,10 @@ guard (``test_admin_gate.py``) or the caller's reader (``test_privacy_owners.py`
 that answers it is written once, beside the module's deliberate holes: the guard's audit
 exempts them, and the no-store audit calls them with no bearer token.
 
+The sensitive-country list (OBT-616) is the write path's to read, so every case that writes a
+project in a listed country — the record, the import, the Admin's conference — files the same
+short list with :func:`list_countries`.
+
 The prayer cases' account and need builders are the export's too (``test_transfer.py``): the
 wall, the Prayer Pulse and the export read one assembly of what a team authorized
 (``authorized_requests``), so their cases build the same rows.
@@ -20,6 +24,7 @@ from __future__ import annotations
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaNeedUrgency, ShemaRegionKey
 from app.db.models.shema_need import ShemaNeed
+from app.db.models.shema_sensitive_country import ShemaSensitiveCountry
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
 # --- the route audits -----------------------------------------------------------------
@@ -107,3 +112,21 @@ async def person(db_session, shema_app, role_key: str, regions=(HOME,)):
         regions=list(regions),
     )
     return await auth_header(db_session, user)
+
+
+# --- the sensitive-country list (OBT-616) --------------------------------------------
+
+#: A short list for the write path's cases: one country the region's map does not know and one
+#: it knows under another spelling — the two ways a place may name a listed country.
+LISTED: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Irã", ("Iran", "Irão")),
+    ("Índia", ("India",)),
+)
+
+
+async def list_countries(db_session, entries=LISTED) -> None:
+    """File ``entries`` as the sensitive-country list, the way the migration seeds it."""
+    db_session.add_all(
+        ShemaSensitiveCountry(name=name, spellings=list(spellings)) for name, spellings in entries
+    )
+    await db_session.commit()
