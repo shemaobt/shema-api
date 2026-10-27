@@ -17,15 +17,27 @@ so a negative test written with one passes for the wrong reason (``conftest.py``
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from sqlalchemy import select
 
+from app.api.shema._deps import APP_KEY
+from app.core.exceptions import AuthorizationError
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from app.db.models.shema_need import ShemaNeed
-from app.services.shema import authorized_requests_by_project
+from app.models.shema import ShemaProjectUpdate
+from app.services.shema import authorized_requests_by_project, region_scope, save_project
+from app.services.shema._consent import request_written
+from app.services.shema._scope import Readership
 from tests.shema_harness import HOME, need, person
-from tests.test_shema.conftest import PREFIX, auth_header, make_shema_project
+from tests.test_shema.conftest import (
+    PREFIX,
+    auth_header,
+    make_scoped_user,
+    make_shema_project,
+)
 
 WALL = f"{PREFIX}/prayer/requests"
 PULSE = f"{PREFIX}/prayer/pulse"
@@ -41,6 +53,8 @@ KEPT = "Orem pela consulta médica que ninguém fora da coordenação deve saber
 KEPT_NEED = "Orem pela dívida do gerador que a equipe não quer que se espalhe"
 SHARED = "Orem pela colheita do vale e pela saúde dos tradutores"
 SHARED_NEED = "Orem pela viagem de barco até a aldeia de Pedra Clara"
+#: ``SHARED`` as the coordination rewrote it on the ficha (OBT-597).
+REWORDED = "Orem pela colheita do vale, pela chuva e pela saúde dos tradutores"
 
 #: A create the console would send: the four required fields and a place that derives to ``HOME``.
 CREATE = {
@@ -240,10 +254,12 @@ async def test_authorization_is_per_request_not_per_project(client, db_session, 
     }
 
 
-async def test_a_new_request_without_its_authorization_is_unauthorized(
+async def test_a_request_reworded_on_the_ficha_keeps_its_authorization(
     client, db_session, circle, coordinator
 ) -> None:
-    """The fourth request lands where the third was, and does not inherit its ``rede``."""
+    """PME-ORA-011 (OBT-597): the Saúde tab sends what changed, so a coordinator who rewords a
+    shared request and leaves *rede* marked sends the text alone — and the request stays on the
+    wall and in the Pulse, in its new words and not the old ones."""
     project = await seed(
         db_session, "fonte-vale", text=SHARED, visibility=ShemaPrayerVisibility.REDE
     )
@@ -251,12 +267,125 @@ async def test_a_new_request_without_its_authorization_is_unauthorized(
     same = await patch(client, coordinator, project.id, {"prayerRequests": SHARED})
     assert same.json()["prayerVisibility"] == "rede"
 
-    response = await patch(client, coordinator, project.id, {"prayerRequests": KEPT})
+    response = await patch(client, coordinator, project.id, {"prayerRequests": REWORDED})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["prayerVisibility"] == "rede"
+    assert texts(await wall(client, circle)) == {REWORDED}
+    file = await pulse(client, circle)
+    assert REWORDED in file and SHARED not in file
+
+
+async def test_emptying_the_request_on_the_ficha_takes_its_authorization_with_it(
+    client, db_session, circle, coordinator
+) -> None:
+    """With no text there is no request left to authorize, so the next one written there starts
+    in coordination instead of inheriting a ``rede`` given to words that are gone."""
+    project = await seed(
+        db_session, "fonte-seca", text=SHARED, visibility=ShemaPrayerVisibility.REDE
+    )
+
+    response = await patch(client, coordinator, project.id, {"prayerRequests": "  "})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["prayerVisibility"] is None
+    later = await patch(client, coordinator, project.id, {"prayerRequests": KEPT}, version=2)
+    assert later.json()["prayerVisibility"] is None
+    assert await wall(client, circle) == []
+
+
+async def test_a_recording_replaced_on_the_ficha_without_its_authorization_leaves_the_wall(
+    client, db_session, circle, coordinator
+) -> None:
+    """Replacing the artifact resets the decision: no screen replaces the recording, and the
+    rewording rule is about text the coordinator read beside the box."""
+    project = await seed(
+        db_session, "fonte-gravada", text=SHARED, visibility=ShemaPrayerVisibility.REDE
+    )
+
+    response = await patch(
+        client, coordinator, project.id, {"prayerRequestsAudio": "shema/oracao/nova.m4a"}
+    )
 
     assert response.status_code == 200, response.text
     assert response.json()["prayerVisibility"] is None
     assert await wall(client, circle) == []
-    assert KEPT not in await pulse(client, circle)
+
+
+@pytest.mark.parametrize(
+    ("sent", "in_view", "cleared"),
+    [
+        ({"prayer_requests": REWORDED}, True, False),
+        ({"prayer_requests": REWORDED}, False, True),
+        ({"prayer_requests": SHARED}, False, False),
+        ({"prayer_requests": ""}, True, True),
+        ({"prayer_requests_audio": "nova.m4a"}, True, True),
+        ({"prayer_requests": REWORDED, "prayer_requests_audio": "nova.m4a"}, True, True),
+        ({"prayer_requests": REWORDED, "prayer_visibility": None}, True, True),
+        ({"prayer_requests": REWORDED, "prayer_visibility": "rede"}, False, False),
+    ],
+    ids=[
+        "reworded-in-view",
+        "reworded-out-of-view",
+        "same-text",
+        "emptied",
+        "rerecorded",
+        "reworded-and-rerecorded",
+        "stated-null",
+        "stated-rede",
+    ],
+)
+def test_only_a_rewording_with_its_authorization_in_view_keeps_it(sent, in_view, cleared) -> None:
+    """The rule's whole table, off the record ``rede`` with ``SHARED`` and a recording: only a
+    non-blank text reworded where the authorization was in view keeps it unstated; what a write
+    states is kept as stated."""
+    project = ShemaProject(
+        prayer_requests=SHARED,
+        prayer_visibility=ShemaPrayerVisibility.REDE,
+        prayer_requests_audio="antiga.m4a",
+    )
+
+    written = request_written(project, sent, authorization_in_view=in_view)
+
+    assert ("prayer_visibility" in written and written["prayer_visibility"] is None) is cleared
+
+
+async def test_a_writer_outside_the_prayer_audience_may_not_reword_a_shared_request(
+    db_session, shema_app
+) -> None:
+    """The rewording rule lends nobody a power only because the text is the prayer audience's to
+    write: a reader who does not read withheld requests — whatever else it coordinates — is
+    refused the text on the ficha's own door before anything is kept."""
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="fora-da-audiencia@oracao.test",
+        role_key="coordinator",
+        regions=[HOME],
+    )
+    project = await seed(
+        db_session, "fonte-alheia", text=SHARED, visibility=ShemaPrayerVisibility.REDE
+    )
+    scope = await region_scope(db_session, user, APP_KEY)
+
+    with pytest.raises(AuthorizationError, match="prayerRequests"):
+        await save_project(
+            db_session,
+            scope,
+            project.id,
+            ShemaProjectUpdate(prayer_requests=REWORDED),
+            readership=Readership(coordination=scope, withheld_prayer=False),
+            user=user,
+            expected_version=1,
+            day=date(2026, 10, 27),
+            authorization_in_view=True,
+        )
+
+    await db_session.refresh(project)
+    assert (project.prayer_requests, project.prayer_visibility) == (
+        SHARED,
+        ShemaPrayerVisibility.REDE,
+    )
 
 
 async def test_restating_the_authorization_with_the_new_request_keeps_it(

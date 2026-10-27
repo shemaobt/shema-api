@@ -123,7 +123,10 @@ async def _apply(
 
     The write goes through ``save_project`` as the caller's own, ``readership`` included: an
     import is a person writing the record, and what that person may write is the record's rule
-    and not the form's.
+    and not the form's. **But not the record's screen**: the leader answered a form that never
+    shows the record's authorization, so a new request arriving without its own answer is not a
+    rewording somebody looked at (``authorization_in_view=False``, OBT-597) — no answer is not
+    consent, whatever the record said last month.
     """
     submission.applied_at = datetime.now(UTC)
     try:
@@ -136,6 +139,7 @@ async def _apply(
             user=user,
             expected_version=expected_version,
             day=day,
+            authorization_in_view=False,
             source=ProgressSource(
                 from_field=submission.submitted_by or None, form_type=PULSE_FORM_TYPE
             ),

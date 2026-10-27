@@ -37,8 +37,10 @@ Four steps, and the order is the design:
 
 **Nothing in the file authorizes anything.** ``prayerVisibility`` and the recording are dropped
 before validation, and so are a need's ``prayerShared`` and ``acknowledged``: an imported request
-arrives as the write path leaves any request whose authorization was not stated — a new one
-unauthorized, a changed one unauthorized again (``_consent.request_written``,
+arrives as the write path leaves any request whose authorization was not stated and not in
+view (``authorization_in_view=False``: nobody looked at a file's text beside the record's
+answer, unlike the ficha's rewording, OBT-597) — a new one unauthorized, a changed one
+unauthorized again (``_consent.request_written``,
 ``_consent.need_written``), and an unchanged one exactly as the organisation left it. The file can
 neither publish a request nor withdraw one; both are a person's decision on the record. **The
 sensitive flag moves one way**: a file may raise it and may not clear it on a withheld record
@@ -420,6 +422,7 @@ async def import_projects(
                 user=user,
                 expected_version=project.version,
                 day=day,
+                authorization_in_view=False,
                 commit=False,
             )
         await db.commit()
