@@ -163,6 +163,19 @@ def release_name(language: str | None, pericope: str, version: int) -> str:
     return f"internalize-{_slug(language)}-{pericope.lower()}-v{version}"
 
 
+def zeroed_name(language: str | None, session: IRSession, archived_at: datetime) -> str:
+    """What a zeroed, unapproved re-opening's takes are called: no number an approval mints.
+
+    One Zerar stamps every language of the passage, so the session's own language tells the
+    sessions of one archive apart.
+    """
+    stamp = as_utc(archived_at).strftime("%Y%m%d-%H%M")
+    return (
+        f"internalize-{_slug(language)}-{session.pericope.lower()}"
+        f"-zerada-{stamp}-{session.language}"
+    )
+
+
 def released_as(release: IRRelease) -> str:
     """The name a stored release goes by: its own, or its row id when stored before ADR 0048."""
     return str(release.packet.get("release_id") or release.id)

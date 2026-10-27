@@ -423,10 +423,40 @@ async def test_a_session_a_zerar_archived_names_its_files_by_the_release_its_tak
     assert listed["release_id"] == RELEASE_V1
 
 
-async def test_a_session_re_opened_then_archived_names_its_files_by_the_next_version(
+async def test_sibling_sessions_re_opened_or_never_approved_are_named_apart_by_their_language(
     client, db_session, room_app
 ):
-    """The archived name holds only while its takes still stand on that release."""
+    """ENG-1782: one Zerar stamps every language of the passage with one archive, and a file name
+    names one recording: the stamp is the archive's, UTC, and the session language tells siblings
+    apart."""
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    reopened = await ready_to_approve(db_session, project.id, ("audio/wav",))
+    await approved(client, credential, reopened)
+    await record_the_part_again(
+        db_session,
+        reopened,
+        await the_one_part_of(db_session, reopened),
+        sha256=hashlib.sha256(recording(1, 9)).hexdigest(),
+    )
+    never_approved, _parts = await rehearsed_in_parts(
+        db_session, 1, project_id=project.id, language="en", content_types=("audio/wav",)
+    )
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
+    archive = await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+    archive.archived_at = datetime(2026, 10, 24, 18, 30, tzinfo=UTC)
+    await db_session.commit()
+    zerada = "internalize-terena-p03-zerada-20261024-1830"
+
+    first = await read_downloads(client, desk, reopened.id)
+    second = await read_downloads(client, desk, never_approved.id)
+
+    assert [each["filename"] for each in first["takes"]] == [f"{zerada}-pt-S1.m4a"]
+    assert [each["filename"] for each in second["takes"]] == [f"{zerada}-en-S1.wav"]
+
+
+async def test_the_session_approved_after_a_zerar_mints_a_version_no_zerada_file_carries(
+    client, db_session, room_app
+):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     zeroed = await ready_to_approve(db_session, project.id, ("audio/wav",))
     await approved(client, credential, zeroed)
@@ -438,10 +468,16 @@ async def test_a_session_re_opened_then_archived_names_its_files_by_the_next_ver
     )
     desk, facilitator = await at_the_desk(db_session, room_app, project)
     await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+    again = await ready_to_approve(db_session, project.id, ("audio/wav",))
+    await approved(client, credential, again)
 
-    listed = await read_downloads(client, desk, zeroed.id)
+    archived = await read_downloads(client, desk, zeroed.id)
+    minted = await read_downloads(client, desk, again.id)
 
-    assert listed["release_id"] == RELEASE_V2
+    assert minted["release_id"] == RELEASE_V2
+    stems = [each["filename"].rsplit(".", 1)[0] for each in (*archived["takes"], *minted["takes"])]
+    assert len(set(stems)) == len(stems)
+    assert not any(stem.startswith(RELEASE_V2) for stem in stems[:1])
 
 
 async def test_a_release_stored_before_adr_0048_names_the_files_by_its_uuid(
