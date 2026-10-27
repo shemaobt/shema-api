@@ -469,9 +469,12 @@ the decision.
 Two behaviours to design around, both inherited from the sibling's §5.5 and both true here:
 
 - **A platform admin passes every guard.** Refusing them inside this module would make one
-  route stricter than the route beside it and buy nothing, since an admin can grant
-  themselves any role with one call. The cost lands on the tests: **a negative test written
-  per role must not use an admin account**, or it passes for the wrong reason.
+  route stricter than the route beside it and buy nothing, since an installation admin can
+  grant themselves any role in one request to the raw `/api/roles/assign`, which keeps
+  admitting them for both apps (the last bullet below) — the self-grant §6.10 refuses is
+  refused on the surface only. OBT-618 (27/oct/2026) named that door and kept the rule (the
+  sibling's §5.5). The cost lands on the tests: **a negative test written per role must not
+  use an admin account**, or it passes for the wrong reason.
 - **A grant written outside this process is not seen until the cache entry ages out.** That
   is the installation's standing trade, not this module's bug. Anything that must see a grant
   immediately reads `list_roles` directly, as

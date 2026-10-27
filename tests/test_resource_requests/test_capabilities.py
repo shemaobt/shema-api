@@ -414,10 +414,11 @@ async def test_a_platform_admin_passes_every_capability_without_a_grant(
     db_session, client, rrf_app
 ) -> None:
     """The installation's standing rule, stated here so a negative test is never written
-    with an admin account by accident.
+    with an admin account by accident — the mesa's two capabilities included, which OBT-618
+    kept.
 
     Refusing them would make this module stricter than the role guard beside it in the same
-    file, and buy nothing: a platform admin can grant themselves ``mesa`` in one call.
+    file, and close nothing: the next test seats one at the mesa in one request.
     """
     user = await make_user(db_session, email="admin@caps.test", is_platform_admin=True)
     headers = await auth_header(db_session, user)

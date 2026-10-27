@@ -86,13 +86,22 @@ def require_capability(capability: str) -> Any:
     this app is refused by the app gate with the message that names the app, and only a
     member gets as far as being asked what they may do.
 
-    **A platform admin passes, as they pass the two guards above.** That is the
-    installation's standing rule and not a hole this file punches: ``require_app_access``
-    and ``require_role`` both return early on ``is_platform_admin``, so refusing here
-    would make one route in this module stricter than the route beside it — and buy
-    nothing, since a platform admin can grant themselves ``mesa`` with one call to
-    ``grant_app_role``. The cost is real and lands on the tests: a negative test written
-    per role **must not** use an admin account, or it passes for the wrong reason.
+    **A platform admin passes, as they pass the two guards above — the mesa's
+    ``edit_evaluation`` and ``assign_fund`` included, which neither the Gestor nor the Admin
+    holds.** That is the installation's standing rule and not a hole this file punches, and
+    OBT-618 (27/oct/2026) kept it over limiting them to the Gestor's set:
+    ``require_app_access`` and ``require_role`` both return early on ``is_platform_admin``, so
+    refusing here would make one route in this module stricter than the route beside it — and
+    close nothing. The PME's surface refuses anyone a self-grant
+    (``app/services/shema/grant_role.py``), but it is not the only door: the raw
+    ``POST /api/roles/assign`` keeps admitting the installation admin for this app
+    (``_refuse_the_pme_apps`` in ``app/api/roles.py``) and asks no such question, and neither
+    does ``scripts/grant_app_role.py`` on the server, so one request seats them at the mesa
+    (``test_a_platform_admin_grants_themselves_the_mesa_through_the_raw_route``). What they
+    write is signed with their own account: the evaluator and the fund's ``assigned_by`` come
+    from the session. ``reads_capability``, ``reader_with`` and the two fund readers below
+    return early for this same reason. The cost is real and lands on the tests: a negative
+    test written per role **must not** use an admin account, or it passes for the wrong reason.
     """
 
     async def _check(user: CurrentUser, db: Db) -> User:
@@ -116,8 +125,7 @@ def reads_capability(capability: str) -> Any:
     the team reading its own row does not (GATE-03 D4). A second route for the same row
     would be an N+1 on the board; a second model would put the choice in the router.
 
-    A platform admin reads it, for the same standing reason the guards admit them: an
-    admin who wanted the value can grant themselves ``mesa`` with one call.
+    A platform admin reads it, for the reason ``require_capability`` gives for admitting them.
 
     It costs one ``list_roles`` beyond the guard's own, deliberately not shared with it:
     ``holds_capability`` reads the database on every call so a grant made mid-request is
