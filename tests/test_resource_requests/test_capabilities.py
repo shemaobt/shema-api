@@ -34,6 +34,7 @@ from app.services.resource_request import (
 from app.services.shema._scope import ADMIN_ROLE
 from scripts.seed_apps_roles import seeded_roles
 from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.shema_admin_harness import surface_client
 from tests.test_resource_requests.conftest import (
     CAP_PROBES,
     EMISSION,
@@ -424,6 +425,31 @@ async def test_a_platform_admin_passes_every_capability_without_a_grant(
     for capability in CAPABILITIES:
         res = await client.get(CAP_PROBES[capability], headers=headers)
         assert res.status_code == 200, f"admin refused {capability}"
+
+
+async def test_a_platform_admin_grants_themselves_the_mesa_through_the_raw_route(
+    db_session, rrf_app
+) -> None:
+    """Why refusing a platform admin in this module would close nothing (OBT-618).
+
+    The PME's surface refuses anyone a self-grant, but the raw ``/api/roles/assign`` keeps
+    admitting an installation admin for this app (``_refuse_the_pme_apps``) and asks no such
+    question: one request, and the account holds the mesa's ``edit_evaluation`` and
+    ``assign_fund``. If that route ever refuses it, ``require_capability``'s docstring has lost
+    its reason and must say so.
+    """
+    admin = await make_user(db_session, email="admin-self@caps.test", is_platform_admin=True)
+
+    async with surface_client(db_session) as client:
+        res = await client.post(
+            "/api/roles/assign",
+            json={"target_user_id": admin.id, "app_key": APP_KEY, "role_key": "mesa"},
+            headers=await auth_header(db_session, admin),
+        )
+
+    assert res.status_code == 200, res.text
+    assert await holds_capability(db_session, admin.id, APP_KEY, "edit_evaluation") is True
+    assert await holds_capability(db_session, admin.id, APP_KEY, "assign_fund") is True
 
 
 async def test_the_capability_query_reads_the_database_every_time(db_session, rrf_app) -> None:
