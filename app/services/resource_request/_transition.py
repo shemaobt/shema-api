@@ -19,8 +19,9 @@ same transaction). What is refused is not an edge of the graph but a state of th
 request, and there are three: a draft is not on the board (``move_request``), a request
 nobody endorsed leaves ``triagem`` only for ``recusado`` (``guard_endorsement``, BE-16's
 rule landing where ``rr_requests``'s docstring assigned it), and nothing enters
-``aprovado`` without a fund and an amount to deduct. The fund half is **not stated here** — it is
-GATE-01 D4's invariant and BE-11's rule, and it lives in ``_fund_assignment.py``, which
+``aprovado`` without a fund still on offer and an amount to deduct. The fund half is
+**not stated here** — it is GATE-01 D4's invariant and BE-11's rule (retirement's half
+since OBT-645), and it lives in ``_fund_assignment.py``, which
 is what makes it one rule over the two doors GATE-02 D6 opened rather than the same
 sentence written twice. It fires *through* this module because ``guard_stage_entry`` is
 where a stage change becomes an entry into ``aprovado``, for a decision's move and a
@@ -61,18 +62,21 @@ class StageMove(NamedTuple):
     committed_delta: Decimal | None
 
 
-def guard_stage_entry(request: RRRequest, to_stage: RRStage) -> tuple[str, Decimal] | None:
+async def guard_stage_entry(
+    db: AsyncSession, request: RRRequest, to_stage: RRStage
+) -> tuple[str, Decimal] | None:
     """What entering ``aprovado`` will deduct — or a refusal, before anything is written.
 
     Answers ``None`` when the change does not enter ``aprovado`` (a move elsewhere, or a
     no-op already there), and the ``(fund_id, amount)`` the deduction will move when it
-    does. Callable with nothing written yet, which is why ``save_evaluation`` runs it in
-    its pre-check phase: a refusal must leave nothing half-saved, and a session that
-    flushed before being refused shows its pending rows to whoever shares it.
+    does. It reads — whether the fund is still on offer — and writes nothing, which is why
+    ``save_evaluation`` runs it in its pre-check phase: a refusal must leave nothing
+    half-saved, and a session that flushed before being refused shows its pending rows to
+    whoever shares it.
     """
     if to_stage is not RRStage.APROVADO or request.stage is RRStage.APROVADO:
         return None
-    fund_id = require_assigned_fund(request)
+    fund_id = await require_assigned_fund(db, request)
     if request.amount_requested is None:
         raise ConflictError("A request does not enter aprovado with no amount requested.")
     return (fund_id, request.amount_requested)
@@ -93,9 +97,9 @@ def guard_endorsement(request: RRRequest, to_stage: RRStage) -> None:
     in this module's docstring) — so what is refused here is a state of the request, like
     its two neighbours, and the graph keeps every edge it had.
 
-    Pure and callable with nothing written, the ``guard_stage_entry`` shape: it runs in
-    ``save_evaluation``'s pre-check phase too, so a decision the endorsement does not
-    allow is refused before a scores row is flushed.
+    Pure and callable with nothing written, so it runs in ``save_evaluation``'s pre-check
+    phase too, beside ``guard_stage_entry``: a decision the endorsement does not allow is
+    refused before a scores row is flushed.
     """
     if to_stage is request.stage or request.stage is not RRStage.TRIAGEM:
         return
@@ -151,7 +155,7 @@ async def transition_stage(
         return None
 
     guard_endorsement(request, to_stage)
-    claim = guard_stage_entry(request, to_stage)
+    claim = await guard_stage_entry(db, request, to_stage)
 
     movement: RRFundMovement | None = None
     committed_delta: Decimal | None = None
