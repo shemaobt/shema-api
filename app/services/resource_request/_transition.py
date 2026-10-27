@@ -21,11 +21,10 @@ nobody endorsed leaves ``triagem`` only for ``recusado`` (``guard_endorsement``,
 rule landing where ``rr_requests``'s docstring assigned it), and nothing enters
 ``aprovado`` without a fund still on offer and an amount to deduct. The fund half is
 **not stated here** — it is GATE-01 D4's invariant and BE-11's rule (retirement's half
-since OBT-645), and it lives in ``_fund_assignment.py``, which
-is what makes it one rule over the two doors GATE-02 D6 opened rather than the same
-sentence written twice. It fires *through* this module because ``guard_stage_entry`` is
-where a stage change becomes an entry into ``aprovado``, for a decision's move and a
-hand's drag alike.
+since OBT-645), and it lives in ``_fund_assignment.py``, which is what makes it one rule
+over the two doors GATE-02 D6 opened rather than the same sentence written twice. It fires
+*through* this module because ``guard_stage_entry`` is where a stage change becomes an
+entry into ``aprovado``, for a decision's move and a hand's drag alike.
 
 **The ledger effect is the export's golden rule, as movements.** Only ``aprovado``
 commits funds: entering it appends an ``APPROVAL_DEDUCTION`` for the request's

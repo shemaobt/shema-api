@@ -397,8 +397,8 @@ async def test_a_decisao_tambem_nao_aprova_num_fundo_aposentado(
     """Both approval doors pass ``guard_stage_entry``, so the rule written once covers the
     decision too. A card dragged to ``recusado`` with no decision recorded, its fund
     retired, and dragged back to ``analise`` — a move that writes no money, still free —
-    cannot then be decided into ``aprovado``: the pre-check refuses before the evaluation
-    row exists."""
+    cannot then be decided into ``aprovado``: the decision is refused with the drag's
+    answer, and neither a movement nor a recorded decision is left behind."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
     gestor = await as_gestor(db_session, rrf_app)

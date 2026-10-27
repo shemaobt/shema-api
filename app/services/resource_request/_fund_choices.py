@@ -58,7 +58,7 @@ def require_choosable(choosable: Sequence[RRFund], fund_id: str) -> None:
     **Retiring stops new writes, never old ones** (OBT-645, 27/oct/2026). Three doors put
     something new against a fund: ``assign_fund`` points a request at it,
     ``set_allocation`` puts money in it, and ``require_assigned_fund`` commits a request's
-    amount to it on the way into ``aprovado``, by drag or by decision. Until this issue only
+    amount to it on the way into ``aprovado``, by drag or by decision. Before OBT-645 only
     the first asked the list, so a fund retired after a card was decided still took a new
     alocado and a new deduction. All three ask this list now, and a retired fund — out of
     it — is refused at each with one sentence: the one the assignment already gave an

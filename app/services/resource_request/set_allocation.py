@@ -45,8 +45,8 @@ async def set_allocation(
     against a fund that ended. So the edit asks that list (``require_choosable``) and a fund
     no longer on it gets the assignment's own refusal, whichever way the value moves and
     even when it would not move at all: the offer is read before the difference, as
-    ``assign_fund`` reads it before its no-op. An unknown id stays the 404 above, because
-    it names no fund at all. The read, ``allocation_of_fund``, is not touched.
+    ``assign_fund`` reads it before its no-op. An unknown id is still the 404, because it
+    names no fund at all. The read, ``allocation_of_fund``, is not touched.
 
     Unlike the two writers it composes, this **is** the operation, so it commits — the
     FE-24 draft-store reasoning inverted: a partial correction left uncommitted would be
