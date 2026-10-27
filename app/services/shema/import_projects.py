@@ -380,7 +380,9 @@ async def import_projects(
     the same value a typed save takes: an import reaches exactly as far as a write does.
     ``readership`` is the importer's: it decides whether they may import at all, and the write
     path asks it again per record, because an import is a person writing the record. ``day`` is
-    the importer's local day, which the progress entries a record moves are stamped with.
+    the importer's local day, which the progress entries a record moves are stamped with. The
+    sensitive-country list is read once for the whole file and handed to every record's write
+    (OBT-616), rather than read again per record.
     """
     _require_coordination(readership, user=user)
     records, ignored = await asyncio.to_thread(read_import, raw)
@@ -392,7 +394,6 @@ async def import_projects(
         ).scalars()
     }
 
-    # One read of the sensitive-country list for the whole file, not one per record (OBT-616).
     listed = await sensitive_countries(db)
     created = 0
     record: _Record | None = None
