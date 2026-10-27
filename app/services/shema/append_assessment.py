@@ -17,12 +17,12 @@ no assessment behind it. Appending and re-projecting happen under one commit, wh
 
 **A backdated assessment does not overwrite a newer reading.** The projection is decided by
 comparing days, not by assuming the last write wins: a reading filed today for a visit three
-months ago is kept in the history and changes nothing on the record, because the team has been
-read since. FE-44 §9.4 asks for this in one line and it is the reason the projection is a
+months ago is kept in the history and leaves the record's reading where it was, because the team
+has been read since. FE-44 §9.4 asks for this in one line and it is the reason the projection is a
 comparison rather than an assignment.
 
-**That nothing includes the pastoral answer it carried** (OBT-623). The wizard sends one with every
-reading — ``nao``, ``""`` and ``now`` when nobody picked otherwise — so the answer is that
+**The pastoral answer it carried stays off the record too** (OBT-623). The wizard sends one with
+every reading — ``nao``, ``""`` and ``now`` when nobody picked otherwise — so the answer is that
 reading's own conclusion and lands only with it: applied regardless of the day, a visit from
 August written up today replaced the escalation the current reading had set with a default nobody
 chose. The backdated answer is not kept anywhere else either, since the history has no column for

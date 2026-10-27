@@ -847,7 +847,7 @@ behaviour on it.
 > refused the assessment, off FE-44 §5.8's own table. The same list addresses the critical notice,
 > because notifying somebody who may not read it leaks the fact that it exists.
 
-> **A backdated reading moves nothing on the record, its pastoral answer included —
+> **A backdated reading moves neither the reading nor the pastoral answer on the record —
 > [OBT-623](https://linear.app/shema-obt/issue/OBT-623).** The wizard sends the pastoral answer
 > with every reading (`nao`, `""`, `now` when nobody picked otherwise), so it is that reading's
 > conclusion and follows its projection: a reading dated before the record's lands in the history
