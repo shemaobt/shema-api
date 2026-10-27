@@ -360,7 +360,12 @@ async def test_a_writer_outside_the_prayer_audience_may_not_reword_a_shared_requ
 ) -> None:
     """The rewording rule lends nobody a power only because the text is the prayer audience's to
     write: a reader who does not read withheld requests — whatever else it coordinates — is
-    refused the text on the ficha's own door before anything is kept."""
+    refused the text on the ficha's own door before anything is kept.
+
+    Built at the service on purpose: no role reaches this guard through the route today — the
+    Resource Circle and the Admin without a region are refused before it (OBT-571, OBT-593) and
+    the other roles never pass the route's own door — so the reader is the one combination the
+    rule leans on, held here so that a role added later meets the refusal and not the keep."""
     user = await make_scoped_user(
         db_session,
         shema_app,
