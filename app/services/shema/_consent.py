@@ -552,10 +552,12 @@ def request_written(
     nobody a power: on that door only :data:`PRAYER_AUDIENCE` writes the text at all
     (:func:`unreadable_request_writes`), and they already decide what is shared. A sensitive
     project's release stays bound to the text (:func:`_reviewed`), so the new words wait for
-    the coordination again. Two moves still withdraw it there: a text emptied, which leaves no
-    request to authorize, and a recording replaced, which no screen does and is the artifact
-    rule above. The decision is Levi's of 27/oct/2026, following the issue's recommendation,
-    for Karina to validate; the alternative was asking again before the save.
+    the coordination again. Three moves still withdraw it there: a text emptied, which leaves no
+    request to authorize; a first text written where there was none — a ``rede`` a Pulse gave
+    with its request left blank authorized no words, so the first ones are not a rewording; and
+    a recording replaced, which no screen does and is the artifact rule above. The decision is
+    Levi's of 27/oct/2026, following the issue's recommendation, for Karina to validate; the
+    alternative was asking again before the save.
 
     Rejected with it: the console restating the visibility on every text edit, which puts a
     second owner on this rule and has the ficha guessing it; telling a rewording from a new
@@ -574,7 +576,12 @@ def request_written(
         REQUEST_AUDIO in written and written[REQUEST_AUDIO] != project.prayer_requests_audio
     )
     reworded = text != project.prayer_requests
-    kept = authorization_in_view and not rerecorded and bool((text or "").strip())
+    kept = (
+        authorization_in_view
+        and not rerecorded
+        and bool(project.prayer_requests.strip())
+        and bool((text or "").strip())
+    )
     if (rerecorded or reworded) and not kept:
         written[REQUEST_VISIBILITY] = None
     return written

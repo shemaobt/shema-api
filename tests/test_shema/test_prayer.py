@@ -313,34 +313,39 @@ async def test_a_recording_replaced_on_the_ficha_without_its_authorization_leave
 
 
 @pytest.mark.parametrize(
-    ("sent", "in_view", "cleared"),
+    ("before", "sent", "in_view", "cleared"),
     [
-        ({"prayer_requests": REWORDED}, True, False),
-        ({"prayer_requests": REWORDED}, False, True),
-        ({"prayer_requests": SHARED}, False, False),
-        ({"prayer_requests": ""}, True, True),
-        ({"prayer_requests_audio": "nova.m4a"}, True, True),
-        ({"prayer_requests": REWORDED, "prayer_requests_audio": "nova.m4a"}, True, True),
-        ({"prayer_requests": REWORDED, "prayer_visibility": None}, True, True),
-        ({"prayer_requests": REWORDED, "prayer_visibility": "rede"}, False, False),
+        (SHARED, {"prayer_requests": REWORDED}, True, False),
+        (SHARED, {"prayer_requests": REWORDED}, False, True),
+        (SHARED, {"prayer_requests": SHARED}, False, False),
+        (SHARED, {"prayer_requests": ""}, True, True),
+        ("", {"prayer_requests": REWORDED}, True, True),
+        (SHARED, {"prayer_requests_audio": "nova.m4a"}, True, True),
+        (SHARED, {"prayer_requests": REWORDED, "prayer_requests_audio": "nova.m4a"}, True, True),
+        (SHARED, {"prayer_requests": REWORDED, "prayer_visibility": None}, True, True),
+        (SHARED, {"prayer_requests": REWORDED, "prayer_visibility": "rede"}, False, False),
     ],
     ids=[
         "reworded-in-view",
         "reworded-out-of-view",
         "same-text",
         "emptied",
+        "first-text-over-blank",
         "rerecorded",
         "reworded-and-rerecorded",
         "stated-null",
         "stated-rede",
     ],
 )
-def test_only_a_rewording_with_its_authorization_in_view_keeps_it(sent, in_view, cleared) -> None:
-    """The rule's whole table, off the record ``rede`` with ``SHARED`` and a recording: only a
-    non-blank text reworded where the authorization was in view keeps it unstated; what a write
-    states is kept as stated."""
+def test_only_a_rewording_with_its_authorization_in_view_keeps_it(
+    before, sent, in_view, cleared
+) -> None:
+    """The rule's whole table, off a record in ``rede`` with a recording: only a non-blank text
+    reworded from a non-blank one where the authorization was in view keeps it unstated — a
+    ``rede`` a Pulse gave over a blank request authorized no words — and what a write states is
+    kept as stated."""
     project = ShemaProject(
-        prayer_requests=SHARED,
+        prayer_requests=before,
         prayer_visibility=ShemaPrayerVisibility.REDE,
         prayer_requests_audio="antiga.m4a",
     )

@@ -947,9 +947,10 @@ behaviour on it.
 >   sent the text alone, and the request left the wall with nobody told (PME-ORA-011, E2E run of
 >   14/oct/2026). Each writer of the record now says whether the authorization was **in view**
 >   beside the text (`authorization_in_view`, keyword-only, no default): the ficha's `PATCH` says
->   so, and there absent means unchanged — a non-blank text reworded keeps the visibility, while a
->   text emptied (no request left to authorize) or a recording replaced (no screen does it) still
->   clears it. The Pulse, the file import and the health reading say no, and keep the rule above:
+>   so, and there absent means unchanged — a non-blank text reworded from a non-blank one keeps
+>   the visibility, while a text emptied (no request left to authorize), a first text written over
+>   a blank one (a `rede` a Pulse gave with no request authorized no words) or a recording replaced
+>   (no screen does it) still clears it. The Pulse, the file import and the health reading say no, and keep the rule above:
 >   the leader authorized the text they wrote, a file authorizes nothing, and the wizard's consent
 >   step starts at `coordenacao` rather than at the record's answer. Keeping lends nobody a power:
 >   on the `PATCH` only the prayer audience writes the text (`unreadable_request_writes`), and it
