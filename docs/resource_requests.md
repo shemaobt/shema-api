@@ -762,8 +762,8 @@ reads change, and they change together so they cannot disagree:
   is asked only when the grants did not already answer** (PR #569, review): the app gate
   (`_deps._app_member`, which replaced `require_app_access` for this app) reads the grants
   through the role cache as before and asks the membership only for an account with no grant;
-  **who enters the form** — a platform admin, a grant, or a live membership — is written once,
-  in `enters_the_form`, and asked by that gate (`cached=True`) and by the handoff that opens the
+  **who enters the form** — a platform admin, a grant on a role in force (`ROLES_IN_FORCE`,
+  §5.4.6), or a live membership — is written once, in `enters_the_form`, and asked by that gate (`cached=True`) and by the handoff that opens the
   form from the PME (`create_handoff`, `cached=False`, because minting a credential reads the
   grants live — `docs/auth.md`), so the two doors cannot disagree about a member;
   `holds_capability` asks it only when no granted role carries the capability; and
@@ -883,8 +883,8 @@ the team at login and signed it out at every boot revalidation. Found building F
 handoff would have met the same empty list.
 
 `GET /api/resource-requests/me` is the form's own answer, by the rule its door already applies
-(`enters_the_form`): `roles` are the account's grants here **plus `equipe` when it is a live
-member of any project**, and `projects` are those projects' ids — what a start may name
+(`enters_the_form`): `roles` are the account's grants here on the roles in force (a retired
+one is not listed, §5.4.6) **plus `equipe` when it is a live member of any project**, and `projects` are those projects' ids — what a start may name
 (§5.4.2). A session is the only guard: an account with neither a grant nor a membership is
 **told** so, with empty lists, and the form says *without a role in this app*, the sentence it
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
@@ -1117,8 +1117,22 @@ revoked `equipe`. **And then the table** (FE-49, OBT-517, 30/sep/2026): the fron
 capability and re-emitted `capabilities.json`, vendored here; `ROLES`, `CAPABILITIES` and
 `ROLE_CAPABILITIES` follow it. **The seed keeps the `lider` row** as `RETIRED_ROLES`: existing
 installations have it, `20260930_rr12` revoked every grant on it, and deleting a row other tables
-point at is not a side effect of retiring a capability. A grant on it that somehow survived answers
-403 everywhere (`test_a_retired_lider_grant_opens_nothing`).
+point at is not a side effect of retiring a capability.
+
+**A grant on it that survived opens nothing** (OBT-639, 26/oct/2026). Staging still carried one, and
+until then it opened more than the sentence above claimed: the handoff minted a code for it, the
+door let it in and only a capability refused it, `/me` listed `lider`, and beside a membership it
+gave `_scope.reach` the whole board. The form now counts a grant only on a **role in force** —
+`ROLES_IN_FORCE` in `capabilities.py`, the rows that table carries (`equipe`, `mesa`, `gestor`,
+`admin`) — read through `_membership.in_force` by `granted_roles` and by the door's cached read in
+`enters_the_form`, so the door, the handoff, `/me`, the capabilities and the reach read one list.
+It is a list of the roles in force and not one of the retired, which is how the PME counts its own
+vocabulary: a row nobody models carries nothing, retired or typed by hand. The door and the handoff
+now refuse such an account with their own sentences (`test_a_grant_on_a_retired_role_is_refused_at_the_door`,
+`test_a_grant_on_a_retired_role_mints_no_handoff_to_the_form`), and
+`test_only_the_membership_and_the_door_read_the_forms_grants_raw` keeps every other reader behind
+the filter. `GET /api/auth/my-roles` is platform surface and still answers the row as it stands;
+the form reads `/me`. Deleting the surviving grants is a migration this issue left out.
 
 ### 5.4.7 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
 
