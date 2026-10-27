@@ -360,6 +360,28 @@ async def test_a_project_membership_opens_no_app_but_the_form(
     assert await codes_in(db_session) == []
 
 
+async def test_a_grant_on_a_retired_role_mints_no_handoff_to_the_form(
+    client, db_session, form
+) -> None:
+    """The Líder de Base's ``lider`` row survives FE-49 (OBT-517) in installations that had it,
+    and staging still carried a live grant on it on 26/oct/2026 (OBT-639). A grant on a role the
+    form no longer models is no role there: the handoff refuses it with the sentence an account
+    holding nothing gets, and writes no code."""
+    user = await make_user(db_session, email="leader@example.com")
+    await grant_app_role(db_session, user, form, role_key="lider")
+    headers, refresh = await a_session(db_session, user)
+
+    response = await client.post(
+        HANDOFF, json=a_body(refresh, app_key=FORM_APP_KEY), headers=headers
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == (
+        f"You hold no role in the '{FORM_APP_KEY}' application, so no handoff to it is issued."
+    )
+    assert await codes_in(db_session) == []
+
+
 def test_the_form_the_handoff_widens_is_the_form_module_s_own_key() -> None:
     """The key is written again in ``create_handoff.py`` because a service may not import a
     router; this keeps that copy from drifting from ``_deps.APP_KEY`` in silence."""
