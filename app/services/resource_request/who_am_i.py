@@ -7,8 +7,8 @@ from app.services.resource_request._membership import TEAM_ROLE, granted_roles, 
 
 
 class FormIdentity(NamedTuple):
-    #: The roles this account holds **in the form**: its grants, plus ``equipe`` when it is a
-    #: live member of any PME project.
+    #: The roles this account holds **in the form**: its grants on the roles in force (a retired
+    #: one is not listed, OBT-639), plus ``equipe`` when it is a live member of any PME project.
     roles: tuple[str, ...]
     #: The PME projects it is a live member of — the ones it may open a request from.
     projects: tuple[str, ...]

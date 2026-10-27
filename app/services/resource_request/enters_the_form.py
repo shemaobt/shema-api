@@ -1,7 +1,8 @@
 """Who enters the form — written once, for the two doors that ask it (BE-19, OBT-520).
 
 Since GATE-04 D1 (OBT-519) the answer has three halves: a **platform admin**, an account
-holding a **grant** in this app, or a **live member of a PME project** — the team, which holds
+holding a **grant** in this app on a role it still models (``_membership.in_force``; a retired
+``lider`` grant is none, OBT-639), or a **live member of a PME project** — the team, which holds
 ``equipe`` through the membership and no longer through a row in ``user_app_roles``
 (``_membership.py``; ``20260928_rr08`` revoked those rows).
 
@@ -32,18 +33,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth_cache import get_cached_roles, set_cached_roles
 from app.db.models.auth import User
 from app.services import authorization_service
-from app.services.resource_request._membership import is_member
+from app.services.resource_request._membership import granted_roles, in_force, is_member
 
 
 async def _holds_a_grant(db: AsyncSession, user_id: str, app_key: str, *, cached: bool) -> bool:
-    """Whether ``user_id`` holds any live role in ``app_key`` — through the cache or not."""
+    """Whether ``user_id`` holds a live role in force in ``app_key`` — through the cache or not.
+
+    Both reads go through ``in_force``. The cache keeps the raw pairs, because ``require_role``
+    reads the same entry, so the filter is applied on the way out of it.
+    """
     if not cached:
-        return bool(await authorization_service.list_roles(db, user_id, app_key))
+        return bool(await granted_roles(db, user_id, app_key))
     roles = get_cached_roles(user_id, app_key)
     if roles is None:
         roles = await authorization_service.list_roles(db, user_id, app_key)
         set_cached_roles(user_id, app_key, roles)
-    return bool(roles)
+    return bool(in_force(roles))
 
 
 async def enters_the_form(db: AsyncSession, user: User, app_key: str, *, cached: bool) -> bool:

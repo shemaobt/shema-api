@@ -19,6 +19,7 @@ from app.services.resource_request.capabilities import (
     RETIRED_ROLES,
     ROLE_CAPABILITIES,
     ROLES,
+    ROLES_IN_FORCE,
 )
 from app.services.resource_request.count_project_translations import count_project_translations
 from app.services.resource_request.create_draft import create_draft
@@ -86,6 +87,7 @@ __all__ = [
     "RESERVED_FUND_NAMES",
     "RETIRED_ROLES",
     "ROLES",
+    "ROLES_IN_FORCE",
     "ROLE_CAPABILITIES",
     "AttachmentLink",
     "BoardMoved",

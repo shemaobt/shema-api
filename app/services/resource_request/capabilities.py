@@ -90,7 +90,11 @@ submission (``endorse_by_link``), which no role and no capability guards. The fr
 the role and the capability and re-emitted ``capabilities.json``, vendored here; the map below
 follows it. **The role row stays seeded** (``RETIRED_ROLES``): existing installations have it,
 ``20260930_rr12`` revoked every grant on it, and deleting a row other tables point at is not a
-side effect of retiring a capability.
+side effect of retiring a capability. **A grant on it that survived opens nothing** (OBT-639 —
+staging still carried one on 26/oct/2026): the grants are read through ``ROLES_IN_FORCE``, the
+rows this table carries, in ``_membership.granted_roles`` and in the door's cached read
+(``enters_the_form``). Until then the door and the handoff counted any live row as a role, so the
+account entered the form holding no capability and ``/me`` named the retired role.
 
 **The Admin holds exactly the Gestor's set, and the row is derived rather than written**
 (OBT-568, Daniel, 6/oct/2026: *"o admin deve ter o mesmo nível de permissão que o gestor no
@@ -171,6 +175,10 @@ ADMIN_CAPABILITIES: frozenset[str] = ROLE_CAPABILITIES["gestor"]
 
 #: Every row the guard reads: the frontend's three plus the Admin's derived one.
 HELD_CAPABILITIES: dict[str, frozenset[str]] = {**ROLE_CAPABILITIES, ADMIN_ROLE: ADMIN_CAPABILITIES}
+
+#: The roles a grant here still stands for — every row the guard reads, and nothing else. Derived,
+#: so a role that gains a row is in force and one that loses it is not (OBT-639).
+ROLES_IN_FORCE: frozenset[str] = frozenset(HELD_CAPABILITIES)
 
 #: The inversion, derived: the roles that hold each capability. Every capability appears,
 #: so a guard on one nobody holds refuses everyone instead of raising a KeyError.

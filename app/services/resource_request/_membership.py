@@ -15,30 +15,48 @@ answers ``EQUIPE_ROLE`` from ``holds_membership`` (``app/services/shema/_scope.p
 this module reads the same fact through the same function rather than keeping a second
 statement of *who is a member*.
 
-So the answer to *which of this app's roles does the account hold* is the grants, plus
-``equipe`` when a live membership exists — and **the membership is asked only when the grants
-did not already answer** (PR #569, review): the door asks it only for an account with no
-grant, the capabilities only when no granted role carries the one asked for, and the scope's
-two answers (``_scope.reach``) never need it at all. Every reader asks ``is_member`` here, so
-none of them keeps a second statement of *who is a member*.
+So the answer to *which of this app's roles does the account hold* is the grants **on the roles
+in force** (``in_force``), plus ``equipe`` when a live membership exists — and **the membership
+is asked only when the grants did not already answer** (PR #569, review): the door asks it only
+for an account with no grant, the capabilities only when no granted role carries the one asked
+for, and the scope's two answers (``_scope.reach``) never need it at all. Every reader asks
+``is_member`` here, so none of them keeps a second statement of *who is a member*.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterable
 
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.shema_project_member import ShemaProjectMember
 from app.services import authorization_service
+from app.services.resource_request.capabilities import ROLES_IN_FORCE
 
 #: The team's key in the capability table — held through a membership, never granted.
 TEAM_ROLE = "equipe"
 
 
+def in_force(grants: Iterable[tuple[str, str]]) -> set[str]:
+    """The role keys among ``grants`` this app still models — ``ROLES_IN_FORCE`` (OBT-639).
+
+    A grant on a row the capability table no longer carries — ``lider``, retired by FE-49
+    (OBT-517), which staging still held on 26/oct/2026 — counted as a role until this filter:
+    it opened the door and the handoff while holding no capability, and ``/me`` named it. Kept
+    as a list of the roles in force rather than one of the retired ones, which is how the PME
+    counts only its own vocabulary: a row nobody models carries nothing, whether it was retired
+    or typed by hand in the Console. Applied where the grants are read, not in ``list_roles``,
+    which is platform surface for every app, nor in the role cache, whose raw pairs
+    ``require_role`` reads too.
+    """
+    return {role_key for _app_key, role_key in grants if role_key in ROLES_IN_FORCE}
+
+
 async def granted_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
-    """The roles ``user_id`` was **granted** in ``app_key`` — ``user_app_roles``, read live."""
-    granted = await authorization_service.list_roles(db, user_id, app_key)
-    return {role_key for _app_key, role_key in granted}
+    """The roles in force ``user_id`` was **granted** in ``app_key`` — ``user_app_roles``, read
+    live, through ``in_force``."""
+    return in_force(await authorization_service.list_roles(db, user_id, app_key))
 
 
 async def is_member(db: AsyncSession, user_id: str) -> bool:
