@@ -12,7 +12,7 @@ from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRArchive, IRRelease, IRSession
 from app.models.internalization_room import PassageRetroverificationFile
-from app.services.internalization_room.approved_draft import approved_draft
+from app.services.internalization_room.approved_draft import approved_draft, stands_on
 from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.live import live
 from app.services.internalization_room.release import _mother_tongue, _slug, released_as
@@ -49,24 +49,27 @@ async def _read_as_the_draft(db: AsyncSession, latest: IRSession) -> tuple[str, 
 
 
 async def _read_as_an_archive(
-    db: AsyncSession, sessions: list[IRSession], latest: IRSession, archive_id: str
+    db: AsyncSession, latest: IRSession, archive_id: str
 ) -> tuple[str, list[str]]:
-    """An archive that holds a release reads as that release; one that holds none, by its stamp.
+    """The release the archive's takes still stand on, else the archive's own stamp.
 
-    ``approved_draft`` is the wrong question here: a Zerar retires every draft, approved or not.
-    The stamp is the one the Zerar's own downloads carry (ENG-1782), from the archive's moment.
+    ``approved_draft`` is the wrong question here: a Zerar retires every draft. This is the
+    question ``take_downloads`` asks of an archived session (ADR 0081), so the file, its note
+    and the takes' downloads agree: a release the takes were re-recorded past is not their name.
+    The stamp is ENG-1782's format, from the archive's UTC moment.
     """
-    release = await db.scalar(
+    own = await db.scalar(
         select(IRRelease)
-        .where(IRRelease.session_id.in_([one.id for one in sessions]))
+        .where(IRRelease.session_id == latest.id)
         .order_by(IRRelease.version.desc())
         .limit(1)
     )
-    if release is not None:
-        notices = [] if "check" in release.packet else [APPROVED_BEFORE_THE_RECORD]
-        return released_as(release), notices
+    if own is not None and stands_on(own, current_parts(await takes_of(db, latest.id))):
+        notices = [] if "check" in own.packet else [APPROVED_BEFORE_THE_RECORD]
+        return released_as(own), notices
     archive = await db.get(IRArchive, archive_id)
-    assert archive is not None
+    if archive is None:
+        raise NotFoundError(f"Archive {archive_id} of session {latest.id} is gone")
     stamp = as_utc(archive.archived_at).strftime("%Y%m%d-%H%M")
     tongue = _slug(await _mother_tongue(db, latest))
     return f"internalize-{tongue}-{latest.pericope.lower()}-zerada-{stamp}", [NOT_APPROVED]
@@ -98,7 +101,7 @@ async def passage_retroverification_file(
     if latest is None:
         raise NotFoundError(f"No sessions of {pericope} for this team")
     release_id, notices = (
-        await _read_as_an_archive(db, sessions, latest, archive_id)
+        await _read_as_an_archive(db, latest, archive_id)
         if archive_id
         else await _read_as_the_draft(db, latest)
     )
