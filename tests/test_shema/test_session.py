@@ -229,7 +229,8 @@ async def test_the_endpoint_needs_no_role_alias_of_its_own(db_session, client, s
     [
         (("admin",), [], False, None, []),
         (("coordinator", "admin"), [ASIA], False, None, ["asia"]),
-        (("obtLab", "admin"), [ASIA], False, None, ["asia"]),
+        (("obtLab", "admin"), [ASIA], False, None, []),
+        (("resourceCircle", "admin"), [ASIA], False, None, []),
         (("coordinator",), [AFRICA], False, ["africa"], ["africa"]),
         (("obtLab",), [AFRICA, ASIA], False, ["africa", "asia"], ["africa", "asia"]),
         (("resourceCircle",), [AFRICA], False, ["africa"], []),
@@ -239,6 +240,7 @@ async def test_the_endpoint_needs_no_role_alias_of_its_own(db_session, client, s
         "admin alone",
         "admin+coordinator",
         "admin+obtLab",
+        "admin+resourceCircle",
         "coordinator",
         "obtLab",
         "resourceCircle",
@@ -249,10 +251,11 @@ async def test_write_region_scope_says_where_the_account_writes_a_project(
     db_session, shema_app, grants, regions, platform, read, write
 ):
     """``writeRegionScope`` beside ``regionScope``, same spelling: the Admin reads everywhere
-    (``null``) and writes nothing (``[]``) — or the regions of the regional role it holds beside
-    the grant; the coordination and the OBT Lab write where they reach; the Resource Circle
-    reads its regions and writes none (OBT-571); an installation admin writes everywhere. The
-    reading scope of every role is exactly what it was."""
+    (``null``) and writes nothing (``[]``) — or its regions beside ``coordinator``, and still
+    nothing beside the Resource Circle or the OBT Lab alone (OBT-619); the coordination and the
+    OBT Lab write where they reach; the Resource Circle reads its regions and writes none
+    (OBT-571); an installation admin writes everywhere. The reading scope of every role is
+    exactly what it was."""
     user = await make_user(
         db_session, email=f"{'-'.join(grants) or 'platform'}@write.test", is_platform_admin=platform
     )
