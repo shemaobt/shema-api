@@ -62,10 +62,13 @@ async def assign_fund(
     not a default of ours.
 
     **A retired fund is not assignable.** The choices come from ``choosable_funds``, the
-    single list BE-10 (OBT-471) narrows when it retires one, so *shown but not selectable*
-    is enforced here and not only rendered — a fund missing from that list is refused with
-    the same message an unknown id gets, because from this endpoint's side they are the
-    same fact: it is not on offer.
+    single list that leaves a retired fund out (OBT-636), so *shown but not selectable* is
+    enforced here and not only rendered — a fund missing from that list is refused with the
+    same message an unknown id gets, because from this endpoint's side they are the same
+    fact: it is not on offer. The request's own fund is no exception once it retires: the
+    offer is read before the no-op, so naming a retired fund is refused even where it would
+    change nothing, and ``changed: false`` only ever answers a fund still on offer. The
+    request keeps the fund it had either way.
 
     **Swapping the fund of an approved request moves both balances in one transaction.**
     The card is already committed against the old fund, so the swap is a compensating
