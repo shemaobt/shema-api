@@ -958,8 +958,9 @@ behaviour on it.
 >   archived Pulse is touched; new words on the wall, so the Resource Circle is told once, as of
 >   any new text with `rede`; on a sensitive project the release stays bound to the old words, so
 >   the new ones wait for the coordination (§6.12). A need is not kept this way and needs nothing:
->   the console sends every need whole with its `prayerShared`, so a need reworded on the ficha is
->   restated by the box it shows, while `need_written` — which `undecidable_shares` also reads to
+>   the console sends `needsItems` whole, every row with its `prayerShared` (`needWire`, pinned by
+>   the console's `recordSave.test.ts`), so a need reworded on the ficha is restated by the box it
+>   shows, while `need_written` — which `undecidable_shares` also reads to
 >   tell a restatement from a decision — keeps clearing a description rewritten without its flag.
 >   Requests the old rule already cleared stay in coordination: nothing writes `rede` in bulk
 >   (§6.4), and the trail names each one for a coordinator to mark again. **The prayer
