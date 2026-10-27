@@ -735,6 +735,25 @@ async def test_a_new_request_on_a_shared_project_is_announced_when_applied(
     assert await told(db_session, PRAYER_EVENT) == {circle.id}
 
 
+async def test_a_request_reworded_on_the_ficha_tells_the_circle_once(
+    client, db_session, shema_app, headers, coordinator, project
+) -> None:
+    """The ficha keeps a reworded request's authorization (OBT-597), so the wall shows words it
+    did not show — news, as any new text with ``rede`` is; the same words saved again are not."""
+    circle = await a_circle(db_session, shema_app)
+    await on_record(db_session, project, "Orem pela colheita.", ShemaPrayerVisibility.REDE)
+
+    for version in (1, 2):
+        response = await client.patch(
+            f"{PREFIX}/projects/{project.id}",
+            json={"prayerRequests": "Orem pela colheita e pela chuva.", "notes": f"v{version}"},
+            headers={**headers, "If-Match": f'"{version}"'},
+        )
+        assert response.status_code == 200, response.text
+
+    assert [row.user_id for row in await notices(db_session, PRAYER_EVENT)] == [circle.id]
+
+
 @pytest.mark.parametrize("door", ["link", "import"])
 async def test_a_shared_project_does_not_lend_its_consent_to_a_pulse_that_gave_none(
     client, db_session, shema_app, headers, coordinator, project, door

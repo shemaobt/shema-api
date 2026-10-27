@@ -41,7 +41,8 @@ answered beside it: **who reads a request nobody authorized** (:data:`PRAYER_AUD
 to the record by :func:`request_as_read` and to every write of a request or a share by
 :func:`refuse_prayer_decisions`), and **what an authorization is attached to** — the
 request it was given for, so a new text arriving without one is unauthorized again
-(:func:`request_written`, :func:`need_written`) — and the Resource Circle hears of a request
+(:func:`request_written`, :func:`need_written`) unless it was reworded on the ficha with the
+authorization in view (OBT-597) — and the Resource Circle hears of a request
 when an applied Pulse puts it on the wall (:func:`newly_shared_request`, OBT-554, OBT-566).
 Taking an authorization back is named here too (:func:`withdrawn_request`, OBT-561), and so is
 which archived text it covers (:func:`same_request`, OBT-576), because *what did the team stop
@@ -529,17 +530,40 @@ def refuse_prayer_decisions(
     )
 
 
-def request_written(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str, Any]:
+def request_written(
+    project: ShemaProject, sent: Mapping[str, Any], *, authorization_in_view: bool
+) -> dict[str, Any]:
     """``sent``, with the authorization withdrawn when the request moves without it.
 
     **An authorization belongs to the request it was given for, not to the field it sits in.**
     The project holds one request, so the fourth one a team writes lands where the third was —
     and would inherit the third's ``rede`` if nothing said otherwise. The Pulso Mensal writes
-    the visibility only when the leader answers it (``app/utils/shema_forms.py``), which is
-    exactly that path. So a new text or recording written without the visibility in the same
-    write clears it to NULL, which is ``coordenacao``; stating it — the health wizard and the
-    console's consent control do — keeps whatever was stated. The media rule, *replacing the
-    artifact resets the decision*, applied to the request.
+    the visibility only when the leader answers it (``app/utils/shema_forms.py``), and a file
+    authorizes nothing (``import_projects.py``), which are exactly that path. So a new text or
+    recording written there without the visibility in the same write clears it to NULL, which
+    is ``coordenacao``; stating it — the health wizard does — keeps whatever was stated. The
+    media rule, *replacing the artifact resets the decision*, applied to the request.
+
+    **A text reworded with the authorization in view keeps it** (OBT-597). That is the ficha's
+    own ``PATCH``: the Saúde tab shows the visibility beside the text, the tab sends what
+    changed, and absent means unchanged — so a coordinator who rewrites the request and leaves
+    *rede* marked sends the text alone. Clearing it there took a reworded request off the wall
+    with the box still marked and told nobody (PME-ORA-011, 14/oct/2026). Keeping it lends
+    nobody a power: on that door only :data:`PRAYER_AUDIENCE` writes the text at all
+    (:func:`unreadable_request_writes`), and they already decide what is shared. A sensitive
+    project's release stays bound to the text (:func:`_reviewed`), so the new words wait for
+    the coordination again. Three moves still withdraw it there: a text emptied, which leaves no
+    request to authorize; a first text written where there was none — a ``rede`` a Pulse gave
+    with its request left blank authorized no words, so the first ones are not a rewording; and
+    a recording replaced, which no screen does and is the artifact rule above. The decision is
+    Levi's of 27/oct/2026, following the issue's recommendation, for Karina to validate; the
+    alternative was asking again before the save.
+
+    Rejected with it: the console restating the visibility on every text edit, which puts a
+    second owner on this rule and has the ficha guessing it; telling a rewording from a new
+    request by comparing the texts, which no comparison does honestly; and keeping it at every
+    door, which hands a Pulse's new text last month's ``rede``. ``authorization_in_view`` has no
+    default for that last reason: each door states its own fact.
 
     Only an authorized request is touched: an unauthorized one is already where this puts it,
     and rewriting ``coordenacao`` as NULL would be a trail row about nothing.
@@ -547,10 +571,18 @@ def request_written(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str,
     written = dict(sent)
     if REQUEST_VISIBILITY in written or not reaches_prayer_wall(project):
         return written
-    moved = (REQUEST_TEXT in written and written[REQUEST_TEXT] != project.prayer_requests) or (
+    text = written.get(REQUEST_TEXT, project.prayer_requests)
+    rerecorded = (
         REQUEST_AUDIO in written and written[REQUEST_AUDIO] != project.prayer_requests_audio
     )
-    if moved:
+    reworded = text != project.prayer_requests
+    kept = (
+        authorization_in_view
+        and not rerecorded
+        and bool(project.prayer_requests.strip())
+        and bool((text or "").strip())
+    )
+    if (rerecorded or reworded) and not kept:
         written[REQUEST_VISIBILITY] = None
     return written
 
@@ -566,9 +598,11 @@ def withdrawn_request(project: ShemaProject, sent: Mapping[str, Any]) -> str | N
     ``None`` for a blank request too — no Pulse shared nothing.
 
     **A new text arriving without a visibility is not a withdrawal**, although
-    :func:`request_written` clears the authorization for it: the team did not stop sharing, it
-    wrote something new, and nothing it shared before is taken back. Compared with ``==``, not
-    ``is``: ``sent`` is a mapping, and a raw ``"rede"`` read as a withdrawal would erase.
+    :func:`request_written` clears the authorization for it off the ficha and keeps it on the
+    ficha (OBT-597): the team did not stop sharing, it wrote something new, and nothing it
+    shared before is taken back — the Pulse that shared the older words keeps them. Compared
+    with ``==``, not ``is``: ``sent`` is a mapping, and a raw ``"rede"`` read as a withdrawal
+    would erase.
     """
     if REQUEST_VISIBILITY not in sent or sent[REQUEST_VISIBILITY] == ShemaPrayerVisibility.REDE:
         return None
@@ -589,7 +623,7 @@ def same_request(left: str, right: str) -> bool:
 
     Only what nobody can see is forgiven, and that is the private side: it erases. Deciding
     that a text *moved* (:func:`request_written`) stays byte-strict for the same reason, since
-    there strict is what withdraws the authorization.
+    off the ficha strict is what withdraws the authorization.
     """
     return _as_read(left) == _as_read(right)
 
@@ -619,8 +653,9 @@ def newly_shared_request(project: ShemaProject, before: str) -> bool:
     Asked **after** a write of the record (OBT-566) — a save, a create, an applied Pulse, a health
     reading — of the record as written, against ``before``: :func:`shared_prayer_text` read just
     ahead of that write. The record is the one truth by then: :func:`request_written` has already
-    given the write's answer to the text it came with, so a new text without ``rede`` left the
-    wall rather than borrowing last month's authorization, and the wall shows exactly what the
+    given the write's answer to the text it came with, so a Pulse's new text without ``rede`` left
+    the wall rather than borrowing last month's authorization, a text reworded on the ficha kept
+    it and is on the wall in its new words (OBT-597), and the wall shows exactly what the
     network may now read. *Now on the wall and not before* is a request the Resource Circle has
     not heard of — the first share above all, which the notice at arrival, before anybody applied
     anything, could never see; and, since Daniel's answer of 10/oct/2026, an older request a

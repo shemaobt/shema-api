@@ -57,7 +57,9 @@ the reader's refusal: *which* fields a reader may not write is
 raises it. The prayer request has the same two answers from its own owner (BE-09):
 ``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a reader outside its
 audience — on a create too, where only the authorization is refused — and
-``_consent.request_written`` withdraws an authorization the new request did not restate.
+``_consent.request_written`` withdraws an authorization the new request did not restate —
+except a text the ficha's own ``PATCH`` rewords, where the authorization was in view beside it
+and stays (OBT-597); every caller says which (``authorization_in_view``).
 A save that takes the authorization back (``_consent.withdrawn_request``) erases the request
 from the archived Pulses that shared it in the same words too, in the same transaction (OBT-561,
 OBT-576). A save that leaves a sensitive project's request waiting for the coordination, which
@@ -218,7 +220,11 @@ def _rows(value: Any) -> list[dict[str, Any]]:
 
 
 def _merged(
-    project: ShemaProject, payload: ShemaProjectUpdate, listed: SensitiveCountries
+    project: ShemaProject,
+    payload: ShemaProjectUpdate,
+    listed: SensitiveCountries,
+    *,
+    authorization_in_view: bool,
 ) -> dict[str, Any]:
     """What the row would hold, built without touching it.
 
@@ -259,7 +265,9 @@ def _merged(
     sent.pop("id", None)
     sent.pop("needs_items", None)
 
-    for column, value in request_written(project, sent).items():
+    for column, value in request_written(
+        project, sent, authorization_in_view=authorization_in_view
+    ).items():
         merged[column] = value
 
     for column in ("book_progress", "story_progress"):
@@ -490,6 +498,7 @@ async def save_project(
     user: User,
     expected_version: int,
     day: date,
+    authorization_in_view: bool,
     source: ProgressSource | None = None,
     commit: bool = True,
     listed: SensitiveCountries | None = None,
@@ -516,6 +525,12 @@ async def save_project(
     the same reason: :func:`_settle` carries it. ``listed`` is OBT-616's sensitive-country list,
     for a caller that writes many records and reads it once; left out, it is read here — the
     rule is never skipped, only the read is shared.
+
+    ``authorization_in_view`` is OBT-597's and has no default, because each door's answer is a
+    fact about that door: the ficha's own ``PATCH`` says ``True`` — the Saúde tab shows the
+    request's visibility beside its text — and a request reworded there keeps its authorization;
+    the Pulse and the file import say ``False``, and a new text arriving through them is
+    unauthorized again (``_consent.request_written``). A default would hide one of the two.
     """
     project = (
         await db.execute(visible_projects(scope).where(ShemaProject.id == project_id))
@@ -548,7 +563,7 @@ async def save_project(
     before = _audit.snapshot(project)
     if listed is None:
         listed = await sensitive_countries(db)
-    merged = _merged(project, payload, listed)
+    merged = _merged(project, payload, listed, authorization_in_view=authorization_in_view)
     _refuse_impossible_dates(merged)
     completed = completion_date_after(
         before["status"], merged["status"], project.completed_date, day
@@ -708,7 +723,7 @@ async def create_project(
     before = _audit.snapshot(project)
     if listed is None:
         listed = await sensitive_countries(db)
-    merged = _merged(project, payload, listed)
+    merged = _merged(project, payload, listed, authorization_in_view=False)
     _refuse_impossible_dates(merged)
 
     for column in _audit.AUDITED_COLUMNS:
