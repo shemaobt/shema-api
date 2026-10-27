@@ -36,13 +36,17 @@ handler runs. The three routers in this repository that already carry a limit
 ``tests/test_shema/test_forms.py::test_the_limited_routes_resolve_their_dependencies`` reads
 the built route table so the trap cannot come back as a mystery 422.
 
-**The two header readers come from** ``app/api/shema/projects.py`` **rather than from a copy
-here**, underscores and all. ``_expected_version`` is the ``If-Match`` grammar — including the
-refusal of ``*``, which is the spelling of *I do not know what I am overwriting* — and
+**The two header readers and the refusal come from** ``app/api/shema/projects.py`` **rather
+than from a copy here**, underscores and all. ``_expected_version`` is the ``If-Match`` grammar —
+including the refusal of ``*``, which is the spelling of *I do not know what I am overwriting* —
 ``_local_day`` is the ±1-day bound that keeps a client-supplied date from being a backdating
-tool. An import is a write of the record, so it meets the same two rules the ficha's own
-``PATCH`` meets; two spellings of one rule is exactly what this module is built not to have,
-and the second copy is the one that would quietly lose the bound.
+tool, and ``_conflict`` is the 409 a stale write answers: the version quoted, the current one,
+the fields that moved, who moved them and when. An import is a write of the record, so it meets
+the same rules the ficha's own ``PATCH`` meets and is refused the same way; two spellings of one
+rule is exactly what this module is built not to have, and the second copy is the one that would
+quietly lose the bound. Measured in the E2E run of 26/oct/2026 (OBT-627): both imports let
+``RecordVersionConflict`` fall to the shared ``CONFLICT`` handler, which says *you are stale*
+and nothing else, so the screen that imports could offer only a reload.
 
 **Everything else on this router is a signed-in coordinator**, and ``PULSE_LOOP`` in the
 console's own ``src/constants/forms.ts`` is why it is that role rather than any member:
@@ -62,6 +66,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from slowapi.util import get_remote_address
 
 from app.api.shema._deps import (
@@ -74,7 +79,7 @@ from app.api.shema._deps import (
     Scope,
     WriteScope,
 )
-from app.api.shema.projects import LOCAL_DAY_HEADER, _expected_version, _local_day
+from app.api.shema.projects import LOCAL_DAY_HEADER, _conflict, _expected_version, _local_day
 from app.core.rate_limit import limiter
 from app.models.shema_forms import (
     IntakeForm,
@@ -89,6 +94,7 @@ from app.models.shema_forms import (
 )
 from app.models.shema_record import ShemaMediaLink
 from app.services.shema import (
+    RecordVersionConflict,
     apply_submission,
     create_intake_link,
     import_submission,
@@ -260,26 +266,33 @@ async def file_submission(
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
-) -> ReceivedSubmission:
+) -> ReceivedSubmission | JSONResponse:
     """File an answer that reached the coordinator some other way, and apply it in one call.
 
     ``request.body()`` is read for the archive and not for the parsing: *the submission is
     archived byte-identically*, so what is kept is what arrived rather than this server's
     re-serialisation of what it understood. FastAPI has already buffered and parsed it, so the
     second read costs nothing and cannot disagree with the first.
+
+    A record somebody saved since the caller read it answers the ficha's own 409 — who changed
+    what, and when — and the answer stays archived and unapplied, an inbox entry to apply again
+    against the ``ETag`` the refusal carries.
     """
     today = datetime.now(UTC).date()
-    return await import_submission(
-        db,
-        scope,
-        payload,
-        payload_bytes=await request.body(),
-        readership=reading,
-        user=user,
-        app_key=APP_KEY,
-        expected_version=_expected_version(if_match),
-        day=_local_day(local_day, utc_today=today),
-    )
+    try:
+        return await import_submission(
+            db,
+            scope,
+            payload,
+            payload_bytes=await request.body(),
+            readership=reading,
+            user=user,
+            app_key=APP_KEY,
+            expected_version=_expected_version(if_match),
+            day=_local_day(local_day, utc_today=today),
+        )
+    except RecordVersionConflict as conflict:
+        return _conflict(conflict)
 
 
 @router.post("/forms/submissions/{submission_id}/import", response_model=ReceivedSubmission)
@@ -291,23 +304,30 @@ async def import_received(
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
-) -> ReceivedSubmission:
+) -> ReceivedSubmission | JSONResponse:
     """Apply a submission that arrived through a link — ``PULSE_LOOP``'s ``import`` step.
 
     Not in FE-44 §9.9's list and declared in the PR. That list was written when the link's
     answer and the file's answer were assumed to come through one door; they do not, because
     only one of the two has a person behind it who can be named in the record's audit trail.
+
+    A record somebody saved since the caller read it answers the ficha's own 409 — who changed
+    what, and when — and the submission stays waiting, to be applied against the ``ETag`` the
+    refusal carries.
     """
     today = datetime.now(UTC).date()
-    return await apply_submission(
-        db,
-        scope,
-        submission_id,
-        readership=reading,
-        user=user,
-        expected_version=_expected_version(if_match),
-        day=_local_day(local_day, utc_today=today),
-    )
+    try:
+        return await apply_submission(
+            db,
+            scope,
+            submission_id,
+            readership=reading,
+            user=user,
+            expected_version=_expected_version(if_match),
+            day=_local_day(local_day, utc_today=today),
+        )
+    except RecordVersionConflict as conflict:
+        return _conflict(conflict)
 
 
 # --- the two unauthenticated routes ---------------------------------------------------
