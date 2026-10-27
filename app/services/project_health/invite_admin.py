@@ -21,7 +21,12 @@ async def invite_admin(
 ) -> AdminInviteResponse:
     """Grant the project-health admin role to an existing user identified by
     email. Raises NotFoundError if no user with that email exists yet — the
-    invitee must sign up first, then be invited again."""
+    invitee must sign up first, then be invited again.
+
+    Both log lines name the accounts by id and never the address typed in: every ``extra``
+    field is printed (``app/core/logging.py``), and an address is personal data the reader of a
+    log has no business holding. The event's name rides as ``ph_event``, because ``event`` is
+    the line's own message and an extra by that name would replace it."""
     normalized = email.lower()
     stmt = select(User).where(User.email == normalized)
     user = (await db.execute(stmt)).scalar_one_or_none()
@@ -29,9 +34,8 @@ async def invite_admin(
         logger.info(
             "project_health.invite_admin denied: no user with that email",
             extra={
-                "event": "ph_invite_admin_denied",
+                "ph_event": "ph_invite_admin_denied",
                 "actor_user_id": invited_by_user_id,
-                "target_email": normalized,
                 "reason": "user_not_found",
             },
         )
@@ -50,10 +54,9 @@ async def invite_admin(
     logger.info(
         "project_health.invite_admin granted",
         extra={
-            "event": "ph_invite_admin_granted",
+            "ph_event": "ph_invite_admin_granted",
             "actor_user_id": invited_by_user_id,
             "target_user_id": user.id,
-            "target_email": normalized,
             "assignment_id": assignment.id,
         },
     )

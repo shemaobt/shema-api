@@ -39,7 +39,7 @@ async def get_admin_report(
     logger.info(
         "project_health.get_admin_report",
         extra={
-            "event": "ph_admin_report_viewed",
+            "ph_event": "ph_admin_report_viewed",
             "actor_user_id": actor_user_id,
             "report_id": report_row.id,
             "interview_id": report_row.interview_id,
