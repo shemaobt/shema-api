@@ -851,7 +851,7 @@ behaviour on it.
 > [OBT-623](https://linear.app/shema-obt/issue/OBT-623).** The wizard sends the pastoral answer
 > with every reading (`nao`, `""`, `now` when nobody picked otherwise), so it is that reading's
 > conclusion and follows its projection: a reading dated before the record's lands in the history
-> and leaves the seven flat fields and the three pastoral ones as the newer reading set them. One
+> and leaves the seven flat fields and the three pastoral ones where they were. One
 > decision in `append_assessment.py` answers both. The backdated answer is not kept — the history
 > has no column for it. The prayer request is not part of the reading: it is sent only when somebody
 > wrote one, and a backdated reading still files it.
