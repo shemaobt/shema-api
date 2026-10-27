@@ -250,11 +250,16 @@ async def test_the_deploy_names_a_pin_a_session_holds_that_the_image_keeps_no_ca
 
 @pytest.mark.fresh_interpreter
 @pytest.mark.parametrize("urgent", ["false", "true"])
+@pytest.mark.parametrize("team", ["time-de-ruth", None])
 async def test_an_image_without_a_canon_a_session_holds_fails_at_once_naming_the_pin(
-    db_session: AsyncSession, tmp_path: Path, urgent: str
+    db_session: AsyncSession, tmp_path: Path, urgent: str, team: str | None
 ) -> None:
     await a_session(
-        db_session, "sessao-da-ruth", updated_at=datetime.now(UTC), canon_pin=UNKEPT_PIN
+        db_session,
+        "sessao-da-ruth",
+        project_id=team,
+        updated_at=datetime.now(UTC),
+        canon_pin=UNKEPT_PIN,
     )
 
     hold = the_hold_runs(a_runner(tmp_path), DEPLOY_URGENT=urgent)

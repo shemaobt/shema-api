@@ -43,7 +43,7 @@ def canon_path(path: Path) -> Path:
     kept = _READING.get()
     if kept is None:
         return path
-    if not keeps(kept.name):
+    if not kept.is_dir():
         raise CanonNotKept(f"no kept canon for pin {kept.name}")
     return kept / path.relative_to(CANON_DIR)
 
