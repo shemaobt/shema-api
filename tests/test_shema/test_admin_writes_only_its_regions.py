@@ -286,9 +286,9 @@ async def test_the_record_itself_keeps_its_own_sentence(client, beside) -> None:
 @pytest.mark.parametrize(
     ("role", "writes", "statuses", "comments"),
     [
-        ("resourceCircle", [], (403, 403), ""),
-        ("obtLab", [], (403, 403), ""),
-        ("coordinator", ["asia"], (200, 201), "da conta"),
+        ("resourceCircle", [], (403, 403, 403), ""),
+        ("obtLab", [], (403, 403, 403), ""),
+        ("coordinator", ["asia"], (200, 201, 200), "pelo arquivo"),
     ],
     ids=["admin+resourceCircle", "admin+obtLab", "admin+coordinator"],
 )
@@ -298,7 +298,8 @@ async def test_the_admin_writes_a_project_only_in_a_region_it_coordinates(
     """OBT-619 (OBT-592's decision 2: the Admin writes only what is access). The Resource Circle
     reads and does not write (OBT-571) and the OBT Lab reads the region in place of the place, so
     ``admin`` beside either reads Asia's record as the coordination, as OBT-593 left it, and the
-    save and the create there are the Admin's 403 — the session saying so first. Beside
+    save, the create and a file import over Asia's record — which writes through the save — are
+    the Admin's 403, the session saying so first, and the record keeps what it had. Beside
     ``coordinator`` the account writes its own region, as before."""
     await _seed(db_session)
     user = await make_scoped_user(
@@ -319,10 +320,12 @@ async def test_the_admin_writes_a_project_only_in_a_region_it_coordinates(
         headers={**headers, "If-Match": record.headers["ETag"]},
     )
     created = await client.post(PROJECTS, json=_record(str(uuid.uuid4()), "Nepal"), headers=headers)
+    imported = await _upload(client, headers, [_record(NEAR, "Nepal")])
 
     assert session.json()["writeRegionScope"] == writes
     assert record.status_code == 200 and record.json()["readAs"] == "coordination"
-    assert (patched.status_code, created.status_code) == statuses, (patched.text, created.text)
-    for refused in (r for r in (patched, created) if r.status_code == 403):
+    answers = (patched, created, imported)
+    assert tuple(r.status_code for r in answers) == statuses, [r.text for r in answers]
+    for refused in (r for r in answers if r.status_code == 403):
         assert "writes only access" in refused.json()["detail"]
     assert (await _comments(db_session))[NEAR] == comments
