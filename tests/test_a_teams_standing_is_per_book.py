@@ -90,12 +90,6 @@ async def the_guide_spoke_last_in(db: AsyncSession, session_id: str) -> None:
     await the_latest(db, session_id)
 
 
-def flushing_before_every_read_as_deployed(db: AsyncSession) -> None:
-    """The deployed sessions autoflush; the suite's do not, and a flush is what moves the
-    team's latest activity."""
-    db.sync_session.autoflush = True
-
-
 async def having_closed(db: AsyncSession, team_id: str, *passages: str) -> IRSession:
     session = None
     for passage in passages:
@@ -510,7 +504,6 @@ async def test_undoing_the_visit_to_an_old_room_of_a_demo_team_does_not_move_the
     room, desk_client, db_session, team_at_the_desk
 ) -> None:
     team, _tablet, desk = team_at_the_desk
-    flushing_before_every_read_as_deployed(db_session)
     await db_session.execute(update(Project).where(Project.id == team.id).values(is_demo_team=True))
     ruth = await having_closed(db_session, team.id, "P05")
     await db_session.execute(

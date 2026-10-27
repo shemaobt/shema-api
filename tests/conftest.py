@@ -87,9 +87,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(delete(table))
 
-    session_factory = async_sessionmaker(
-        test_engine, expire_on_commit=False, class_=AsyncSession, autoflush=False
-    )
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
         from app.db.models.auth import App
 
