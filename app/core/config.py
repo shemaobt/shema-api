@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    qdrant_collection_name: str | None = Field(
+        None, validation_alias=AliasChoices("qdrant_collection_name", "QDRANT_COLLECTION")
+    )
 
     google_api_key: str = ""
     google_maps_api_key: str = ""
@@ -152,6 +155,8 @@ class Settings(BaseSettings):
 
     @property
     def qdrant_collection(self) -> str:
+        if self.qdrant_collection_name:
+            return self.qdrant_collection_name
         return "meaning_map_prod" if self.env == "production" else "meaning_map_test"
 
     @field_validator("build_id", mode="before")
