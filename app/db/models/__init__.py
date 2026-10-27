@@ -128,6 +128,7 @@ from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
 from app.db.models.shema_rekey import ShemaProjectRekey
+from app.db.models.shema_sensitive_country import ShemaSensitiveCountry
 from app.db.models.sound_necklace import (
     GranularityLevel,
     SessionStatus,
@@ -262,6 +263,7 @@ __all__ = [
     "ShemaRoleChange",
     "ShemaRoleKey",
     "ShemaScopeChange",
+    "ShemaSensitiveCountry",
     "ShemaSubmission",
     "ShemaUserRegion",
     "ShemaYesNo",
