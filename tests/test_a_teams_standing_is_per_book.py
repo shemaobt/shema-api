@@ -21,7 +21,7 @@ from app.db.models.project import Project
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.progression import resolve, standing
+from app.services.internalization_room.progression import resolve, standing, where_teams_stand
 from app.services.internalization_room.sessions import apply_coverage
 from tests.baker import having_finished_the_passage, make_app, make_role, open_ir_session
 from tests.halt_harness import the_halt_of
@@ -478,6 +478,25 @@ async def test_a_facilitators_visit_to_an_old_room_does_not_move_the_team_back_t
     assert [entry["pericope"] for entry in listed] == JONAH
     assert opened.status_code == 200, opened.text[:300]
     assert opened.json()["pericope"] == "J02"
+
+
+async def test_a_long_press_on_an_old_room_does_not_move_the_team_back_to_its_book(
+    room, desk_client, db_session, team_at_the_desk
+) -> None:
+    team, tablet, _desk = team_at_the_desk
+    ruth = await having_closed(db_session, team.id, "P05")
+    await last_touched(db_session, ruth.id, datetime.now(UTC) - timedelta(hours=2))
+    jonah = await having_closed(db_session, team.id, "J01")
+    await last_touched(db_session, jonah.id, datetime.now(UTC) - timedelta(hours=1))
+
+    pressed = await room.post(
+        f"{PREFIX}/sessions/{ruth.id}/person-arrived", headers=team_headers(tablet)
+    )
+    standing = (await where_teams_stand(db_session, project_ids=[team.id]))[team.id]
+
+    assert pressed.status_code == 200, pressed.text[:300]
+    assert pressed.json()["person_arrived_at"]
+    assert standing.passage == "J02"
 
 
 async def test_undoing_a_facilitators_visit_to_an_old_room_does_not_move_the_team_back_to_its_book(

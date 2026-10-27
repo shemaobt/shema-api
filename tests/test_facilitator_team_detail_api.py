@@ -397,6 +397,42 @@ async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_s
 # --------------------------------------------------------------------------------- what it costs
 
 
+async def test_the_detail_carries_the_standing_the_pericopes_door_answers(
+    client, db_session
+) -> None:
+    """ENG-1781: the Desk's page needs the active passage and the book's standing from one
+    reading of where the team stands, or a session entered between two requests leaves it
+    with a passage that none of the listed ones is current."""
+    _user, team, headers = await a_facilitator(db_session, email="mesma-leitura@x.com")
+    await having_closed(db_session, team, FIRST)
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+    listed = (await client.get(f"{team_url(team.id)}/pericopes", headers=headers)).json()
+
+    assert body["pericopes"] == listed
+    current = [entry["pericope"] for entry in body["pericopes"] if entry["position"] == "current"]
+    assert current == [body["active_passage"]["pericope"]] == [SECOND]
+
+
+async def test_the_detail_works_out_where_the_team_stands_once(
+    client, db_session, monkeypatch
+) -> None:
+    from app.services.project import read_facilitator_team as reading
+
+    _user, team, headers = await a_facilitator(db_session, email="uma-vez@x.com")
+    asked: list[int] = []
+    original = reading.where_teams_stand
+
+    async def counting(*args, **kwargs):
+        asked.append(1)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(reading, "where_teams_stand", counting)
+
+    assert (await client.get(team_url(team.id), headers=headers)).status_code == 200
+    assert len(asked) == 1
+
+
 async def test_the_answer_does_not_pay_per_bead_or_per_team(
     client, db_session, test_engine
 ) -> None:
@@ -424,7 +460,7 @@ async def test_the_answer_does_not_pay_per_bead_or_per_team(
     against_events = [s for s in seen if "ir_coverage_events" in s]
 
     assert len(against_events) <= 2, f"mais de duas leituras dos eventos: {against_events}"
-    assert len(seen) <= 6, f"a resposta custou {len(seen)} statements: {seen}"
+    assert len(seen) <= 7, f"a resposta custou {len(seen)} statements: {seen}"
 
 
 async def test_two_default_facilitators_get_two_different_project_names(db_session):

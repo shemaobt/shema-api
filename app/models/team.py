@@ -16,7 +16,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
-from app.models.internalization_room import BookStanding
+from app.models.internalization_room import BookStanding, PericopeStanding
 
 
 class TeamState(StrEnum):
@@ -134,6 +134,11 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
     #: Each served book's count, in the order GET /books serves them: the Desk's «N de 14»,
     #: «N de 18» and «N de 5». ``complete`` is the book closed, not approved (ADR 0094).
     books: list[BookStanding]
+
+    #: The Current book's passages as ``GET /{team_id}/pericopes`` answers them, worked out from
+    #: the same reading of where the team stands as ``active_passage``, so exactly one of them
+    #: is ``current`` whenever the team has a passage left (ENG-1781).
+    pericopes: list[PericopeStanding]
 
 
 class TeamListingResponse(BaseModel):

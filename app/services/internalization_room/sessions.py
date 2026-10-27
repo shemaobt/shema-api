@@ -1135,14 +1135,24 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     the halt, and refusing one that arrives just as a turn lands would lose the arrival of a
     person who is standing in the room either way.
 
+    **The row's ``updated_at`` stays where it was.** It orders the team's rooms and so decides
+    its Current book; a second tablet left on an old halted room would otherwise pull the team
+    back to that room's book with a gesture that is not the team's work.
+
     Answers the moment rather than the row, the way ``record_needs_person`` does on the device
     side: the caller wants the one thing this writes, and a row typed as nullable would make
     every caller handle a null this function has just ruled out.
     """
     if session.person_arrived_at is None:
-        session.person_arrived_at = datetime.now(UTC)
+        await db.execute(
+            update(IRSession)
+            .where(IRSession.id == session.id, IRSession.person_arrived_at.is_(None))
+            .values(person_arrived_at=datetime.now(UTC), updated_at=IRSession.updated_at)
+            .execution_options(synchronize_session=False)
+        )
         await db.commit()
         await db.refresh(session)
+    assert session.person_arrived_at is not None
     return session.person_arrived_at
 
 
