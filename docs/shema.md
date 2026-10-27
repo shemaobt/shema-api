@@ -2686,7 +2686,8 @@ which is the property that made deciding now cheap enough to do.
 >   replaces it — `GET`/`PUT /api/shema/sensitive-countries`, `AdminUser`, every other role `403`
 >   (Daniel, 19/out/2026, subject to what OBT-592 decides about the Admin's reach). The replace
 >   leaves one `shema_change_log` mark with no subject and no keys: that log is read by the
->   coordination, and the list is the Admin's.
+>   coordination, and the list is the Admin's. A replace that changes nothing writes nothing; two
+>   replaces landing at the same moment answer the second a `409`.
 > - **How a place is read.** `app/utils/shema_derivations.SensitiveCountries`, beside `get_region`:
 >   every comma-separated part of `location` (`countries_named` — any position, not only the first
 >   the region reads), compared with every spelling on the list by its fold (accents, case and
