@@ -18,19 +18,33 @@ step): no row moves and no mark is left. A save that does change it leaves one m
 ``shema_change_log`` — who and when, under ``sensitive_countries`` — with **no subject id and no
 keys**: that log is read by the coordination of every region for an act that belongs to none, and
 which countries the Admin added or took off is the list itself, which is the Admin's.
+
+**Two Admins saving at the same moment get a 409, not a 500.** The replace deletes every row and
+inserts the new ones; a second replace whose delete ran before the first committed inserts names
+the first has just written, and the primary key refuses them. ``_instance.py``'s answer to the same
+race on a unique index: roll back, and say the list moved.
 """
 
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConflictError
 from app.db.models.auth import User
 from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.models.shema_sensitive_countries import SensitiveCountryList, SensitiveCountryListWrite
 from app.services.shema import _trail
 from app.services.shema._grant_rules import require_admin_in
-from app.services.shema._sensitive_list import listed_countries, replace_sensitive_countries
+from app.services.shema._sensitive_list import (
+    ListedCountry,
+    listed_countries,
+    replace_sensitive_countries,
+)
 from app.services.shema.list_sensitive_countries import list_sensitive_countries
+
+#: Two replaces landing together: the second inserts a name the first has just written.
+SAVED_MEANWHILE = "The list was saved by somebody else at the same moment; read it again and save."
 
 
 async def save_sensitive_countries(
@@ -38,9 +52,15 @@ async def save_sensitive_countries(
 ) -> SensitiveCountryList:
     """Replace the list with ``payload`` and answer it as it now stands."""
     await require_admin_in(db, actor, (app_key,))
-    wanted = sorted((country.name, tuple(country.spellings)) for country in payload.countries)
+    wanted = sorted(
+        ListedCountry(country.name, tuple(country.spellings)) for country in payload.countries
+    )
     if wanted != sorted(await listed_countries(db)):
-        await replace_sensitive_countries(db, wanted)
+        try:
+            await replace_sensitive_countries(db, wanted)
+        except IntegrityError:
+            await db.rollback()
+            raise ConflictError(SAVED_MEANWHILE) from None
         _trail.stage(
             db,
             actor=actor,

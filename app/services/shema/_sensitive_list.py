@@ -18,6 +18,7 @@ row beside it and commits once.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,16 +26,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.shema_sensitive_country import ShemaSensitiveCountry
 from app.utils.shema_derivations import SensitiveCountries, country_key
 
-#: One listed country as it travels between the table and its callers: the name and its spellings.
-ListedCountry = tuple[str, tuple[str, ...]]
+
+class ListedCountry(NamedTuple):
+    """One listed country as it travels between the table and its callers."""
+
+    name: str
+    spellings: tuple[str, ...]
 
 
 async def listed_countries(db: AsyncSession) -> list[ListedCountry]:
     """The list's rows, in the order a reader of Portuguese expects them — accents aside."""
     rows = (await db.execute(select(ShemaSensitiveCountry))).scalars().all()
     return sorted(
-        ((row.name, tuple(row.spellings or ())) for row in rows),
-        key=lambda entry: country_key(entry[0]),
+        (ListedCountry(row.name, tuple(row.spellings or ())) for row in rows),
+        key=lambda entry: country_key(entry.name),
     )
 
 

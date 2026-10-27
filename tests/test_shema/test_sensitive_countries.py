@@ -27,6 +27,7 @@ from sqlalchemy import select
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_change_log import ShemaChangeLog
 from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema_sensitive_country import ShemaSensitiveCountry
 from app.utils.shema_derivations import SensitiveCountries
 from tests.shema_admin_harness import make_account
 from tests.shema_harness import LISTED, list_countries
@@ -216,6 +217,32 @@ async def test_replacing_the_list_leaves_a_mark_that_names_no_country(
     [mark] = marks
     assert mark.action == "replaced"
     assert (mark.subject_id, mark.field_keys, mark.region_key) == (None, None, None)
+
+
+async def test_two_replaces_that_collide_answer_a_conflict_and_write_nothing(
+    db_session, shema_app, listed
+):
+    """Two Admins saving together: the second insert meets a name the first just wrote. The
+    collision is built here by handing the service the same name twice, past the body's own
+    check, which is the shape the race leaves at the flush."""
+    from app.core.exceptions import ConflictError
+    from app.models.shema_sensitive_countries import (
+        SensitiveCountryListWrite,
+        SensitiveCountryWrite,
+    )
+    from app.services.shema import save_sensitive_countries
+
+    admin = await make_scoped_user(
+        db_session, shema_app, email="admin.corrida@shema.test", role_key="admin"
+    )
+    twice = SensitiveCountryWrite.model_construct(name="Chipre", spellings=[])
+    body = SensitiveCountryListWrite.model_construct(countries=[twice, twice])
+
+    with pytest.raises(ConflictError):
+        await save_sensitive_countries(db_session, body, actor=admin, app_key="shema")
+
+    names = set((await db_session.execute(select(ShemaSensitiveCountry.name))).scalars())
+    assert names == {"Índia", "Irã"}
 
 
 def test_only_the_list_owner_names_the_table() -> None:

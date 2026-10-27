@@ -43,8 +43,6 @@ class ChangeSubject(enum.StrEnum):
     PENDING_PROJECT = "pending_project"
     MEDIA = "media"
     PRAYER_REQUEST = "prayer_request"
-    #: The Admin's list of sensitive countries (OBT-616) — staged with no subject id and no keys,
-    #: because this log is read by the coordination and the list is the Admin's.
     SENSITIVE_COUNTRIES = "sensitive_countries"
 
 
