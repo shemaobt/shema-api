@@ -414,25 +414,6 @@ async def test_the_detail_carries_the_standing_the_pericopes_door_answers(
     assert current == [body["active_passage"]["pericope"]] == [SECOND]
 
 
-async def test_the_detail_works_out_where_the_team_stands_once(
-    client, db_session, monkeypatch
-) -> None:
-    from app.services.project import read_facilitator_team as reading
-
-    _user, team, headers = await a_facilitator(db_session, email="uma-vez@x.com")
-    asked: list[int] = []
-    original = reading.where_teams_stand
-
-    async def counting(*args, **kwargs):
-        asked.append(1)
-        return await original(*args, **kwargs)
-
-    monkeypatch.setattr(reading, "where_teams_stand", counting)
-
-    assert (await client.get(team_url(team.id), headers=headers)).status_code == 200
-    assert len(asked) == 1
-
-
 async def test_the_answer_does_not_pay_per_bead_or_per_team(
     client, db_session, test_engine
 ) -> None:

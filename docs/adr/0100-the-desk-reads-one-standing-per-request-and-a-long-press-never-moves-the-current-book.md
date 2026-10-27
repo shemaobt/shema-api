@@ -17,7 +17,7 @@ Decided:
   the one reading of where the team stands that serves `active_passage`. `/pericopes` stays
   until the Desk stops calling it.
 - `person_arrived` writes `person_arrived_at` with an update that holds `updated_at` where it
-  was. A gesture that is not the team's work never reorders its rooms.
+  was, as ADR 0094 already asks of every write that is not the team's.
 
 Consequences:
 
