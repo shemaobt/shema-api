@@ -764,8 +764,9 @@ reads change, and they change together so they cannot disagree:
   through the role cache as before and asks the membership only for an account with no grant;
   **who enters the form** — a platform admin, a grant on a role in force (`ROLES_IN_FORCE`,
   §5.4.6), or a live membership — is written once, in `enters_the_form`, and asked by that
-  gate (`cached=True`) and by the handoff that opens the form from the PME (`create_handoff`, `cached=False`, because minting a credential reads the
-  grants live — `docs/auth.md`), so the two doors cannot disagree about a member;
+  gate (`cached=True`) and by the handoff that opens the form from the PME (`create_handoff`,
+  `cached=False`, because minting a credential reads the grants live — `docs/auth.md`), so the
+  two doors cannot disagree about a member;
   `holds_capability` asks it only when no granted role carries the capability; and
   `_scope.reach` never asks it, because neither of its two answers depends on `equipe`.
 - **The scope**: a member reaches the requests they authored **and every request of their
@@ -884,7 +885,8 @@ handoff would have met the same empty list.
 
 `GET /api/resource-requests/me` is the form's own answer, by the rule its door already applies
 (`enters_the_form`): `roles` are the account's grants here on the roles in force (a retired
-one is not listed, §5.4.6) **plus `equipe` when it is a live member of any project**, and `projects` are those projects' ids — what a start may name
+one is not listed, §5.4.6) **plus `equipe` when it is a live member of any project**, and `projects`
+are those projects' ids — what a start may name
 (§5.4.2). A session is the only guard: an account with neither a grant nor a membership is
 **told** so, with empty lists, and the form says *without a role in this app*, the sentence it
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
@@ -1120,7 +1122,8 @@ installations have it, `20260930_rr12` revoked every grant on it, and deleting a
 point at is not a side effect of retiring a capability.
 
 **A grant on it that survived opens nothing** (OBT-639, 26/oct/2026). Staging still carried one, and
-until then it opened more than this section claimed (*403 everywhere*): the handoff minted a code for it, the
+until then it opened more than this section claimed (*403 everywhere*): the handoff minted a code
+for it, the
 door let it in and only a capability refused it, `/me` listed `lider`, and beside a membership it
 gave `_scope.reach` the whole board. The form now counts a grant only on a **role in force** —
 `ROLES_IN_FORCE` in `capabilities.py`, the rows that table carries (`equipe`, `mesa`, `gestor`,
