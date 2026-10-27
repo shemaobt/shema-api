@@ -166,14 +166,17 @@ Authorization: Bearer {{token}}
 ### Import it — the coordinator's step, guarded exactly as a typed save is
 # The progress goes through `save_project`, so the history entry carries `fromField` and
 # `formType` and is otherwise indistinguishable from one a coordinator typed. Run it twice:
-# the second call answers 200, applies nothing and does not double the chapter count.
+# the second call answers 200, applies nothing and does not double the chapter count. A stale
+# If-Match answers the ficha's own 409 — what moved, who moved it and when — with the ETag to
+# apply against, and the submission stays waiting.
 POST {{baseUrl}}/api/shema/forms/submissions/{{submissionId}}/import
 Authorization: Bearer {{token}}
 If-Match: {{record.response.headers.ETag}}
 X-Shema-Local-Date: 2026-09-11
 
 ### File an answer that arrived some other way — paper, a voice note, a bad phone line
-# Same validation, same archive, same idempotency, and an actor the trail can name.
+# Same validation, same archive, same idempotency, same 409 on a stale If-Match, and an actor
+# the trail can name.
 # `definitionVersion` is optional here and means *the version standing today*.
 POST {{baseUrl}}/api/shema/forms/submissions
 Authorization: Bearer {{token}}
