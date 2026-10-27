@@ -16,7 +16,6 @@ draft builders are ``tests/resource_request_harness.py``'s, imported rather than
 
 from __future__ import annotations
 
-import sys
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -28,8 +27,7 @@ from app.db.models.resource_request import (
     RRRequest,
     RRRequestFieldHistory,
 )
-from app.services.resource_request import list_fund_options as options_service
-from app.services.resource_request._fund_choices import options_from
+from app.services.resource_request._fund_choices import choosable_funds, options_from
 from tests.resource_request_harness import (
     answers,
     as_admin,
@@ -40,12 +38,8 @@ from tests.resource_request_harness import (
     endorse,
     give_fund,
     put_evaluation,
+    trail_rows,
 )
-
-#: The package re-exports the ``assign_fund`` *function* under the name of its own module,
-#: so ``from … import assign_fund`` hands back the function and a ``setattr`` on it patches
-#: nothing. The module object itself is reached through ``sys.modules``.
-assign_fund_service = sys.modules["app.services.resource_request.assign_fund"]
 
 REQUESTS = "/api/resource-requests/requests"
 FUNDS = "/api/resource-requests/funds"
@@ -69,6 +63,11 @@ async def put_fund(client, headers, request_id: str, fund_id: str):
     return await client.put(
         f"{REQUESTS}/{request_id}/fund", json={"fund_id": fund_id}, headers=headers
     )
+
+
+async def retire(client, headers, fund_id: str) -> None:
+    res = await client.post(f"{FUNDS}/{fund_id}/retirement", headers=headers)
+    assert res.status_code == 200, res.text
 
 
 async def committed(client, headers, fund_id: str) -> Decimal:
@@ -176,71 +175,74 @@ async def test_um_fundo_fora_da_lista_de_escolha_e_recusado(db_session, client, 
 
 
 async def test_um_fundo_que_existe_mas_saiu_da_lista_tambem_e_recusado(
-    db_session, client, rrf_app, monkeypatch
+    db_session, client, rrf_app
 ) -> None:
     """O par da BE-10 (OBT-471), fechado deste lado: ela aposenta **tirando da lista de
-    escolha** e diz na própria PR que o refuso duro é desta issue.
+    escolha**, e a atribuição consulta a lista e não a existência da linha.
 
-    A aposentadoria em si não existe nesta base — ``retired_at`` chega com aquela branch —
-    então o que se prova aqui é a regra que é minha: o que a atribuição consulta é a lista
-    de escolha e não a existência da linha, de modo que um fundo que saiu dela é recusado
-    ainda estando na tabela, com a mesma resposta decidível de um id desconhecido. No dia
-    em que ``choosable_funds`` filtrar ``retired_at IS NULL``, este teste já é sobre um
-    fundo aposentado sem mudar uma linha."""
+    Na bancada de 26/out/2026 (RRF-MESA-062) o ``PUT …/fund`` com um fundo aposentado era
+    aceito — 200, ``changed: true`` —, porque ``choosable_funds`` não filtrava
+    ``retired_at`` e só o ``fundChoices`` da tela o escondia. Aposentado de verdade, ele é
+    recusado ainda estando na tabela, com a resposta de um id desconhecido — daqui os dois
+    são o mesmo fato, não está em oferta —, e a recusa não escreve nada: o PUT seguinte
+    ainda encontra o pedido sem fundo e o histórico tem uma linha só."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
     await make_fund(db_session, "linguas", "Shema Línguas")
     await make_fund(db_session, "ready", "Ready Vessels")
     card = await submitted(client, team)
-
-    async def sem_o_ready(db):
-        return [
-            fund
-            for fund in (await db.execute(select(RRFund).order_by(RRFund.name))).scalars().all()
-            if fund.id != "ready"
-        ]
-
-    monkeypatch.setattr(assign_fund_service, "choosable_funds", sem_o_ready)
+    await retire(client, gestor, "ready")
 
     recusado = await put_fund(client, mesa, card, "ready")
+    desconhecido = await put_fund(client, mesa, card, "ora-bridge")
     aceito = await put_fund(client, mesa, card, "linguas")
 
     assert recusado.status_code == 422, recusado.text
+    assert desconhecido.status_code == 422, desconhecido.text
+    assert recusado.json() == {
+        "detail": "Not a fund the mesa may assign: ready",
+        "code": desconhecido.json()["code"],
+    }
     assert aceito.status_code == 200, aceito.text
+    assert aceito.json()["previous_fund_id"] is None
+    assert [
+        (row.field_key, row.old_value, row.new_value) for row in await trail_rows(db_session, card)
+    ] == [("fund_id", None, "linguas")]
 
 
 async def test_um_pedido_que_ja_apontava_para_o_fundo_aposentado_segue_valido(
-    db_session, client, rrf_app, monkeypatch
+    db_session, client, rrf_app
 ) -> None:
-    """Aposentar não invalida o que já estava atribuído: o pedido continua legível, o
-    seletor continua mostrando o fundo — marcado e não selecionável — e a aprovação
-    continua encontrando um fundo para debitar."""
+    """Aposentar não invalida o que já estava atribuído — o histórico do RRF-MESA-062: o
+    pedido continua apontando para o fundo, o seletor continua mostrando-o — marcado, não
+    selecionável e por último — e o comprometido que a aprovação lançou nele fica.
+
+    A aprovação vem antes da aposentadoria porque a BE-10 recusa aposentar sob pedido não
+    decidido (409, com a contagem), e o pedido aprovado é o caso da bancada. Nomear o
+    mesmo fundo de novo é recusado como qualquer aposentado — a oferta é lida antes do
+    *nada mudou* — e a recusa não tira o fundo do pedido."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
     await make_fund(db_session, "linguas", "Shema Línguas")
     await make_fund(db_session, "ready", "Ready Vessels")
     card = await submitted(client, team)
     await endorse(db_session, card)
     assert (await put_fund(client, mesa, card, "ready")).status_code == 200
-
-    async def sem_o_ready(db):
-        return [
-            fund
-            for fund in (await db.execute(select(RRFund).order_by(RRFund.name))).scalars().all()
-            if fund.id != "ready"
-        ]
-
-    monkeypatch.setattr(options_service, "choosable_funds", sem_o_ready)
+    assert (await put_evaluation(client, mesa, card, decision="approved")).status_code == 200
+    await retire(client, gestor, "ready")
 
     res = await client.get(f"{REQUESTS}/{card}/fund-options", headers=mesa)
-    decisao = await put_evaluation(client, mesa, card, decision="approved")
+    de_novo = await put_fund(client, mesa, card, "ready")
 
     assert res.status_code == 200, res.text
     assert [(o["id"], o["assigned"], o["selectable"], o["retired"]) for o in res.json()] == [
         ("linguas", False, True, False),
         ("ready", True, False, True),
     ]
-    assert decisao.status_code == 200, decisao.text
+    assert de_novo.status_code == 422, de_novo.text
+    assert (await client.get(f"{REQUESTS}/{card}", headers=mesa)).json()["fund_id"] == "ready"
     assert await committed(client, mesa, "ready") == Decimal("1200.00")
 
 
@@ -375,6 +377,33 @@ async def test_o_seletor_marca_o_fundo_atribuido(db_session, client, rrf_app) ->
             "retired": False,
         },
     ]
+
+
+async def test_o_seletor_nao_oferece_um_fundo_aposentado(db_session, client, rrf_app) -> None:
+    """A lista de escolha é ``choosable_funds``, e o aposentado sai dela: um pedido que não
+    o usa não o vê nem como opção desabilitada. Até a OBT-636 a consulta não filtrava, e o
+    ``fund-options`` o listava com ``selectable: true`` (RRF-MESA-062, 26/out/2026)."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
+    await make_fund(db_session, "linguas", "Shema Línguas")
+    await make_fund(db_session, "ready", "Ready Vessels")
+    card = await submitted(client, team)
+    await retire(client, gestor, "ready")
+
+    res = await client.get(f"{REQUESTS}/{card}/fund-options", headers=mesa)
+
+    assert res.status_code == 200, res.text
+    assert res.json() == [
+        {
+            "id": "linguas",
+            "name": "Shema Línguas",
+            "assigned": False,
+            "selectable": True,
+            "retired": False,
+        }
+    ]
+    assert [fund.id for fund in await choosable_funds(db_session)] == ["linguas"]
 
 
 def test_um_fundo_aposentado_ja_atribuido_continua_no_seletor() -> None:
