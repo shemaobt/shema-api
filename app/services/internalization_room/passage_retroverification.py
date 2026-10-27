@@ -16,6 +16,7 @@ from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.live import live
 from app.services.internalization_room.retroverification import retroverification_file
+from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.take_downloads import _release_id
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
@@ -34,10 +35,21 @@ class RetroverificationUnreadable(Exception):
     """A session's stored telling-back cannot be read: the file waits rather than lie."""
 
 
+async def _read_as_the_draft(db: AsyncSession, latest: IRSession) -> tuple[str, list[str]]:
+    standing = await approved_draft(db, latest)
+    notices = []
+    if standing is None:
+        notices.append(NOT_APPROVED)
+    elif "check" not in standing.packet:
+        notices.append(APPROVED_BEFORE_THE_RECORD)
+    release_id = await _release_id(db, latest, current_parts(await takes_of(db, latest.id)))
+    return release_id, notices
+
+
 async def passage_retroverification_file(
-    db: AsyncSession, user: User, *, project_id: str, pericope: str, archive_id: str | None
+    db: AsyncSession, user: User, *, project_id: str, pericope: str
 ) -> PassageRetroverificationFile:
-    """The passage's sessions in one archive (the live ones by default), oldest first.
+    """The passage's live sessions, oldest first.
 
     A session whose stored telling-back cannot be read makes the whole file unreadable: left
     out, it would read as a session nobody told.
@@ -47,7 +59,7 @@ async def passage_retroverification_file(
     in_scope = (
         IRSession.project_id == project_id,
         IRSession.pericope == pericope,
-        IRSession.archive_id == archive_id if archive_id else live(),
+        live(),
     )
     sessions = list(
         await db.scalars(
@@ -59,17 +71,13 @@ async def passage_retroverification_file(
     )
     if latest is None:
         raise NotFoundError(f"No sessions of {pericope} for this team")
-    standing = await approved_draft(db, latest)
-    notices = []
-    if standing is None:
-        notices.append(NOT_APPROVED)
-    elif "check" not in standing.packet:
-        notices.append(APPROVED_BEFORE_THE_RECORD)
-    release_id = await _release_id(db, latest, current_parts(await takes_of(db, latest.id)))
-    try:
-        files = [await retroverification_file(db, session) for session in sessions]
-    except ValidationError as unreadable:
-        raise RetroverificationUnreadable(pericope) from unreadable
+    release_id, notices = await _read_as_the_draft(db, latest)
+    for session in sessions:
+        try:
+            back_translation_of(session)
+        except ValidationError as unreadable:
+            raise RetroverificationUnreadable(session.id) from unreadable
+    files = [await retroverification_file(db, session) for session in sessions]
     return PassageRetroverificationFile(
         release_id=release_id,
         project_id=project_id,

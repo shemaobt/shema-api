@@ -867,9 +867,8 @@ APPROVED_BEFORE_THE_RECORD = (
 )
 
 
-def _passage_file(project_id: str, archive: str | None = None) -> str:
-    url = f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
-    return f"{url}?archive={archive}" if archive else url
+def _passage_file(project_id: str) -> str:
+    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
 
 
 async def test_a_passage_worked_over_two_sessions_is_one_file_named_after_its_release(
@@ -947,23 +946,3 @@ async def test_a_translation_that_cannot_be_read_answers_try_again_and_no_file(
 
     assert answered.status_code == 503, answered.text
     assert "sessions" not in answered.json()
-
-
-async def test_the_passage_file_serves_the_live_sessions_unless_an_archive_is_named(
-    client: httpx.AsyncClient, db_session: AsyncSession, room_app
-) -> None:
-    project, _credential = await a_claimed_device(db_session)
-    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
-    desk, _facilitator = await at_the_desk(db_session, room_app, project)
-    zerar = await client.post(
-        f"{PREFIX}/facilitator/projects/{project.id}/passages/{P}/archive", headers=desk
-    )
-    live = await ready_session(db_session, project_id=project.id, tell=_told_in_two_stretches)
-
-    in_force = (await client.get(_passage_file(project.id), headers=desk)).json()
-    kept = (
-        await client.get(_passage_file(project.id, zerar.json()["archive"]["id"]), headers=desk)
-    ).json()
-
-    assert [one["session_id"] for one in in_force["sessions"]] == [live.id]
-    assert [one["session_id"] for one in kept["sessions"]] == [archived.id]
