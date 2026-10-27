@@ -64,7 +64,7 @@ INTEGRATION_GLOB = "integration/**"
 #: so the trigger staying narrow is a property worth holding, not a detail.
 TOO_BROAD = {"**", "*", "main", "master"}
 
-#: ENG-980's own lists, and every migration test added since: the nineteen files that walk a
+#: ENG-980's own lists, and every migration test added since: the twenty files that walk a
 #: migration and the three that open a fresh interpreter, read here rather than derived, so a
 #: file the ticket names and the repo marks wrong is what
 #: `test_the_files_carry_the_marker_the_ticket_gives_them` catches instead of something this
@@ -89,6 +89,7 @@ MIGRATION_FILES = {
     "test_ir_closed_passage_repair_migration.py",
     "test_ir_team_sessions_migration.py",
     "test_shema552_migration.py",
+    "test_shema616_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {
@@ -252,7 +253,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
 
 def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cleared() -> None:
     """G3 (criterion 4): a step `env` cannot unset a job-level `env` in Actions — only the
-    `run` line can, and without it the nineteen would run serially, against the job's
+    `run` line can, and without it the twenty would run serially, against the job's
     Postgres, on top of the schema the previous step just migrated."""
     steps = _workflow("migrations.yml")["jobs"]["migrations"]["steps"]
     running = [step for step in steps if "-m migration" in step.get("run", "")]
@@ -284,7 +285,7 @@ def test_the_two_markers_are_registered() -> None:
 def _module_level_marker(path: Path) -> str | None:
     """The name of the mark a file's `pytestmark = pytest.mark.<name>` line carries, by AST.
 
-    Reads the source rather than importing it: importing one of the twenty-two files to ask
+    Reads the source rather than importing it: importing one of the twenty-three files to ask
     what it is marked with is exactly the cost this ticket moves out of the PR job.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))

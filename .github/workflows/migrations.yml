@@ -122,10 +122,10 @@ jobs:
             uv run alembic upgrade head
           done <<< "$targets"
 
-      # The nineteen migration-walking tests build their own throwaway SQLite file each and
+      # The twenty migration-walking tests build their own throwaway SQLite file each and
       # never touch this job's Postgres — but only once `DATABASE_URL` is cleared. The job
       # sets it at job level, and the suite's conftest honours it when set: left in place, the
-      # nineteen would run against this Postgres instead, serially (AGENTS.md: a run that
+      # twenty would run against this Postgres instead, serially (AGENTS.md: a run that
       # names its own database runs without `-n`), and create tables over the schema the
       # upgrade step above just migrated — a step-level `env` cannot unset a job-level one in
       # Actions, so the `run` line does it.
