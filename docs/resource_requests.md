@@ -1541,6 +1541,14 @@ a deploy. So a fund line stopped being seed data and became a row somebody creat
 - **Retired funds stay in `GET /funds`, flagged.** Dropping them from the read would take
   their *comprometido* off the Painel while the ledger still holds it, so `FundOut` carries
   `retired` and the list of choice is that list filtered — never that list shortened.
+- **The list of choice is `choosable_funds`, and it is the query that leaves a retired fund
+  out** (OBT-636, 26/oct/2026). BE-10 shipped the flag without narrowing it, so only the
+  client's `fundChoices` hid a retired fund: the E2E run of 26/oct/2026 (RRF-MESA-062) found
+  `GET /requests/{id}/fund-options` offering one as `selectable` and `PUT /requests/{id}/fund`
+  accepting it. Both read that one list now, so a retired fund is not offered, and naming it
+  is refused with the 422 an unknown id gets — the request's own included, because the offer
+  is read before the no-op. A request that already drew from it keeps it: its selector
+  carries the fund last, `assigned`, not `selectable`, `retired`.
 - **One capability, `administer_funds`, the Gestor's, of control** — beside `assign_fund`
   and `allocate_funds`, and deliberately not `manage_funds`, which is the Painel's door the
   whole mesa holds. Retirement is `POST /funds/{id}/retirement` and not `DELETE`: a `DELETE`
