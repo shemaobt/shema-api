@@ -64,12 +64,12 @@ from tests.release_harness import (
     checked_telling_back,
     desk_release,
     desk_release_at,
-    desk_retro,
     judged_packet,
     one_stretch,
     rehearsed_session,
     releases_of,
     reported_playback,
+    session_retro,
     team_headers,
     team_release,
     told_back_with_an_open_finding,
@@ -660,7 +660,7 @@ async def test_what_the_manifest_leaves_out_is_in_the_retroverificacao_file(
 ):
     session, desk = await planted_and_forced(client, db_session, room_app)
 
-    retro = await client.get(desk_retro(session.id), headers=desk)
+    retro = await session_retro(client, session.id, desk)
     record = await client.get(desk_release_at(session.id, 1), headers=desk)
 
     assert retro.status_code == 200, retro.text
@@ -719,7 +719,8 @@ async def test_the_check_lists_the_nuances_in_her_keys(
     assert check["nuances"] == stored["check"]["nuances"]
     assert check["status"] == "conferida"
     assert check["retroUrl"] == (
-        f"/api/internalization-room/facilitator/sessions/{session.id}/retroverificacao"
+        f"/api/internalization-room/facilitator/projects/{project.id}/passages/"
+        f"{session.pericope}/retroverificacao"
     )
 
 

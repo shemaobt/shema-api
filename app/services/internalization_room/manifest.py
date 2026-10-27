@@ -16,7 +16,7 @@ from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.canon.book_material import meaning_map_ref
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.check_block import RETRO_ROUTE
+from app.services.internalization_room.check_block import passage_retro_url
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
@@ -100,7 +100,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     if meaning_map is None:
         warnings.append(f"no vendored meaning-map for {session.pericope} in VENDOR_MANIFEST.json")
     stored_check = packet.get("check")
-    check = _her_check(stored_check, session.id) if stored_check else None
+    check = _her_check(stored_check, session) if stored_check else None
     if check is None:
         warnings.append(NO_CHECK_RECORDED)
 
@@ -201,12 +201,12 @@ def _chain(take_id: str, laid: dict[str, LaidInSentence]) -> list[str]:
     return chain
 
 
-def _her_check(stored: dict[str, Any], session_id: str) -> dict[str, Any]:
+def _her_check(stored: dict[str, Any], session: IRSession) -> dict[str, Any]:
     """The stored check in her keys and order, with nobody's name on it."""
     check = {key: stored.get(key) for key in _HER_CHECK}
     if stored.get("nuances"):
         check["nuances"] = stored["nuances"]
-    check["retroUrl"] = RETRO_ROUTE.format(session_id=session_id)
+    check["retroUrl"] = passage_retro_url(session)
     return check
 
 

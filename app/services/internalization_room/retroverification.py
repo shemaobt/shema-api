@@ -15,8 +15,7 @@ chain *forwards*. A chain that reaches no stretch standing was abandoned rather 
 It is refused to nobody and composed for every state. A session the analyst never read, one
 nobody approved, one whose reading moved after the approval — each is a thing the consultant
 has to be able to see, and an empty file that reads like a clean one is the failure this
-exists to prevent. What each state means is said in a sentence in her own language, beside
-the flag a program reads.
+exists to prevent. The flags say which; the passage's file says in words what the numbering is.
 """
 
 from __future__ import annotations
@@ -65,19 +64,6 @@ from app.services.internalization_room.takes import current_parts, set_aside_mom
 #: Where a facilitator's browser fetches one take, as the file points at it. A path and never
 #: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
 TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
-
-#: The three things the file has to say in words, in the language the room speaks to the
-#: consultant. Each stands beside a flag, and neither replaces the other: the flag is what a
-#: program reads, and the sentence is what tells a person what a missing number means.
-DRAFT_NOT_APPROVED = (
-    "Este rascunho não foi aprovado: a numeração das frases é a da leitura de agora"
-)
-READING_MOVED = "A leitura mudou desde a versão {version}: frases sem número não estavam nela"
-NEVER_ANALYSED = "O analista nunca leu esta tradução: não houve conferência"
-BEFORE_THE_FREEZE = (
-    "A versão {version} foi aprovada antes de as frases serem congeladas: a numeração abaixo é "
-    "a da leitura de agora"
-)
 
 
 def _moment(when: datetime | None) -> str | None:
@@ -229,28 +215,6 @@ def _listening(
     return listened
 
 
-def _notices(
-    *, latest: IRRelease | None, frozen: bool, reading_moved: bool, never_analysed: bool
-) -> list[str]:
-    """What the file says to the consultant in her own language, beside the flags.
-
-    Three states of the numbering and one of the check, and they are said in words because the
-    booleans beside them cannot tell a person what a missing number means. An approved draft
-    whose version predates the freeze is its own line and not the "not approved" one: it was
-    approved, and what it has no answer for is the numbering alone.
-    """
-    said = []
-    if latest is None:
-        said.append(DRAFT_NOT_APPROVED)
-    elif not frozen:
-        said.append(BEFORE_THE_FREEZE.format(version=latest.version))
-    elif reading_moved:
-        said.append(READING_MOVED.format(version=latest.version))
-    if never_analysed:
-        said.append(NEVER_ANALYSED)
-    return said
-
-
 async def _of_the_same_archive(
     db: AsyncSession, session: IRSession, releases: list[IRRelease]
 ) -> list[IRRelease]:
@@ -359,12 +323,6 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
         generated_at=datetime.now(UTC).isoformat(),
         releases=[_release_view(release) for release in releases],
         numbering="frozen" if frozen is not None else "live",
-        notices=_notices(
-            latest=latest,
-            frozen=frozen is not None,
-            reading_moved=any(one.frase is None for one in numbered),
-            never_analysed=telling_back.never_analysed,
-        ),
         approved=await approved_draft(db, session) is not None,
         analysed=not telling_back.never_analysed,
         checked=telling_back.checked,

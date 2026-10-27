@@ -566,3 +566,14 @@ def desk_release_at(session_id: str, version: int) -> str:
 
 def desk_retro(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/retroverificacao"
+
+
+async def session_retro(
+    client: httpx.AsyncClient, session_id: str, headers: dict[str, str]
+) -> httpx.Response:
+    """The session's own file, read out of its passage's file through the old route's redirect."""
+    followed = await client.get(desk_retro(session_id), headers=headers, follow_redirects=True)
+    if followed.status_code != 200:
+        return followed
+    (own,) = [one for one in followed.json()["sessions"] if one["session_id"] == session_id]
+    return httpx.Response(200, json=own)

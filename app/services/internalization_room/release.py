@@ -523,7 +523,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     check = check_block(
         telling_back,
         told,
-        session.id,
+        session,
         keys=keys,
         heard_complete=not unheard,
         version=None,

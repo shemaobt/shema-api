@@ -1,44 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
 from app.models.internalization_room import (
     PassageRetroverificationFile,
-    RetroverificationFile,
     SessionRetroResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.check_block import passage_retro_url
 from app.services.internalization_room.passage_retroverification import (
     RetroverificationUnreadable,
     passage_retroverification_file,
 )
-from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.session_retro import retro_of
 
 router = APIRouter()
 
 
-@router.get(
-    "/facilitator/sessions/{session_id}/retroverificacao",
-    response_model=RetroverificationFile,
-)
-async def read_the_retroverification_file(
+@router.get("/facilitator/sessions/{session_id}/retroverificacao", status_code=307)
+async def redirect_to_the_passages_retroverification_file(
     session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
-) -> RetroverificationFile:
-    """Everything the check learned about one session, for the facilitator and the consultant.
+) -> RedirectResponse:
+    """Where old links to a session's file land: the file of its passage, no file built here.
 
-    The last segment of the path is Marcia's name for the content and carries no extension:
-    nothing on this server writes files, so the file is the JSON this answers with and there
-    is no download header to send.
-
-    Scoped with ``get_session_for_reader``, like the release read beside it and for a
-    reason that is wider: this carries the analyst's own words, every telling the team
-    replaced and a link to every recording. A facilitator of another team is told the session
-    does not exist.
+    Scoped with ``get_session_for_reader``, so a facilitator of another team is told the
+    session does not exist. An archived session lands on its archive's file.
     """
     session = await room.get_session_for_reader(db, user, session_id)
-    return await retroverification_file(db, session)
+    return RedirectResponse(passage_retro_url(session), status_code=307)
 
 
 @router.get(
