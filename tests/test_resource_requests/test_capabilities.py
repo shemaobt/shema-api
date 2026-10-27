@@ -281,23 +281,38 @@ def test_only_the_membership_and_the_door_read_the_forms_grants_raw() -> None:
     """Every other reader of this app's grants goes through ``_membership.granted_roles``, which
     keeps the roles in force and drops a retired one (OBT-639). ``enters_the_form`` is the one
     exception and filters the same way: it fills the platform's role cache, whose raw pairs
-    ``require_role`` reads too. A service that called ``list_roles`` itself would count a
-    retired grant again, so a new caller changes this list, which is the line a reviewer reads.
+    ``require_role`` reads too. The grants have two raw doors, ``list_roles`` and the cache's
+    ``get_cached_roles``, and a file in the service or in the router that called either itself
+    would count a retired grant again, so a new caller changes this list, which is the line a
+    reviewer reads.
     """
-    package = Path(__file__).resolve().parents[2] / "app" / "services" / "resource_request"
+    root = Path(__file__).resolve().parents[2]
+    packages = (
+        root / "app" / "services" / "resource_request",
+        root / "app" / "api" / "resource_requests",
+    )
+    raw_doors = {"list_roles", "get_cached_roles"}
 
-    def calls_list_roles(path: Path) -> bool:
+    def reads_the_grants_raw(path: Path) -> bool:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call):
                 func = node.func
                 name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-                if name == "list_roles":
+                if name in raw_doors:
                     return True
         return False
 
-    readers = sorted(path.name for path in package.glob("*.py") if calls_list_roles(path))
+    readers = sorted(
+        str(path.relative_to(root))
+        for package in packages
+        for path in package.glob("*.py")
+        if reads_the_grants_raw(path)
+    )
 
-    assert readers == ["_membership.py", "enters_the_form.py"]
+    assert readers == [
+        "app/services/resource_request/_membership.py",
+        "app/services/resource_request/enters_the_form.py",
+    ]
 
 
 async def test_the_gestor_moves_the_board_and_does_not_score(db_session, client, rrf_app) -> None:
