@@ -1752,6 +1752,22 @@ class RetroverificationFile(BaseModel):
     takes: list[RetroverificationTake] = Field(default_factory=list)
 
 
+class PassageRetroverificationFile(BaseModel):
+    """The one file of a passage, named after its release: every session, oldest first.
+
+    `notices` is the room's word on the draft in her language, once for the passage: the
+    sessions carry the flags and no sentences.
+    """
+
+    release_id: str
+    project_id: str
+    pericope: str
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    generated_at: str
+    notices: list[str] = Field(default_factory=list)
+    sessions: list[RetroverificationFile]
+
+
 class ConversationTurn(BaseModel):
     role: Literal["team", "guide"]
     text: str

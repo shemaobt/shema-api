@@ -1,10 +1,18 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.models.internalization_room import RetroverificationFile, SessionRetroResponse
+from app.models.internalization_room import (
+    PassageRetroverificationFile,
+    RetroverificationFile,
+    SessionRetroResponse,
+)
 from app.services import internalization_room as room
+from app.services.internalization_room.passage_retroverification import (
+    RetroverificationUnreadable,
+    passage_retroverification_file,
+)
 from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.session_retro import retro_of
 
@@ -31,6 +39,38 @@ async def read_the_retroverification_file(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await retroverification_file(db, session)
+
+
+@router.get(
+    "/facilitator/projects/{project_id}/passages/{pericope}/retroverificacao",
+    response_model=PassageRetroverificationFile,
+)
+async def read_the_passages_retroverification_file(
+    project_id: str,
+    response: Response,
+    user: ReaderUser,
+    pericope: str = Path(max_length=120),
+    archive: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> PassageRetroverificationFile:
+    """The file of one passage, every session of it, named after its release.
+
+    The live sessions, or those of the Archive named in ``archive``. A team the caller does not
+    read is refused as one that does not exist. A stored telling-back that cannot be read
+    answers 503: a file without that session would read as a passage nobody told.
+    """
+    try:
+        file = await passage_retroverification_file(
+            db, user, project_id=project_id, pericope=pericope, archive_id=archive
+        )
+    except RetroverificationUnreadable as unreadable:
+        raise HTTPException(
+            status_code=503, detail="The retroverification file cannot be read now; try again"
+        ) from unreadable
+    response.headers["content-disposition"] = (
+        f'attachment; filename="{file.release_id}-retroverificacao.json"'
+    )
+    return file
 
 
 @router.get(

@@ -364,6 +364,17 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/retroverificacao",
+                {},
+            ),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/retroverificacao", {}),
+            "ids": (owner.project.id, absent),
+            #: The owner's passage has no session, so there is no file to serve.
+            "owner_expects": 404,
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/questions", {"params": {"team_id": owner.project.id}}),
             "absent": (f"{IR}/facilitator/questions", {"params": {"team_id": absent}}),
             "ids": (owner.project.id, absent),
