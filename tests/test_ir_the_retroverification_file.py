@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
 import httpx
@@ -867,8 +867,9 @@ APPROVED_BEFORE_THE_RECORD = (
 )
 
 
-def _passage_file(project_id: str) -> str:
-    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
+def _passage_file(project_id: str, archive: str | None = None) -> str:
+    url = f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
+    return f"{url}?archive={archive}" if archive else url
 
 
 async def test_a_passage_worked_over_two_sessions_is_one_file_named_after_its_release(
@@ -946,3 +947,69 @@ async def test_a_translation_that_cannot_be_read_answers_try_again_and_no_file(
 
     assert answered.status_code == 503, answered.text
     assert "sessions" not in answered.json()
+
+
+async def test_the_passage_file_serves_the_live_sessions_unless_an_archive_is_named(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    zerar = await client.post(
+        f"{PREFIX}/facilitator/projects/{project.id}/passages/{P}/archive", headers=desk
+    )
+    live = await ready_session(db_session, project_id=project.id, tell=_told_in_two_stretches)
+
+    in_force = (await client.get(_passage_file(project.id), headers=desk)).json()
+    kept = (
+        await client.get(_passage_file(project.id, zerar.json()["archive"]["id"]), headers=desk)
+    ).json()
+
+    assert [one["session_id"] for one in in_force["sessions"]] == [live.id]
+    assert [one["session_id"] for one in kept["sessions"]] == [archived.id]
+    assert (
+        await client.get(f"{_passage_file(project.id)}?archive=", headers=desk)
+    ).status_code == 422
+
+
+async def _zerada(client: httpx.AsyncClient, desk: dict[str, str], project_id: str) -> dict:
+    zerar = await client.post(
+        f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/archive", headers=desk
+    )
+    return zerar.json()["archive"]
+
+
+async def test_an_archive_that_holds_a_release_is_read_as_that_release(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, session.id)
+    archive = await _zerada(client, desk, project.id)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert file["release_id"] == row.packet["release_id"]
+    assert file["notices"] == []
+
+
+async def test_an_archive_that_holds_no_release_is_named_with_its_stamp(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    archive = await _zerada(client, desk, project.id)
+    stamp = datetime.fromisoformat(archive["archived_at"]).astimezone(UTC).strftime("%Y%m%d-%H%M")
+
+    answered = await client.get(_passage_file(project.id, archive["id"]), headers=desk)
+
+    file = answered.json()
+    assert file["release_id"].endswith(f"-{P.lower()}-zerada-{stamp}")
+    assert file["release_id"].startswith("internalize-")
+    assert answered.headers["content-disposition"] == (
+        f'attachment; filename="{file["release_id"]}-retroverificacao.json"'
+    )
+    assert file["notices"] == [NOT_APPROVED_YET]
