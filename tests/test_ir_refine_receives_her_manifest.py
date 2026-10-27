@@ -735,6 +735,24 @@ async def test_a_clean_check_carries_no_nuances_key(client, db_session, room_app
     assert list(check) == HER_CHECK_KEYS
 
 
+async def test_an_old_packets_manifest_names_the_passage_route(client, db_session, room_app):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, session.id)
+    old = f"/api/internalization-room/facilitator/sessions/{session.id}/retroverificacao"
+    row.packet = {**row.packet, "check": {**row.packet["check"], "retroUrl": old}}
+    await db_session.commit()
+
+    check = (await manifest_of(client, desk, session))["check"]
+
+    assert check["retroUrl"] == (
+        f"/api/internalization-room/facilitator/projects/{project.id}/passages/"
+        f"{session.pericope}/retroverificacao"
+    )
+
+
 async def test_a_forced_drafts_manifest_says_forcada_and_names_nobody(client, db_session, room_app):
     project, _credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)

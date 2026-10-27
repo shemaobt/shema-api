@@ -41,7 +41,7 @@ async def read_the_passages_retroverification_file(
     response: Response,
     user: ReaderUser,
     pericope: str = Path(max_length=120),
-    archive: str | None = Query(default=None),
+    archive: str | None = Query(default=None, min_length=1),
     db: AsyncSession = Depends(get_db),
 ) -> PassageRetroverificationFile:
     """The file of one passage, every session of it, named after its release.
