@@ -56,11 +56,7 @@ async def holding(
 
 
 async def dropped(db: AsyncSession) -> list[str]:
-    return [
-        pin
-        for pin in await held_canon_pins(db)
-        if pin != kept.deployed_pin() and not (kept.KEPT_DIR / pin).is_dir()
-    ]
+    return [pin for pin in await held_canon_pins(db) if not kept.keeps(pin)]
 
 
 def named(held: list[tuple[IRSession, datetime]]) -> str:
@@ -75,19 +71,18 @@ async def wait() -> int:
     window = timedelta(minutes=float(os.environ.get("DEPLOY_HOLD_MINUTES", WINDOW_MINUTES)))
     poll = float(os.environ.get("DEPLOY_HOLD_POLL_SECONDS", POLL_SECONDS))
     deadline = float(os.environ.get("DEPLOY_HOLD_DEADLINE_MINUTES", DEADLINE_MINUTES))
-    async with AsyncSessionLocal() as db:
-        missing = await dropped(db)
-    if missing:
-        print(
-            "::error::This image keeps no canon for these pins sessions hold, so nothing"
-            f" shipped: {', '.join(missing)}",
-            flush=True,
-        )
-        return 1
     started = time.monotonic()
     while True:
         async with AsyncSessionLocal() as db:
+            missing = await dropped(db)
             held = await holding(db, datetime.now(UTC), window)
+        if missing:
+            print(
+                "::error::This image keeps no canon for these pins sessions hold, so nothing"
+                f" shipped: {', '.join(missing)}",
+                flush=True,
+            )
+            return 1
         if not held:
             print("No team session is open; the deploy goes on.", flush=True)
             return 0

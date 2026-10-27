@@ -293,6 +293,35 @@ async def test_the_deploy_names_the_team_it_waits_for_and_goes_on_once_their_pas
 
 
 @pytest.mark.fresh_interpreter
+async def test_a_pin_a_session_takes_while_the_deploy_waits_fails_it_naming_the_pin(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(
+        db_session, "sessao-da-ruth", updated_at=datetime.now(UTC), canon_pin=deployed_pin()
+    )
+    hold = subprocess.Popen(
+        ["bash", "-e", "-c", the_hold()["run"]],
+        cwd=ROOT,
+        env={
+            **a_runner(tmp_path),
+            "DEPLOY_HOLD_POLL_SECONDS": "0.1",
+            "DEPLOY_HOLD_DEADLINE_MINUTES": "0.2",
+        },
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert hold.stdout is not None
+    said = hold.stdout.readline()
+
+    await a_session(db_session, "sessao-de-noemi", project_id="time-de-noemi", canon_pin=UNKEPT_PIN)
+    rest, _ = hold.communicate(timeout=60)
+
+    assert said == "Waiting on 1 open team session(s):\n"
+    assert hold.returncode == 1
+    assert UNKEPT_PIN in the_annotation(rest, "::error::")
+
+
+@pytest.mark.fresh_interpreter
 async def test_a_wait_that_outlives_its_deadline_fails_naming_who_held_it(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
