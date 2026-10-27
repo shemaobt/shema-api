@@ -2691,8 +2691,8 @@ which is the property that made deciding now cheap enough to do.
 > - **How a place is read.** `app/utils/shema_derivations.SensitiveCountries`, beside `get_region`:
 >   every comma-separated part of `location` (`countries_named` — any position, not only the first
 >   the region reads), compared with every spelling on the list by its fold (accents, case and
->   spacing aside) and by the region map's synonym of it, so no spelling the region knows escapes
->   the flag. A part that only contains a listed name (`Indiana`) is not that country, and a
+>   spacing aside) and by the region map's synonym of it — the map asked by the fold too, so
+>   `egipto` meets the map's `Egipto` — and no spelling the region knows escapes the flag. A part that only contains a listed name (`Indiana`) is not that country, and a
 >   substring search was refused (it reads *Turkey Creek* as Turkey). The fold is a departure from
 >   §6.1's *listed, not normalised*, argued where it is made: there a misfire moves a record, here it
 >   can only raise a flag.

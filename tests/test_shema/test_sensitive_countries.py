@@ -28,7 +28,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_change_log import ShemaChangeLog
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_sensitive_country import ShemaSensitiveCountry
-from app.utils.shema_derivations import SensitiveCountries
+from app.utils.shema_derivations import COUNTRY_SYNONYMS, SensitiveCountries, country_key
 from tests.shema_admin_harness import make_account
 from tests.shema_harness import LISTED, list_countries
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
@@ -423,6 +423,24 @@ def test_the_list_reads_portuguese_and_english_in_any_position_case_and_accents_
     assert listed.named_in("China, Laos, india") == ("Índia",)
     assert listed.named_in("Egipto"), "the region's map knows Egipto as Egypt"
     assert listed.named_in("Minya, Egypt, Irão") == ("Egito", "Irã")
+
+
+def test_a_synonym_the_map_knows_is_read_through_the_fold_too() -> None:
+    """``Egipto`` is the one map spelling the seed does not carry: the list knows it only through
+    the map, so the map is asked the way the list asks everything — case and accents aside."""
+    listed = SensitiveCountries.of([("Egito", ("Egypt",))])
+
+    assert listed.named_in("Cairo, egipto") == ("Egito",)
+    assert listed.named_in("EGIPTO") == ("Egito",)
+
+
+def test_no_two_map_spellings_fold_into_one_key_with_two_countries() -> None:
+    """The fold of the map is only safe while it merges nothing the map keeps apart."""
+    countries_by_key: dict[str, set[str]] = {}
+    for spelling, country in COUNTRY_SYNONYMS.items():
+        countries_by_key.setdefault(country_key(spelling), set()).add(country)
+
+    assert {key: found for key, found in countries_by_key.items() if len(found) > 1} == {}
 
 
 def test_a_part_that_only_contains_a_listed_name_is_not_that_country() -> None:

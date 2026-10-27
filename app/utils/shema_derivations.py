@@ -379,14 +379,25 @@ def country_key(name: str) -> str:
     return " ".join(bare.casefold().split())
 
 
+#: :data:`COUNTRY_SYNONYMS` read through :func:`country_key` — the list's lookup into the map, so
+#: ``egipto`` in lower case meets the map's ``Egipto`` as the region's exact lookup never would.
+#: No two of the map's spellings fold to one key with two countries; ``test_sensitive_countries``
+#: holds that, since a fold that merged them would hand the list the wrong one.
+SYNONYMS_BY_KEY: Final[dict[str, str]] = {
+    country_key(spelling): country for spelling, country in COUNTRY_SYNONYMS.items()
+}
+
+
 def spelling_keys(name: str) -> frozenset[str]:
     """Every key one spelling answers to: its own fold, and the fold of the map's spelling of it.
 
     The second is what *pelo mesmo mapa* buys: a list that names *Egito* recognises the
-    ``Egipto`` the map knows as ``Egypt``, and no synonym the region reads can escape the flag.
+    ``Egipto`` the map knows as ``Egypt`` — in any case and with or without its accents, since
+    the map is asked by the fold too (:data:`SYNONYMS_BY_KEY`) — and no synonym the region reads
+    can escape the flag.
     """
-    spelling = name.strip()
-    return frozenset({country_key(spelling), country_key(COUNTRY_SYNONYMS.get(spelling, spelling))})
+    key = country_key(name)
+    return frozenset({key, country_key(SYNONYMS_BY_KEY.get(key, key))})
 
 
 @dataclass(frozen=True)
