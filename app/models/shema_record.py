@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AliasGenerator,
@@ -66,6 +66,7 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
+from app.core.exceptions import ERROR_CODE_CONFLICT
 from app.db.models.shema_enums import (
     ShemaHealthLevel,
     ShemaMaterialKind,
@@ -335,6 +336,31 @@ class ShemaMediaPhoto(BaseModel):
     image: None = None
     caption: str = ""
     authorization: ShemaMediaAuthorization | None = None
+
+
+class RecordConflict(BaseModel):
+    """The record's 409 — the envelope's ``detail`` and ``code``, and what moved since (OBT-627).
+
+    ``app/api/shema/projects.py``'s ``_conflict`` builds the body **from this shape**, and every
+    route that answers it declares this shape as its 409, so the keys the console reads are the
+    keys the OpenAPI document publishes and the two cannot drift. ``changedAt`` is the ISO text
+    the 409 has always carried rather than a ``datetime``: Pydantic would spell a UTC instant
+    with a ``Z`` where the wire has said ``+00:00`` since BE-06.
+
+    **CamelCase in both directions**, not ``_OUTWARD``: FastAPI renders a model declared under
+    ``responses`` with its validation aliases, so a serialization-only alias would publish
+    ``changed_fields`` for a body that says ``changedFields``.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    detail: str
+    code: Literal["CONFLICT"] = ERROR_CODE_CONFLICT
+    expected_version: int | None
+    current_version: int
+    changed_fields: list[str]
+    changed_by: str | None
+    changed_at: str | None
 
 
 class ShemaMediaLink(BaseModel):

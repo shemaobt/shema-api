@@ -79,7 +79,13 @@ from app.api.shema._deps import (
     Scope,
     WriteScope,
 )
-from app.api.shema.projects import LOCAL_DAY_HEADER, _conflict, _expected_version, _local_day
+from app.api.shema.projects import (
+    LOCAL_DAY_HEADER,
+    RECORD_CONFLICT_RESPONSES,
+    _conflict,
+    _expected_version,
+    _local_day,
+)
 from app.core.rate_limit import limiter
 from app.models.shema_forms import (
     IntakeForm,
@@ -255,7 +261,10 @@ async def received_detail(
 
 
 @router.post(
-    "/forms/submissions", response_model=ReceivedSubmission, status_code=status.HTTP_201_CREATED
+    "/forms/submissions",
+    response_model=ReceivedSubmission,
+    status_code=status.HTTP_201_CREATED,
+    responses=RECORD_CONFLICT_RESPONSES,
 )
 async def file_submission(
     payload: SubmissionImport,
@@ -295,7 +304,11 @@ async def file_submission(
         return _conflict(conflict)
 
 
-@router.post("/forms/submissions/{submission_id}/import", response_model=ReceivedSubmission)
+@router.post(
+    "/forms/submissions/{submission_id}/import",
+    response_model=ReceivedSubmission,
+    responses=RECORD_CONFLICT_RESPONSES,
+)
 async def import_received(
     submission_id: str,
     db: Db,
