@@ -55,7 +55,11 @@ def in_force(grants: Iterable[tuple[str, str]]) -> set[str]:
 
 async def granted_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
     """The roles in force ``user_id`` was **granted** in ``app_key`` — ``user_app_roles``, read
-    live, through ``in_force``."""
+    live, through ``in_force``.
+
+    ``app_key`` is this app's: the list is the form's capability table, so the PME's grants are
+    read by the PME's own ``granted_roles`` (``app/services/shema/_scope.py``), never by this.
+    """
     return in_force(await authorization_service.list_roles(db, user_id, app_key))
 
 
