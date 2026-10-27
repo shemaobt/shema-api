@@ -33,8 +33,11 @@ ficha's ``promote``). The export's slugs are ``<language>-<place>``, and the lan
 here are the team's own typing, which the Admin is about to correct.
 
 **Born** ``planejado`` **and not sensitive**, as the issue writes it: the form asks no such thing,
-and the flag is the Admin's decision at the conference, where the confirmation requires it. The
-region is derived from the place by the one owner of that map (``_redaction.derive_region``).
+and the flag is the Admin's decision at the conference, where the confirmation requires it —
+**unless the place names a country on the sensitive list** (OBT-616, *passa a nascer marcado*):
+then it is born sensitive (``_redaction.flag_project_by_country``), the Admin's list reads it
+withheld, and the conference starts with the box ticked. The region is derived from the place by
+the one owner of that map (``_redaction.derive_region``).
 """
 
 from __future__ import annotations
@@ -51,8 +54,9 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaProjectStatus
 from app.db.models.shema_pending_member import ShemaProjectPendingMember
 from app.services.shema._filing import part_a, stamp_request
-from app.services.shema._redaction import derive_region
+from app.services.shema._redaction import derive_region, flag_project_by_country
 from app.services.shema._scope import filed_projects, live_project_of_link
+from app.services.shema._sensitive_list import sensitive_countries
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +96,7 @@ async def create_pending_project_from_request(
         source_link_id=link_id,
     )
     project.region_key = derive_region(project)
+    flag_project_by_country(project, await sensitive_countries(db))
     db.add(project)
     await db.flush()
 

@@ -18,7 +18,9 @@ The lines this file holds, one test each:
 * after it, no read of a submission — the inbox, the opened Pulse, the export — returns the
   text, and the same file sent again does not bring it back;
 * a pending Pulse whose request was removed does not authorize anything when it is applied;
-* a new text that replaces the request is not a withdrawal, and erases nothing;
+* a new text that replaces the request is not a withdrawal, and erases nothing — reworded on
+  the ficha it keeps its authorization, so the wall shows the new words while the Pulse on file
+  keeps the old ones (PME-ORA-011, OBT-597);
 * the health assessment, the other write that carries the request, withdraws the same way.
 """
 
@@ -44,6 +46,8 @@ WITHDRAWN = "PEDIDO-RETIRADO orem pela familia do tradutor"
 KEPT = "PEDIDO-DA-COORDENACAO orem pela colheita"
 #: The words the Pulse arrived with, before the record spelled them otherwise.
 EARLIER = "PEDIDO-RETIRADO orem pela familia do tradutr"
+#: The request as the coordination rewrote it on the ficha (PME-ORA-011's *Texto B*).
+REWORDED = "PEDIDO-REESCRITO orem pela familia do tradutor e pela viagem"
 
 
 @pytest.fixture()
@@ -233,30 +237,37 @@ async def test_a_pending_pulse_whose_request_was_removed_authorizes_nothing_when
     assert project.prayer_requests == WITHDRAWN
 
 
-async def test_a_new_request_that_replaces_the_old_one_is_not_a_withdrawal(
+async def test_a_reworded_request_keeps_the_pulse_s_words_and_puts_the_new_ones_on_the_wall(
     client, db_session, shema_app, headers, project
 ) -> None:
-    """A rewrite clears the authorization for the new text (BE-09) but takes nothing back: the
-    Pulse that carried the old one is coordination's record of what the team said."""
+    """PME-ORA-011, the E2E run of 14/oct/2026: the Pulse shared *Texto A* in ``rede``, and the
+    coordination rewords it on the ficha with the box still marked, sending the text alone. Not a
+    withdrawal — the Pulse on file keeps what the team said, nothing is erased — and the
+    authorization stays with the request it was in view beside, so the wall shows *Texto B*."""
     await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="rede")
 
     response = await client.patch(
         f"{PROJECTS}/{PROJECT_ID}",
-        json={"prayerRequests": "um pedido novo"},
+        json={"prayerRequests": REWORDED},
         headers={**headers, "If-Match": '"1"'},
     )
 
     assert response.status_code == 200, response.text
+    assert response.json()["prayerVisibility"] == "rede"
     (row,) = await _by_request(db_session)
     assert archived_answers(row)["prayerRequest"] == WITHDRAWN
+    assert archived_answers(row)["prayerVisibility"] == "rede"
     assert row.prayer_request_erased_at is None
+    wall = await client.get(WALL, headers=headers)
+    assert wall.status_code == 200, wall.text
+    assert [entry["text"] for entry in wall.json()] == [REWORDED]
 
 
 async def test_restating_rede_takes_nothing_back(
     client, db_session, shema_app, headers, project
 ) -> None:
-    """The positive half of the gate: the console's consent control sends the visibility on
-    every save, and ``rede`` over ``rede`` is not a withdrawal."""
+    """The positive half of the gate: the console's consent control sends the visibility when
+    it is moved, and ``rede`` over ``rede`` is not a withdrawal."""
     await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="rede")
 
     response = await client.patch(

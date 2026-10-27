@@ -83,6 +83,7 @@ from app.api.shema.pending_projects import router as pending_projects_router
 from app.api.shema.prayer import router as prayer_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.regions import router as regions_router
+from app.api.shema.sensitive_countries import router as sensitive_countries_router
 from app.api.shema.session import router as session_router
 from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
@@ -111,6 +112,7 @@ authenticated.include_router(pending_projects_router)  # OBT-547
 authenticated.include_router(transfer_router)  # BE-14
 authenticated.include_router(media_router)  # OBT-578
 authenticated.include_router(audit_router)  # OBT-577
+authenticated.include_router(sensitive_countries_router)  # OBT-616
 
 #: **The module's first deliberate hole**, and it is this line rather than a missing dependency.
 #: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by

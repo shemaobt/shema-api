@@ -66,9 +66,12 @@ including ``prayer_requests``, whose one reader is ``_consent.py`` — are appli
 ``tests/test_shema/test_privacy_owners.py``'s glob sees no targeted read and there is nothing
 for it to see. They pass through ``_consent.request_written`` on the way, which withdraws an
 authorization a new request arrived without — the wizard sends both together, so that path keeps
-what the mentor stated (BE-09). A reading that takes the authorization back erases the request
-from the archived Pulses too (``_consent.withdrawn_request``, OBT-561), as a save does, and a
-reading that puts the request on the wall tells the Resource Circle, as a save does too (OBT-566).
+what the mentor stated (BE-09). It says the authorization was not in view, unlike the ficha's
+``PATCH`` (OBT-597): the wizard's consent step starts at ``coordenacao``, not at the record's
+answer, so a reading's request is the mentor's new one and not a rewording of the record's. A
+reading that takes the authorization back erases the request from the archived Pulses too
+(``_consent.withdrawn_request``, OBT-561), as a save does, and a reading that puts the request
+on the wall tells the Resource Circle, as a save does too (OBT-566).
 
 **The pastoral escalation is stored and never derived.** FE-44 §5.9 is explicit that the
 suggestion is made with its reasons and never applied — ``needsPastoralIntervention`` stays
@@ -291,7 +294,7 @@ async def append_assessment(
     }
     shared = shared_prayer_text(project)
     withdrawn = withdrawn_request(project, sent)
-    for column, value in request_written(project, sent).items():
+    for column, value in request_written(project, sent, authorization_in_view=False).items():
         setattr(project, column, value)
     await announce_shared_request(db, project, before=shared, app_key=app_key)
     if withdrawn is not None:

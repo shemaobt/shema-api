@@ -37,8 +37,10 @@ Four steps, and the order is the design:
 
 **Nothing in the file authorizes anything.** ``prayerVisibility`` and the recording are dropped
 before validation, and so are a need's ``prayerShared`` and ``acknowledged``: an imported request
-arrives as the write path leaves any request whose authorization was not stated — a new one
-unauthorized, a changed one unauthorized again (``_consent.request_written``,
+arrives as the write path leaves any request whose authorization was not stated and not in
+view (``authorization_in_view=False``: nobody looked at a file's text beside the record's
+answer, unlike the ficha's rewording, OBT-597) — a new one unauthorized, a changed one
+unauthorized again (``_consent.request_written``,
 ``_consent.need_written``), and an unchanged one exactly as the organisation left it. The file can
 neither publish a request nor withdraw one; both are a person's decision on the record. **The
 sensitive flag moves one way**: a file may raise it and may not clear it on a withheld record
@@ -94,6 +96,7 @@ from app.models.shema_transfer import (
 from app.services.shema._consent import REQUEST_AUDIO, REQUEST_VISIBILITY
 from app.services.shema._redaction import never_lowered
 from app.services.shema._scope import Readership, RegionScope, visible_projects
+from app.services.shema._sensitive_list import sensitive_countries
 from app.services.shema.save_project import create_project, save_project
 
 logger = logging.getLogger(__name__)
@@ -379,7 +382,9 @@ async def import_projects(
     the same value a typed save takes: an import reaches exactly as far as a write does.
     ``readership`` is the importer's: it decides whether they may import at all, and the write
     path asks it again per record, because an import is a person writing the record. ``day`` is
-    the importer's local day, which the progress entries a record moves are stamped with.
+    the importer's local day, which the progress entries a record moves are stamped with. The
+    sensitive-country list is read once for the whole file and handed to every record's write
+    (OBT-616), rather than read again per record.
     """
     _require_coordination(readership, user=user)
     records, ignored = await asyncio.to_thread(read_import, raw)
@@ -391,6 +396,7 @@ async def import_projects(
         ).scalars()
     }
 
+    listed = await sensitive_countries(db)
     created = 0
     record: _Record | None = None
     try:
@@ -405,6 +411,7 @@ async def import_projects(
                     user=user,
                     day=day,
                     commit=False,
+                    listed=listed,
                 )
                 created += 1
                 continue
@@ -420,7 +427,9 @@ async def import_projects(
                 user=user,
                 expected_version=project.version,
                 day=day,
+                authorization_in_view=False,
                 commit=False,
+                listed=listed,
             )
         await db.commit()
     except (AuthorizationError, ConflictError, NotFoundError, ValidationError) as refused:

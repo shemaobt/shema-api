@@ -5,7 +5,9 @@ OBT-547. Daniel, 25/set: *"sim, o admin confere antes"*. One act, one commit:
 1. the Admin's adjustments — the language's name and code, the place, the base — and the
    sensitive-country flag, which the body must state (``ProjectConfirmation``); a field the body
    leaves out keeps what was filed (``model_fields_set``, as ``save_project`` reads it), and the
-   region is derived again from the place by its one owner (``_redaction.derive_region``);
+   region is derived again from the place by its one owner (``_redaction.derive_region``). A place
+   that names a country on the sensitive list leaves the project sensitive whatever the body said
+   (``_redaction.flag_project_by_country``, OBT-616): the list only raises the flag;
 2. the project stops being pending, so every read through the scope sees it from now on;
 3. every request the link sent and no project owns points at it (``_filing.stamp_link_requests``)
    — the one that filed it first among them;
@@ -60,9 +62,10 @@ from app.services.resource_request_access.invite_store import (
 from app.services.shema import _audit
 from app.services.shema._filing import stamp_link_requests
 from app.services.shema._grant_rules import require_admin_in
-from app.services.shema._redaction import derive_region
+from app.services.shema._redaction import derive_region, flag_project_by_country
 from app.services.shema._roster import seat_member
 from app.services.shema._scope import filed_projects
+from app.services.shema._sensitive_list import sensitive_countries
 from app.services.shema.send_invite import INVITE_PAGE
 
 logger = logging.getLogger(__name__)
@@ -112,6 +115,7 @@ async def confirm_project(
     for column in payload.model_fields_set & _ADJUSTED:
         setattr(project, column, getattr(payload, column))
     project.region_key = derive_region(project)
+    flag_project_by_country(project, await sensitive_countries(db))
     project.pending_confirmation = False
     project.updated_by = actor.id
     project.updated_by_name = _audit.author_name(actor)

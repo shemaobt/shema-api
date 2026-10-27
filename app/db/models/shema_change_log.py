@@ -43,6 +43,7 @@ class ChangeSubject(enum.StrEnum):
     PENDING_PROJECT = "pending_project"
     MEDIA = "media"
     PRAYER_REQUEST = "prayer_request"
+    SENSITIVE_COUNTRIES = "sensitive_countries"
 
 
 class ChangeAction(enum.StrEnum):
