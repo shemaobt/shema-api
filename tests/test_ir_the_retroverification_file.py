@@ -29,7 +29,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -1043,6 +1043,52 @@ async def test_a_session_stamped_with_an_archive_that_is_gone_is_not_found(
     answered = await client.get(_passage_file(project.id, "gone"), headers=desk)
 
     assert answered.status_code == 404, answered.text
+
+
+async def test_an_archive_keeps_its_release_when_the_live_draft_is_approved_after(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, archived.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, archived.id)
+    archive = await _zerada(client, desk, project.id)
+    live = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, live.id, credential)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert row.packet["release_id"].endswith("-v1")
+    assert file["release_id"] == row.packet["release_id"]
+
+
+async def test_an_archive_reads_the_latest_release_its_session_wrote(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (first,) = await releases_of(db_session, session.id)
+    later = first.packet["release_id"].replace("-v1", "-v2")
+    db_session.add(
+        IRRelease(
+            session_id=session.id,
+            project_id=project.id,
+            pericope=first.pericope,
+            version=2,
+            package_sha256=first.package_sha256,
+            packet={**first.packet, "release_id": later, "version": 2},
+            approved_at=first.approved_at,
+        )
+    )
+    await db_session.commit()
+    archive = await _zerada(client, desk, project.id)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert file["release_id"] == later
 
 
 async def test_an_archive_that_holds_no_release_is_named_with_its_stamp(
