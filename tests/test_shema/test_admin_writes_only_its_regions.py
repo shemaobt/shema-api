@@ -318,11 +318,7 @@ async def test_the_admin_writes_a_project_only_in_a_region_it_coordinates(
         json={"statusComments": "da conta"},
         headers={**headers, "If-Match": record.headers["ETag"]},
     )
-    created = await client.post(
-        PROJECTS,
-        json={**_record(str(uuid.uuid4()), "Nepal"), "statusComments": ""},
-        headers=headers,
-    )
+    created = await client.post(PROJECTS, json=_record(str(uuid.uuid4()), "Nepal"), headers=headers)
 
     assert session.json()["writeRegionScope"] == writes
     assert record.status_code == 200 and record.json()["readAs"] == "coordination"

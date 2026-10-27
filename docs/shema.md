@@ -1130,18 +1130,20 @@ and its undo, the leader's link and its revocation, a Pulse filed or imported, t
 the file import, the region's team and the ETEN credit had all taken the region of the write
 off the session's scope, which for a coordinator of Asia holding `admin` beside it would have
 been every region. For everybody but the Admin `WriteScope` is the value `Scope` was before
-OBT-593; for that account it is Asia. Beside the Circle or the Lab it is that role's regions, and
-since none of the nine guards admits the Admin by role (`CoordinatorUser`, the health audience, the
-ETEN ledger's) the account writes there exactly what that role writes alone — a health reading
-and the Ritmo's log for the OBT Lab, nothing for the Circle; the file import writes through the
-record and is refused with it. The leader's link, the import and the withdrawal were
-never the Admin's alone (`CoordinatorUser`) and stay so; the roster is still `RosterReach`'s.
+OBT-593; for that account it is Asia. Beside the Circle or the Lab it is that role's regions: the
+file import writes through the record and is refused with it, and every other of the nine is
+guarded by a role set that admits no Admin by role (`CoordinatorUser`, the health audience, the
+ETEN ledger's), so the account writes there exactly what that role writes alone — a health
+reading and the Ritmo's log for the OBT Lab, nothing for the Circle. The leader's link, the
+import and the withdrawal were never the Admin's alone (`CoordinatorUser`) and stay so; the
+roster is still `RosterReach`'s.
 On the wire the Admin's `regionScope` is `null`, as the installation admin's — **and beside
 it, since the review, `writeRegionScope`** (Daniel, 20/oct/2026, option b): the regions the
 account writes a project in, in `regionScope`'s own spelling — `null` every region, `[]` none —
 `[]` for the Admin alone and beside the Resource Circle or the OBT Lab, its regions for an
-account holding `admin` beside `coordinator`, `[]` for the Resource Circle, and for everybody else what they already wrote. It exists
-because `readAs: coordination` is a contract the console reads as *edits* (`recordAccess.ts`),
+account holding `admin` beside `coordinator`, `[]` for the Resource Circle, and for everybody
+else what they already wrote. It exists because `readAs: coordination` is a contract the
+console reads as *edits* (`recordAccess.ts`),
 and with the Admin reading every region as the coordination the console would draw *Editar*
 and *Novo projeto* on projects the server answers 403 — a new dead control. `readAs` stays
 `coordination`, so the Admin keeps reading as the coordination does, the photo of a withheld
