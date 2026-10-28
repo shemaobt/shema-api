@@ -1,0 +1,214 @@
+"""ENG-1799 — a silent check runs after each approval and its result is stored with the version."""
+
+from __future__ import annotations
+
+import hashlib
+from contextlib import asynccontextmanager
+
+import httpx
+import pytest
+from httpx import ASGITransport
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.internalization_room import IRSession
+from app.services.internalization_room import release_check
+from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.segments import capture_segment, final_segments
+from tests.baker import make_app, make_role
+from tests.release_harness import (
+    CLIP_MS,
+    PREFIX,
+    a_claimed_device,
+    a_p02_telling_with_the_swapped_cause,
+    at_the_desk,
+    checked_heard_and_approved,
+    desk_release,
+    ready_session,
+    releases_of,
+    reported_playback,
+    team_headers,
+    the_one_part_of,
+    the_part_recorded_again,
+)
+from tests.room_harness import the_bucket_is_in_memory
+
+BYTES = b"the team's rehearsal"
+NAMES = ["bytes_match_sha256", "nothing_awaiting_translation"]
+NAMES += ["everything_heard", "approval_matches_live_state"]
+
+
+@pytest.fixture()
+def bucket(monkeypatch: pytest.MonkeyPatch):
+    return the_bucket_is_in_memory(monkeypatch)
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from fastapi import FastAPI
+
+    from app.api.internalization_room import router
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    @asynccontextmanager
+    async def handed():
+        yield db_session
+
+    monkeypatch.setattr(release_check, "AsyncSessionLocal", handed)
+    test_app = FastAPI()
+    test_app.include_router(router, prefix=PREFIX)
+    register_exception_handlers(test_app)
+
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    async with httpx.AsyncClient(transport=ASGITransport(app=test_app), base_url="http://t") as c:
+        yield c
+
+
+@pytest.fixture()
+async def room_app(db_session: AsyncSession):
+    app = await make_app(db_session, app_key="internalization-room", name="Internalization Room")
+    await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
+    return app
+
+
+async def _live(db: AsyncSession, session_id: str) -> IRSession:
+    db.expire_all()
+    return await db.get_one(IRSession, session_id)
+
+
+async def _stored(db: AsyncSession, session_id: str) -> dict[str, bool] | None:
+    db.expire_all()
+    (release,) = await releases_of(db, session_id)
+    stored = release.release_check
+    return None if stored is None else {c["name"]: c["passed"] for c in stored["checks"]}
+
+
+async def _rehearsed(db: AsyncSession, bucket) -> tuple[str, str]:
+    project, credential = await a_claimed_device(db)
+    session = await ready_session(db, project_id=project.id)
+    session_id = session.id
+    part = await the_one_part_of(db, session)
+    part.sha256 = hashlib.sha256(BYTES).hexdigest()
+    await db.commit()
+    bucket.objects[part.storage_key] = BYTES
+    return session_id, credential
+
+
+async def _approved(client, db: AsyncSession, bucket) -> str:
+    session_id, credential = await _rehearsed(db, bucket)
+    await checked_heard_and_approved(client, db, session_id, headers=team_headers(credential))
+    return session_id
+
+
+async def _check_again(db: AsyncSession, session_id: str) -> dict[str, bool]:
+    (release,) = await releases_of(db, session_id)
+    await release_check.check_release(release.id)
+    verdicts = await _stored(db, session_id)
+    assert verdicts is not None
+    return verdicts
+
+
+async def test_an_approval_with_every_take_intact_stores_a_whole_result_once(
+    client, db_session, bucket
+):
+    session_id, credential = await _rehearsed(db_session, bucket)
+    headers = team_headers(credential)
+    await checked_heard_and_approved(client, db_session, session_id, headers=headers)
+    (release,) = await releases_of(db_session, session_id)
+    ran_at = release.release_check["ran_at"]
+
+    again = await client.post(f"{PREFIX}/sessions/{session_id}/release", headers=headers)
+
+    assert again.status_code == 200, again.text
+    db_session.expire_all()
+    (release,) = await releases_of(db_session, session_id)
+    assert release.release_check["whole"] is True
+    assert release.release_check["ran_at"] == ran_at
+    assert await _stored(db_session, session_id) == dict.fromkeys(NAMES, True)
+
+
+async def test_a_take_whose_bytes_no_longer_match_fails_check_one_and_the_approval_stands(
+    client, db_session, bucket
+):
+    session_id, credential = await _rehearsed(db_session, bucket)
+    part = await the_one_part_of(db_session, await _live(db_session, session_id))
+    bucket.objects[part.storage_key] = b"someone else's bytes"
+
+    approved = await client.post(
+        f"{PREFIX}/sessions/{session_id}/release", headers=team_headers(credential)
+    )
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["version"] == 1
+    assert approved.json()["blockers"] == []
+    assert await _stored(db_session, session_id) == {**dict.fromkeys(NAMES, True), NAMES[0]: False}
+
+
+async def test_a_forced_approval_gets_its_check_like_any_other(
+    client, db_session, room_app, bucket
+):
+    project, _credential = await a_claimed_device(db_session)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    session_id = session.id
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    forced = await client.post(desk_release(session_id), headers=desk, json={"force": True})
+
+    assert forced.status_code == 200, forced.text
+    assert list(await _stored(db_session, session_id) or {}) == NAMES
+
+
+async def _a_stretch_without_words(db: AsyncSession, session: IRSession) -> None:
+    await capture_segment(
+        db,
+        session,
+        take_id=(await the_one_part_of(db, session)).id,
+        starts_ms=CLIP_MS,
+        ends_ms=CLIP_MS + 9000,
+        transcript=None,
+    )
+
+
+async def _a_listening_that_stops_short(db: AsyncSession, session: IRSession) -> None:
+    told = await final_segments(db, session.id)
+    state = BackTranslationState(
+        scope=session.pericope,
+        findings=[],
+        checked=True,
+        analysed_segment_ids=[one.id for one in told],
+    )
+    await reported_playback(db, session, state, played_ranges=[[0, 1000]])
+
+
+@pytest.mark.parametrize(
+    ("name", "after_the_approval"),
+    [
+        ("nothing_awaiting_translation", _a_stretch_without_words),
+        ("everything_heard", _a_listening_that_stops_short),
+        ("approval_matches_live_state", the_part_recorded_again),
+    ],
+)
+async def test_what_changes_after_the_approval_fails_its_check(
+    client, db_session, bucket, name, after_the_approval
+):
+    session_id = await _approved(client, db_session, bucket)
+    await after_the_approval(db_session, await _live(db_session, session_id))
+
+    assert (await _check_again(db_session, session_id))[name] is False
+
+
+async def test_a_check_that_breaks_leaves_the_release_without_a_result(
+    client, db_session, bucket, monkeypatch
+):
+    monkeypatch.setattr(release_check, "take_store", lambda: 1 / 0)
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    session_id = session.id
+
+    approved = await client.post(
+        f"{PREFIX}/sessions/{session_id}/release", headers=team_headers(credential)
+    )
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["version"] == 1
+    assert await _stored(db_session, session_id) is None
