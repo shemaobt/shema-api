@@ -6,6 +6,7 @@ opposite: the recording is the work, and a tablet that breaks with them still on
 session with it.
 """
 
+from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
@@ -24,6 +25,7 @@ from app.models.internalization_room import (
     TakeDownloadsResponse,
     TakeResponse,
     TakesResponse,
+    WholePassageLinkResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.approved_draft import (
@@ -405,9 +407,7 @@ async def read_the_take_downloads(
 
 @router.get(
     "/facilitator/sessions/{session_id}/takes/whole",
-    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    response_class=RedirectResponse,
-    response_model=None,
+    response_model=WholePassageLinkResponse,
     responses={409: {"description": "`NOT_ALL_WAV`: a take is not 16 kHz mono 16-bit WAV"}},
 )
 async def download_the_whole_passage(
@@ -415,7 +415,7 @@ async def download_the_whole_passage(
     user: ReaderUser,
     db: AsyncSession = Depends(get_db),
     store: TakeStore = Depends(take_store),
-) -> RedirectResponse:
+) -> WholePassageLinkResponse:
     """The live takes laid end to end as one WAV, built once and served by a link of an hour."""
     session = await room.get_session_for_reader(db, user, session_id)
     parts = current_parts(await takes_of(db, session.id))
@@ -430,7 +430,8 @@ async def download_the_whole_passage(
         disposition=f'attachment; filename="{whole_filename(release_id)}"',
     )
     await db.commit()
-    return RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    expires_at = datetime.now(UTC) + timedelta(seconds=DOWNLOAD_LINK_SECONDS)
+    return WholePassageLinkResponse(url=url, expires_at=expires_at.isoformat())
 
 
 @router.get(
