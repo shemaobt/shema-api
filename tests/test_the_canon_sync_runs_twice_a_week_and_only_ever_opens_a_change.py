@@ -112,11 +112,20 @@ def test_the_change_carries_her_title_and_her_review_sentence() -> None:
     assert "**Review the new content, then merge to ship it.**" in change["body"]
 
 
-def test_the_change_says_its_own_checks_have_not_run_and_how_to_start_them() -> None:
-    body = " ".join(_steps()[_index("peter-evans/create-pull-request")]["with"]["body"].split())
+def test_the_change_is_opened_with_an_app_token_so_its_checks_start() -> None:
+    mint = _steps()[_index("actions/create-github-app-token")]
+    change = _steps()[_index("peter-evans/create-pull-request")]
+    body = " ".join(change["with"]["body"].split())
 
-    assert "GitHub starts none of this repository's checks" in body
-    assert "Close and reopen this change to start them" in body
+    assert mint["if"] == UPDATED
+    assert mint["with"]["permission-contents"] == "write"
+    assert mint["with"]["permission-pull-requests"] == "write"
+    assert _index("actions/create-github-app-token") < _index("peter-evans/create-pull-request")
+    assert change["with"]["token"] == "${{ steps.app-token.outputs.token }}", (
+        "a mudança aberta com o GITHUB_TOKEN do job não dispara nenhum check"
+    )
+    assert "start on it as on any change: merge only once they pass" in body
+    assert "Close and reopen" not in body, "o texto ainda mandava fechar e reabrir"
 
 
 def test_the_change_leaves_the_wait_for_a_team_session_to_the_deploy() -> None:
@@ -133,9 +142,9 @@ def test_the_change_names_the_titles_a_model_filled_in() -> None:
         "os títulos preenchidos chegavam sem que o texto os citasse"
     )
     assert "a model's draft, not hers" in body
-    assert body.index("nothing else has") < body.index("`ui-labels.pt.json`"), (
-        "o texto dizia que o trabalho fez mais uma coisa e, logo depois, que nada mais rodou"
-    )
+    assert body.index("ran in the job that opened this change") < body.index(
+        "`ui-labels.pt.json`"
+    ), "o texto nomeava o preenchimento antes de dizer o que o trabalho já rodou"
 
 
 def test_nothing_in_it_merges() -> None:

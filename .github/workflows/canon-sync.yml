@@ -74,10 +74,23 @@ jobs:
         if: steps.sync.outputs.updated == 'true'
         run: docker build .
 
+      # An App token, not the job's own: GitHub starts no workflows on a change opened with
+      # GITHUB_TOKEN, so Checks, Test and Migrations would never run on it (ENG-1474).
+      - name: Mint the App token that opens the canon change
+        if: steps.sync.outputs.updated == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.JOAOZINHO_APP_ID }}
+          private-key: ${{ secrets.JOAOZINHO_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Open the canon change
         if: steps.sync.outputs.updated == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ steps.app-token.outputs.token }}
           branch: canon-sync/auto
           delete-branch: true
           add-paths: |
@@ -91,10 +104,8 @@ jobs:
             drift check against a fresh clone of the compiler at the new pin, the canon smoke and
             `docker build`. `VENDOR_PIN` names what came in.
 
-            Those three ran in the job that opened this change, and nothing else has: GitHub
-            starts none of this repository's checks on a change opened with the job's own
-            token, so the test suite has not seen this canon. Close and reopen this change to
-            start them, and merge only once they pass.
+            Those three ran in the job that opened this change. This repository's own checks
+            start on it as on any change: merge only once they pass.
 
             The job did one more thing that is not a check. Where her list had no Portuguese
             title for a scene of the new canon, it asked a model to fill one in: those titles
