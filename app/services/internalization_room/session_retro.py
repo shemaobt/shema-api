@@ -21,12 +21,13 @@ from app.services.internalization_room.back_translation import (
     finding_frase,
     nuances_said,
     said_before,
+    unheard_parts,
 )
 from app.services.internalization_room.check_block import check_status, standing_state
 from app.services.internalization_room.forced import was_forced
-from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of
+from app.services.internalization_room.stretch_numbers import stretch_numbers
 from app.services.internalization_room.takes import current_parts, part_keys, takes_of
 
 
@@ -57,9 +58,9 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
     approved = await approved_draft(db, session)
     forced = approved is not None and was_forced(approved.forced_by, approved.forced_blockers)
     forced_at = approved.forced_at if approved is not None and forced else None
-    record = await retroverification_file(db, session)
-    numbers = {one.segment_id: one.frase for one in record.stretches if one.frase is not None}
-    told = told_back(await final_segments(db, session.id, takes))
+    numbers = await stretch_numbers(db, session)
+    stretches = await final_segments(db, session.id, takes)
+    told = told_back(stretches)
     said = nuances_said(telling_back.checks)
     parts = current_parts(takes)
     keys = part_keys(parts)
@@ -75,7 +76,7 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
         forced_at=forced_at.isoformat() if forced_at else None,
         version=approved.version if approved else None,
         approved_at=approved.approved_at.isoformat() if approved else None,
-        heard_complete=all(part.heard for part in record.listening),
+        heard_complete=not unheard_parts(telling_back, parts, stretches),
         findings=[
             SessionRetroFinding(
                 kind=_her_kind(finding),
@@ -91,8 +92,8 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
         ],
         frases=[
             SessionRetroFrase(
-                frase=stretch.frase,
-                segment_id=stretch.segment_id,
+                frase=numbers.get(stretch.id),
+                segment_id=stretch.id,
                 take_id=stretch.take_id,
                 scene=keys.get(stretch.take_id),
                 starts_ms=stretch.starts_ms,
@@ -100,7 +101,7 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
                 pass_number=stretch.pass_number,
                 transcript=stretch.transcript,
             )
-            for stretch in record.stretches
+            for stretch in stretches
             if stretch.transcript is not None
         ],
         reopened=_reopened(own) if own is not None and not stands_on(own, parts) else None,

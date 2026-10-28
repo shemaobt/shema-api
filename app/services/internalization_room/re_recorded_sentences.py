@@ -6,9 +6,9 @@ from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import ReRecordedSentence, SessionReRecordedSentences
 from app.services.internalization_room.manifest import _chain
-from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.sentences import WAV, the_sentence_awaiting
 from app.services.internalization_room.sessions import back_translation_of
+from app.services.internalization_room.stretch_numbers import stretch_numbers
 from app.services.internalization_room.takes import (
     current_parts,
     part_positions,
@@ -43,11 +43,7 @@ async def re_recorded_sentences_of(
             one.sentence_id for one in reversed(laid_in) if one.segment_id == awaiting.segment_id
         )
     )
-    numbers = {
-        one.segment_id: one.frase
-        for one in (await retroverification_file(db, session)).stretches
-        if one.frase is not None
-    }
+    numbers = await stretch_numbers(db, session)
     return SessionReRecordedSentences(
         session_id=session.id,
         sentences=[
