@@ -45,6 +45,11 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.release_harness import (
+    rehearsed_session,
+    reported_playback,
+    told_back_with_an_open_finding,
+)
 
 TEAM_NOT_FOUND = "Team not found"
 ENGAGED = CoverageStatus.ENGAGED.value
@@ -404,14 +409,19 @@ async def test_the_detail_carries_the_standing_the_pericopes_door_answers(
     reading of where the team stands, or a session entered between two requests leaves it
     with a passage that none of the listed ones is current."""
     _user, team, headers = await a_facilitator(db_session, email="mesma-leitura@x.com")
-    await having_closed(db_session, team, FIRST)
+    await having_closed(db_session, team, FIRST, SECOND)
+    session, _take = await rehearsed_session(db_session, pericope=THIRD, project_id=team.id)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
     listed = (await client.get(f"{team_url(team.id)}/pericopes", headers=headers)).json()
 
     assert body["pericopes"] == listed
+    assert {e["pericope"]: e["open_findings"] for e in listed}[THIRD] == 1
     current = [entry["pericope"] for entry in body["pericopes"] if entry["position"] == "current"]
-    assert current == [body["active_passage"]["pericope"]] == [SECOND]
+    assert current == [body["active_passage"]["pericope"]] == [THIRD]
 
 
 async def test_the_answer_does_not_pay_per_bead_or_per_team(
