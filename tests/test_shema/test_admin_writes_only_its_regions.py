@@ -14,6 +14,10 @@ as before OBT-593, and allowed in Asia, as before OBT-593.
 
 The account is the one ``test_scope.py`` says *reads everywhere and writes its own regions*.
 No installation admin here: it passes every guard and would prove nothing.
+
+**And the rows count toward the Admin's record write only under** ``coordinator`` (OBT-619): the
+same Asia rows under ``resourceCircle`` or ``obtLab`` beside ``admin`` write no project, though
+they read Asia's record as the coordination. The last test holds the three accounts side by side.
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaMediaKind, ShemaRegionKey
 from app.db.models.shema_media import ShemaMediaItem
 from app.services.shema._media_storage import MEDIA, storage_key
-from tests.test_shema.conftest import PREFIX, auth_header, grant, make_scoped_user
+from tests.test_shema.conftest import PREFIX, SESSION, auth_header, grant, make_scoped_user
 
 PROJECTS = f"{PREFIX}/projects"
 LINKS = f"{PREFIX}/intake-links"
@@ -277,3 +281,51 @@ async def test_the_record_itself_keeps_its_own_sentence(client, beside) -> None:
     assert away.status_code == 200
     assert patched.status_code == 403 and "writes only access" in patched.json()["detail"]
     assert created.status_code == 403 and "writes only access" in created.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("role", "writes", "statuses", "comments"),
+    [
+        ("resourceCircle", [], (403, 403, 403), ""),
+        ("obtLab", [], (403, 403, 403), ""),
+        ("coordinator", ["asia"], (200, 201, 200), "pelo arquivo"),
+    ],
+    ids=["admin+resourceCircle", "admin+obtLab", "admin+coordinator"],
+)
+async def test_the_admin_writes_a_project_only_in_a_region_it_coordinates(
+    client, db_session, shema_app, role, writes, statuses, comments
+) -> None:
+    """OBT-619 (OBT-592's decision 2: the Admin writes only what is access). The Resource Circle
+    reads and does not write (OBT-571) and the OBT Lab reads the region in place of the place, so
+    ``admin`` beside either reads Asia's record as the coordination, as OBT-593 left it, and the
+    save, the create and a file import over Asia's record — which writes through the save — are
+    the Admin's 403, the session saying so first, and the record keeps what it had. Beside
+    ``coordinator`` the account writes its own region, as before."""
+    await _seed(db_session)
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email=f"{role.lower()}-admin@writes.test",
+        role_key=role,
+        regions=[ASIA],
+    )
+    await grant(db_session, user, shema_app, "admin")
+    headers = await auth_header(db_session, user)
+
+    session = await client.get(SESSION, headers=headers)
+    record = await client.get(f"{PROJECTS}/{NEAR}", headers=headers)
+    patched = await client.patch(
+        f"{PROJECTS}/{NEAR}",
+        json={"statusComments": "da conta"},
+        headers={**headers, "If-Match": record.headers["ETag"]},
+    )
+    created = await client.post(PROJECTS, json=_record(str(uuid.uuid4()), "Nepal"), headers=headers)
+    imported = await _upload(client, headers, [_record(NEAR, "Nepal")])
+
+    assert session.json()["writeRegionScope"] == writes
+    assert record.status_code == 200 and record.json()["readAs"] == "coordination"
+    answers = (patched, created, imported)
+    assert tuple(r.status_code for r in answers) == statuses, [r.text for r in answers]
+    for refused in (r for r in answers if r.status_code == 403):
+        assert "writes only access" in refused.json()["detail"]
+    assert (await _comments(db_session))[NEAR] == comments

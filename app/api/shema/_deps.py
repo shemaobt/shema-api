@@ -279,13 +279,15 @@ async def _regional(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:
 
     Resolved once per request and shared by :data:`Scope` and :data:`Reading`: the first widens
     it for a role that reads every region, the second keeps it as what the Admin may write
-    (OBT-593). Two dependencies reading the same rows would be the defect
-    ``_scope.scope_from_roles`` was written to close, arriving by a third door.
+    when it is also a coordinator (OBT-593, OBT-619). Two dependencies reading the same rows
+    would be the defect ``_scope.scope_from_roles`` was written to close, arriving by a third
+    door.
     """
     return await regional_scope_from_roles(db, user, set(granted))
 
 
-#: The caller's regional reach, read once — what the Admin writes, and everybody else's scope.
+#: The caller's regional reach, read once — what the Admin writes beside ``coordinator``, and
+#: everybody else's scope.
 Regional = Annotated[RegionScope, Depends(_regional)]
 
 #: **The reach a write lands in** (OBT-593, found in review): every route that writes inside a

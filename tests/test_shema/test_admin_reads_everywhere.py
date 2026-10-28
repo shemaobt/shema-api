@@ -5,9 +5,9 @@ no project, a 404 ficha and an empty prayer wall (PME-ACE-063, PME-ORA-002,
 INT-E2E-018/022/024/057).
 Now its scope is every region as a **reader** (``_scope.reading_scope``) and it reads the truth of
 a sensitive place everywhere (``COORDINATION_EVERYWHERE``, OBT-528's reading confirmed on
-8/oct); what it may **write** is the regional half alone (``Readership.writes``), nothing for the
-Admin alone — the record, the leader's link, the import and the withdrawal stay the regional
-coordination's.
+8/oct); what it may **write** is the regions it also coordinates (``Readership.writes``,
+OBT-619), nothing for the Admin alone — the record, the leader's link, the import and the
+withdrawal stay the regional coordination's.
 
 Held here per output: the collection and the record (a), the truth of a sensitive place for the
 Admin and the reduction for everybody else, unchanged (b), one refusal per write (c), the prayer

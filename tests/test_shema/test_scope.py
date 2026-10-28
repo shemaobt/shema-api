@@ -212,7 +212,10 @@ async def test_a_regional_role_beside_the_admin_reads_everywhere_and_writes_its_
     db_session, shema_app
 ):
     """An account holding ``obtLab`` in Asia and ``admin``: the reading is the Admin's (every
-    region), the writing is the regional role's (Asia) — the two halves OBT-593 keeps apart."""
+    region), the regional half is the OBT Lab's (Asia) — the two halves OBT-593 keeps apart, and
+    where the OBT Lab's own writes land (a health reading, the Ritmo's log). A project is not one
+    of them since OBT-619: the Admin's ``Readership.writes`` counts the rows only under
+    ``coordinator`` (``test_reader.py``)."""
     user = await make_scoped_user(
         db_session, shema_app, email="beside-admin@shema.test", role_key="obtLab", regions=[ASIA]
     )

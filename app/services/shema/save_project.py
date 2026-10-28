@@ -317,11 +317,13 @@ def refuse_admin_writes(
     OBT-593 (Daniel, 19/oct/2026, OBT-592): the Admin without a region *reads every region, as
     the coordination* and *writes only what is access* — a member put on or taken off a project
     through ``/acesso``. The record stays the coordination's of its region, so the Admin's reading
-    scope is global and :attr:`Readership.writes` is the reach of the regional roles the account
-    also holds, nothing for the Admin alone. Like :func:`refuse_circle_writes` it comes **after**
-    ``visible_projects``: a project outside the reach is still the existence-hiding 404, and the
-    403 is about the caller's own grant, which conceals nothing. The sentence is the Admin's own,
-    because an Admin told *the Resource Circle does not edit* would be told about somebody else.
+    scope is global and :attr:`Readership.writes` is the account's regions when it also holds
+    ``coordinator`` — nothing for the Admin alone, nor beside the Resource Circle or the OBT Lab
+    (OBT-619), which read a region and do not write it as the coordination. Like
+    :func:`refuse_circle_writes` it comes **after** ``visible_projects``: a project outside the
+    reach is still the existence-hiding 404, and the 403 is about the caller's own grant, which
+    conceals nothing. The sentence is the Admin's own, because an Admin told *the Resource Circle
+    does not edit* would be told about somebody else.
     """
     if readership.writes_project(region_key):
         return

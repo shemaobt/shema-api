@@ -234,24 +234,36 @@ def test_each_role_reads_as_coordination_or_other(
     assert reading.reader_of(ELSEWHERE) is ShemaReader(elsewhere)
 
 
-def test_the_admin_reads_everywhere_and_writes_only_its_regional_reach() -> None:
+def test_the_admin_reads_everywhere_and_writes_only_where_it_coordinates() -> None:
     """OBT-593 (Daniel, 19/oct/2026): the ``admin`` row reads as coordination in every region
-    and writes a project only where a regional role it also holds reaches — nothing, for the
-    Admin alone, and nothing when the caller did not say (the fail-closed default). A
-    coordinator writes where it coordinates; an installation admin is not narrowed."""
+    and writes a project only where it is also a ``coordinator`` — nothing, for the Admin alone,
+    nothing when the caller did not say (the fail-closed default), and nothing beside the
+    Resource Circle or the OBT Lab (OBT-619): their rows reach a region they read and do not
+    write as the coordination. Beside ``coordinator`` the rows are the account's, the Circle's
+    included; a coordinator writes where it coordinates; an installation admin is not narrowed."""
     alone = readership(
         GLOBAL, {"admin"}, platform_admin=False, regional=RegionScope(False, frozenset())
     )
     unsaid = readership(GLOBAL, {"admin"}, platform_admin=False)
+    circle = readership(
+        GLOBAL, {"admin", "resourceCircle"}, platform_admin=False, regional=REGIONAL
+    )
+    lab = readership(GLOBAL, {"admin", "obtLab"}, platform_admin=False, regional=REGIONAL)
     beside = readership(GLOBAL, {"admin", "coordinator"}, platform_admin=False, regional=REGIONAL)
+    all_three = readership(
+        GLOBAL, {"admin", "coordinator", "resourceCircle"}, platform_admin=False, regional=REGIONAL
+    )
     coordinator = readership(REGIONAL, {"coordinator"}, platform_admin=False, regional=REGIONAL)
     installation = readership(GLOBAL, set(), platform_admin=True)
 
-    for reading in (alone, unsaid, beside):
+    for reading in (alone, unsaid, circle, lab, beside):
         assert reading.reader_of(ELSEWHERE) is ShemaReader.COORDINATION
-    assert alone.writes == unsaid.writes == RegionScope(False, frozenset())
+    nothing = RegionScope(False, frozenset())
+    assert alone.writes == unsaid.writes == circle.writes == lab.writes == nothing
     assert not alone.writes_project(HERE) and not alone.writes_project(ELSEWHERE)
+    assert not circle.writes_project(HERE) and not lab.writes_project(HERE)
     assert beside.writes_project(HERE) and not beside.writes_project(ELSEWHERE)
+    assert all_three.writes_project(HERE)
     assert coordinator.writes is None and coordinator.writes_project(HERE)
     assert installation.writes is None and installation.writes_project(ELSEWHERE)
 

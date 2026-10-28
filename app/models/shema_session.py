@@ -82,8 +82,9 @@ class ShemaSession(BaseModel):
     #: The regions the caller **writes a project in** — same spelling as ``regionScope``:
     #: ``null`` every region, a list those regions, ``[]`` none (OBT-593, Daniel, 20/oct/2026).
     #: The Admin reads every region and writes only what is access, so its ``regionScope`` is
-    #: ``null`` and this is ``[]`` — or the regions of a regional role it holds beside the
-    #: ``admin`` grant; the Resource Circle reads and writes nothing, ``[]``. The console hides
+    #: ``null`` and this is ``[]`` — or its regions when it holds ``coordinator`` beside the
+    #: ``admin`` grant, and ``[]`` beside the Resource Circle or the OBT Lab alone (OBT-619);
+    #: the Resource Circle reads and writes nothing, ``[]``. The console hides
     #: *Editar* and *Novo projeto* where this does not reach; the server refuses regardless.
     write_region_scope: list[str] | None = Field(default=None, alias="writeRegionScope")
     #: Resolved from the org chart, falling back to the account's own ``display_name``.

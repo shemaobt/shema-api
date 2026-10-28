@@ -1152,24 +1152,37 @@ and `reading_scope` widens it to every region for `COORDINATION_EVERYWHERE`, the
 that already made the Admin read the truth of a sensitive place everywhere (OBT-528, confirmed
 8/oct). So the record, the collection, the wall, the audit trail and the notification pointer
 answer the Admin what they answer the coordination, truth included. **What it writes is the
-other half**: `Readership.writes` is the regional reach alone — nothing for the Admin by itself,
-its own regions for an account that is also a coordinator — and `save_project` and
-`create_project` refuse outside it with a sentence of the Admin's own, after the scope's 404
-(`refuse_admin_writes`, beside the Resource Circle's). **Every other write that lands in a
+other half**: `Readership.writes` is the account's regions when it also holds `coordinator`, and
+nothing otherwise — nothing for the Admin by itself, its own regions for an account that is also a
+coordinator — and `save_project` and `create_project` refuse outside it with a sentence of the
+Admin's own, after the scope's 404 (`refuse_admin_writes`, beside the Resource Circle's).
+**Beside `resourceCircle` or `obtLab` it is nothing too** (OBT-619, from OBT-592's decision 2):
+until then it was the reach of every regional role the account held, so `admin`+`resourceCircle`
+of a region edited and created its projects though the Circle reads and does not write (OBT-571,
+§6.4), and `admin`+`obtLab` wrote the place and the flag there as the coordination though the OBT
+Lab reads the region in place of the place. Adding `admin` to either adds no write. The rows are
+the account's and not a role's, so beside `coordinator` the account writes every region it
+reaches, as a coordinator who is also the Circle does. **Every other write that lands in a
 region takes it off `WriteScope`** (`app/api/shema/_deps.py`), the regional half and not the
 reading one — found in review, the day the reading opened: the health reading, the Ritmo's log
 and its undo, the leader's link and its revocation, a Pulse filed or imported, the withdrawal,
 the file import, the region's team and the ETEN credit had all taken the region of the write
 off the session's scope, which for a coordinator of Asia holding `admin` beside it would have
 been every region. For everybody but the Admin `WriteScope` is the value `Scope` was before
-OBT-593; for that account it is Asia. The leader's link, the import and the withdrawal were
-never the Admin's alone (`CoordinatorUser`) and stay so; the roster is still `RosterReach`'s.
+OBT-593; for that account it is Asia. Beside the Circle or the Lab it is that role's regions: the
+file import writes through the record and is refused with it, and every other of the nine is
+guarded by a role set that admits no Admin by role (`CoordinatorUser`, the health audience, the
+ETEN ledger's), so the account writes there exactly what that role writes alone — a health
+reading and the Ritmo's log for the OBT Lab, nothing for the Circle. The leader's link, the
+import and the withdrawal were never the Admin's alone (`CoordinatorUser`) and stay so; the
+roster is still `RosterReach`'s.
 On the wire the Admin's `regionScope` is `null`, as the installation admin's — **and beside
 it, since the review, `writeRegionScope`** (Daniel, 20/oct/2026, option b): the regions the
 account writes a project in, in `regionScope`'s own spelling — `null` every region, `[]` none —
-`[]` for the Admin alone, the regional role's regions for an account holding `admin` beside
-one, `[]` for the Resource Circle, and for everybody else what they already wrote. It exists
-because `readAs: coordination` is a contract the console reads as *edits* (`recordAccess.ts`),
+`[]` for the Admin alone and beside the Resource Circle or the OBT Lab, its regions for an
+account holding `admin` beside `coordinator`, `[]` for the Resource Circle, and for everybody
+else what they already wrote. It exists because `readAs: coordination` is a contract the
+console reads as *edits* (`recordAccess.ts`),
 and with the Admin reading every region as the coordination the console would draw *Editar*
 and *Novo projeto* on projects the server answers 403 — a new dead control. `readAs` stays
 `coordination`, so the Admin keeps reading as the coordination does, the photo of a withheld
@@ -1293,7 +1306,8 @@ Karina's *só não podem editar* whole: no project write on any route, not even 
 Circle saved and created records as any Shemá role did in its scope; `save_project.refuse_circle_writes`
 now refuses both (`Readership.edits_no_project`, read off the `trusted` field — a Circle who also
 coordinates is coordination and edits; one who is also OBT Lab is refused too, the stricter
-reading). The refusal comes **after** the scope's own 404, so a project out of reach still hides.
+reading; one who is also the Admin and no coordinator is refused by the Admin's sentence, §6.1,
+OBT-619). The refusal comes **after** the scope's own 404, so a project out of reach still hides.
 `readAs` is a third value because the console asks it two questions at once — *is this the
 truth?* and *may I edit the place and the flag?* — and this is the first reader whose answers
 differ. `Readership.trusted` carries where a caller reads the truth apart from where it
