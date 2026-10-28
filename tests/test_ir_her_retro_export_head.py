@@ -7,7 +7,7 @@ write paths.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +44,7 @@ from tests.release_harness import (
     desk_release,
     one_stretch,
     ready_session,
+    rehearsed_session,
     team_headers,
     team_release,
     the_one_part_of,
@@ -98,7 +99,7 @@ async def test_an_approved_passage_opens_with_her_keys_in_her_order(client, db_s
     file = await _exported(db_session, session.id)
 
     assert list(file) == [
-        "releaseId", "pericopeId", "version", "finalized", "approval", "frases",
+        "releaseId", "pericopeId", "version", "finalized", "approval", "frases", "history",
     ]  # fmt: skip
     assert (file["releaseId"], file["pericopeId"], file["version"], file["finalized"]) == (
         "release-1", pericope, 1, True,
@@ -118,7 +119,7 @@ async def test_an_unapproved_passage_has_no_approval_and_says_so(db_session) -> 
     file = await _exported(db_session, session.id)
 
     assert list(file) == [
-        "releaseId", "pericopeId", "version", "finalized", "note", "approval", "frases",
+        "releaseId", "pericopeId", "version", "finalized", "note", "approval", "frases", "history",
     ]  # fmt: skip
     assert [(one["n"], one["transcript"]) for one in file["frases"]] == [(1, WORDS)]
     (live,) = file["frases"]
@@ -624,3 +625,89 @@ async def test_stale_frases_follow_the_told_ones_without_moving_their_numbers(db
         (1, "S2", False),
         (2, "S1", True),
     ]
+
+
+async def test_history_keeps_what_a_restart_abandoned_and_what_a_correction_replaced(
+    client, db_session
+) -> None:
+    session, headers = await _approved(client, db_session)
+    (first,) = await final_segments(db_session, session.id)
+    first.created_at -= timedelta(minutes=1)
+    await db_session.commit()
+    first_id, take_id, stamped = first.id, first.take_id, first.created_at.isoformat()
+    await _restarted(client, session, headers)
+    (abandoned,) = (await _exported(db_session, session.id))["history"]
+    assert list(abandoned) == [
+        "idx", "clipKey", "coversFrom", "coversTo", "transcript", "pass", "recordedAt",
+        "superseded",
+    ]  # fmt: skip
+    assert (abandoned["idx"], abandoned["transcript"], abandoned["superseded"]) == (
+        first_id, WORDS, False,
+    )  # fmt: skip
+    assert (abandoned["clipKey"], abandoned["coversFrom"], abandoned["coversTo"]) == (
+        "whole", 0, CLIP_MS / 1000,
+    )  # fmt: skip
+    assert abandoned["recordedAt"] == stamped
+    told = await capture_segment(
+        db_session, session, take_id=take_id, starts_ms=0, ends_ms=CLIP_MS,
+        bridge_take_id="retro-depois", transcript=TOLD_AGAIN, pass_number=2,
+    )  # fmt: skip
+    told_id = told.id
+    await capture_segment(
+        db_session, session, take_id=take_id, starts_ms=0, ends_ms=CLIP_MS,
+        bridge_take_id="retro-corrigido", transcript="corrigido", pass_number=2, replaces=told,
+    )  # fmt: skip
+
+    history = (await _exported(db_session, session.id))["history"]
+
+    assert [(one["transcript"], one["superseded"], one["pass"]) for one in history] == [
+        (WORDS, False, 1),
+        (TOLD_AGAIN, True, 2),
+        ("corrigido", False, 2),
+    ]
+    assert history[2]["supersedes"] == told_id
+    assert "supersedes" not in history[1]
+
+
+async def test_stretches_written_in_one_transaction_are_listed_in_their_reading_order(
+    db_session,
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session, part = await rehearsed_session(db_session, project_id=project.id)
+    said = [f"parte {n}" for n in range(5)]
+    for n, words in enumerate(said):
+        await capture_segment(
+            db_session, session, take_id=part.id, starts_ms=n * 10000, ends_ms=(n + 1) * 10000,
+            bridge_take_id="retro", transcript=words, commit=False,
+        )  # fmt: skip
+    await db_session.commit()
+
+    file = await _exported(db_session, session.id)
+
+    assert [one["transcript"] for one in file["history"]] == said
+
+
+async def test_history_lists_told_stretches_only_and_a_piece_enters_once_told(
+    client, db_session
+) -> None:
+    session, _ = await _approved(client, db_session, tell=_two_stretches)
+    first, *_ = await final_segments(db_session, session.id)
+    first_id = first.id
+    piece, other = await divide_segment(db_session, session, first, at_ms=15000)
+    piece_id, other_id = piece.id, other.id
+    assert piece_id not in {
+        one["idx"] for one in (await _exported(db_session, session.id))["history"]
+    }
+
+    told = await capture_segment(
+        db_session, session, take_id=piece.take_id, starts_ms=piece.starts_ms,
+        ends_ms=piece.ends_ms, bridge_take_id="retro-peca", transcript="meio", replaces=piece,
+    )  # fmt: skip
+    told_id = told.id
+
+    history = (await _exported(db_session, session.id))["history"]
+    seen = {one["idx"] for one in history}
+
+    assert first_id in seen and told_id in seen
+    assert not {piece_id, other_id} & seen
+    assert "supersedes" not in next(one for one in history if one["idx"] == told_id)
