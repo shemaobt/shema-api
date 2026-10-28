@@ -313,7 +313,7 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. Since OBT-555 the outer `router` carries `NO_STORE`, so every route the module mounts answers `Cache-Control: private, no-store` (§3.3's *Caching* row). |
 | `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4), and — OBT-555 — the cache rule (`PER_READER_CACHE_CONTROL` and the `NO_STORE` dependency that writes it). The app key is named here and nowhere else in the module. |
 | `app/api/shema/_routing.py` | **OBT-556, built** | `ShemaRoute` and `ShemaRouter`: every route included into the module's three routers answers a 422 without the `input` it refused, and lets an unexpected Pydantic error reach the log by its location and never by its value (§6.4). |
-| `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
+| `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read (ordered in the `X-Shema-Language` the console states, OBT-657), the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
 | `app/services/shema/_health_audience.py` | **BE-07, built** | Who may read a reading of a team, and who is told when one turns critical — one list, two uses. |
@@ -325,7 +325,7 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/meetings.py` | **BE-10, built** | The log: `GET`/`POST /meetings/log`, `DELETE /meetings/log/{meetingId}/{scopeKey}/{period}`. No definitions route — §9.2. |
 | `app/utils/shema_meetings.py` | **BE-10, built** | GATE-02's set as the server needs it: the three logged meetings and their cadences. Titles, attendees and readiness stay in the console's `RITMO_MEETINGS`. |
 | `app/services/shema/_meeting_log.py` | **BE-10, built** | The log's one rule, for reads and writes: `_health_audience.py`'s audience, inside the caller's region scope; `global` refused with the reason. |
-| `app/api/shema/eten.py` | **BE-11, built** | `GET /eten/report?year=`, `GET /eten/credits`, `PUT /eten/credits/{projectId}/{year}` — FE-44 §9.8. |
+| `app/api/shema/eten.py` | **BE-11, built** | `GET /eten/report?year=` (the lines in the order of the `X-Shema-Language` the console states, OBT-657), `GET /eten/credits`, `PUT /eten/credits/{projectId}/{year}` — FE-44 §9.8. |
 | `app/models/shema_eten.py` | **BE-11, built** | `EtenYearReport`, the line `EtenYearSnapshot` (a `LeavingShape` whose `country` is FE-44's `LocationDisplay`), the ledger entry, and the evidence each carries. **The one owner of the report's form** (FE-44 §9.8's today) and of what is recorded, `EtenYearReport.recorded()`. |
 | `app/services/shema/eten_report.py` | **BE-11, built** | The report: listed projects in scope, their history, the year's manual rows, `account_for` per project, and the report **recorded** in `shema_eten_reports` as it was answered. |
 | `app/services/shema/record_eten_credit.py`, `list_eten_credits.py` | **BE-11, built** | The manual ledger: the only writer, with who may set a figure (`ETEN_LEDGER_AUDIENCE`), and its scoped read. |
@@ -1813,6 +1813,39 @@ previous order on the screen and in the export. **Still left named:**
 `ProjectRef` (a member's own projects) and the intake form behind a leader's link print the real
 name, because their reader is the team — the form declares it in `IntakeForm._withhold_name`. The header's language reuses BE-09's
 `PulseLanguage`, which is the console's two locales under a name that says *Pulse*.
+
+**Closed by OBT-657 (28/out/2026 — ours): the order follows the name the console prints.** With no
+public name a withheld record carries the region key, and the console prints it as *Projeto
+sensível — África* in Portuguese and *Sensitive project — Africa* in English; the ETEN report and
+the Projetos list ordered by the key, so the line sat before *Afrikaans* (API-PRIV-038). **Decision,
+and why.** The order stays the server's and nobody else's — `shema_facets.reading_key`,
+`collation_key` of the printed name, under `_order` in `eten_report.py` and under `sort_key` and the
+tiebreak in `browse_projects.py` — and the console states the language it prints in, in the
+`X-Shema-Language` header (`ConsoleLanguage`, `app/api/shema/_deps.py`), on the two reads that hand
+out an order. No key without a language puts the line right in both: the two labels file under P
+and under S (*Purépecha* sits between them) and the region labels swap among themselves. The
+console cannot reorder what the server cuts — the list is paged here — and reordering the ETEN
+lines over there would be a second copy of its order. A header and not `?lang=`, because the
+language filters nothing and never enters the screen's address or a saved view: the list's query
+is that address (`extra="forbid"`, and `test_the_published_parameters_are_the_screens_own_url_parameters`
+holds it), and a server that does not read a header ignores it, so neither side has to ship first.
+`?lang=` stays where it picks the language a file is written in (the Pulse, the export). An absent
+or unknown value is Portuguese, the console's fallback, and never a 422. **The words cross as
+data:** the console emits what `getLanguageNameDisplay` prints for each region in each language
+(`npm run emit:sensitive-names`), and `app/utils/shema_sensitive_project_names.json` is that file
+byte for byte, read by `app/utils/shema_printed_names.py`, whose `stands_in_for_a_name` is now the
+one server-side spelling of *a region key standing in for a name* — `LeavingShape.spoken_name` asks
+it too. **The ETEN record does not follow the reader:** it keeps the order of the names its lines
+carry, in no language, and only the answer is reordered — the record keeps the data and not the
+form (`ShemaEtenReport`), no digest recorded before this changed, and one that followed the reader
+would be written again whenever a Portuguese and an English reader took turns.
+`tests/test_shema/test_name_order.py` seeds names A to P and three such projects (*Purépecha*
+between the labels; South America and Asia swapping places), and it was seen to fail with the order
+by the key, with the language fixed, with the record following the answer and with the header
+ignored. **Still ordered by the key, named:** the export, which prints the key, so its order is its
+print's; the search, which finds the card by the key and not by the words
+(`_redaction.searchable_text`); and the console's own sorts outside these two reads — the annual
+report, the Formulários pickers, the notification preferences' project picker.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
