@@ -3,9 +3,12 @@
 **Retiring a fund is BE-10's (OBT-471), and it retires by leaving this list.** The client
 asked for an area that creates, renames and retires funds; a retired one stops being a
 choice and is never deleted, because ``rr_fund_movements`` names it and the ledger is
-append-only. So ``choosable_funds`` is the one query BE-10 narrows, and everything that
-offers a fund reads it — the selector below and ``assign_fund`` alike, which is what makes
-*not selectable* a fact rather than a label the screen is trusted to honour.
+append-only. So ``choosable_funds`` is the one query that leaves a retired fund out, and
+everything that offers a fund reads it — the selector below and ``assign_fund`` alike, which
+is what makes *not selectable* a fact rather than a label the screen is trusted to honour.
+**BE-10 shipped the flag without narrowing this query** (OBT-636): until the E2E run of
+26/oct/2026 (RRF-MESA-062) found ``fund-options`` offering a retired fund as selectable and
+``PUT …/fund`` accepting it, only the client's ``fundChoices`` kept one out of reach.
 
 **A request already pointing at a retired fund still shows it, marked** (ours, 28/aug/2026).
 A selector that dropped it would render an assignment as if it were absent, and the mesa
@@ -15,8 +18,8 @@ fabricated-emptiness the frontend's score badge fixed by separating *unevaluated
 ``selectable`` is what says which of the two it is.
 
 ``options_from`` is pure and takes the two lists rather than the session, so the retired
-case is testable today: it becomes real the day BE-10 narrows the query, and a rule that
-can only be exercised after another issue lands is a rule nobody has run.
+case is testable without a database; ``test_fund_assignment.py`` also drives it through a
+real retirement.
 """
 
 from collections.abc import Sequence
@@ -46,8 +49,9 @@ class FundOption(NamedTuple):
 
 
 async def choosable_funds(db: AsyncSession) -> Sequence[RRFund]:
-    """The funds the mesa may assign, by name — BE-10's list, unfiltered until it lands."""
-    return (await db.execute(select(RRFund).order_by(RRFund.name))).scalars().all()
+    """The funds the mesa may assign, by name: every fund not retired."""
+    stmt = select(RRFund).where(RRFund.retired_at.is_(None)).order_by(RRFund.name)
+    return (await db.execute(stmt)).scalars().all()
 
 
 def options_from(choosable: Sequence[RRFund], assigned: RRFund | None) -> list[FundOption]:

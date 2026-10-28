@@ -1041,10 +1041,10 @@ class FundAssignmentOut(BaseModel):
 class FundOptionOut(BaseModel):
     """One row of the mesa's fund selector, with why it may or may not be picked.
 
-    ``retired`` is the row BE-10 (OBT-471) will create by taking a fund out of the choices:
-    it is still shown, because this request draws from it and a selector that hid it would
-    render an assignment as an absence, and ``selectable`` is ``false`` because it is no
-    longer on offer for anything new.
+    ``retired`` is the row a retirement creates by taking a fund out of the choices
+    (``choosable_funds``, since OBT-636): it is still shown, because this request draws from
+    it and a selector that hid it would render an assignment as an absence, and
+    ``selectable`` is ``false`` because it is no longer on offer.
     """
 
     id: str
