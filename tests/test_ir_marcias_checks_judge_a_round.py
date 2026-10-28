@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from scripts.bt_golden_checks import check_round
+from scripts import bt_golden_checks
+from scripts.bt_golden_checks import Told, check_round, told_up_to
 from scripts.bt_golden_runner import load_script
 from scripts.sync_doctrine import REPO_ROOT
 
@@ -251,7 +252,7 @@ def test_spoken_matches_is_required_when_her_script_carries_it() -> None:
         spoken="Vocês traduziram tudo e a passagem está conferida. Na frase 1 ficou bom.",
     )
 
-    assert check_round(told, expect) == ["the voice does not match /aprov|ouvir/"]
+    assert "the voice does not match /aprov|ouvir/" in check_round(told, expect)
 
 
 def test_her_dropped_no_finding_would_have_failed_the_correct_run() -> None:
@@ -509,3 +510,109 @@ def test_the_vendored_esta_noite_script_fails_a_round_that_never_asks_for_frase_
         )
         == []
     )
+
+
+THE_CLEAN_LINE = "no que vocês me traduziram, tem tudo o que a história conta — e nada a mais"
+THE_TELLING = Told(
+    "Brazilian Portuguese",
+    ("Noemi ouviu, nos campos de Moabe, que o Senhor tinha dado pão ao seu povo.",),
+)
+CLEAN = {"conferida": True, "findings": []}
+
+
+def _clean(spoken: str) -> dict[str, Any]:
+    return _round(findings=[], conferida=True, spoken=spoken)
+
+
+def test_a_clean_round_without_her_line_fails() -> None:
+    spoken = "Vocês fizeram um bom trabalho com a tradução. Ouçam tudo de novo e aprovem."
+
+    fails = check_round(_clean(spoken), CLEAN, THE_TELLING)
+
+    assert fails == [
+        'clean round: the voice does not say the fixed line ("no que vocês me traduziram, '
+        'tem tudo o que a história conta — e nada a mais")'
+    ]
+
+
+def test_a_clean_round_with_her_line_and_her_invitation_passes() -> None:
+    spoken = (
+        f"Vocês fizeram um bom trabalho. Na tradução, {THE_CLEAN_LINE}. "
+        "Ouçam tudo de novo, do começo ao fim, e aprovem."
+    )
+
+    assert check_round(_clean(spoken), CLEAN, THE_TELLING) == []
+
+
+def test_a_clean_round_that_recites_what_the_team_told_fails_quoting_the_words() -> None:
+    spoken = f"Vocês traduziram bem. {THE_CLEAN_LINE}. A Noemi ouviu do pão. Podem aprovar."
+
+    fails = check_round(_clean(spoken), CLEAN, THE_TELLING)
+
+    assert fails == [
+        "clean round: the voice recites the passage — it names what the team told: noemi, "
+        'ouviu, pao (Marcia\'s ruling 2026-09-24: only "tem tudo", no detail)'
+    ]
+
+
+def test_a_clean_round_that_speaks_of_what_the_story_keeps_quiet_fails() -> None:
+    spoken = f"Vocês traduziram bem. {THE_CLEAN_LINE}. O silêncio fica com vocês."
+
+    assert check_round(_clean(spoken), CLEAN, THE_TELLING) == [
+        'clean round: the voice speaks of what the story keeps quiet: "silêncio"'
+    ]
+
+
+def test_a_clean_round_in_another_language_fails_loudly_instead_of_reading_english_words() -> None:
+    fails = check_round(_clean(f"vocês tradu {THE_CLEAN_LINE}"), CLEAN, Told("English", ()))
+
+    assert fails == [
+        'clean round: this check reads Portuguese only — "English" has no fixed line or allowed '
+        "words in src/golden/btChecks.ts yet; add them before trusting this script's clean round"
+    ]
+
+
+def test_a_clean_round_with_no_telling_handed_to_the_check_fails() -> None:
+    fails = check_round(_clean(f"vocês tradu {THE_CLEAN_LINE}"), CLEAN)
+
+    assert fails == ["clean round: no telling handed to the check — pass toldUpTo(script, i)"]
+
+
+def test_the_telling_is_every_frase_up_to_the_round_superseded_ones_included() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P02-nuance-espera.json")
+
+    told = told_up_to(script, 1)
+
+    assert told.language == "Brazilian Portuguese"
+    assert len(told.frases) == sum(len(one.frases) for one in script.rounds[:2])
+    assert told.frases[-1].startswith("Noemi ouviu, nos campos de Moabe, que o Senhor")
+
+
+def test_the_last_round_of_every_vendored_script_is_judged_clean_only_with_her_line() -> None:
+    for path in sorted((REPO_ROOT / "golden/bt").glob("*.json")):
+        script = load_script(path)
+        last = len(script.rounds) - 1
+        expect = script.rounds[last].expect
+        if not (expect["conferida"] and not expect["findings"]):
+            continue
+        spoken = "Vocês fizeram um bom trabalho com a tradução. Ouçam tudo de novo e aprovem."
+
+        fails = check_round(_clean(spoken), expect, told_up_to(script, last))
+
+        assert any("does not say the fixed line" in one for one in fails), path.name
+
+
+HER_EXPORTS = {
+    "wholeSentenceRe": "whole_sentence_re",
+    "PART_AGAIN_RE": "PART_AGAIN_RE",
+    "toldUpTo": "told_up_to",
+    "CLEAN_LINE_RE": "CLEAN_LINE_RE",
+    "cleanRoundFails": "clean_round_fails",
+    "checkRound": "check_round",
+}
+
+
+def test_every_check_her_btchecks_exports_has_its_counterpart_here() -> None:
+    absent = [theirs for theirs, ours in HER_EXPORTS.items() if not hasattr(bt_golden_checks, ours)]
+
+    assert absent == []

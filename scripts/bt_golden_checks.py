@@ -31,7 +31,14 @@ out the same on both sides.
 from __future__ import annotations
 
 import re
-from typing import Any
+import unicodedata
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+if TYPE_CHECKING:
+    from scripts.bt_golden_runner import Script
+
+#: The commit of her repository whose `src/golden/btChecks.ts` these checks apply.
+BT_CHECKS_PIN = "18fa7c4"
 
 #: Her unconditional checks, in the order `checkRound` applies them.
 _SINGULAR = re.compile(r"\b(?:você|teu|tua|teus|tuas)\b", re.IGNORECASE)
@@ -47,7 +54,7 @@ _TRADU = re.compile(r"tradu", re.IGNORECASE)
 _THE_MAP = re.compile(r"\bo mapa\b", re.IGNORECASE)
 _BLESSING = re.compile(r"vão com deus|deus (?:os|te) abençoe|amém", re.IGNORECASE)
 _A_FRASE = re.compile(r"frase\s+\d+", re.IGNORECASE)
-_A_PART_AGAIN = re.compile(
+PART_AGAIN_RE = re.compile(
     r"grav\w+ (?:de novo )?(?:essa|a) parte|regrav\w+ (?:essa|a) (?:parte|cena)", re.IGNORECASE
 )
 
@@ -186,21 +193,24 @@ def asks_translation(spoken: str) -> list[str]:
     return ["the voice does not ask whether it entered in the translation ('na tradução')"]
 
 
-def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
-    asked = re.search(
+def whole_sentence_re(number: int) -> re.Pattern[str]:
+    return re.compile(
         rf"regrav\w+[^.]*?\bfrase(?:\s+{number}\b|(?!\s+\d))[^.]*?\binteira"
         rf"|regrav\w+\s+inteira\s+a\s+frase|\bfrase\s+{number}\s+inteira"
         r"|a frase toda|nunca só um pedaço",
-        spoken,
         re.IGNORECASE,
     )
+
+
+def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
+    asked = whole_sentence_re(number).search(spoken)
     fails = []
     if not asked:
         fails.append(
             f'the voice does not ask to record frase {number} again WHOLE ("regravem a frase '
             f'{number} inteira" / "essa frase inteira" / "a frase toda")'
         )
-    part = _A_PART_AGAIN.search(spoken)
+    part = PART_AGAIN_RE.search(spoken)
     if part:
         fails.append(
             "the voice sends the team to a PART on a recording that can take a sentence: "
@@ -216,7 +226,129 @@ def one_frase_per_turn(spoken: str) -> list[str]:
     return [f"more than one frase named in one turn: {', '.join(named)}"]
 
 
-def check_round(result: dict[str, Any], expect: dict[str, Any]) -> list[str]:
+class Told(NamedTuple):
+    """What the team told up to a round, with the language the clean-round check reads."""
+
+    language: str
+    frases: tuple[str, ...]
+
+
+def told_up_to(script: Script, idx: int) -> Told:
+    """Every frase told up to and including round `idx`, superseded ones too."""
+    return Told(
+        script.language,
+        tuple(one["text"] for round_ in script.rounds[: idx + 1] for one in round_.frases),
+    )
+
+
+#: The clean-round fixed line — punctuation-tolerant, the words exact.
+CLEAN_LINE_RE = re.compile(
+    r"no que vocês me traduziram,?\s*tem tudo o que a história conta"
+    r"\s*[—\u2013,-]?\s*e nada a mais",
+    re.IGNORECASE,
+)
+
+#: Words a clean verdict may say whatever the team told, compared by stem.
+CLEAN_ALLOWED = " ".join(
+    [
+        "no que vocês me traduziram, tem tudo o que a história conta — e nada a mais",
+        "ouvir tudo de novo, do começo ao fim, e aprovar como rascunho final — o último passo, "
+        "a última etapa: escutem, ouçam, aprovem a gravação inteira, a tradução de vocês",
+        "vocês fizeram um bom trabalho, ótimo, muito bem, parabéns, cuidado, obrigada, obrigado "
+        "— que bom, estou muito contente, feliz, alegre, espero",
+        "vocês chegaram até o fim, chegaram até aqui, chegamos ao fim desta passagem, a tradução "
+        "chegou inteira — eu ouvi tudo, frase por frase — voltem ao começo, voltar ao começo",
+        "a tradução ficou completa, certinha, certo, certa, nenhum detalhe, nenhuma, detalhes, "
+        "se estiver tudo certo, com calma, no tempo de vocês — a passagem, as frases, a frase, a "
+        "cena, as cenas, a parte, as partes, o áudio, as gravações, toquem na tela, no botão, "
+        "tocar",
+        "que com sem uma umas uns dos das nos nas ele ela eles elas dele dela deles delas nele "
+        "nela seu sua seus suas meu minha nosso nossa lhe mim por pra pro para pela pelo pelos "
+        "pelas aos num numa não sim mas até como mais muito muita muitos muitas todo toda todos "
+        "todas nada isso isto esse essa esses essas este esta estes estas aqui ali então agora "
+        "quando porque também ainda depois antes onde cada mesmo mesma outro outra entre sobre "
+        "já bem bom boa",
+        "tem têm teve foi foram era eram ser ter ver vai vão são está estão estava estavam tinha "
+        "tinham tenho fez fazer faz pode podem vamos seja sejam deu dar ficou ficaram ficar vez",
+    ]
+)
+
+_LETTERS = r"[^\W\d_]"
+#: What the story keeps quiet, said any of the ways the voice has said it. Never "não conta".
+QUIET_RE = re.compile(
+    rf"sil[êe]nci{_LETTERS}*"
+    rf"|(?<!{_LETTERS})(?:cal(?:a|am|ou|aram|ada|adas|ado|ados|ar)|quiet{_LETTERS}*"
+    rf"|segredo{_LETTERS}*)(?!{_LETTERS})"
+    r"|a história (?:cala|guarda|esconde|omite|deixa (?:de fora|em branco)"
+    rf"|não (?:diz|fala|mostra|revela|explica))(?!{_LETTERS})",
+    re.IGNORECASE,
+)
+#: A noun made from the team's own verb ("choro"/"choraram") shares under five letters with it.
+_ROOT_END = re.compile(
+    r"(?:mentos?|coes|cao|ancas?|encias?|idas?|adas?|idos?|ados?|os|as|es|o|a|e)$"
+)
+
+
+def _words(text: str) -> list[str]:
+    plain = "".join(
+        ch
+        for ch in unicodedata.normalize("NFD", text)
+        if not unicodedata.category(ch).startswith("M")
+    )
+    return [one for one in re.findall(f"{_LETTERS}+", plain.lower()) if len(one) >= 3]
+
+
+def _stem(word: str) -> str:
+    return word[:5]
+
+
+_ALLOWED_STEMS = {_stem(one) for one in _words(CLEAN_ALLOWED)}
+
+
+def clean_round_fails(spoken: str, told: Told) -> list[str]:
+    """A round expected clean: her fixed line and no word of what the team told (2026-09-24)."""
+    if not re.search("portugu", told.language, re.IGNORECASE):
+        return [
+            f'clean round: this check reads Portuguese only — "{told.language}" has no fixed '
+            "line or allowed words in src/golden/btChecks.ts yet; add them before trusting "
+            "this script's clean round"
+        ]
+    fails: list[str] = []
+    if not CLEAN_LINE_RE.search(spoken):
+        fails.append(
+            'clean round: the voice does not say the fixed line ("no que vocês me traduziram, '
+            'tem tudo o que a história conta — e nada a mais")'
+        )
+    told_words = [one for text in told.frases for one in _words(text)]
+    told_stems = {_stem(one) for one in told_words}
+
+    def tells_it(word: str) -> bool:
+        if _stem(word) in told_stems:
+            return True
+        root = _ROOT_END.sub("", word, count=1)
+        return root != word and len(root) >= 4 and any(one.startswith(root) for one in told_words)
+
+    named = list(
+        dict.fromkeys(
+            one for one in _words(spoken) if _stem(one) not in _ALLOWED_STEMS and tells_it(one)
+        )
+    )
+    if named:
+        fails.append(
+            "clean round: the voice recites the passage — it names what the team told: "
+            f'{", ".join(named)} (Marcia\'s ruling 2026-09-24: only "tem tudo", no detail)'
+        )
+    quiet = QUIET_RE.search(spoken)
+    if quiet:
+        fails.append(
+            f'clean round: the voice speaks of what the story keeps quiet: "{quiet.group(0)}"'
+        )
+    return fails
+
+
+def check_round(
+    result: dict[str, Any], expect: dict[str, Any], told: Told | None = None
+) -> list[str]:
     """Every failure of one round, in her words and in her order.
 
     A key is applied only where her script carries it. That is what keeps her documented
@@ -251,4 +383,10 @@ def check_round(result: dict[str, Any], expect: dict[str, Any]) -> list[str]:
     if expect.get("spoken_whole_sentence") is not None:
         fails += asks_the_whole_sentence(spoken, expect["spoken_whole_sentence"])
     fails += one_frase_per_turn(spoken)
+    if expect["conferida"] and not expect["findings"] and not findings:
+        fails += (
+            clean_round_fails(spoken, told)
+            if told
+            else ["clean round: no telling handed to the check — pass toldUpTo(script, i)"]
+        )
     return fails

@@ -16,7 +16,14 @@ import httpx
 import pytest
 
 from scripts import bt_golden_runner
-from tests.golden_spend_harness import BT_PRICED, bt_args, bt_shelf, charged_call, the_room_answers
+from tests.golden_spend_harness import (
+    BT_PRICED,
+    THE_CLEAN_VOICE,
+    bt_args,
+    bt_shelf,
+    charged_call,
+    the_room_answers,
+)
 
 
 def _a_round_that_costs_three_dollars() -> httpx.Response:
@@ -24,7 +31,7 @@ def _a_round_that_costs_three_dollars() -> httpx.Response:
         200,
         json={
             "findings": [],
-            "spoken": "Vocês disseram tudo na tradução. Muito bem.",
+            "spoken": THE_CLEAN_VOICE,
             "outcome": "pass",
             "conferida": True,
             "missingWithoutFrase": 0,
