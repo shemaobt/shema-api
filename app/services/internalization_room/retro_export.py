@@ -121,7 +121,7 @@ async def _frases_and_history(
             pass_number=row.pass_number if row else 1,
             recordedAt=row.created_at.isoformat() if row else "",
             supersedes=replaces.get(idx),
-            stale=idx not in live or (row is not None and row.stale),
+            stale=idx not in live,
         )
 
     if approval:
@@ -139,7 +139,8 @@ async def _frases_and_history(
             if row.id in numbers
         ]
     ever_told = sorted(
-        (*standing, *retired), key=lambda row: (row.created_at, row.superseded_at is None, row.id)
+        (*standing, *retired),
+        key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
     )
     history = [
         RetroHistoryEntry(

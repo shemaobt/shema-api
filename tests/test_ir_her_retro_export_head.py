@@ -36,9 +36,11 @@ from tests.release_harness import (
     a_rehearsal_only_half_heard,
     at_the_desk,
     checked_heard_and_approved,
+    checked_telling_back,
     desk_release,
     one_stretch,
     ready_session,
+    rehearsed_session,
     team_headers,
     team_release,
     the_one_part_of,
@@ -72,9 +74,9 @@ async def _exported(db: AsyncSession, session_id: str) -> dict:
     return exported.model_dump(mode="json", by_alias=True)
 
 
-async def _approved(client, db: AsyncSession) -> tuple[IRSession, dict[str, str]]:
+async def _approved(client, db: AsyncSession, tell=None) -> tuple[IRSession, dict[str, str]]:
     project, credential = await a_claimed_device(db)
-    session = await ready_session(db, project_id=project.id)
+    session = await ready_session(db, project_id=project.id, tell=tell)
     headers = team_headers(credential)
     await checked_heard_and_approved(client, db, session.id, headers=headers)
     return session, headers
@@ -352,3 +354,56 @@ async def test_a_telling_told_again_before_approval_lists_the_new_one_that_repla
         (1, "whole"),
         (2, "whole"),
     ]
+
+
+async def test_history_pins_its_fields_and_the_frase_that_replaced_another_is_approved_so(
+    client, db_session
+) -> None:
+    async def _told_twice(db, session) -> BackTranslationState:
+        await checked_telling_back(db, session)
+        (first,) = await final_segments(db, session.id)
+        again = await capture_segment(
+            db, session, take_id=first.take_id, starts_ms=0, ends_ms=CLIP_MS,
+            bridge_take_id="retro-de-novo", transcript=TOLD_AGAIN, pass_number=2, replaces=first,
+        )  # fmt: skip
+        return BackTranslationState(
+            scope=session.pericope, checked=True, analysed_segment_ids=[again.id]
+        )
+
+    session, _ = await _approved(client, db_session, tell=_told_twice)
+    (standing,) = await final_segments(db_session, session.id)
+    standing_id, stamped = standing.id, standing.created_at.isoformat()
+
+    file = await _exported(db_session, session.id)
+
+    first, again = file["history"]
+    assert list(again) == [
+        "idx", "clipKey", "coversFrom", "coversTo", "transcript", "pass", "recordedAt",
+        "supersedes", "superseded",
+    ]  # fmt: skip
+    assert (again["coversFrom"], again["coversTo"], again["recordedAt"]) == (
+        0, CLIP_MS / 1000, stamped,
+    )  # fmt: skip
+    (frase,) = file["frases"]
+    assert (frase["idx"], frase["supersedes"], frase["recordedAt"]) == (
+        standing_id, first["idx"], stamped,
+    )  # fmt: skip
+    assert (frase["coversFrom"], frase["pass"]) == (0, 2)
+
+
+async def test_stretches_written_in_one_transaction_are_listed_in_their_reading_order(
+    db_session,
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session, part = await rehearsed_session(db_session, project_id=project.id)
+    said = [f"parte {n}" for n in range(5)]
+    for n, words in enumerate(said):
+        await capture_segment(
+            db_session, session, take_id=part.id, starts_ms=n * 10000, ends_ms=(n + 1) * 10000,
+            bridge_take_id="retro", transcript=words, commit=False,
+        )  # fmt: skip
+    await db_session.commit()
+
+    file = await _exported(db_session, session.id)
+
+    assert [one["transcript"] for one in file["history"]] == said
