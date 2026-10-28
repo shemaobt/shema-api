@@ -115,3 +115,17 @@ async def test_the_latest_version_of_the_session_is_the_one_whose_numbers_hold(
     first, second = await final_segments(db_session, session.id)
 
     assert await stretch_numbers(db_session, session) == {first.id: 2, second.id: 1}
+
+
+async def test_the_numbers_are_the_sessions_own_and_never_another_sessions_version(
+    client, db_session
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    other = await ready_session(db_session, project_id=project.id, tell=_two_stretches)
+    approved = await client.post(team_release(other.id), headers=team_headers(credential))
+    assert approved.status_code == 200, approved.text
+    mine = await ready_session(db_session, project_id=project.id, tell=_two_stretches)
+    first, second = await final_segments(db_session, mine.id)
+    await divide_segment(db_session, mine, first, at_ms=15000)
+
+    assert await stretch_numbers(db_session, mine) == {second.id: 1}
