@@ -504,6 +504,15 @@ async def test_every_clip_has_her_keys_its_file_name_and_an_hour_link(client, db
         assert link.key == part.storage_key
     assert manifest["grain"] == "scene"
     assert manifest["audioFormat"] == WAV_FORMAT
+    assert manifest["whole"] == {
+        "filename": f"{RUTH_P01_V1}-inteira.wav",
+        "url": f"{PREFIX}/facilitator/sessions/{session.id}/takes/whole",
+    }
+    keys = list(manifest)
+    assert keys[keys.index("audioFormat") + 1 : keys.index("audioFormat") + 3] == [
+        "whole",
+        "integrity",
+    ], "a chave whole não estava entre audioFormat e integrity, onde o export dela a põe"
 
 
 async def test_a_passage_told_whole_is_the_grain_whole_and_an_m4a_states_no_audio_format(
@@ -521,6 +530,7 @@ async def test_a_passage_told_whole_is_the_grain_whole_and_an_m4a_states_no_audi
     assert clip["key"] == "whole"
     assert clip["filename"] == f"{RUTH_P01_V1}-whole.m4a"
     assert manifest["audioFormat"] is None
+    assert "whole" not in manifest
 
 
 async def test_a_joined_part_carries_her_origin_and_never_the_clock_offset(

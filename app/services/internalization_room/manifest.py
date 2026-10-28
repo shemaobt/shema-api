@@ -32,6 +32,11 @@ from app.services.internalization_room.take_downloads import (
     part_keys_by_number,
 )
 from app.services.internalization_room.takes import current_parts, is_declared, is_wav, takes_of
+from app.services.internalization_room.whole_passage import (
+    whole_filename,
+    whole_is_offered,
+    whole_url,
+)
 from app.utils.stored_time import as_utc
 
 #: Her audio format, in her keys: what the tablet records when it records WAV.
@@ -129,6 +134,10 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
         "audioFormat": AUDIO_FORMAT
         if clips and all(is_wav(part.content_type) for part in clips)
         else None,
+    }
+    if whole_is_offered(parts):
+        manifest["whole"] = {"filename": whole_filename(release_id), "url": whole_url(session.id)}
+    manifest |= {
         "integrity": INTEGRITY,
         "externalCheck": None,
         "check": check,

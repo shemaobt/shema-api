@@ -372,6 +372,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/external-check/1",
         f"{IR}/facilitator/sessions/{session}/retro",
         f"{IR}/facilitator/sessions/{session}/re-recorded-sentences",
+        f"{IR}/facilitator/sessions/{session}/takes/whole",
     ]
 
     values = {"session_id": session, "number": 0, "version": 1, "sentence_id": "frase-b"}
@@ -565,6 +566,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
         (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes/downloads", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/takes/whole", {}),
         (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences", {}),
         (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/audio", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
