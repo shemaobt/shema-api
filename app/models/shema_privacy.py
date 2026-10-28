@@ -46,7 +46,8 @@ say where the team is. So :data:`FREE_TEXT_FIELDS` are reduced like the base —
 beside the same marker, for every reader who is not coordination — and are in
 :data:`WITHHELD_WRITES` for the base's reason: a reader handed ``""`` may not type over the
 truth unseen. Which fields is the client's decision of 2/out/2026 (*recolher tudo* over the
-issue's list); the free text the list leaves out is named in ``docs/shema.md`` §6.4.
+issue's list); the free text the list leaves out is named in ``docs/shema.md`` §6.4. The prayer
+request the record keeps went with them in OBT-655 (:data:`PRAYER_REQUEST_FIELDS`).
 
 **Fail closed, and the closed state is the default.** :attr:`LeavingShape.sensitive_country`
 is ``None`` when a shape was built from something that could not answer — a dict assembled by
@@ -249,6 +250,18 @@ FREE_TEXT_FIELDS: Final[tuple[str, ...]] = (
     "status_goal",
 )
 
+#: The prayer request the record keeps, typed and recorded — the request the team raises in the
+#: health assessment, which names a place as readily as the notes do (*Orem pela proteção da
+#: equipe em Minya*). **OBT-655** (Levi, 28/out/2026, the issue's recommendation, for Karina to
+#: validate): on a withheld record it goes with the free text, ``""`` for every reader who does not
+#: read the truth and refused on write to them — so the OBT Lab, which reads a request nobody
+#: authorized everywhere else, reads this one blank. The columns are ``_consent.py``'s, and so is
+#: the other rule over them, who reads a request nobody authorized; the two compose and neither
+#: restates the other. Whatever the team authorized: what reaches the wall from a withheld record is
+#: the text the coordination released (OBT-575), never this column. The recording reads ``""``
+#: like the optional text beside it, not ``None``: a reduced field is never ``None`` here.
+PRAYER_REQUEST_FIELDS: Final[tuple[str, ...]] = ("prayer_requests", "prayer_requests_audio")
+
 #: The language's name, under the two spellings the leaving shapes use (the prayer entry calls
 #: it ``language``). A sensitive project's name can name the place — *Sa'di of High Egypt* —
 #: so a withheld shape replaces it too (OBT-560): with the name coordination registered for
@@ -258,7 +271,12 @@ NAME_FIELDS: Final[tuple[str, ...]] = ("language_name", "language")
 #: Every field a withheld shape replaces. A subclass that declares none of them is still a
 #: leaving shape and still carries ``locationWithheld``; there is nothing on it to reduce.
 WITHHELD_FIELDS: Final[tuple[str, ...]] = (
-    PLACE_FIELDS + BASE_FIELDS + CONTACT_FIELDS + REASON_FIELDS + FREE_TEXT_FIELDS
+    PLACE_FIELDS
+    + BASE_FIELDS
+    + CONTACT_FIELDS
+    + REASON_FIELDS
+    + FREE_TEXT_FIELDS
+    + PRAYER_REQUEST_FIELDS
 )
 
 #: What only coordination writes, on **every** record (OBT-528): the place, the flag and the
@@ -272,9 +290,12 @@ COORDINATION_WRITES: Final[frozenset[str]] = frozenset(
 #: read withholds from everybody else. *Não dá para editar o que não se vê* — a base read as
 #: ``""`` is not a base a reader may type over, and neither are the notes (OBT-556).
 #: ``language_name`` joined them with OBT-560: a withheld record hands everyone else the public
-#: name in its place, and a value typed over it would overwrite the real one unseen.
+#: name in its place, and a value typed over it would overwrite the real one unseen. The prayer
+#: request joined them with OBT-655, for the notes' reason; its authorization did not — on a
+#: withheld record ``rede`` only queues the request for the coordination's release (OBT-575), and
+#: the OBT Lab stating it is that module's own tested door.
 WITHHELD_WRITES: Final[frozenset[str]] = frozenset(
-    (*BASE_FIELDS, *CONTACT_FIELDS, *FREE_TEXT_FIELDS, "language_name")
+    (*BASE_FIELDS, *CONTACT_FIELDS, *FREE_TEXT_FIELDS, *PRAYER_REQUEST_FIELDS, "language_name")
 )
 
 

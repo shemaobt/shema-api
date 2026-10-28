@@ -185,7 +185,11 @@ REQUEST_COLUMNS: Final = (REQUEST_TEXT, REQUEST_VISIBILITY, REQUEST_AUDIO)
 #: and the OBT Lab, inside their own scope. ``resourceCircle`` is the wall's own audience and the
 #: role that shares with the network, so it reads what the team authorized and nothing else —
 #: the reading BE-12 already took for the submission inbox (``read_submission.py``) and FE-44
-#: §5.8 for the prayer notice. One list for both, so the two cannot drift.
+#: §5.8 for the prayer notice. One list for both, so the two cannot drift. **On a project whose
+#: place is withheld the record is narrower still** (OBT-655): the request is the team's own
+#: sentence there, and the shape hands it ``""`` to every reader who does not read the truth —
+#: the OBT Lab included — as it hands the notes (``shema_privacy.PRAYER_REQUEST_FIELDS``). That
+#: is the sensitive-country rule composing with this one, not this list changing.
 PRAYER_AUDIENCE: Final = HEALTH_AUDIENCE
 
 
@@ -422,6 +426,11 @@ def request_as_read(project: ShemaProject, *, reads_withheld: bool) -> dict[str,
     has not been authorized, and the whole request once it has been — it is on their wall
     already. The visibility stays: it says the request is kept in coordination, which is the
     withholding made visible and names nothing of what was withheld.
+
+    On a withheld record the shape has already answered first (OBT-655): a reader who does not
+    read the truth was handed the request as ``""`` whatever was authorized, and ``{}`` here
+    leaves that as it is — the audience reads a request nobody authorized, not a sensitive
+    project's sentence.
     """
     if reads_withheld or reaches_prayer_wall(project):
         return {}

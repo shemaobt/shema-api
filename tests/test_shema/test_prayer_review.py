@@ -342,21 +342,23 @@ async def test_a_new_text_after_the_release_leaves_the_wall_and_waits_again(
 async def test_a_request_reworded_on_the_ficha_waits_for_the_review_again(
     client, db_session, shema_app, circle, coordinator
 ) -> None:
-    """PME-ORA-021 through the ficha (OBT-597): the OBT Lab rewords a released request and sends
-    the text alone. The team's authorization stays — the box was in view beside the text — and
-    the release does not, being the coordination's for the old words: the request leaves the
-    wall, waits in the queue as written now, and the region's coordination is told."""
+    """PME-ORA-021 through the ficha (OBT-597): another coordinator of the region rewords a
+    released request and sends the text alone. The team's authorization stays — the box was in
+    view beside the text — and the release does not, being the coordination's for the old words:
+    the request leaves the wall, waits in the queue as written now, and the region's coordination
+    is told. (The OBT Lab rewrote it here until OBT-655; it reads a sensitive project's request
+    blank now, and may not type over it — ``test_withheld_prayer_request.py``.)"""
     project = await seed(db_session, "garoa-reescrita")
     released = await release(client, coordinator, project.id, {"reviewed": TEAM_TEXT})
     assert released.status_code == 204, released.text
     assert await wall_texts(client, circle) == {TEAM_TEXT}
-    lab = await person(db_session, shema_app, "obtLab")
-    etag = (await client.get(f"{PROJECTS}/{project.id}", headers=lab)).headers["ETag"]
+    colleague = await person(db_session, shema_app, "coordinator", regions=(HOME, AWAY))
+    etag = (await client.get(f"{PROJECTS}/{project.id}", headers=colleague)).headers["ETag"]
 
     written = await client.patch(
         f"{PROJECTS}/{project.id}",
         json={"prayerRequests": OPEN_TEXT},
-        headers={**lab, "If-Match": etag},
+        headers={**colleague, "If-Match": etag},
     )
 
     assert written.status_code == 200, written.text

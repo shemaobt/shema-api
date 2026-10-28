@@ -1015,6 +1015,24 @@ behaviour on it.
 >   nothing. A rewrite sent without the flag is still its to make, and unshares the need. On a
 >   create it writes the text it types (OBT-528's create exception, for the same reason) and not
 >   `rede` (`authorized_on_create`). `refuse_prayer_decisions` is the one refusal for the three.
+>   **On a project whose place is withheld the request is the team's own sentence — [OBT-655](https://linear.app/shema-obt/issue/OBT-655),
+>   28/oct/2026, Levi, following the issue's recommendation, for Karina to validate** (the
+>   alternative was the OBT Lab reading the whole text, as it did). API-PRIV-002 found the OBT Lab
+>   reading the P-SENS record with everything that names the place reduced and the request whole
+>   — *Orem pela proteção da equipe em Minya* — in a field it could type over. The request is raised
+>   in the assessment, whose notes the OBT Lab already read blank there (OBT-556), and it names a
+>   place as readily. So `shema_privacy.PRAYER_REQUEST_FIELDS` — the text and the recording — join
+>   the free text (§6.4): `""` to every reader who does not read the truth, refused on the record's
+>   `PATCH` by `unwritable_fields` with the base's sentence, and left out of the trail and the 409
+>   they meet. That is the sensitive-country rule composing with this one: `PRAYER_AUDIENCE` did not
+>   move, the Resource Circle (`trusted`) still reads only what the team authorized, and the
+>   coordination and the Admin read what they read before. It holds whatever the team authorized,
+>   because the record holds the team's words and what reaches the wall from a withheld record is
+>   the text the coordination released (§6.12) — that path did not change. Two doors stay open on
+>   purpose: the visibility, which the OBT Lab still states — on a withheld record `rede` only
+>   queues the request for the release, and `test_prayer_review.py` pins that door — and the health
+>   wizard, where the reading the OBT Lab files carries a request in its own words, which it sees as
+>   it types, as it carries the reading's notes; the record it answers reads it back blank.
 > - **The recording travels nowhere yet.** `prayer_requests_audio` takes any string a save writes,
 >   so signing what it holds would let a writer mint a link to any object in `shema-private`; the
 >   wall omits FE-44's optional `audioUrl` and the Pulse is text. An audio-only request reaches
@@ -1281,6 +1299,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556); `objectiveNotes`, `financialNotes`, `needsNotes`, `partnerOrg`, `statusGoal` and `storyProgress[].recordLocation` (OBT-573) | the truth | the truth | `""` | `""` |
+| `prayerRequests`, `prayerRequestsAudio` (OBT-655) | the truth, under the consent rule (§5.6) | the truth, under the consent rule | `""` | — |
 | the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null` | — |
 | `authorization.by` of `mediaPhotos` and `mediaVideos` (OBT-578 — Daniel, 8/oct/2026: on a Pulse-born photo it is the leader's own name, `submittedBy`) | the truth | the truth | `""`; `granted` and `at` kept | — |
 | `coords` | the truth | the truth | the region centroid | the region centroid |
@@ -1375,6 +1394,7 @@ is compared, logged with `log_reference`:
 | `location`, `location2`, `coords`, `sensitiveCountry`, `sensitivity` | writes | refused on **every** record |
 | the base (`team` / `ywamBase`), `teamContact`, `teamLeaderContact`, `mentorContact` | writes | refused on a **withheld** record; writes on a cleared one |
 | `notes`, `statusComments`, `scopeDetails` (OBT-556) | writes | refused on a **withheld** record; writes on a cleared one |
+| `prayerRequests`, `prayerRequestsAudio` (OBT-655) | writes | refused on a **withheld** record; on a cleared one, the prayer audience writes them (§5.6) |
 | a need's `description` (OBT-556) | writes | on a **withheld** record, the `""` it was handed is read as unchanged and any other text is refused; a new need is its author's to describe |
 
 There is no `country` to write: it is the first segment of `location`, so refusing the location
@@ -1493,7 +1513,8 @@ record's text leaving by five doors, and the client decided on 2/out/2026 to clo
 - **The conflict a save meets** (`_audit.changes_since`, told to a `Readership`): the 409 names
   only the fields the reader reads on that record, with who and when from the newest change
   they can see — `null` for both when there is none. A prayer request kept in coordination is
-  left out for a reader outside its audience the same way.
+  left out for a reader outside its audience the same way, and on a withheld record for every
+  reader who does not read the truth (OBT-655, §5.6).
 
 One predicate decides when, `_redaction.reads_the_truth(project, reader)`: coordination, or a
 record whose place is not withheld. The console's `mayWrite` does not know the four yet; until
