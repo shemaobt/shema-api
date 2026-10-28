@@ -28,6 +28,7 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.device import create_device
+from app.services.device.needs_person import record_needs_person
 from app.services.internalization_room import questions as question_service
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.voice_handles import to_handle
@@ -57,6 +58,7 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 FORCE = {"json": {"force": True}}
 #: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
 NEVER_HALTED = {"params": {"halt": 0}}
+NO_SUCH_HALT = {"params": {"needs_person_since": "2020-01-01T00:00:00+00:00"}}
 
 
 class Bucket:
@@ -257,8 +259,8 @@ def _writes_on(team: Team, claim_code: str) -> list[tuple[str, str, dict]]:
         ("POST", f"{IR}/facilitator/questions/{team.question}/resolve", {}),
         ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
         ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
-        ("POST", f"{DESK}/devices/{team.device}/attended", {}),
-        ("DELETE", f"{DESK}/devices/{team.device}/attended", {}),
+        ("POST", f"{DESK}/devices/{team.device}/attended", NO_SUCH_HALT),
+        ("DELETE", f"{DESK}/devices/{team.device}/attended", NO_SUCH_HALT),
         ("POST", f"{DESK}/devices/claim", {"json": {"code": claim_code, "project_id": team.id}}),
         ("PATCH", f"{DESK}/devices/{team.device}", {"json": {"label": "outro nome"}}),
         ("DELETE", f"{DESK}/devices/{team.device}", {}),
@@ -486,7 +488,7 @@ async def test_a_consultant_without_the_facilitator_role_is_refused_at_every_wri
 
 
 async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attended_on_a_and_reads_b(
-    client, desk
+    client, desk, db_session
 ) -> None:
     reader = desk.readers["both"]
 
@@ -498,8 +500,11 @@ async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attende
         params={"halt": 0},
         headers=reader,
     )
+    halt, _ = await record_needs_person(db_session, desk["a"].device)
     device_attended = await client.post(
-        f"{DESK}/devices/{desk['a'].device}/attended", headers=reader
+        f"{DESK}/devices/{desk['a'].device}/attended",
+        headers=reader,
+        params={"needs_person_since": halt.isoformat()},
     )
     read = await client.get(
         f"{IR}/facilitator/sessions/{desk['b'].session}/conversation", headers=reader

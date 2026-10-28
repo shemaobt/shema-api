@@ -16,8 +16,9 @@ code is exactly what ENG-460 says is not enough for the Desk.
 
 from collections.abc import Mapping
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse
+from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
@@ -162,6 +163,7 @@ async def unlink_device_route(
 async def mark_device_attended_route(
     device_id: str,
     user: FacilitatorUser,
+    needs_person_since: AwareDatetime = Query(),
     db: AsyncSession = Depends(get_db),
 ) -> DeviceAttendedResponse:
     """A facilitator went to this tablet: the halt lifts, and who went is recorded.
@@ -171,10 +173,14 @@ async def mark_device_attended_route(
     about the physical world, and the person who taps it is the person who will notice thirty
     seconds later that they tapped the wrong row.
 
-    Idempotent, and a tablet that never halted can be marked all the same; ``attend_device``
-    is where both of those are argued, along with the two refusals.
+    ``attend_device`` is where the refusals are argued.
+
+    ``needs_person_since`` is the halt the Desk read; another, or none standing, is
+    ``HALT_MOVED`` (ENG-1785).
     """
-    device = await attend_device(db, user=user, device_id=device_id)
+    device = await attend_device(
+        db, user=user, device_id=device_id, needs_person_since=needs_person_since
+    )
     nudge(device.project_id, "halts")
     return DeviceAttendedResponse.of(device)
 
@@ -183,6 +189,7 @@ async def mark_device_attended_route(
 async def undo_device_attended_route(
     device_id: str,
     user: FacilitatorUser,
+    needs_person_since: AwareDatetime = Query(),
     db: AsyncSession = Depends(get_db),
 ) -> DeviceAttendedResponse:
     """Nobody went after all: the stamps clear and the tablet asks again, from when it asked.
@@ -192,7 +199,12 @@ async def undo_device_attended_route(
     A tablet nobody marked answers 200 and changes nothing — there is no claim to withdraw,
     and treating the absence as an error would make an idempotent undo impossible to write on
     the Desk.
+
+    ``needs_person_since`` is the halt the visit lifted, which the answer to the mark serves as
+    ``attended_lifted_since``; another is ``HALT_MOVED`` (ENG-1785).
     """
-    device = await unattend_device(db, user=user, device_id=device_id)
+    device = await unattend_device(
+        db, user=user, device_id=device_id, needs_person_since=needs_person_since
+    )
     nudge(device.project_id, "halts")
     return DeviceAttendedResponse.of(device)
