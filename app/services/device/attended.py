@@ -59,15 +59,9 @@ async def _device_to_attend(db: AsyncSession, *, user: User, device_id: str) -> 
     return device
 
 
-async def _the_halt_held(
-    db: AsyncSession, device: Device, *, named: datetime, lifted: bool = False
-) -> None:
-    """Read the tablet again under its row lock, and refuse a write naming a halt that moved.
-
-    ``named`` is compared with the halt that stands, or with the one the visit lifted when
-    ``lifted``; the lock holds until the commit.
-    """
-    held = (
+async def _locked(db: AsyncSession, device: Device) -> Device:
+    """The tablet read again under its row lock, which holds until the commit."""
+    return (
         await db.execute(
             select(Device)
             .where(Device.id == device.id)
@@ -75,7 +69,9 @@ async def _the_halt_held(
             .execution_options(populate_existing=True)
         )
     ).scalar_one()
-    current = held.attended_lifted_since if lifted else held.needs_person_since
+
+
+def _refuse_unless(held: Device, named: datetime, current: datetime | None) -> None:
     if current != named:
         raise DeviceHaltMoved(held.needs_person_since, held.attended_lifted_since)
 
@@ -103,7 +99,8 @@ async def attend_device(
     tablet's current halt and writes nothing, so a visit never lifts a halt nobody saw.
     """
     device = await _device_to_attend(db, user=user, device_id=device_id)
-    await _the_halt_held(db, device, named=needs_person_since)
+    held = await _locked(db, device)
+    _refuse_unless(held, needs_person_since, held.needs_person_since)
     visited(device, by=user.id)
     await db.commit()
     await db.refresh(device)
@@ -132,9 +129,10 @@ async def unattend_device(
     which lifts it, because it never calls a person (ADR 0064).
     """
     device = await _device_to_attend(db, user=user, device_id=device_id)
+    device = await _locked(db, device)
     if device.attended_at is None:
         return device
-    await _the_halt_held(db, device, named=needs_person_since, lifted=True)
+    _refuse_unless(device, needs_person_since, device.attended_lifted_since)
 
     lifted = device.attended_lifted_since
     device.attended_at = None
