@@ -389,7 +389,8 @@ async def read_the_take_downloads(
 
     Read it again for fresh links. A name is the release the draft stands approved under at
     the moment of the read, or the name the next version will have; a session a Zerar archived
-    keeps the name of the release its takes were approved as (ADR 0081).
+    keeps the name of the release its takes still stand on, else the archive's `zerada` stamp
+    (ADR 0100).
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await take_downloads_of(db, session)
