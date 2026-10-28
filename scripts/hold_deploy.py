@@ -12,6 +12,8 @@ from sqlalchemy.orm import load_only
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRSession
 from app.db.types import UtcDateTime
+from app.services.internalization_room.canon import kept
+from app.services.internalization_room.canon_pins import held_canon_pins
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
@@ -53,6 +55,10 @@ async def holding(
     ]
 
 
+async def dropped(db: AsyncSession) -> list[str]:
+    return [pin for pin in await held_canon_pins(db) if not kept.keeps(pin)]
+
+
 def named(held: list[tuple[IRSession, datetime]]) -> str:
     return "\n".join(
         f"  {session.id}  project {session.project_id}  passage {session.pericope}"
@@ -68,7 +74,15 @@ async def wait() -> int:
     started = time.monotonic()
     while True:
         async with AsyncSessionLocal() as db:
+            missing = await dropped(db)
             held = await holding(db, datetime.now(UTC), window)
+        if missing:
+            print(
+                "::error::This image keeps no canon for these pins sessions hold, so nothing"
+                f" shipped: {', '.join(missing)}",
+                flush=True,
+            )
+            return 1
         if not held:
             print("No team session is open; the deploy goes on.", flush=True)
             return 0

@@ -111,7 +111,9 @@ refuses with no file, with a file that is not that read's answer or was not serv
 pin it holds no tree for, and when `kept/` is a link or holds one. Both clocks must be on network
 time. While a prune pull request is pending, until it deploys, do not roll production back or
 run the deploy workflow on an older ref: a revision serving a dropped pin opens sessions that
-answer 409 after the next deploy. Never edit vendored
+answer 409 after the next deploy. From this change on, a deploy fails, urgent or not, on an image
+that keeps no canon for a pin some session holds, at once or on any poll of its wait, and names
+the pin; a deploy of an older ref and a traffic rollback are not checked. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.

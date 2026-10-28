@@ -26,6 +26,10 @@ def deployed_pin() -> str:
     return pinned_commit(DEPLOYED_PIN.read_text(encoding="utf-8"))
 
 
+def keeps(pin: str) -> bool:
+    return pin == deployed_pin() or (KEPT_DIR / pin).is_dir()
+
+
 @contextmanager
 def reading_the_canon_of(pin: str | None) -> Iterator[None]:
     token = _READING.set(None if pin is None or pin == deployed_pin() else KEPT_DIR / pin)

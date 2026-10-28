@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; the deploy-time guard on live pins it leaves to its own ticket is ENG-1780: a deploy fails on an image that keeps no canon for a pin a session holds
 date: 2026-10-22
 ---
 
