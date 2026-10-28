@@ -22,18 +22,22 @@ def whole_key(release_id: str, takes: list[IRTake]) -> str:
 async def whole_passage(store: TakeStore, release_id: str, takes: list[IRTake]) -> str:
     """The key of the joined file, built only when the bucket does not hold it yet.
 
-    Every take's own header is read first, so a take the record calls WAV and the bytes do
-    not refuses the whole before anything is written.
+    The takes are laid in scene order, whatever order they come in. Every take's own header is
+    read first, so a take the record calls WAV and the bytes do not, or that holds no sample,
+    refuses the whole before anything is written.
     """
-    key = whole_key(release_id, takes)
+    if not takes:
+        raise NotAllWav("the passage has no take to lay down")
+    scenes = sorted(takes, key=lambda take: take.ordinal or 0)
+    key = whole_key(release_id, scenes)
     if await store.stat(key) is None:
-        data = b"".join([_samples(await store.get(take.storage_key)) for take in takes])
+        data = b"".join([_samples(await store.get(take.storage_key)) for take in scenes])
         await store.put(key, Pcm(rate=RATE, channels=CHANNELS, data=data).wav(data), "audio/wav")
     return key
 
 
 def _samples(recording: bytes | None) -> bytes:
     pcm = None if recording is None else pcm16(recording)
-    if pcm is None or pcm.rate != RATE or pcm.channels != CHANNELS:
+    if pcm is None or not pcm.data or pcm.rate != RATE or pcm.channels != CHANNELS:
         raise NotAllWav("a take of the passage is not 16 kHz mono 16-bit WAV")
     return pcm.data

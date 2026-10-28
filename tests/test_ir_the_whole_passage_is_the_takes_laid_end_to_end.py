@@ -70,9 +70,12 @@ async def test_three_scene_takes_become_one_file_in_scene_order() -> None:
     store = MemoryStore()
     takes = [_take(store, _wav(scene), ordinal) for ordinal, scene in enumerate(SCENES, start=1)]
 
-    key = await whole_passage(store, RELEASE, takes)
+    shuffled = [takes[1], takes[0], takes[2]]
+
+    key = await whole_passage(store, RELEASE, shuffled)
 
     assert _samples(store.objects[key]) == SCENES[0] + SCENES[1] + SCENES[2]
+    assert key == await whole_passage(store, RELEASE, takes)
     assert _format(store.objects[key]) == (RATE, 1, 2)
 
 
@@ -129,9 +132,10 @@ async def test_a_new_version_of_the_release_makes_a_new_key() -> None:
         _wav(SCENES[0], rate=44100),
         _wav(SCENES[0] * 2, channels=2),
         _wav(SCENES[0], width=1),
+        _wav([]),
         b"RIFFnot a wav at all",
     ],
-    ids=["44.1 kHz", "stereo", "8-bit", "no header"],
+    ids=["44.1 kHz", "stereo", "8-bit", "no samples", "no header"],
 )
 async def test_a_take_whose_header_is_not_16khz_mono_16bit_refuses_the_whole(
     stranger: bytes,
@@ -152,3 +156,21 @@ async def test_a_take_the_bucket_no_longer_holds_refuses_the_whole() -> None:
 
     with pytest.raises(NotAllWav):
         await whole_passage(store, RELEASE, takes)
+
+
+async def test_the_key_is_the_release_and_the_digest_of_the_takes_digests_in_scene_order() -> None:
+    store = MemoryStore()
+    takes = [_take(store, _wav(SCENES[1]), 2), _take(store, _wav(SCENES[0]), 1)]
+    takes[0].sha256, takes[1].sha256 = "2" * 64, "1" * 64
+
+    key = await whole_passage(store, RELEASE, takes)
+
+    assert key == (
+        "internalization-room/whole/terena-P01-v1/"
+        "ca9034371c79ec26ec0496b53420a1117d4f765800dfdce138138b139d591f13.wav"
+    )
+
+
+async def test_a_passage_with_no_take_has_no_whole_to_join() -> None:
+    with pytest.raises(NotAllWav):
+        await whole_passage(MemoryStore(), RELEASE, [])
