@@ -12,19 +12,17 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.project import Project
-from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.segments import final_segments
 from tests.baker import make_app, make_role
 from tests.device_harness import TABLET_TEAM
 from tests.release_harness import (
     APP_KEY,
     PREFIX,
     at_the_desk,
+    checked_and_heard,
     checked_heard_and_approved,
     desk_release,
     ready_session,
     releases_of,
-    reported_playback,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import room_client
@@ -72,17 +70,7 @@ async def test_a_facilitator_forcing_a_forced_draft_whose_telling_came_back_conf
     first = await room.post(desk_release(session_id), headers=desk, json={"force": True})
     assert first.json()["version"] == 1, first.text
     await db_session.refresh(session)
-    told = await final_segments(db_session, session_id)
-    await reported_playback(
-        db_session,
-        session,
-        BackTranslationState(
-            scope=session.pericope,
-            findings=[],
-            checked=True,
-            analysed_segment_ids=[one.id for one in told],
-        ),
-    )
+    await checked_and_heard(db_session, session)
 
     again = await room.post(desk_release(session_id), headers=desk, json={"force": True})
 
