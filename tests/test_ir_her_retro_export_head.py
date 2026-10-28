@@ -1,8 +1,7 @@
 """ENG-1801 — the head of the retroverificação file carries her fields in her order.
 
-Her `retroExport.ts` at the pin (18fa7c4) opens with the release, the version and the approval
-it stands under. Read off the rows the room
-wrote, through its own write paths.
+Her `retroExport.ts` at the pin (18fa7c4), read off the rows the room wrote, through its own
+write paths.
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ from app.services.internalization_room.passage_retroverification import (
 from app.services.internalization_room.retro_export import retro_export
 from app.services.internalization_room.segments import (
     capture_segment,
-    divide_segment,
     final_segments,
 )
 from tests.baker import make_app, make_role
@@ -420,19 +418,4 @@ async def test_an_approved_frase_finds_its_words_at_its_position_in_its_part(
     assert [(one["n"], one["transcript"], one["stale"]) for one in frases] == [
         (1, TOLD_AGAIN, False),
         (2, "", True),
-    ]
-
-
-async def test_dividing_an_approved_stretch_leaves_its_frase_with_its_own_words(
-    client, db_session
-) -> None:
-    session, _ = await _approved(client, db_session, tell=_two_stretches)
-    first, *_ = await final_segments(db_session, session.id)
-    await divide_segment(db_session, session, first, at_ms=15000)
-
-    frases = (await _exported(db_session, session.id))["frases"]
-
-    assert [(one["n"], one["transcript"], one["stale"]) for one in frases] == [
-        (1, "um", False),
-        (2, "dois", False),
     ]

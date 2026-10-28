@@ -91,9 +91,8 @@ async def retro_export(
     """Her file down to the frases of the telling.
 
     ``release`` is the version the draft stands approved under, or none while it is a draft.
-    An approved frase keeps its number and place and finds its live stretch by its idx: the row
-    itself while current, else the row that took its place, else after a restart the leaf of the
-    same part starting where the frase did; none leaves it empty and stale.
+    An approved frase finds its live stretch by its idx: itself while current, else its
+    replacement, else after a restart the top stretch of its part starting where it did.
     """
     keys = keys_of_the_takes(await takes_of(db, session.id))
     standing = {row.id: row for row in await current_segments(db, session.id)}
@@ -122,7 +121,7 @@ async def retro_export(
             pass_number=row.pass_number if row else 1,
             recordedAt=row.created_at.isoformat() if row else "",
             supersedes=replaces.get(row.id) if row else None,
-            stale=stale,
+            stale=stale or not (row and row.transcript),
         )
 
     def _live(idx: str, place: tuple[str, float | None, float | None]) -> IRSegment | None:
@@ -135,8 +134,10 @@ async def retro_export(
         return next(
             (
                 row
-                for row in leaves
-                if keys.get(row.take_id) == place[0] and row.starts_ms / 1000 == place[1]
+                for row in standing.values()
+                if row.parent_id is None
+                and keys.get(row.take_id) == place[0]
+                and row.starts_ms / 1000 == place[1]
             ),
             None,
         )
@@ -148,7 +149,11 @@ async def retro_export(
         for one in approval.frases:
             place = (one.clipKey, one.coversFrom, one.coversTo)
             row = _live(one.idx, place)
-            frases.append(_frase(one.n, one.idx, row, place, stale=row is None or row.stale))
+            frases.append(
+                _frase(
+                    one.n, one.idx, row, place, stale=row is None or not row.transcript or row.stale
+                )
+            )
     else:
         counted = [(numbers[row.id], row, False) for row in told]
         waiting_on = [(len(told) + k, row, True) for k, row in enumerate(waiting, 1)]
