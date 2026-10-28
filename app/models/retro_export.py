@@ -93,6 +93,42 @@ class RetroHistoryEntry(_Hers):
     superseded: bool
 
 
+class RetroCheckFinding(_Hers):
+    absent_when_none = ("frase", "idx", "clipKey", "quote", "story", "voiced")
+
+    kind: Literal["missing", "addition", "silence", "unclear", "nuance"]
+    note: str
+    frase: int | None = None
+    idx: str | None = None
+    clipKey: str | None = None
+    quote: str | None = None
+    story: str | None = None
+    voiced: Literal["now", "before"] | None = None
+
+
+class RetroCheck(_Hers):
+    at: str
+    findings: list[RetroCheckFinding]
+    spoken: str
+    outcome: str
+    conferida: bool
+
+
+class RetroSupersededTake(_Hers):
+    absent_when_none = ("supersededAt",)
+
+    key: str
+    takeId: str
+    sha256: str
+    durationMs: int | None
+    bytes: int
+    contentType: str
+    recordedAt: str
+    supersededAt: str | None = None
+    filename: str
+    url: str
+
+
 class RetroExport(_Hers):
     absent_when_none = ("note",)
 
@@ -104,3 +140,7 @@ class RetroExport(_Hers):
     approval: RetroApproval | None
     frases: list[RetroFrase]
     history: list[RetroHistoryEntry]
+    checks: list[RetroCheck]
+    heardByClip: dict[str, float]
+    supersededTakes: list[RetroSupersededTake]
+    exportedAt: str

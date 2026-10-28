@@ -13,10 +13,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     CheckRound,
+    Finding,
+    FindingKind,
     Nuance,
 )
 from app.services.internalization_room.passage_retroverification import (
@@ -30,6 +33,7 @@ from app.services.internalization_room.segments import (
     final_segments,
     retired_segments,
 )
+from app.services.internalization_room.sessions import report_playback
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -51,8 +55,10 @@ from tests.release_harness import (
     the_part_recorded_again,
 )
 from tests.room_harness import (
+    PART_MS,
     record_the_part_again,
     rehearsed_in_parts,
+    rehearsed_in_parts_of,
     room_client,
     the_bucket_is_in_memory,
 )
@@ -100,6 +106,7 @@ async def test_an_approved_passage_opens_with_her_keys_in_her_order(client, db_s
 
     assert list(file) == [
         "releaseId", "pericopeId", "version", "finalized", "approval", "frases", "history",
+        "checks", "heardByClip", "supersededTakes", "exportedAt",
     ]  # fmt: skip
     assert (file["releaseId"], file["pericopeId"], file["version"], file["finalized"]) == (
         "release-1", pericope, 1, True,
@@ -120,6 +127,7 @@ async def test_an_unapproved_passage_has_no_approval_and_says_so(db_session) -> 
 
     assert list(file) == [
         "releaseId", "pericopeId", "version", "finalized", "note", "approval", "frases", "history",
+        "checks", "heardByClip", "supersededTakes", "exportedAt",
     ]  # fmt: skip
     assert [(one["n"], one["transcript"]) for one in file["frases"]] == [(1, WORDS)]
     (live,) = file["frases"]
@@ -711,3 +719,137 @@ async def test_history_lists_told_stretches_only_and_a_piece_enters_once_told(
     assert first_id in seen and told_id in seen
     assert not {piece_id, other_id} & seen
     assert "supersedes" not in next(one for one in history if one["idx"] == told_id)
+
+
+async def _checked_three_times(db, session) -> BackTranslationState:
+    told = await one_stretch(db, session)
+    part = await the_one_part_of(db, session)
+    first_at = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    nuance = Nuance(
+        note="detalhe", chunk=1, segment_id=told.id, quote="Rute", story="a história diz Noemi",
+        take_id=part.id, starts_ms=0, ends_ms=CLIP_MS, voiced="now",
+    )  # fmt: skip
+    found = Finding(kind=FindingKind.ADDITION, note="NOTA-1", segment_id=told.id, chunk=1)
+    rounds = [
+        CheckRound(
+            at=first_at, findings=[found], spoken="vocês acrescentaram",
+            outcome="corrected", conferida=False,
+        ),
+        CheckRound(
+            at=first_at + timedelta(hours=1), spoken="só um detalhe", outcome="pass",
+            conferida=True, nuances=[nuance],
+        ),
+        CheckRound(
+            at=first_at + timedelta(hours=2), spoken="vocês contaram bem", outcome="pass",
+            conferida=True,
+        ),
+    ]  # fmt: skip
+    return BackTranslationState(
+        scope=session.pericope, checked=True, analysed_segment_ids=[told.id], checks=rounds
+    )
+
+
+async def test_every_check_is_listed_with_its_findings_notes_and_the_voice(db_session) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_checked_three_times)
+    (stretch,) = await final_segments(db_session, session.id)
+    stretch_id = stretch.id
+
+    checks = (await _exported(db_session, session.id))["checks"]
+
+    first, second, third = checks
+    assert list(first) == ["at", "findings", "spoken", "outcome", "conferida"]
+    assert first["at"] == "2026-10-01T12:00:00+00:00"
+    assert (first["spoken"], first["outcome"], first["conferida"]) == (
+        "vocês acrescentaram", "corrected", False,
+    )  # fmt: skip
+    assert first["findings"] == [
+        {"kind": "addition", "note": "NOTA-1", "frase": 1, "idx": stretch_id, "clipKey": "whole"}
+    ]
+    (nuance,) = second["findings"]
+    assert list(nuance) == ["kind", "note", "frase", "idx", "clipKey", "quote", "story", "voiced"]
+    assert (nuance["kind"], nuance["quote"], nuance["story"], nuance["voiced"]) == (
+        "nuance", "Rute", "a história diz Noemi", "now",
+    )  # fmt: skip
+    assert (third["findings"], third["conferida"]) == ([], True)
+
+
+async def test_heard_by_clip_is_the_share_of_each_part_the_team_heard(db_session) -> None:
+    project, _ = await a_claimed_device(db_session)
+    half = await a_rehearsal_only_half_heard(db_session, project)
+    session, (first, second) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
+    lone, lone_part = await rehearsed_session(db_session, project_id=project.id)
+    half_id, session_id, lone_id = half.id, session.id, lone.id
+    played = {
+        first.id: [(0, 30000), (30200, PART_MS)],
+        second.id: [(30000, 40000), (50000, 90000)],
+    }
+    await report_playback(
+        db_session,
+        session,
+        BackTranslationState(scope=session.pericope),
+        played_by_take=[
+            PlayedTake(take_id=take_id, played_ranges=spans, clip_duration_ms=PART_MS)
+            for take_id, spans in played.items()
+        ],
+        played_ranges=[[0, PART_MS]],
+        clip_duration_ms=PART_MS,
+    )
+    await report_playback(
+        db_session,
+        lone,
+        BackTranslationState(scope=lone.pericope),
+        played_by_take=[
+            PlayedTake(take_id=lone_part.id, played_ranges=[(0, 1000)], clip_duration_ms=0)
+        ],
+        played_ranges=[[0, 1000]],
+        clip_duration_ms=0,
+    )
+
+    assert (await _exported(db_session, half_id))["heardByClip"] == {
+        "whole": pytest.approx(20 / 61)
+    }
+    assert (await _exported(db_session, session_id))["heardByClip"] == {
+        "S1": pytest.approx(1.0),
+        "S2": pytest.approx(21 / 61),
+    }
+    assert (await _exported(db_session, lone_id))["heardByClip"] == {"whole": 0}
+
+
+async def test_a_replaced_take_is_listed_under_her_name_with_the_time_it_stopped_being_live(
+    client, db_session
+) -> None:
+    session, _ = await _approved(client, db_session)
+    old = await the_one_part_of(db_session, session)
+    old_facts = (old.id, old.sha256, old.size_bytes, old.recorded_at.isoformat())
+    fresh = await the_part_recorded_again(db_session, session)
+    replaced_at = fresh.created_at.isoformat()
+
+    (take,) = (await _exported(db_session, session.id))["supersededTakes"]
+
+    assert list(take) == [
+        "key", "takeId", "sha256", "durationMs", "bytes", "contentType", "recordedAt",
+        "supersededAt", "filename", "url",
+    ]  # fmt: skip
+    assert (take["key"], take["takeId"], take["sha256"], take["bytes"]) == ("whole", *old_facts[:3])
+    assert (take["recordedAt"], take["supersededAt"]) == (old_facts[3], replaced_at)
+    assert take["filename"] == f"release-1-whole-substituida-{old.id}.m4a"
+    assert take["url"] == f"/api/internalization-room/facilitator/takes/{old.id}/audio"
+
+
+async def test_a_take_nothing_replaced_carries_no_time(db_session) -> None:
+    session, (whole, _part) = await rehearsed_in_parts_of(db_session, [1, 1], unnumbered_first=True)
+
+    (take,) = (await _exported(db_session, session.id))["supersededTakes"]
+
+    assert (take["takeId"], "supersededAt" in take) == (whole.id, False)
+
+
+async def test_the_file_says_when_it_was_exported(db_session) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    before = datetime.now(UTC)
+
+    stamped = (await _exported(db_session, session.id))["exportedAt"]
+
+    assert before <= datetime.fromisoformat(stamped) <= datetime.now(UTC)
