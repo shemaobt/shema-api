@@ -115,8 +115,9 @@ def _her_rehearsal(text: str) -> tuple[int, str] | None:
     frases = int(counted.group(1)) if counted else 1
     for code in ("pt", "en"):
         note = scene_rehearsal_note(code, frases)
-        if text.startswith(note):
-            return frases, text[len(note) :].strip()
+        pieces = text[len(note) :].strip()
+        if text.startswith(note) and pieces:
+            return frases, pieces
     return None
 
 

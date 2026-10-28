@@ -24,6 +24,7 @@ from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from app.services.internalization_room import llm
+from tests.golden_rehearsal_harness import an_open_session, the_room_stands_in
 from tests.text_seam_harness import (
     BEARER,
     GOLDEN,
@@ -635,6 +636,71 @@ async def test_her_english_note_with_no_count_is_a_rehearsal_of_one_frase(
     assert agent.guide_inputs == [text]
     kept = (await _the_last_turn(db_session, session_id))["scene_rehearsal"]
     assert (kept["scene"], kept["frases"]) == ("S1", 1)
+
+
+HER_ONE_PIECE_NOTE = (
+    "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue a tradução:]"
+)
+
+
+async def test_a_rehearsal_credited_to_a_scene_moves_the_moment_and_hands_the_guide_its_readings(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 4})
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={
+            "sessionId": session_id,
+            "teamText": f"{HER_ONE_PIECE_NOTE} Ele deu a sandália.",
+            "sceneRehearsals": ["S4"],
+        },
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["acceptedIds"] == ["R5"]
+    assert "ACCEPTED READINGS" in agent.guide_systems[-1]
+    moment = (await _the_last_turn(db_session, session_id))["moment"]
+    assert (moment["after"]["at"], moment["by"]) == ("articulation", ["scene_rehearsal"])
+
+
+async def test_a_rehearsal_credited_to_no_scene_leaves_the_moment_and_the_readings_alone(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 4})
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={
+            "sessionId": session_id,
+            "teamText": f"{HER_ONE_PIECE_NOTE} Ele deu a sandália.",
+            "sceneRehearsals": [],
+        },
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert "acceptedIds" not in answered.json()
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1]
+    moment = (await _the_last_turn(db_session, session_id))["moment"]
+    assert (moment["after"]["at"], moment["by"]) == ("internalization", [])
+
+
+async def test_her_note_with_no_pieces_behind_it_credits_no_scene(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": HER_ONE_PIECE_NOTE, "sceneRehearsals": ["S1"]},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert "scene_rehearsal" not in await _the_last_turn(db_session, session_id)
 
 
 async def test_team_words_that_are_not_her_rehearsal_note_are_not_a_rehearsal(
