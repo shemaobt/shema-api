@@ -108,7 +108,8 @@ def withheld_note(records: Iterable[LeavingShape], reader: ShemaReader) -> int |
     OBT-571, which widened the reading and not the writing). The caller says who the
     announcement is for, and that is not always who the rows were built for: the Projetos screen
     announces to its own caller, and a file a coordinator exports carries rows built for
-    ``outside`` with a header addressed to the coordinator (BE-14). Anybody else is told
+    ``outside`` with a header addressed to the coordinator (BE-14) — to the coordination only,
+    since OBT-655 (``Readership.file_reader``). Anybody else is told
     nothing — which hides nothing, because each row still carries its own ``locationWithheld``
     (BE-04's *make the withholding visible*); GATE-04 decided the notice, not the bit.
 

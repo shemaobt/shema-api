@@ -520,8 +520,8 @@ class Readership(NamedTuple):
 
     @property
     def coordinates_anything(self) -> bool:
-        """Whether this caller coordinates any region — who may import, and who the export's
-        header used to be addressed to before OBT-571 widened the reading."""
+        """Whether this caller coordinates any region — who may import, and who a file's header
+        is addressed to (:attr:`file_reader`)."""
         return self.coordination.global_ or bool(self.coordination.regions)
 
     @property
@@ -558,6 +558,23 @@ class Readership(NamedTuple):
             return ShemaReader.COORDINATION
         if self.reads_truth_anywhere:
             return ShemaReader.TRUSTED
+        return ShemaReader.OTHER
+
+    @property
+    def file_reader(self) -> ShemaReader:
+        """The reader a file's header is addressed to — the coordination, or nobody it tells.
+
+        Not :attr:`collection_reader`, since OBT-655 (Levi, 28/oct/2026, the issue's
+        recommendation, for Karina to validate): the Resource Circle is told on the screen how
+        many are withheld (OBT-571), and its file is not, which is GATE-04 1.3's *the notice is
+        coordination's* again for the one thing that leaves. Its rows are not what changed — a
+        file is ``outside`` whoever exports, so the Circle's sensitive rows leave reduced, each
+        with its ``locationWithheld``, as everybody's do; what it loses is the line that counts
+        them. The alternative put to her is keeping it, as a notice that the file holds
+        sensitive projects.
+        """
+        if self.coordinates_anything:
+            return ShemaReader.COORDINATION
         return ShemaReader.OTHER
 
 

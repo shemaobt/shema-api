@@ -1317,7 +1317,8 @@ ver tudo, mesmo os projetos em países sensíveis, só não podem editar"*; Dani
 *tudo* includes the **health**, and the **OBT Lab stays redacted**). The Resource Circle reads a
 sensitive project in its own scope exactly as the coordination does — the place, the base, the
 contacts, the reason, the real language name, the free text, the needs' descriptions, the
-history's notes, the count of withheld projects and the `sensitive` facet — and the health on
+history's notes, the count of withheld projects and the `sensitive` facet on the screen (not in
+the file it exports, since OBT-655 — below) — and the health on
 the ficha, the card, the health tab, the filter, the order and the file it exports
 (`_health_audience.HEALTH_READERS`). **And it writes nothing** — Daniel, 7/oct/2026, reading
 Karina's *só não podem editar* whole: no project write on any route, not even the fields the
@@ -1725,8 +1726,17 @@ region key where the place was, an empty base and `locationWithheld: true` **who
 the region's own coordinator included, because a file is what leaves.
 
 **The route takes the caller's reader, and only to address the header.** How many places were
-withheld is a line for coordination (GATE-04, 1.3) — `withheld_note`, told who the exporter is —
-and every other reader, like a file with nothing withheld, gets no line at all. The header also
+withheld is a line for coordination (GATE-04, 1.3) — `withheld_note`, told who the exporter is
+(`Readership.file_reader`) — and every other reader, like a file with nothing withheld, gets no
+line at all. **The Resource Circle's file included — [OBT-655](https://linear.app/shema-obt/issue/OBT-655),
+28/oct/2026, Levi, following the issue's recommendation, for Karina to validate.** Since OBT-571
+the header had been addressed as the Projetos screen's notice is (`collection_reader`), which
+told the Circle *N projetos em países sensíveis saem com local e base recolhidos* (API-PRIV-034).
+The issue asked for it to go because *nothing is withheld from a reader of the truth*; that holds
+of the screen and not of the file — the Circle's rows leave reduced like everybody's, each with
+its `locationWithheld: true`, so the line was true and what the decision removes is the notice.
+The alternative put to her is keeping it, as a notice that the file holds sensitive projects;
+the screen's count, which the Circle keeps, was not in question. The header also
 says what the file holds, when it was made and by whom, over which scope, that it is confidential,
 and which log row it is. `READER_ROUTES` lists the route with that argument, and
 `export_projects.py` calls no `read_by`, which the tree test holds.
