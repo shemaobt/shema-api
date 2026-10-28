@@ -126,7 +126,7 @@ async def test_a_rehearsal_sent_outside_ruth_3_and_4_hands_the_guide_no_accepted
     )
 
 
-async def test_an_unmarked_rehearsal_in_the_articulation_of_part_4_is_checked_as_scene_4(
+async def test_an_unmarked_rehearsal_in_the_articulation_of_part_4_hands_the_guide_no_accepted_readings(  # noqa: E501
     client, monkeypatch, db_session: AsyncSession
 ) -> None:
     session_id = await an_open_session(client)
@@ -138,8 +138,8 @@ async def test_an_unmarked_rehearsal_in_the_articulation_of_part_4_is_checked_as
     sent = await a_sent_rehearsal(client, session_id, None)
 
     assert sent.status_code == 200, sent.text
-    assert after_the_break(agent.guide_systems[-1]).endswith(f"\n\n{HEADER}\n{P11_S4_R5}"), (
-        "um ensaio sem cena marcada, na articulação da parte 4, não era conferido como a cena 4"
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1], (
+        "um ensaio sem cena marcada, na articulação da parte 4, ganhava as leituras da cena 4"
     )
 
 
