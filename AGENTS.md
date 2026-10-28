@@ -40,7 +40,7 @@ The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordin
 
 ## Golden runs
 
-**The measure is her runner.** Our backend is accepted by her 23 scripts and her 45 checks, played by her own runner at the pin in `docs/doctrine/FREEZE_PIN` from a checkout of her repository, over `--http` against the Golden doors. One command does it, and keeps her reports in `golden/reports/<date>/` beside the backend commit judged and the pin; it refuses a checkout that is not at the pin or carries changes to it, and its exit is hers (0 passed, 1 a session failed, 2 her preflight stopped the run, 3 the backend died mid-script) or 4 for a refusal before anything played. Her runner needs `ANTHROPIC_API_KEY` for her judge and her preflight.
+**The measure is her runner.** Our backend is accepted by her 23 scripts and her 45 checks, played by her own runner at the pin in `docs/doctrine/FREEZE_PIN` from a checkout of her repository, over `--http` against the Golden doors. One command does it, and keeps her reports in `golden/reports/<date>/` beside the backend commit judged and the pin; it refuses a checkout that is not at the pin or carries changes to it, and its exit is hers (0 passed, 1 a session failed, 2 her preflight stopped the run, 3 the backend died mid-script) or 4 for a refusal before anything played. Her runner needs `ANTHROPIC_API_KEY` for her judge and her preflight. A local backend names its build only when started with `GIT_SHA=$(git rev-parse HEAD)`; without it the round is refused.
 
 ```sh
 TRIPOD_INTERNALIZATION_REPO=~/Tripod-Internalization INTERNALIZATION_ROOM_RUNNER_KEY=<key> \
