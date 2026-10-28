@@ -90,6 +90,10 @@ class RoundFinding(BaseModel):
     #: named no readable position, which is the case her item 1 leaves open.
     frase: int | None
     stretchId: str | None
+    #: Her `quote`, `story` and `voiced`: only a nuance has them, read from the stored nuance.
+    quote: str | None = None
+    story: str | None = None
+    voiced: Literal["now", "before"] | None = None
 
 
 class TextRoundResponse(BaseModel):

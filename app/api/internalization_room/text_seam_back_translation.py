@@ -93,6 +93,9 @@ def _reported(current: list[Finding], state: BackTranslationState) -> list[Round
             note=f"«{one.quote}» — {one.story}",
             frase=one.chunk,
             stretchId=one.segment_id,
+            quote=one.quote,
+            story=one.story,
+            voiced=one.voiced,
         )
         for one in (state.checks[-1].nuances if state.checks else [])
         if one.voiced != "before"
