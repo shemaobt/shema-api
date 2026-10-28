@@ -159,6 +159,22 @@ async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
     return parts[0]
 
 
+async def checked_and_heard(db: AsyncSession, session: IRSession) -> None:
+    """The team's telling-back read clean over every stretch it told, and every part heard: the
+    telling conferida, and nobody has approved it yet."""
+    told = await final_segments(db, session.id)
+    await reported_playback(
+        db,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+
+
 async def checked_heard_and_approved(
     client: httpx.AsyncClient,
     db: AsyncSession,
@@ -174,17 +190,7 @@ async def checked_heard_and_approved(
     db.expire_all()
     session = await db.get(IRSession, session_id)
     assert session is not None
-    told = await final_segments(db, session.id)
-    await reported_playback(
-        db,
-        session,
-        BackTranslationState(
-            scope=session.pericope,
-            findings=[],
-            checked=True,
-            analysed_segment_ids=[one.id for one in told],
-        ),
-    )
+    await checked_and_heard(db, session)
     answered = await client.post(team_release(session.id), headers=headers)
     assert answered.status_code == 200, answered.text[:300]
     version: int | None = answered.json()["version"]

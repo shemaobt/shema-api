@@ -1,5 +1,5 @@
 ---
-status: superseded in part by ADR 0075: the force passes every blocker but a missing recording and is addressed to the passage; that only the facilitator forces, and ADR 0014's rule under force, stand
+status: superseded in part by ADR 0075: the force passes every blocker but a missing recording and is addressed to the passage; that only the facilitator forces, and ADR 0014's rule under force, stand; amended by ADR 0101: once no blocker stands over a forced release's takes, the next approval mints the next version, not forced, instead of answering with the forced one
 date: 2026-09-11
 ---
 
