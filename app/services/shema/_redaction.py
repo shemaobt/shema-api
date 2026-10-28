@@ -28,6 +28,9 @@ a validator, so the three things a query-side caller needs are:
   one that reader may type over;
 * :func:`never_lowered` — the import's one-way rule on the flag (BE-14): a file may raise it and
   may not clear it;
+* :func:`flag_by_country` and :func:`flag_project_by_country` — the list's one-way rule on the
+  flag (OBT-616): a place that names a sensitive country raises it, and nothing here lowers it;
+  :func:`listed_as_read` tells a reader of the truth which listed countries the place names;
 * :func:`reads_the_truth` — the one spelling of *this reader reads this project as it is*
   (OBT-556), which every path that is not a shape asks instead of writing the condition out;
 * :func:`withheld_from`, :func:`free_text_as_read`, :func:`assessments_as_read` and
@@ -47,7 +50,7 @@ applied per endpoint is a rule the next endpoint forgets; a glob is not.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, Final, TypeVar
 
@@ -70,7 +73,7 @@ from app.models.shema_record import (
     ShemaProjectRecord,
     ShemaStoryProgressRow,
 )
-from app.utils.shema_derivations import get_region
+from app.utils.shema_derivations import SensitiveCountries, get_region
 
 
 def is_withheld(project: ShemaProject) -> bool:
@@ -414,6 +417,49 @@ def derive_region(project: ShemaProject) -> ShemaRegionKey:
     is one call to it.
     """
     return get_region(project.location)
+
+
+def flag_by_country(merged: MutableMapping[str, Any], listed: SensitiveCountries) -> None:
+    """Raise the flag of a save's or a create's merged view when its place names a listed country.
+
+    OBT-616 — Karina, via Daniel, 19/out/2026: a project in a sensitive country is sensitive **by
+    its country**, and nobody has to remember the tick. It runs on the merged view, **before** the
+    save's diff, so the rule is part of what the save writes: a save that leaves a listed place
+    leaves the flag raised and the trail says so, and a hand that lowers the flag of a listed
+    project changes nothing — the save stops at its fourth step and moves no version.
+
+    **It only raises** (the issue's proposal, *a confirmar com o Daniel*): a place moved off the
+    list, or a country taken off it, leaves a raised flag where it was — the safe side. Lowering is
+    still the coordination's, on a project whose place names no listed country.
+    """
+    if listed.named_in(merged.get("location") or ""):
+        merged["sensitive_country"] = True
+
+
+def flag_project_by_country(project: ShemaProject, listed: SensitiveCountries) -> None:
+    """:func:`flag_by_country` for the writers that apply a place straight to the row.
+
+    The Admin's confirmation (a ``false`` in the body does not outvote a listed country) and the
+    project an approval files (born sensitive in a listed country — *passa a nascer marcado*).
+    """
+    if listed.named_in(project.location):
+        project.sensitive_country = True
+
+
+def listed_as_read(
+    project: ShemaProject, reader: ShemaReader, listed: SensitiveCountries
+) -> dict[str, Any]:
+    """The listed countries the place names, for a reader of the truth — an update, or nothing.
+
+    What lets the ficha say *sensível por causa do país* apart from *marca própria* (OBT-616): the
+    flag is one bit and keeps no provenance, so the reason is read off the place and the list as
+    they stand. Only a reader who reads the truth — coordination and the Resource Circle — is
+    told: the list is the Admin's, and the record hands any other reader its own slice of it no
+    more than it hands them the place.
+    """
+    if not reader.reads_truth:
+        return {}
+    return {"listed_countries": list(listed.named_in(project.location))}
 
 
 def unwritable_fields(

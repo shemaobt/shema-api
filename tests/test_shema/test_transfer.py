@@ -39,7 +39,7 @@ from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.models.shema_transfer import CSV_BOM, ExportedProject
 from app.services.shema.save_project import MINTED_ID_REQUIRED, _bump_version
-from tests.shema_harness import need, person
+from tests.shema_harness import list_countries, need, person
 from tests.test_shema.conftest import PREFIX, make_shema_project
 
 EXPORT = f"{PREFIX}/export/projects"
@@ -897,6 +897,29 @@ async def test_the_import_creates_and_updates_inside_the_scope(
         )
     ).scalars()
     assert set(authors) == {"Test User"}
+
+
+async def test_an_imported_record_in_a_listed_country_is_raised(
+    client, db_session, coordinator
+) -> None:
+    """OBT-616: the import writes through the create and the save, so a file meets the list the
+    way a typed record does — a new record and an existing one moved into a listed country."""
+    await list_countries(db_session)
+    existing = await seed(db_session, "vale-movido")
+
+    response = await upload(
+        client,
+        coordinator,
+        [
+            new_record(existing.id, location="Laos, Irã"),
+            new_record("4c1b7e2d-9a3f-4b5c-8d6e-7f8091a2b3c4", location="Iran"),
+        ],
+    )
+
+    assert response.status_code == 200, response.text
+    assert (await stored(db_session, existing.id)).sensitive_country is True
+    created = await stored(db_session, "4c1b7e2d-9a3f-4b5c-8d6e-7f8091a2b3c4")
+    assert created is not None and created.sensitive_country is True
 
 
 async def test_a_record_as_the_console_reads_it_goes_back_with_what_the_server_owns_ignored(

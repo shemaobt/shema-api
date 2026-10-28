@@ -347,14 +347,14 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. **BE-09:** `Readership.withheld_prayer`, whether the caller reads a request nobody authorized — `_consent.py`'s rule, set by `_deps._reading`. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
-| `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question; since BE-14, `never_lowered`, the import's one-way rule on the flag. The only reader of the guarded columns in the two `shema` packages. §6.4. |
+| `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question; since BE-14, `never_lowered`, the import's one-way rule on the flag; since OBT-616, `flag_by_country` / `flag_project_by_country`, the list's one-way rule (a listed place raises the flag on every write) and `listed_as_read`, the record's `listedCountries`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to — and, since OBT-597, the one door that keeps it over a reworded text (`authorization_in_view`, the ficha's own `PATCH`). OBT-566: `newly_shared_request`, the prayer notice's gate — asked after every write of the record (OBT-566), whether the wall now shows a request it did not show before. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
 | `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
 | `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; `reader_may_read_media` — the console reader's half, the coordination alone on a withheld project (OBT-583, named out of OBT-581's inline `if`); and `can_export_notes`. §6.4. |
-| `app/utils/shema_derivations.py` | **BE-05, built**; BE-10; BE-11 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. BE-11 added §7.8's ETEN block at the end: the fiscal year, `completion_date_after` and `account_for`. |
+| `app/utils/shema_derivations.py` | **BE-05, built**; BE-10; BE-11 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. BE-11 added §7.8's ETEN block at the end: the fiscal year, `completion_date_after` and `account_for`. OBT-616 added `SensitiveCountries` beside `get_region`: the sensitive list compared with a place by the same comma and the same synonyms, accents and case aside. |
 | `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
 | `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 21, key for key (`derived`, `readAs` and, since OBT-413, `completedDate` are the contract's own keys now), plus `locationWithheld` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
@@ -364,6 +364,8 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/list_audit.py`, `app/api/shema/audit.py` | **OBT-577, built** | `GET /api/shema/audit` — the two ledgers as one feed, for the coordination and the Admin, inside their regions. |
 | `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
 | `app/services/shema/save_project.py` | **BE-06, built** | The create, the partial update, and the version guard. The one thing in the module that moves `shema_projects.version`. |
+| `app/db/models/shema_sensitive_country.py`, `app/services/shema/_sensitive_list.py` | **OBT-616, built** | `shema_sensitive_countries` — the list of sensitive countries, a country per row in the list's words with its other spellings, seeded by `20261027_shema616` with Karina's nineteen — and its one reader and writer. `tests/test_shema/test_sensitive_countries.py` fails on another file of the module that names the table. §9.5. |
+| `app/services/shema/{list,save}_sensitive_countries.py`, `app/api/shema/sensitive_countries.py`, `app/models/shema_sensitive_countries.py` | **OBT-616, built** | The Admin's read and whole replace of the list, behind `AdminUser`; the replace reads the Admin's standing fresh and leaves one `shema_change_log` mark that names no country. §9.5. |
 | `app/services/shema/read_record.py` | **BE-06, built** | The record read, and `build_record` — the assembly the write path answers with. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
@@ -1740,7 +1742,9 @@ unauthorized (a file's text is not in view beside the record's answer, unlike a 
 ficha, OBT-597), an unchanged one as the organisation left it — and the file can neither publish
 nor withdraw one. **The sensitive flag moves one way**: a file may raise it and may not clear it on a
 withheld record (`_redaction.never_lowered`), BE-16's rule for the Notion import, because a backup
-taken before a project was flagged would otherwise publish its place by momentum. What the server
+taken before a project was flagged would otherwise publish its place by momentum — and, since
+OBT-616, a record whose place names a listed country is raised by the list as a typed one is (the
+import reads the list once for the whole file). What the server
 writes from something else — the health projection, the progress history, media, materials,
 `derived`, `readAs`, `locationWithheld`, `completedDate`, the org chart's three names — is dropped
 too, and `ignoredFields` in the answer names every key that was, so an import is never read as
@@ -2288,8 +2292,10 @@ gains a project **pending confirmation**, and the Admin confirms or discards it.
 - **What the form carries becomes the project, and nothing else does** (`_filing.part_a`). The
   language's name and code (A1: `lang_name`/`lang_iso`, or the first row of the slim variant's
   table; the registered name, A0, when nobody typed a language), the place (A2's
-  `people_location`, or A1's `tr_location`), `status = planejado`, `sensitive_country = false`
-  and the region derived by `_redaction.derive_region`. The base (`team`) is empty: the form asks
+  `people_location`, or A1's `tr_location`), `status = planejado`, `sensitive_country = false` —
+  **true when the place names a country on the sensitive list** (OBT-616, *passa a nascer
+  marcado*, `_redaction.flag_project_by_country`), so the Admin's list reads it withheld and the
+  conference starts ticked — and the region derived by `_redaction.derive_region`. The base (`team`) is empty: the form asks
   none. The id is a UUID, as the console mints for a record born in the product. The people it
   proposes are `shema_project_pending_members` — the A4's name and role, **with no e-mail**, and
   the link's own address under the requester's name (`tpp_name`).
@@ -2317,7 +2323,9 @@ gains a project **pending confirmation**, and the Admin confirms or discards it.
   coordination would reach the project. That is where a place typed city-first (§6.1) or in a
   spelling the map does not list (§4.9) is caught, before it is written.
 - **Confirming** applies the Admin's adjustments and the flag — `sensitiveCountry` has no default
-  in the body, so a client that forgets it is refused rather than read as *not sensitive*; a
+  in the body, so a client that forgets it is refused rather than read as *not sensitive*, and a
+  place that names a listed country stays sensitive whatever the body says (OBT-616: the list only
+  raises); a
   `languageCode`, `location` or `team` left out keeps what was filed (`model_fields_set`, as the
   record's save reads it), since a blank place would derive the region to `other` —
   re-derives the region, clears `pending_confirmation`, writes the trail under the Admin's name
@@ -2352,11 +2360,12 @@ discarded; it is not confirmed or discarded again.` A body without `sensitiveCou
 reason, a malformed address: 422, FastAPI's field errors.
 
 **Open, and named.** GATE §9.5's fail-closed rule — *an unrecognised country is sensitive until
-confirmed* — is the seed's; a project filed by an approval is born not sensitive because the issue
-says so, and the Admin decides at the conference. Whether the client wants the seed's rule here
-too is a question for Karina. OBT-591 left this alone: a synonym moves the region and nothing
-else, the flag is still never inferred from a country's name, and `sensitiveCountry` is still
-required to confirm. The request link stays valid after its project is confirmed;
+confirmed* — is the seed's; a project filed by an approval in a country **off** the sensitive list
+is born not sensitive because the issue says so, and the Admin decides at the conference. Whether
+the client wants the seed's rule here too is a question for Karina. OBT-591 left this alone: a
+synonym moves the region and nothing else. **OBT-616 changed one half:** the flag is now inferred
+from a country's name when that name is on the sensitive list (and only then), and
+`sensitiveCountry` is still required to confirm. The request link stays valid after its project is confirmed;
 revoking it is the Admin's act.
 
 ### 6.12 Seam J — a sensitive project's prayer request passes the coordination — **Decided; OBT-575**
@@ -2423,7 +2432,8 @@ invitation (`created_by`/`revoked_by`), an intake link's minting and a leader's 
 read marks — the reader's state, not the PME's data.
 
 **The rule is a registry and a test.** `_trail.COVERAGE` names, for every non-GET route, where its
-mark lands (`trail`, `ledger` or `exempt`). `test_every_write_route_of_the_module_is_accounted_for`
+mark lands (`trail`, `ledger` or `exempt`) — the Admin's replace of the sensitive list included
+(OBT-616, `trail`, with no subject and no keys). `test_every_write_route_of_the_module_is_accounted_for`
 compares it with the built application's route table, so a write route nobody classified is red.
 
 **One transaction.** `_trail.stage` adds the row and never commits; the act's own commit carries it.
@@ -2689,7 +2699,47 @@ which is the property that made deciding now cheap enough to do.
 > **Both closed:** the id by OBT-552 (1/out/2026), the language name by OBT-560 (2/out/2026) — a
 > flagged project's line carries the name coordination registered, or the region key (§6.4).
 
-### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
+### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — **closed by OBT-616: the list arrived**
+
+> **Closed — Karina, via Daniel, 19/out/2026 ([OBT-616](https://linear.app/shema-obt/issue/OBT-616)).**
+> Sensitive: India, China, Iran, Iraq, the Middle East (Saudi Arabia, Bahrain, Qatar, the United
+> Arab Emirates, Yemen, Israel, Jordan, Kuwait, Lebanon, Oman, Palestine, Syria), and Egypt,
+> Turkey and Cyprus, approved as debatable. **Two marks**: *by country* — every project whose place
+> names a listed country — and *by project* — the country is not on the list but the project is
+> (the north of Brazil), which is `sensitive_country` ticked by the coordination as before.
+>
+> - **Where it lives.** `shema_sensitive_countries`, a country per row in Karina's words with the
+>   other spellings a place may use (English, Portugal's Portuguese, Spanish), seeded by
+>   `20261027_shema616`. `_sensitive_list.py` is its one reader and writer. Only the Admin reads and
+>   replaces it — `GET`/`PUT /api/shema/sensitive-countries`, `AdminUser`, every other role `403`
+>   (Daniel, 19/out/2026, subject to what OBT-592 decides about the Admin's reach). The replace
+>   leaves one `shema_change_log` mark with no subject and no keys: that log is read by the
+>   coordination, and the list is the Admin's. A replace that changes nothing writes nothing; two
+>   replaces landing at the same moment answer the second a `409`.
+> - **How a place is read.** `app/utils/shema_derivations.SensitiveCountries`, beside `get_region`:
+>   every comma-separated part of `location` (`countries_named` — any position, not only the first
+>   the region reads), compared with every spelling on the list by its fold (accents, case and
+>   spacing aside) and by the region map's synonym of it — the map asked by the fold too, so
+>   `egipto` meets the map's `Egipto` — and no spelling the region knows escapes the flag. A part that only contains a listed name (`Indiana`) is not that country, and a
+>   substring search was refused (it reads *Turkey Creek* as Turkey). The fold is a departure from
+>   §6.1's *listed, not normalised*, argued where it is made: there a misfire moves a record, here it
+>   can only raise a flag.
+> - **When it applies.** On every write that reaches the row: the create and the save — on the
+>   merged view, before the diff, so a save that changes nothing still writes nothing — and through
+>   them the import and the Pulse; the confirmation (§6.11) and the filing by an approval. **It only
+>   raises** (*a confirmar com o Daniel*): moving the place off the list, or a country off it,
+>   lowers nobody, and a hand that unticks a listed project changes nothing. **No stored project
+>   moves** — Daniel, 19/out/2026, *não há migração nem checagem retroativa*: the revision touches no
+>   project, reading one never flags it, and a project stored before its country joined the list
+>   is raised by its next write. `tests/test_shema616_migration.py` and
+>   `test_a_stored_project_is_not_flagged_by_reading_it_or_by_changing_the_list` hold it.
+> - **What the record says.** `listedCountries`, the listed countries the place names, to a reader
+>   of the truth only (coordination and the Resource Circle; `[]` to anybody else) — what lets the
+>   PME say *por causa do país* apart from *marca própria*.
+> - **What stays as it was.** `scripts/import_shema_projects.py`'s `--countries` file is the
+>   one-time Notion import's own input and still reads its file, not the table; reviewing the
+>   production rows against the list when the rule reaches them is named out of scope by the issue.
+>   The text below is the gate's history.
 
 > Added by BE-16 ([OBT-405](https://linear.app/shema-obt/issue/OBT-405)). The gate was always
 > there — OBT-405's own text says *get the list from the client, in writing* — and it had no
@@ -2757,7 +2807,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |
-| 12 | Whether `sensitive_country` records **who** raised it. Today it does not, and the import cannot tell a flag a coordinator ticked from the `true` it wrote itself fail-closed — so a hand-raised flag is cleared by the next `--apply --allow-lowering`. BE-16 gates the lowering on the one column that can answer (`sensitivity`, compared against `source`) and names every lowering in its report, which narrows the hole without closing it. Closing it is a write-path decision — an audit column, a `sensitive_country_source`, or a rule that the import never lowers what it did not insert — and it is not a migration script's to take, least of all on a model and a migration ten sibling branches already build on. | **BE-03** (§4.2's write path), with **BE-02** if it costs a column |
+| 12 | Whether `sensitive_country` records **who** raised it. *(OBT-616 answered the half the screen needed without a column: the record says when the flag is held by the sensitive list — `listedCountries`, read off the place and the list as they stand. Who ticked a flag by hand is still not recorded.)* Today it does not, and the import cannot tell a flag a coordinator ticked from the `true` it wrote itself fail-closed — so a hand-raised flag is cleared by the next `--apply --allow-lowering`. BE-16 gates the lowering on the one column that can answer (`sensitivity`, compared against `source`) and names every lowering in its report, which narrows the hole without closing it. Closing it is a write-path decision — an audit column, a `sensitive_country_source`, or a rule that the import never lowers what it did not insert — and it is not a migration script's to take, least of all on a model and a migration ten sibling branches already build on. | **BE-03** (§4.2's write path), with **BE-02** if it costs a column |
 | 13 | ~~Whether the health assessment moves to the bimonthly meeting (GATE-02's open half).~~ **Answered by the client on 28/set/2026: yes, it feeds `bimestral_pi_campo`**, which is where FE-49 already read it; nothing on the server held it. **Still open, and not as a pending question: who the *pessoas-ponte* of `trimestral_pi_pontes` are.** The client does not have that information yet and asked for the meeting to work without specific names — which it already does here: the server stores no attendee, and a log is the meeting, the region, the day and the notes. When the list exists, it changes nothing here unless it changes a cadence or the set — one edit in `app/utils/shema_meetings.py` — or puts `resourceCircle` among the bridge people, which would open that meeting's log to it (`_meeting_log.py`). | **the client** (the definition), FE-49 (where it lands) |
 
 ---

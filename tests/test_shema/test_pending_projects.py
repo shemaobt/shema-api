@@ -41,6 +41,7 @@ from app.services.shema import (
 from tests.baker import make_user
 from tests.resource_request_harness import REQUESTS, draft, endorse, give_fund, put_evaluation
 from tests.shema_admin_harness import FORM_INVITES, INVITES, give_urls, make_admin
+from tests.shema_harness import list_countries
 from tests.test_shema.conftest import (
     PREFIX,
     SESSION,
@@ -749,12 +750,14 @@ async def test_a_city_typed_before_the_country_stays_in_other_and_the_conference
 
 
 @pytest.mark.parametrize("place", ["África do Sul", "Laos"])
-async def test_the_flag_is_never_inferred_from_the_country_and_the_admin_still_states_it(
+async def test_a_country_off_the_list_is_not_inferred_and_the_admin_still_states_it(
     db_session, shema_app, form_app, place: str
 ) -> None:
-    """OBT-591 moves the region and nothing else. Neither a country the map now recognises nor one
-    it does not list — which the seed's fail-closed rule would flag (§9.5) — files the project
-    sensitive, and a confirmation that leaves ``sensitiveCountry`` out is still refused."""
+    """OBT-591 moves the region and nothing else, and OBT-616's list raises only what it names.
+    Neither a country the map recognises nor one it does not list — which the seed's fail-closed
+    rule would flag (§9.5) — files the project sensitive when it is off the sensitive list, and a
+    confirmation that leaves ``sensitiveCountry`` out is still refused."""
+    await list_countries(db_session)
     async with pending_client(db_session) as client:
         filing = await open_filing(db_session, client, shema_app, form_app)
         await filing.decided(db_session, people_location=place)
@@ -778,6 +781,45 @@ async def test_the_flag_is_never_inferred_from_the_country_and_the_admin_still_s
     assert stated.status_code == 200, stated.text
     await db_session.refresh(project)
     assert project.sensitive_country is False
+
+
+@pytest.mark.parametrize("place", ["Irã", "Teerã, Iran"])
+async def test_a_project_the_approval_files_in_a_listed_country_is_born_sensitive(
+    db_session, shema_app, form_app, place: str
+) -> None:
+    """OBT-616: *passa a nascer marcado*. The Admin's list reads it withheld, which is what starts
+    the conference with the box ticked."""
+    await list_countries(db_session)
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session, people_location=place)
+        [project] = await filed_projects(db_session)
+        listed = await client.get(PENDING, headers=filing.admin_headers)
+
+    assert project.sensitive_country is True
+    assert listed.json()[0]["locationWithheld"] is True
+    assert listed.json()[0]["location"] == place, "the Admin reads the place as typed"
+
+
+async def test_a_confirmation_in_a_listed_country_is_sensitive_even_when_the_admin_says_no(
+    db_session, shema_app, form_app
+) -> None:
+    """The body's ``false`` is the Admin's decision about a place off the list; a place on it was
+    decided by the list, which only raises — here the Admin corrects the place into it."""
+    await list_countries(db_session)
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session, people_location="Laos")
+        [project] = await filed_projects(db_session)
+        confirmed = await client.post(
+            confirm_path(project.id),
+            json=confirmation(location="Laos, Índia", sensitiveCountry=False),
+            headers=filing.admin_headers,
+        )
+
+    assert confirmed.status_code == 200, confirmed.text
+    await db_session.refresh(project)
+    assert project.sensitive_country is True
 
 
 async def test_confirming_adds_accounts_and_invites_the_rest(

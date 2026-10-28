@@ -153,6 +153,13 @@ every statement a reader starts from; ``list_pending_projects`` is the Admin's o
 team's accounts and invites the rest to it, and ``apply_invited_membership`` is what accepting such
 an invitation does. ``docs/shema.md`` §6.11 is the design.
 
+**OBT-616 gives the flag a second source: the list of sensitive countries.** Karina's list
+(19/out/2026) lives in ``shema_sensitive_countries``; ``_sensitive_list.py`` is its one reader and
+writer, ``list_sensitive_countries`` and ``save_sensitive_countries`` are the Admin's read and
+replace, and every write of a project — the create, the save (and so the import and the Pulse), the
+confirmation and the filing — raises the flag of a place that names a listed country, through
+``_redaction.py``. The rule only raises; the mark by project stays the coordination's.
+
 **BE-14 landed the export and the import.** ``export_projects.py`` is the file: the caller's scope
 through ``list_projects``, each row through the boundary as ``outside`` whoever exports, the prayer
 requests as ``_consent.authorized_requests_by_project`` answers them, a header addressed to the
@@ -332,6 +339,7 @@ from app.services.shema.list_project_members import list_project_members
 from app.services.shema.list_projects import list_projects
 from app.services.shema.list_regions import list_regions
 from app.services.shema.list_role_changes import list_role_changes
+from app.services.shema.list_sensitive_countries import list_sensitive_countries
 from app.services.shema.list_unacknowledged_needs import (
     UNACKNOWLEDGED_AFTER_DAYS,
     list_unacknowledged_needs,
@@ -366,6 +374,7 @@ from app.services.shema.save_project import (
     save_project,
 )
 from app.services.shema.save_region_team import save_region_team
+from app.services.shema.save_sensitive_countries import save_sensitive_countries
 from app.services.shema.send_invite import send_invite
 from app.services.shema.set_intercessor_consent import (
     set_intercessor_consent,
@@ -484,6 +493,7 @@ __all__ = [
     "list_projects",
     "list_regions",
     "list_role_changes",
+    "list_sensitive_countries",
     "list_submissions",
     "list_unacknowledged_needs",
     "log_meeting",
@@ -544,6 +554,7 @@ __all__ = [
     "save_notification_prefs",
     "save_project",
     "save_region_team",
+    "save_sensitive_countries",
     "searchable_text",
     "send_invite",
     "set_intercessor_consent",

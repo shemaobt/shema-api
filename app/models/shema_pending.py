@@ -17,7 +17,9 @@ audit asks nothing of it, because no field is a place, a base or a contact.
 
 **``sensitiveCountry`` has no default in the body.** The flag is the Admin's decision at the
 conference — the project was filed with it false, because the form asks no such thing — and a
-client that forgets to send it is refused rather than taken to mean *not sensitive*.
+client that forgets to send it is refused rather than taken to mean *not sensitive*. The one
+decision it does not take is lowering a place that names a country on the sensitive list
+(OBT-616): such a project was filed sensitive and is confirmed sensitive whatever the body says.
 """
 
 from datetime import datetime
