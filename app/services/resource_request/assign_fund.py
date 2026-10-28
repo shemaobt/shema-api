@@ -4,14 +4,13 @@ from typing import NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import UnknownReferenceError
 from app.db.models.auth import User
 from app.db.models.resource_request import (
     RRMovementKind,
     RRRequestFieldHistory,
     RRStage,
 )
-from app.services.resource_request._fund_choices import choosable_funds
+from app.services.resource_request._fund_choices import choosable_funds, require_choosable
 from app.services.resource_request._transition import unreversed_deduction
 from app.services.resource_request.append_movement import append_movement
 from app.services.resource_request.get_request import get_request
@@ -102,9 +101,7 @@ async def assign_fund(
     request = loaded.request
     previous = request.fund_id
 
-    offered = {fund.id: fund for fund in await choosable_funds(db)}
-    if fund_id not in offered:
-        raise UnknownReferenceError(f"Not a fund the mesa may assign: {fund_id}")
+    require_choosable(await choosable_funds(db), fund_id)
 
     if previous == fund_id:
         return FundAssignment(

@@ -9,7 +9,9 @@ live request with the count, and every one of the three is the Gestor's alone.
 
 What is deliberately *not* re-asserted here is the ledger's own contract (BE-07) and the
 alocado's write path (BE-09): retirement does not touch money, and a test that checked it
-did would be describing a coupling this issue was careful not to build.
+did would be describing a coupling this issue was careful not to build. What a retired fund
+refuses *afterwards* — a new alocado, a new entry into ``aprovado`` — is OBT-645's, pinned
+beside each door in ``test_allocation.py`` and ``test_board.py``.
 """
 
 from __future__ import annotations

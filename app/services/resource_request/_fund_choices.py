@@ -28,6 +28,7 @@ from typing import NamedTuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import UnknownReferenceError
 from app.db.models.resource_request import RRFund
 
 
@@ -52,6 +53,29 @@ async def choosable_funds(db: AsyncSession) -> Sequence[RRFund]:
     """The funds the mesa may assign, by name: every fund not retired."""
     stmt = select(RRFund).where(RRFund.retired_at.is_(None)).order_by(RRFund.name)
     return (await db.execute(stmt)).scalars().all()
+
+
+def require_choosable(choosable: Sequence[RRFund], fund_id: str) -> None:
+    """Refuse ``fund_id`` unless it is one of ``choosable`` — the one refusal of a fund
+    that is not on offer, at every door that writes against one.
+
+    **Retiring stops new writes, never old ones** (OBT-645, 27/oct/2026). Three doors put
+    something new against a fund: ``assign_fund`` points a request at it,
+    ``set_allocation`` puts money in it, and ``require_assigned_fund`` commits a request's
+    amount to it on the way into ``aprovado``, by drag or by decision. Before OBT-645 only
+    the first asked the list, so a fund retired after a card was decided still took a new
+    alocado and a new deduction. All three ask this list now, and a retired fund — out of
+    it — is refused at each with one sentence: the one the assignment already gave an
+    unknown id, because from any of these doors the two are the same fact, *not on offer*.
+    What retirement keeps is untouched: reading the fund, and the reversals that undo
+    what was already written against it.
+
+    Pure and handed the list, like ``options_from``: the caller reads it inside its own
+    transaction — ``set_allocation`` after the fund row's lock — and the rule runs without
+    a database.
+    """
+    if all(fund.id != fund_id for fund in choosable):
+        raise UnknownReferenceError(f"Not a fund the mesa may assign: {fund_id}")
 
 
 def options_from(choosable: Sequence[RRFund], assigned: RRFund | None) -> list[FundOption]:

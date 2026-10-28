@@ -492,7 +492,9 @@ Four rules that travel with the order:
 - **Approving with `fund_id IS NULL` fails, decidably** (409), before anything is written.
   The invariant is GATE-01 D4's and its owner is BE-11 (OBT-470); this path is where it
   bites first, so BE-06 enforces and tests it here, and BE-11 owns the rule wherever else
-  a request can reach `aprovado`.
+  a request can reach `aprovado`. **So does approving against a retired fund** (OBT-645,
+  27/oct/2026) — 422, with the assignment's own sentence — through the same guard, so the
+  decision and the drag meet one refusal (§7.4).
 - **A request nobody endorsed leaves `triagem` only for `recusado`** (409), and the
   decision meets the rule at the same door the drag does. BE-16 (OBT-476) wrote it in
   `rr_requests`'s own docstring and assigned the enforcement here; it landed with
@@ -1561,6 +1563,17 @@ a deploy. So a fund line stopped being seed data and became a row somebody creat
   at `GET /funds/reserved-names` so the Gestor sees the names the project already spoke of
   instead of recalling them. Nothing there is a row and nothing there is reserved in the
   database: choosing one is an ordinary creation that an already-taken name refuses.
+- **Nothing new is written against a retired fund** (OBT-645, 27/oct/2026). Retiring
+  waits only for undecided requests, so a card decided on the fund keeps it — and until
+  this issue the bench (27/oct/2026) still moved a retired fund's alocado from 10000 to
+  20000 and dragged such a card back into `aprovado` with a fresh deduction. Every door
+  that writes against a fund now asks the list of choice through `require_choosable`
+  (`_fund_choices.py`) and refuses a fund no longer on it with the sentence the assignment
+  gives, *"Not a fund the mesa may assign: <id>"* (422): `PUT /requests/{id}/fund`,
+  `PUT /funds/{id}/allocation` — raising, lowering or restating the value alike — and the
+  entry into `aprovado`, by drag or by decision, through `require_assigned_fund`. What a
+  retirement keeps stays open: every read, and the reversals that undo what was already
+  written — leaving `aprovado`, or re-pointing an approved request to a fund on offer.
 
 ---
 

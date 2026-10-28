@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.resource_request import RRFund, RRFundMovement, RRMovementKind
+from app.services.resource_request._fund_choices import choosable_funds, require_choosable
 from app.services.resource_request.allocation_of_fund import FundAllocation, allocation_of_fund
 from app.services.resource_request.append_movement import append_movement
 from app.services.resource_request.fund_balances import fund_balances
@@ -38,6 +39,15 @@ async def set_allocation(
     because ``NaN < 0`` signals ``InvalidOperation``, the §8.5 arithmetic one operator
     earlier, in ``append_movement``'s own words.
 
+    **A retired fund's alocado is history, and editing it is refused** (OBT-645). Retiring
+    takes a fund out of the list of choice and keeps every line it already has; a new
+    ``ALLOCATION`` — or a correction's reversals and re-entry — would be a new line written
+    against a fund that ended. So the edit asks that list (``require_choosable``) and a fund
+    no longer on it gets the assignment's own refusal, whichever way the value moves and
+    even when it would not move at all: the offer is read before the difference, as
+    ``assign_fund`` reads it before its no-op. An unknown id is still the 404, because it
+    names no fund at all. The read, ``allocation_of_fund``, is not touched.
+
     Unlike the two writers it composes, this **is** the operation, so it commits — the
     FE-24 draft-store reasoning inverted: a partial correction left uncommitted would be
     the caller's to finish, and no caller owns more of this edit than the edit itself.
@@ -55,6 +65,7 @@ async def set_allocation(
     ).scalar_one_or_none()
     if fund is None:
         raise NotFoundError(f"Fund not found: {fund_id}")
+    require_choosable(await choosable_funds(db), fund_id)
 
     balances = {balance.id: balance for balance in await fund_balances(db)}
     current = balances[fund_id].allocated

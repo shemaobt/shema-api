@@ -99,7 +99,9 @@ async def save_evaluation(
 
     **Approving with no fund fails, decidably** — GATE-01 D4's invariant (BE-11's rule,
     bitten on this write path): the mesa assigns the fund at triage, and a request does not
-    enter ``aprovado`` with ``fund_id IS NULL``. Refused before anything is written.
+    enter ``aprovado`` with ``fund_id IS NULL``. Refused before anything is written — and so
+    is approving against a fund retired since it was assigned (OBT-645): the same guard asks
+    the list of choice, and the decision meets the refusal the drag does.
 
     **The ata refuses a member with no account, decidably.** ``rr_evaluation_attendees``
     holds real FKs, so existence is checked here and answered as a 422 naming the ids
@@ -160,7 +162,7 @@ async def save_evaluation(
 
     if deciding is not None:
         guard_endorsement(request, DECISION_STAGE[deciding])
-        guard_stage_entry(request, DECISION_STAGE[deciding])
+        await guard_stage_entry(db, request, DECISION_STAGE[deciding])
 
     if evaluation is None:
         evaluation = RREvaluation(snapshot_id=snapshot.id)

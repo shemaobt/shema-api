@@ -21,7 +21,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ValidationError
+from app.core.exceptions import ERROR_CODE_UNKNOWN_REFERENCE, ValidationError
 from app.db.models.resource_request import RRFund, RRFundMovement, RRMovementKind
 from app.services.resource_request import set_allocation
 from tests.baker import make_user
@@ -288,6 +288,56 @@ async def test_an_unknown_fund_answers_404_on_both_verbs(db_session, client, rrf
 
     assert (await client.get(missing, headers=headers)).status_code == 404
     assert (await client.put(missing, headers=headers, json={"amount": "10.00"})).status_code == 404
+
+
+# ——— a retired fund (OBT-645) ——————————————————————————————————————————————————————
+
+
+async def test_a_retired_fund_takes_no_new_allocation(db_session, client, rrf_app, fund) -> None:
+    """Retiring keeps what a fund has and takes it out of the choices, so its alocado is
+    history: raising, lowering and restating it are each refused with the assignment's own
+    answer, and the ledger keeps the one entry it had. Until OBT-645 the retired fund
+    still took a new ``ALLOCATION`` here — the bench of 27/oct/2026 moved one from 10000
+    to 20000 after its retirement."""
+    _, headers = await as_role(db_session, rrf_app, "gestor", "gestora11@rrf.test")
+    assert (await client.put(ALLOCATION, headers=headers, json={"amount": "1000.00"})).is_success
+    retired = await client.post("/api/resource-requests/funds/linguas/retirement", headers=headers)
+    assert retired.status_code == 200, retired.text
+
+    for amount in ("1500.00", "600.00", "1000.00"):
+        answer = await client.put(ALLOCATION, headers=headers, json={"amount": amount})
+
+        assert answer.status_code == 422, amount
+        assert answer.json() == {
+            "detail": "Not a fund the mesa may assign: linguas",
+            "code": ERROR_CODE_UNKNOWN_REFERENCE,
+        }
+
+    movements = await ledger(db_session)
+    assert [(m.kind, m.amount) for m in movements] == [
+        (RRMovementKind.ALLOCATION, Decimal("1000.00"))
+    ]
+
+
+async def test_a_retired_fund_still_reads_the_allocation_it_had(
+    db_session, client, rrf_app, fund
+) -> None:
+    """The other half of *sai da escolha e permanece no histórico*: the refusal is for
+    writing, never for reading — the alocado and who put it there still answer, and the
+    Painel's list still carries the fund, flagged, with its money."""
+    _, headers = await as_role(db_session, rrf_app, "gestor", "gestora12@rrf.test")
+    await client.put(ALLOCATION, headers=headers, json={"amount": "1000.00"})
+    await client.post("/api/resource-requests/funds/linguas/retirement", headers=headers)
+
+    read = await client.get(ALLOCATION, headers=headers)
+    listed = await client.get("/api/resource-requests/funds", headers=headers)
+
+    assert read.status_code == 200, read.text
+    assert Decimal(read.json()["allocated"]) == Decimal("1000.00")
+    assert read.json()["allocated_by"] == "gestora12@rrf.test"
+    assert [(f["id"], f["retired"], Decimal(f["allocated"])) for f in listed.json()] == [
+        ("linguas", True, Decimal("1000.00"))
+    ]
 
 
 # ——— the schema pin the DoD asks for ————————————————————————————————————————————

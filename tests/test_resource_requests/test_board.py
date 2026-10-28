@@ -33,6 +33,7 @@ from sqlalchemy import select
 
 from app.db.models.resource_request import (
     RRBoardTransition,
+    RREvaluation,
     RRFundMovement,
     RRMovementKind,
     RRRequest,
@@ -313,6 +314,106 @@ async def test_approving_with_no_fund_fails_decidably(db_session, client, rrf_ap
     assert request.stage.value == "triagem"
     assert (await db_session.execute(select(RRFundMovement))).scalars().all() == []
     assert (await db_session.execute(select(RRBoardTransition))).scalars().all() == []
+
+
+# ——— o fundo aposentado (OBT-645) ——————————————————————————————————————————————————
+
+
+async def retire(client, headers, fund_id: str = "linguas") -> None:
+    res = await client.post(f"{FUNDS}/{fund_id}/retirement", headers=headers)
+    assert res.status_code == 200, res.text
+
+
+async def stage_of(db_session, card: str) -> RRStage:
+    row = (await db_session.execute(select(RRRequest).where(RRRequest.id == card))).scalar_one()
+    await db_session.refresh(row)
+    return row.stage
+
+
+async def test_approving_against_a_retired_fund_fails_decidably(
+    db_session, client, rrf_app
+) -> None:
+    """A retirement waits only for undecided cards, so a card decided ``condicional`` keeps
+    its fund when the fund retires — and the board, whose graph is total, dragged it back
+    into ``aprovado`` with a fresh deduction against a fund that ended (the bench of
+    27/oct/2026, OBT-645). The drag is refused now with the assignment's own answer —
+    the body is byte-for-byte what ``PUT …/fund`` says naming the same fund — nothing is
+    written, and what the card already moved through the fund stays in the ledger."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
+    card = await board_card(db_session, client, team, "1200.00", "linguas")
+    assert (await move(client, mesa, card, "aprovado")).status_code == 200
+    assert (await move(client, mesa, card, "condicional")).status_code == 200
+    await retire(client, gestor)
+
+    res = await move(client, mesa, card, "aprovado")
+    assignment = await client.put(
+        f"{REQUESTS}/{card}/fund", json={"fund_id": "linguas"}, headers=mesa
+    )
+
+    assert res.status_code == 422, res.text
+    assert res.json()["detail"] == "Not a fund the mesa may assign: linguas"
+    assert res.json() == assignment.json()
+    assert await stage_of(db_session, card) is RRStage.CONDICIONAL
+    movements = (await db_session.execute(select(RRFundMovement))).scalars().all()
+    assert sorted(m.kind.value for m in movements) == ["approval_deduction", "reversal"]
+    assert len((await db_session.execute(select(RRBoardTransition))).scalars().all()) == 2
+
+
+async def test_tirar_de_aprovado_ainda_devolve_a_um_fundo_aposentado(
+    db_session, client, rrf_app
+) -> None:
+    """The refusal is for writing something new, never for undoing what was written: the
+    reversal that leaving ``aprovado`` appends compensates a deduction the fund already
+    holds, so a card approved before the retirement still un-approves, and the fund —
+    retired, still listed — gets its *comprometido* back."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
+    card = await board_card(db_session, client, team, "1200.00", "linguas")
+    assert (await move(client, mesa, card, "aprovado")).status_code == 200
+    await retire(client, gestor)
+
+    res = await move(client, mesa, card, "revisar")
+
+    assert res.status_code == 200, res.text
+    assert Decimal(res.json()["fund_delta"]["committed_delta"]) == Decimal("-1200")
+    movements = (await db_session.execute(select(RRFundMovement))).scalars().all()
+    by_kind = {movement.kind: movement for movement in movements}
+    assert set(by_kind) == {RRMovementKind.APPROVAL_DEDUCTION, RRMovementKind.REVERSAL}
+    assert (
+        by_kind[RRMovementKind.REVERSAL].reverses_id
+        == by_kind[RRMovementKind.APPROVAL_DEDUCTION].id
+    )
+    fund = await linguas(client, mesa)
+    assert fund["retired"] is True
+    assert Decimal(fund["committed"]) == Decimal("0")
+
+
+async def test_a_decisao_tambem_nao_aprova_num_fundo_aposentado(
+    db_session, client, rrf_app
+) -> None:
+    """Both approval doors pass ``guard_stage_entry``, so the rule written once covers the
+    decision too. A card dragged to ``recusado`` with no decision recorded, its fund
+    retired, and dragged back to ``analise`` — a move that writes no money, still free —
+    cannot then be decided into ``aprovado``: the decision is refused with the drag's
+    answer, and neither a movement nor a recorded decision is left behind."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
+    card = await board_card(db_session, client, team, "1200.00", "linguas")
+    assert (await move(client, mesa, card, "recusado")).status_code == 200
+    await retire(client, gestor)
+    assert (await move(client, mesa, card, "analise")).status_code == 200
+
+    res = await put_evaluation(client, mesa, card, decision="approved")
+
+    assert res.status_code == 422, res.text
+    assert res.json()["detail"] == "Not a fund the mesa may assign: linguas"
+    assert await stage_of(db_session, card) is RRStage.ANALISE
+    assert (await db_session.execute(select(RRFundMovement))).scalars().all() == []
+    assert (await db_session.execute(select(RREvaluation))).scalars().all() == []
 
 
 # ——— a regra de ouro: os vetores do FE-15 contra a API ———————————————————————————
