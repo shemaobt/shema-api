@@ -364,6 +364,17 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/projects/{owner.project.id}/passages/P03/retroverificacao",
+                {},
+            ),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P03/retroverificacao", {}),
+            "ids": (owner.project.id, absent),
+            #: The owner reaches the file of the passage it recorded, so the refusal beside it
+            #: can only be the scope: without it the stranger would be served that file too.
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/questions", {"params": {"team_id": owner.project.id}}),
             "absent": (f"{IR}/facilitator/questions", {"params": {"team_id": absent}}),
             "ids": (owner.project.id, absent),

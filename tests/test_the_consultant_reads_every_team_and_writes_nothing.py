@@ -569,6 +569,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),
         (f"{IR}/facilitator/sessions/{team.session}/releases/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/retroverificacao", {}),
+        (f"{IR}/facilitator/projects/{team.id}/passages/{P}/retroverificacao", {}),
         (f"{IR}/facilitator/sessions/{team.session}/retro", {}),
         (f"{IR}/facilitator/sessions/{team.session}/external-check/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
@@ -655,3 +656,17 @@ async def test_a_team_that_does_not_exist_is_refused_at_every_read_even_to_a_con
 
     assert set(answers.values()) == {404}, answers
     assert nudges == 404
+
+
+async def test_a_consultant_reads_the_retroverification_file_of_team_bs_passage(
+    client, desk
+) -> None:
+    team = desk["b"]
+    url = f"{IR}/facilitator/projects/{team.id}/passages/{P}/retroverificacao"
+
+    consultant = await client.get(url, headers=desk.readers["consultant"])
+    stranger = await client.get(url, headers=desk.readers["facilitator"])
+
+    assert consultant.status_code == 200, consultant.text[:300]
+    assert [one["session_id"] for one in consultant.json()["sessions"]] == [team.session]
+    assert stranger.status_code == 404

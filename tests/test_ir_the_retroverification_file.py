@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from datetime import timedelta
 from hashlib import sha256
 
 import httpx
@@ -62,6 +63,7 @@ from tests.hard_stretch_harness import (
 from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
+    PREFIX,
     THE_FINDING,
     P,
     a_claimed_device,
@@ -854,3 +856,93 @@ async def test_a_part_recorded_again_and_never_played_has_its_row_in_the_listeni
         fresh.id: False,
         third.id: True,
     }, "a parte regravada e nunca ouvida sumia da escuta, que o terminei e a aprovação cobram"
+
+
+NOT_APPROVED_YET = (
+    "rascunho ainda não aprovado — as frases abaixo são a tradução ao vivo, não uma versão fechada"
+)
+APPROVED_BEFORE_THE_RECORD = (
+    "esta versão foi aprovada antes do registro de aprovação existir — "
+    "sem estado de conferência gravado; as frases abaixo são a tradução ao vivo"
+)
+
+
+def _passage_file(project_id: str) -> str:
+    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
+
+
+async def test_a_passage_worked_over_two_sessions_is_one_file_named_after_its_release(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    first = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, first.id, credential)
+    second = await ready_session(db_session, project_id=project.id, tell=_told_in_two_stretches)
+    await _approved_by_the_team(client, second.id, credential)
+    second.created_at = second.updated_at = first.created_at + timedelta(minutes=1)
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, second.id)
+    name = row.packet["release_id"]
+
+    answered = await client.get(_passage_file(project.id), headers=desk)
+
+    assert answered.status_code == 200, answered.text
+    assert name.endswith("-v2")
+    assert answered.headers["content-disposition"] == (
+        f'attachment; filename="{name}-retroverificacao.json"'
+    )
+    file = answered.json()
+    assert file["release_id"] == name
+    assert [one["session_id"] for one in file["sessions"]] == [first.id, second.id]
+    assert [len(one["stretches"]) for one in file["sessions"]] == [1, 2]
+    assert file["notices"] == []
+
+
+async def test_a_passage_not_yet_approved_carries_the_first_note_and_the_live_frases(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_in_two_stretches)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    answered = await client.get(_passage_file(project.id), headers=desk)
+
+    file = answered.json()
+    assert file["release_id"].endswith("-v1")
+    assert file["notices"] == [NOT_APPROVED_YET]
+    (only,) = file["sessions"]
+    assert only["session_id"] == session.id
+    assert [one["frase"] for one in only["stretches"]] == [1, 2]
+
+
+async def test_a_version_approved_before_approvals_were_recorded_carries_the_second_note(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, session.id)
+    row.packet = {key: value for key, value in row.packet.items() if key != "check"}
+    await db_session.commit()
+
+    file = (await client.get(_passage_file(project.id), headers=desk)).json()
+
+    assert file["notices"] == [APPROVED_BEFORE_THE_RECORD]
+    assert file["release_id"].endswith("-v1")
+
+
+async def test_a_translation_that_cannot_be_read_answers_try_again_and_no_file(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    session.back_translation = {"checks": "not a list"}
+    await db_session.commit()
+
+    answered = await client.get(_passage_file(project.id), headers=desk)
+
+    assert answered.status_code == 503, answered.text
+    assert "sessions" not in answered.json()
