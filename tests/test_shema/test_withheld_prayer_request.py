@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
+from app.db.models.shema_health import ShemaHealthAssessment
 from tests.baker import make_user
 from tests.test_shema.conftest import PREFIX, auth_header, grant, make_scoped_user
 
@@ -251,26 +252,53 @@ async def test_a_conflict_does_not_tell_the_obt_lab_that_a_sensitive_projects_re
     assert res.json()["changedFields"] == ["translators"]
 
 
-async def test_the_obt_lab_still_raises_a_new_request_in_the_health_wizard_and_reads_it_blank(
+#: A reading the wizard files — one rating is enough for an assessment to rate something.
+READING = {"date": "2026-10-20", "emotional": "boa", "questionSetVersion": 1}
+
+
+async def _history(db_session, project_id: str = WITHHELD_ID) -> int:
+    stmt = select(ShemaHealthAssessment).where(ShemaHealthAssessment.project_id == project_id)
+    return len((await db_session.execute(stmt)).scalars().all())
+
+
+async def test_a_health_reading_from_the_obt_lab_may_not_carry_a_request_over_one_it_reads_blank(
     client, db_session, shema_app, withheld
 ) -> None:
-    """The boundary chosen, pinned: the reading the OBT Lab files carries its own words, which it
-    sees as it types — the assessment's notes already work so. The record it answers reads them
-    back blank, as it reads the notes; the coordination reads what the mentor wrote."""
-    lab = await _headers(db_session, shema_app, "obtLab")
-
+    """The wizard's door to the same column (review of shema-api#965): the request keeps no
+    history, unlike the reading's own notes, so a request filed here would replace one the mentor
+    cannot see. Refused with the save's sentence before anything is written — no reading, no
+    version, the request where it was."""
     filed = await client.post(
         f"{PROJECTS}/{WITHHELD_ID}/health-assessments",
-        json={
-            "date": "2026-10-20",
-            "emotional": "boa",
-            "questionSetVersion": 1,
-            "prayerRequests": "orem pela viagem do mentor",
-        },
-        headers=lab,
+        json={**READING, "prayerRequests": "orem pela viagem do mentor"},
+        headers=await _headers(db_session, shema_app, "obtLab"),
     )
 
-    assert filed.status_code == 201, filed.text
-    assert filed.json()["prayerRequests"] == ""
-    truth = await _read(client, await _headers(db_session, shema_app, "coordinator"))
-    assert truth.json()["prayerRequests"] == "orem pela viagem do mentor"
+    assert filed.status_code == 403
+    assert "prayerRequests" in filed.json()["detail"]
+    assert REQUEST not in filed.text
+    stored = await _stored(db_session)
+    assert (stored.prayer_requests, stored.version) == (REQUEST, 1)
+    assert await _history(db_session) == 0
+
+
+async def test_the_obt_labs_reading_without_a_request_is_filed_and_the_coordination_files_one(
+    client, db_session, shema_app, withheld
+) -> None:
+    """The refusal is the request's, not the reading's: the same reading without it is filed — the
+    console's wizard does not offer the request to this reader — and the coordination, who reads
+    the request, still raises one through the wizard."""
+    lab = await client.post(
+        f"{PROJECTS}/{WITHHELD_ID}/health-assessments",
+        json=READING,
+        headers=await _headers(db_session, shema_app, "obtLab"),
+    )
+    coordination = await client.post(
+        f"{PROJECTS}/{WITHHELD_ID}/health-assessments",
+        json={**READING, "prayerRequests": "orem pela nova casa"},
+        headers=await _headers(db_session, shema_app, "coordinator"),
+    )
+
+    assert lab.status_code == coordination.status_code == 201, (lab.text, coordination.text)
+    assert coordination.json()["prayerRequests"] == "orem pela nova casa"
+    assert await _history(db_session) == 2

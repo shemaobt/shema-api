@@ -25,7 +25,9 @@ a validator, so the three things a query-side caller needs are:
   because ``location`` lives here (BE-06; the function's own docstring carries the trade);
 * :func:`unwritable_fields` — the write path's other question (OBT-528): which of the fields a
   save sent this reader may not write, because a field that is withheld from a reader is not
-  one that reader may type over;
+  one that reader may type over — and :func:`refuse_unwritable_fields`, the one refusal of them
+  for the two doors that write the record's fields, the save and, since OBT-655, a health
+  reading's prayer request;
 * :func:`never_lowered` — the import's one-way rule on the flag (BE-14): a file may raise it and
   may not clear it;
 * :func:`flag_by_country` and :func:`flag_project_by_country` — the list's one-way rule on the
@@ -50,13 +52,17 @@ applied per endpoint is a rule the next endpoint forgets; a glob is not.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, Final, TypeVar
 
 from pydantic import BaseModel
+from pydantic.alias_generators import to_camel
 from sqlalchemy import ColumnElement
 
+from app.core.exceptions import AuthorizationError
+from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_need import ShemaNeedWrite
@@ -74,6 +80,8 @@ from app.models.shema_record import (
     ShemaStoryProgressRow,
 )
 from app.utils.shema_derivations import SensitiveCountries, get_region
+
+logger = logging.getLogger(__name__)
 
 
 def is_withheld(project: ShemaProject) -> bool:
@@ -489,6 +497,41 @@ def unwritable_fields(
     if is_withheld(project):
         refused |= set(sent) & WITHHELD_WRITES
     return sorted(refused)
+
+
+def refuse_unwritable_fields(
+    project: ShemaProject,
+    refused: Sequence[str],
+    reader: ShemaReader,
+    *,
+    user: User,
+    operation: str,
+) -> None:
+    """Raise ``refused`` as a 403 naming the fields in the client's spelling, and log it.
+
+    One sentence for every door that writes what :func:`unwritable_fields` answers, because the
+    rule is one: the record's save, and a health reading carrying a prayer request onto a record
+    whose place is withheld (OBT-655) — the reading replaces the request the reader was handed
+    as ``""``, and the request keeps no history to recover it from. The message names the fields
+    and nothing about the record; the line logs the event with :func:`log_reference`, never the
+    place. A dotted name (``needsItems.description``) is already the client's spelling.
+    """
+    if not refused:
+        return
+    logger.warning(
+        "shema authorization refused: a field this reader may not write",
+        extra={
+            "shema_operation": operation,
+            "shema_user_id": user.id,
+            "shema_reader": reader.value,
+            "shema_refused_fields": list(refused),
+            **log_reference(project),
+        },
+    )
+    raise AuthorizationError(
+        f"{', '.join(name if '.' in name else to_camel(name) for name in refused)}: "
+        "only coordination writes the place, the sensitive flag and what they withhold"
+    )
 
 
 def never_lowered(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str, Any]:
