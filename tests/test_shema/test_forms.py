@@ -577,7 +577,7 @@ async def test_a_shared_prayer_request_reaches_the_resource_circle_alone(
     assert all("Orem pela seca" not in row.body for row in prayer)
 
 
-@pytest.mark.parametrize("door", ["link", "import"])
+@pytest.mark.parametrize("door", ["link", "file"])
 async def test_the_first_shared_request_reaches_the_circle_when_the_coordinator_applies_it(
     client, db_session, shema_app, headers, coordinator, project, door
 ) -> None:
@@ -604,7 +604,7 @@ async def test_the_first_shared_request_reaches_the_circle_when_the_coordinator_
     assert "Orem pela seca." in wall.text
 
 
-@pytest.mark.parametrize("door", ["link", "import"])
+@pytest.mark.parametrize("door", ["link", "file"])
 async def test_a_sensitive_project_s_shared_request_waits_for_the_coordination_at_the_apply(
     client, db_session, shema_app, headers, coordinator, project, door
 ) -> None:
@@ -639,7 +639,7 @@ async def test_a_sensitive_project_s_shared_request_waits_for_the_coordination_a
     assert "Orem pela seca." not in wall.text
 
 
-@pytest.mark.parametrize("door", ["link", "import"])
+@pytest.mark.parametrize("door", ["link", "file"])
 async def test_a_sensitive_project_s_pulse_request_reaches_the_circle_at_the_release(
     client, db_session, shema_app, headers, coordinator, project, door
 ) -> None:
@@ -669,7 +669,7 @@ async def test_a_sensitive_project_s_pulse_request_reaches_the_circle_at_the_rel
     assert [row.user_id for row in await notices(db_session, PRAYER_EVENT)] == [circle.id]
 
 
-@pytest.mark.parametrize("door", ["link", "import"])
+@pytest.mark.parametrize("door", ["link", "file"])
 @pytest.mark.parametrize(
     "pulse",
     [
@@ -754,7 +754,7 @@ async def test_a_request_reworded_on_the_ficha_tells_the_circle_once(
     assert [row.user_id for row in await notices(db_session, PRAYER_EVENT)] == [circle.id]
 
 
-@pytest.mark.parametrize("door", ["link", "import"])
+@pytest.mark.parametrize("door", ["link", "file"])
 async def test_a_shared_project_does_not_lend_its_consent_to_a_pulse_that_gave_none(
     client, db_session, shema_app, headers, coordinator, project, door
 ) -> None:
@@ -943,6 +943,80 @@ async def test_an_import_from_a_stale_version_is_refused(
 
     assert response.status_code == 409
     assert (await db_session.execute(select(ShemaSubmission))).scalar_one().applied_at is None
+
+
+@pytest.mark.parametrize("door", ["link", "file"])
+async def test_an_import_from_an_old_version_is_told_what_moved_as_the_ficha_s_save_is(
+    client, db_session, shema_app, headers, project, door
+) -> None:
+    """OBT-627. The import is refused from an old version with the ficha's own 409 — the fields
+    that moved, who moved them and when, and the version to apply against — not the shared
+    handler's bare ``CONFLICT``, which leaves the screen that imports nothing to say but *reload*.
+    On both doors, and with the Pulse left waiting for the second try.
+
+    The ficha's ``PATCH`` is sent before the import and not after it: the import's refusal rolls
+    back the session this test shares with the app, and a request after it would find its own
+    account expired — which a request in production, with a session of its own, never does."""
+    if door == "link":
+        link = await a_link(client, headers)
+        assert (await answer(client, link["token"])).status_code == 202
+    record = f"{PREFIX}/projects/guarani-mbya"
+    saved = await client.patch(
+        record,
+        json={"statusComments": "A equipe voltou a gravar."},
+        headers={**headers, "If-Match": '"1"'},
+    )
+    assert saved.status_code == 200, saved.text
+
+    stale = {**headers, "If-Match": '"1"'}
+    typed = await client.patch(record, json={"statusGoal": "NT até 2028"}, headers=stale)
+    if door == "link":
+        waiting = (await db_session.execute(select(ShemaSubmission))).scalar_one()
+        imported = await client.post(f"{SUBMISSIONS}/{waiting.id}/import", headers=stale)
+    else:
+        imported = await client.post(
+            SUBMISSIONS, json={"projectId": "guarani-mbya", "answers": answers()}, headers=stale
+        )
+
+    assert imported.status_code == typed.status_code == 409, imported.text
+    assert imported.json() == typed.json()
+    assert imported.json()["changedFields"] == ["statusComments"]
+    assert imported.headers["ETag"] == typed.headers["ETag"] == '"2"'
+    assert (await db_session.execute(select(ShemaSubmission))).scalar_one().applied_at is None
+
+
+def test_every_door_that_writes_the_record_publishes_the_409_it_answers() -> None:
+    """OBT-627. The four routes that answer the record's 409 — the ficha's ``PATCH``, the import
+    of projects and the Pulse's two imports — declare it in the OpenAPI document with the keys
+    the body carries, so a client written against the document finds ``changedFields`` and the
+    rest instead of a 409 described in words. Read off the built document, as
+    ``test_projects.py`` reads the list's query parameters, because the document is what a
+    generated client is written against."""
+    from app.main import create_app
+
+    spec = create_app().openapi()
+    doors = [
+        ("patch", "/api/shema/projects/{project_id}"),
+        ("post", "/api/shema/import/projects"),
+        ("post", "/api/shema/forms/submissions"),
+        ("post", "/api/shema/forms/submissions/{submission_id}/import"),
+    ]
+    declared = {
+        spec["paths"][path][method]["responses"]["409"]["content"]["application/json"]["schema"][
+            "$ref"
+        ]
+        for method, path in doors
+    }
+    assert declared == {"#/components/schemas/RecordConflict"}
+    assert set(spec["components"]["schemas"]["RecordConflict"]["properties"]) == {
+        "detail",
+        "code",
+        "expectedVersion",
+        "currentVersion",
+        "changedFields",
+        "changedBy",
+        "changedAt",
+    }
 
 
 async def test_an_empty_prayer_answer_does_not_delete_what_is_already_there(

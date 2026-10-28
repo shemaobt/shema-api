@@ -45,7 +45,12 @@ from app.api.shema._deps import (
     Scope,
     WriteScope,
 )
-from app.api.shema.projects import LOCAL_DAY_HEADER, _conflict, _local_day
+from app.api.shema.projects import (
+    LOCAL_DAY_HEADER,
+    RECORD_CONFLICT_RESPONSES,
+    _conflict,
+    _local_day,
+)
 from app.core.exceptions import ERROR_CODE_BAD_REQUEST
 from app.models.shema_prayer import PulseLanguage
 from app.models.shema_transfer import ExportFormat, ImportResult
@@ -130,7 +135,12 @@ def _refused(refused: ImportRefused) -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
 
 
-@router.post("/import/projects", response_model=ImportResult, openapi_extra=_IMPORT_BODY)
+@router.post(
+    "/import/projects",
+    response_model=ImportResult,
+    responses=RECORD_CONFLICT_RESPONSES,
+    openapi_extra=_IMPORT_BODY,
+)
 async def upload_projects_import(
     request: Request,
     db: Db,

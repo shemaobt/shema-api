@@ -24,16 +24,16 @@ relation, and the relation is the whole value.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.shema._deps import PER_READER_CACHE_CONTROL, CurrentUser, Db, Reading, Scope
-from app.core.exceptions import ERROR_CODE_BAD_REQUEST, ERROR_CODE_CONFLICT, ValidationError
+from app.core.exceptions import ERROR_CODE_BAD_REQUEST, ValidationError
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.models.shema_projects import ShemaProjectPage, ShemaProjectQuery
-from app.models.shema_record import ShemaProjectRecord
+from app.models.shema_record import RecordConflict, ShemaProjectRecord
 from app.services.shema import (
     ImpossibleDates,
     RecordVersionConflict,
@@ -162,7 +162,7 @@ def _local_day(header: str | None, *, utc_today: date) -> date:
 def _conflict(exc: RecordVersionConflict) -> JSONResponse:
     """The 409 a screen can explain itself with — the DoD's second line, on the wire.
 
-    The envelope is the repository's own, ``detail`` and ``code``, with four keys beside it:
+    The envelope is the repository's own, ``detail`` and ``code``, with five keys beside it:
     *you are stale* is a sentence a screen can only answer with a reload, while *Maria changed
     the status comments and the translated units at 14:02* is one a coordinator can act on.
     ``changedFields`` are wire keys, so the console looks them up where it looks up its labels,
@@ -171,22 +171,38 @@ def _conflict(exc: RecordVersionConflict) -> JSONResponse:
     A ``JSONResponse`` built here rather than an exception handler registered globally, because
     the extra keys are this module's and a handler in ``app/core/exceptions.py`` would put a
     Shemá shape on an envelope eight applications share. ``app/api/sound_necklace/sessions.py``
-    does the same thing for the same reason.
+    does the same thing for the same reason. The body is dumped from
+    :class:`~app.models.shema_record.RecordConflict`, the shape :data:`RECORD_CONFLICT_RESPONSES`
+    publishes, so what the document promises and what the wire carries are one model (OBT-627).
     """
     changes = exc.changes
+    body = RecordConflict(
+        detail=str(exc),
+        expected_version=exc.expected,
+        current_version=changes.version,
+        changed_fields=list(changes.fields),
+        changed_by=changes.by,
+        changed_at=None if changes.at is None else changes.at.isoformat(),
+    )
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         headers={"ETag": _etag(changes.version)},
-        content={
-            "detail": str(exc),
-            "code": ERROR_CODE_CONFLICT,
-            "expectedVersion": exc.expected,
-            "currentVersion": changes.version,
-            "changedFields": list(changes.fields),
-            "changedBy": changes.by,
-            "changedAt": None if changes.at is None else changes.at.isoformat(),
-        },
+        content=body.model_dump(by_alias=True),
     )
+
+
+#: :func:`_conflict`'s 409 as the OpenAPI document shows it, declared by **every** route that
+#: answers it — the ficha's ``PATCH``, the import of projects and the Pulse's two imports
+#: (OBT-627) — so a client generated from the document finds the keys it is meant to read.
+RECORD_CONFLICT_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {
+        "model": RecordConflict,
+        "description": (
+            "The record moved since it was read: the fields that moved, who moved them and "
+            "when, and the version to retry against in the `ETag`"
+        ),
+    }
+}
 
 
 def _impossible_dates(exc: ImpossibleDates) -> JSONResponse:
@@ -290,7 +306,7 @@ async def create_record(
 @router.patch(
     "/projects/{project_id}",
     response_model=ShemaProjectRecord,
-    responses={status.HTTP_409_CONFLICT: {"description": "The record moved since it was read"}},
+    responses=RECORD_CONFLICT_RESPONSES,
 )
 async def patch_record(
     project_id: str,
