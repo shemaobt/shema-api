@@ -119,7 +119,7 @@ async def retro_export(
             pass_number=row.pass_number if row else 1,
             recordedAt=row.created_at.isoformat() if row else "",
             supersedes=replaces.get(row.id) if row else None,
-            stale=stale or not (row and row.transcript),
+            stale=stale or row is None,
         )
 
     numbers = frase_numbers(told_back(leaves))
