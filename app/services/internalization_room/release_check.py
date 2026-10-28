@@ -10,13 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRRelease, IRSession, IRTake
 from app.services.internalization_room.approved_draft import approved_draft
-from app.services.internalization_room.back_translation import rehearsed_parts, unheard_parts
-from app.services.internalization_room.check_block import standing_state
 from app.services.internalization_room.segments import final_segments, told_back
-from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.takes import (
     TakeStore,
-    current_parts,
     is_declared,
     recording_digest,
     take_store,
@@ -48,15 +44,10 @@ async def run_release_check(
     session = await db.get_one(IRSession, release.session_id)
     takes = await takes_of(db, session.id)
     stretches = await final_segments(db, session.id, takes)
-    telling_back = await standing_state(db, session.id, back_translation_of(session), takes)
     standing = await approved_draft(db, session)
     verdicts = {
         "bytes_match_sha256": await _bytes_match_their_sha256(db, store, release),
         "nothing_awaiting_translation": told_back(stretches) == stretches,
-        "everything_heard": not (
-            rehearsed_parts(stretches)
-            and unheard_parts(telling_back, current_parts(takes), stretches)
-        ),
         "approval_matches_live_state": standing is not None and standing.id == release.id,
     }
     return {
@@ -72,7 +63,9 @@ async def check_release(release_id: str) -> None:
             release = await db.get_one(IRRelease, release_id)
             result = await run_release_check(db, take_store(), release)
             await db.execute(
-                update(IRRelease).where(IRRelease.id == release_id).values(release_check=result)
+                update(IRRelease)
+                .where(IRRelease.id == release_id, IRRelease.release_check.is_(None))
+                .values(release_check=result)
             )
             await db.commit()
     except Exception:

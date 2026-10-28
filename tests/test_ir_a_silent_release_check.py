@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import null
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import release_check
-from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.segments import capture_segment
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     CLIP_MS,
@@ -21,10 +23,10 @@ from tests.release_harness import (
     a_p02_telling_with_the_swapped_cause,
     at_the_desk,
     checked_heard_and_approved,
+    desk_passage_release,
     desk_release,
     ready_session,
     releases_of,
-    reported_playback,
     team_headers,
     the_one_part_of,
     the_part_recorded_again,
@@ -32,8 +34,7 @@ from tests.release_harness import (
 from tests.room_harness import the_bucket_is_in_memory
 
 BYTES = b"the team's rehearsal"
-NAMES = ["bytes_match_sha256", "nothing_awaiting_translation"]
-NAMES += ["everything_heard", "approval_matches_live_state"]
+NAMES = ["bytes_match_sha256", "nothing_awaiting_translation", "approval_matches_live_state"]
 
 
 bucket = pytest.fixture(the_bucket_is_in_memory)
@@ -75,11 +76,15 @@ async def _live(db: AsyncSession, session_id: str) -> IRSession:
     return await db.get_one(IRSession, session_id)
 
 
-async def _stored(db: AsyncSession, session_id: str) -> dict[str, bool] | None:
+async def _result(db: AsyncSession, session_id: str) -> dict[str, Any] | None:
     db.expire_all()
     (release,) = await releases_of(db, session_id)
-    stored = release.release_check
-    return None if stored is None else {c["name"]: c["passed"] for c in stored["checks"]}
+    return release.release_check
+
+
+async def _stored(db: AsyncSession, session_id: str) -> dict[str, bool] | None:
+    result = await _result(db, session_id)
+    return None if result is None else {c["name"]: c["passed"] for c in result["checks"]}
 
 
 async def _rehearsed(db: AsyncSession, bucket) -> tuple[str, str]:
@@ -95,7 +100,10 @@ async def _rehearsed(db: AsyncSession, bucket) -> tuple[str, str]:
 
 async def _check_again(db: AsyncSession, session_id: str) -> dict[str, bool]:
     (release,) = await releases_of(db, session_id)
-    await release_check.check_release(release.id)
+    release_id = release.id
+    release.release_check = null()
+    await db.commit()
+    await release_check.check_release(release_id)
     return await _stored(db, session_id) or {}
 
 
@@ -105,16 +113,17 @@ async def test_an_approval_with_every_take_intact_stores_a_whole_result_once(
     session_id, credential = await _rehearsed(db_session, bucket)
     headers = team_headers(credential)
     await checked_heard_and_approved(client, db_session, session_id, headers=headers)
-    (release,) = await releases_of(db_session, session_id)
-    ran_at = release.release_check["ran_at"]
-
+    first = await _result(db_session, session_id)
     again = await client.post(f"{PREFIX}/sessions/{session_id}/release", headers=headers)
+    bucket.objects.clear()
+    (release,) = await releases_of(db_session, session_id)
+    await release_check.check_release(release.id)
 
     assert again.status_code == 200, again.text
-    db_session.expire_all()
-    (release,) = await releases_of(db_session, session_id)
-    assert release.release_check["whole"] is True
-    assert release.release_check["ran_at"] == ran_at
+    assert first is not None
+    assert first["whole"] is True
+    assert datetime.fromisoformat(first["ran_at"])
+    assert await _result(db_session, session_id) == first
     assert await _stored(db_session, session_id) == dict.fromkeys(NAMES, True)
 
 
@@ -132,20 +141,29 @@ async def test_a_take_whose_bytes_no_longer_match_fails_check_one_and_the_approv
     assert approved.status_code == 200, approved.text
     assert approved.json()["version"] == 1
     assert await _stored(db_session, session_id) == {**dict.fromkeys(NAMES, True), NAMES[0]: False}
+    assert (await _result(db_session, session_id))["whole"] is False
 
 
+@pytest.mark.parametrize(
+    "door",
+    [lambda s, p, c: desk_release(s), lambda s, p, c: desk_passage_release(p, c)],
+    ids=["session", "passage"],
+)
 async def test_a_forced_approval_gets_its_check_like_any_other(
-    client, db_session, room_app, bucket
+    client, db_session, room_app, bucket, door
 ):
     project, _credential = await a_claimed_device(db_session)
+    project_id = project.id
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
-    session_id = session.id
+    session_id, pericope = session.id, session.pericope
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(desk_release(session_id), headers=desk, json={"force": True})
+    forced = await client.post(
+        door(session_id, project_id, pericope), headers=desk, json={"force": True}
+    )
 
     assert forced.status_code == 200, forced.text
-    assert list(await _stored(db_session, session_id) or {}) == NAMES
+    assert await _stored(db_session, session_id) == {**dict.fromkeys(NAMES, True), NAMES[0]: False}
 
 
 async def _a_stretch_without_words(db: AsyncSession, session: IRSession) -> None:
@@ -159,22 +177,10 @@ async def _a_stretch_without_words(db: AsyncSession, session: IRSession) -> None
     )
 
 
-async def _a_listening_that_stops_short(db: AsyncSession, session: IRSession) -> None:
-    told = await final_segments(db, session.id)
-    state = BackTranslationState(
-        scope=session.pericope,
-        findings=[],
-        checked=True,
-        analysed_segment_ids=[one.id for one in told],
-    )
-    await reported_playback(db, session, state, played_ranges=[[0, 1000]])
-
-
 @pytest.mark.parametrize(
     ("name", "after_the_approval"),
     [
         ("nothing_awaiting_translation", _a_stretch_without_words),
-        ("everything_heard", _a_listening_that_stops_short),
         ("approval_matches_live_state", the_part_recorded_again),
     ],
 )
