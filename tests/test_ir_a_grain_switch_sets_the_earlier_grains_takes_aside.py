@@ -41,9 +41,9 @@ from tests.release_harness import (
     a_claimed_device,
     at_the_desk,
     checked_heard_and_approved,
-    desk_retro,
     ready_session,
     reported_playback,
+    session_retro,
     team_headers,
 )
 from tests.room_harness import (
@@ -511,7 +511,7 @@ async def test_the_retroverification_file_lists_the_set_aside_takes_flagged_with
         client, db_session
     )
 
-    retro = await client.get(desk_retro(session.id), headers=desk)
+    retro = await session_retro(client, session.id, desk)
 
     assert retro.status_code == 200, retro.text
     rehearsals = {
@@ -543,7 +543,7 @@ async def test_the_retroverification_file_of_a_session_never_switched_flags_no_t
 ) -> None:
     session = await ready_session(db_session)
 
-    retro = await client.get(desk_retro(session.id), headers=desk)
+    retro = await session_retro(client, session.id, desk)
 
     assert retro.status_code == 200, retro.text
     assert retro.json()["takes"]

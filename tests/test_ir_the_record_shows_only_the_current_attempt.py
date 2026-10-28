@@ -21,9 +21,9 @@ from tests.release_harness import (
     PREFIX,
     a_claimed_device,
     at_the_desk,
-    desk_retro,
     one_stretch,
     ready_session,
+    session_retro,
     team_headers,
 )
 from tests.room_harness import room_client
@@ -99,7 +99,7 @@ async def _restarted(
 
 
 async def _the_file(client: httpx.AsyncClient, session_id: str, desk: dict[str, str]) -> dict:
-    answered = await client.get(desk_retro(session_id), headers=desk)
+    answered = await session_retro(client, session_id, desk)
     assert answered.status_code == 200, answered.text
     return answered.json()
 

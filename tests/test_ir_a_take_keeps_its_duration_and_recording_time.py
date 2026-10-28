@@ -38,8 +38,8 @@ from tests.release_harness import (
     PREFIX,
     TABLET,
     at_the_desk,
-    desk_retro,
     reported_playback,
+    session_retro,
 )
 from tests.room_harness import (
     rehearsed_in_parts,
@@ -257,7 +257,7 @@ async def test_the_retroverification_file_says_the_parts_recording_time_not_its_
     desk, _user = await at_the_desk(db_session, room_app, team)
     await kept(client, session.id, recording(3, 3), recorded_at="2026-10-20T10:02:00Z")
 
-    answer = await client.get(desk_retro(session.id), headers=desk)
+    answer = await session_retro(client, session.id, desk)
 
     assert answer.status_code == 200, answer.text
     assert [take["recorded_at"] for take in answer.json()["takes"]] == [TEN_OH_TWO]

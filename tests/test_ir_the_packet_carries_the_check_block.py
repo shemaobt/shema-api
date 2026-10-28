@@ -226,7 +226,8 @@ async def test_a_checked_session_reads_conferida(db_session: AsyncSession) -> No
     assert check["findings"] == []
     assert check["heardComplete"] is True
     assert check["retroUrl"] == (
-        f"/api/internalization-room/facilitator/sessions/{session.id}/retroverificacao"
+        f"/api/internalization-room/facilitator/projects/{session.project_id}/passages/"
+        f"{session.pericope}/retroverificacao"
     )
 
 

@@ -64,12 +64,12 @@ from tests.release_harness import (
     checked_telling_back,
     desk_release,
     desk_release_at,
-    desk_retro,
     judged_packet,
     one_stretch,
     rehearsed_session,
     releases_of,
     reported_playback,
+    session_retro,
     team_headers,
     team_release,
     told_back_with_an_open_finding,
@@ -660,7 +660,7 @@ async def test_what_the_manifest_leaves_out_is_in_the_retroverificacao_file(
 ):
     session, desk = await planted_and_forced(client, db_session, room_app)
 
-    retro = await client.get(desk_retro(session.id), headers=desk)
+    retro = await session_retro(client, session.id, desk)
     record = await client.get(desk_release_at(session.id, 1), headers=desk)
 
     assert retro.status_code == 200, retro.text
@@ -719,7 +719,8 @@ async def test_the_check_lists_the_nuances_in_her_keys(
     assert check["nuances"] == stored["check"]["nuances"]
     assert check["status"] == "conferida"
     assert check["retroUrl"] == (
-        f"/api/internalization-room/facilitator/sessions/{session.id}/retroverificacao"
+        f"/api/internalization-room/facilitator/projects/{project.id}/passages/"
+        f"{session.pericope}/retroverificacao"
     )
 
 
@@ -732,6 +733,24 @@ async def test_a_clean_check_carries_no_nuances_key(client, db_session, room_app
     check = (await manifest_of(client, desk, session))["check"]
 
     assert list(check) == HER_CHECK_KEYS
+
+
+async def test_an_old_packets_manifest_names_the_passage_route(client, db_session, room_app):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    await approved(client, credential, session)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, session.id)
+    old = f"/api/internalization-room/facilitator/sessions/{session.id}/retroverificacao"
+    row.packet = {**row.packet, "check": {**row.packet["check"], "retroUrl": old}}
+    await db_session.commit()
+
+    check = (await manifest_of(client, desk, session))["check"]
+
+    assert check["retroUrl"] == (
+        f"/api/internalization-room/facilitator/projects/{project.id}/passages/"
+        f"{session.pericope}/retroverificacao"
+    )
 
 
 async def test_a_forced_drafts_manifest_says_forcada_and_names_nobody(client, db_session, room_app):

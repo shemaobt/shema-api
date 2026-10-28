@@ -29,7 +29,17 @@ from app.services.internalization_room.takes import current_parts, part_keys, ta
 
 #: Where the facilitator and the consultant read everything the check learned about a session:
 #: the retroverification read, which the packet and the manifest both point to.
-RETRO_ROUTE = "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao"
+PASSAGE_RETRO_ROUTE = (
+    "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}"
+    "/retroverificacao"
+)
+
+
+def passage_retro_url(session: IRSession) -> str:
+    """The file of this session's passage, in its archive when the session was archived."""
+    url = PASSAGE_RETRO_ROUTE.format(project_id=session.project_id, pericope=session.pericope)
+    return f"{url}?archive={session.archive_id}" if session.archive_id else url
+
 
 #: The three words a check can be in, and the whole of them. Closed because they are Marcia's
 #: and a fourth is a conversation with her rather than a value.
@@ -59,7 +69,7 @@ def scene_of(keys: dict[str, str], take_id: str | None) -> dict[str, str]:
 def check_block(
     telling_back: BackTranslationState,
     told: list[IRSegment],
-    session_id: str,
+    session: IRSession,
     *,
     keys: dict[str, str],
     heard_complete: bool,
@@ -140,7 +150,7 @@ def check_block(
             addressed(finding.kind.value, finding.segment_id) for finding in telling_back.findings
         ],
         "nuances": nuances,
-        "retroUrl": RETRO_ROUTE.format(session_id=session_id),
+        "retroUrl": passage_retro_url(session),
     }
 
 
@@ -211,7 +221,7 @@ async def keep_the_check_on_the_standing_release(
     live = check_block(
         telling_back,
         own,
-        session.id,
+        session,
         keys=part_keys(parts),
         heard_complete=not unheard_parts(telling_back, parts, own),
         version=release.version,

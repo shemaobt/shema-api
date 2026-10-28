@@ -1716,10 +1716,7 @@ class RetroverificationFile(BaseModel):
     """Everything the check learned about one session, for the facilitator and the consultant.
 
     `numbering` says what the numbers beside the stretches are worth: `frozen` when a
-    **Version** exists and `live` when the reading of right now is all there is. `notices`
-    says the same thing in the consultant's own language, beside the flags a program reads —
-    a file that only carried the booleans would leave the person reading it to work out what
-    a missing number means.
+    **Version** exists and `live` when the reading of right now is all there is.
     """
 
     session_id: str
@@ -1729,7 +1726,6 @@ class RetroverificationFile(BaseModel):
     generated_at: str
     releases: list[RetroverificationRelease] = Field(default_factory=list)
     numbering: Literal["frozen", "live"]
-    notices: list[str] = Field(default_factory=list)
     approved: bool
     analysed: bool
     checked: bool

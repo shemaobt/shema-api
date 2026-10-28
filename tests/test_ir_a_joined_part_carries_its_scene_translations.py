@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.hard_stretch_harness import a_session
-from tests.release_harness import a_claimed_device, team_headers
+from tests.release_harness import a_claimed_device, session_retro, team_headers
 from tests.room_harness import (
     played_every_part,
     the_analyst_is_scripted,
@@ -166,9 +166,7 @@ async def offered(room: Room, session_id: str) -> list[int]:
 
 
 async def the_file(room: Room, session_id: str) -> dict[str, Any]:
-    answer = await room.client.get(
-        f"{IR}/facilitator/sessions/{session_id}/retroverificacao", headers=room.desk
-    )
+    answer = await session_retro(room.client, session_id, room.desk)
     assert answer.status_code == 200, answer.text
     return dict(answer.json())
 

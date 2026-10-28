@@ -27,10 +27,10 @@ from tests.release_harness import (
     at_the_desk,
     desk_passage_release,
     desk_release_at,
-    desk_retro,
     never_analysed_telling_back,
     ready_session,
     releases_of,
+    session_retro,
     team_headers,
     team_release,
     told_back_with_an_open_finding,
@@ -167,7 +167,7 @@ async def test_a_release_stored_as_a_force_that_waived_nothing_reads_as_an_ordin
 
     read = await room.get(f"{PREFIX}/sessions/{session.id}", headers=team_headers(tablet))
     listed = await desk_client.get(f"/api/facilitator/teams/{team.id}/pericopes", headers=desk)
-    retro = await room.get(desk_retro(session.id), headers=desk)
+    retro = await session_retro(room, session.id, desk)
     served = await room.get(desk_release_at(session.id, 1), headers=desk)
     forced_again = await room.post(desk_passage_release(team.id, P), headers=desk, json=FORCE)
 

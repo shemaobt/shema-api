@@ -76,6 +76,7 @@ from tests.release_harness import (
     releases_of,
     reported_playback,
     retro_take,
+    session_retro,
     team_headers,
     team_release,
     the_one_part_of,
@@ -93,15 +94,6 @@ from tests.room_harness import (
 #: The audio route the file points at, one link per take. A path and never a signed link: a
 #: signed URL expires in minutes and this document outlives it.
 AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
-
-#: The three sentences the file says to the consultant, in the language the room speaks to her.
-NOT_APPROVED = "Este rascunho não foi aprovado: a numeração das frases é a da leitura de agora"
-READING_MOVED = "A leitura mudou desde a versão 1: frases sem número não estavam nela"
-NEVER_READ = "O analista nunca leu esta tradução: não houve conferência"
-BEFORE_THE_FREEZE = (
-    "A versão 1 foi aprovada antes de as frases serem congeladas: a numeração abaixo é a da "
-    "leitura de agora"
-)
 
 #: One rehearsal told back in two stretches, so an approval can freeze two numbers and a third
 #: stretch told afterwards can have none.
@@ -236,7 +228,7 @@ async def _tell_again(
 
 
 async def _the_file(client: httpx.AsyncClient, session_id: str, desk: dict[str, str]) -> dict:
-    answered = await client.get(desk_retro(session_id), headers=desk)
+    answered = await session_retro(client, session_id, desk)
     assert answered.status_code == 200, answered.text
     return answered.json()
 
@@ -277,7 +269,6 @@ async def test_a_facilitator_reads_the_file_of_a_clean_session(
     assert file["releases"][0]["forced_by"] is None
     assert file["releases"][0]["session_id"] == session.id
     assert file["numbering"] == "frozen"
-    assert file["notices"] == []
     assert file["findings"] == []
     frozen = {one["segment_id"]: one["frase"] for one in row.packet["back_translation"]["segments"]}
     assert [one["frase"] for one in file["stretches"]] == [1]
@@ -343,7 +334,6 @@ async def test_a_version_another_session_minted_does_not_take_this_ones_numbers(
     assert file["numbering"] == "frozen"
     assert file["approved"] is False, "a v2 da outra conversa é o rascunho aprovado agora"
     assert [one["frase"] for one in file["stretches"]] == [1]
-    assert file["notices"] == []
 
 
 async def test_a_stretch_told_again_keeps_what_was_said_before(
@@ -433,7 +423,7 @@ async def test_another_teams_facilitator_gets_404_and_no_file(
 
     assert refused.status_code == 404, refused.text
     assert "stretches" not in refused.json()
-    assert (await client.get(desk_retro(session.id), headers=owner)).status_code == 200
+    assert (await session_retro(client, session.id, owner)).status_code == 200
 
 
 async def test_every_telling_of_a_stretch_travels_with_its_count(
@@ -609,7 +599,7 @@ async def test_an_archived_attempt_keeps_the_flat_report_an_older_build_sent(
     assert attempt["findings"][0]["note"] == THE_ANALYSTS_NOTE
 
 
-async def test_a_version_approved_before_the_frases_were_frozen_says_so(
+async def test_a_version_approved_before_the_frases_were_frozen_numbers_the_live_reading(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
     """A stored packet with no numbers in it is not a reading that moved.
@@ -637,8 +627,6 @@ async def test_a_version_approved_before_the_frases_were_frozen_says_so(
     assert file["approved"] is True
     assert file["numbering"] == "live"
     assert [one["frase"] for one in file["stretches"]] == [1, 2]
-    assert file["notices"] == [BEFORE_THE_FREEZE]
-    assert READING_MOVED not in file["notices"]
 
 
 async def test_a_chain_that_ends_on_a_stretch_the_team_divided_was_not_abandoned(
@@ -697,10 +685,9 @@ async def test_the_frozen_numbers_are_the_latest_releases_and_a_new_stretch_has_
     assert file["numbering"] == "frozen"
     assert [one.get("frase") for one in file["stretches"]] == [1, 2, None]
     assert "frase" not in file["stretches"][2]
-    assert READING_MOVED in file["notices"]
 
 
-async def test_an_unapproved_session_numbers_the_live_reading_and_says_so(
+async def test_an_unapproved_session_numbers_the_live_reading(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
     """With no **Version** there is nothing frozen, and the file must not pretend there is.
@@ -719,10 +706,9 @@ async def test_an_unapproved_session_numbers_the_live_reading_and_says_so(
     assert file["approved"] is False
     assert file["releases"] == []
     assert [one["frase"] for one in file["stretches"]] == [1, 2]
-    assert NOT_APPROVED in file["notices"]
 
 
-async def test_a_session_the_analyst_never_read_says_so(
+async def test_a_session_the_analyst_never_read_is_not_a_clean_check(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
     """Never read and read clean leave the same defaults, so the file has to name the difference.
@@ -741,7 +727,6 @@ async def test_a_session_the_analyst_never_read_says_so(
     assert file["analysed"] is False
     assert file["checked"] is False
     assert file["checked_at"] is None
-    assert NEVER_READ in file["notices"]
     assert file["findings"] == []
     assert [one["transcript"] for one in file["stretches"]] == ["Noemi voltou com Rute"]
 
@@ -897,7 +882,6 @@ async def test_a_passage_worked_over_two_sessions_is_one_file_named_after_its_re
     assert file["release_id"] == name
     assert [one["session_id"] for one in file["sessions"]] == [first.id, second.id]
     assert [len(one["stretches"]) for one in file["sessions"]] == [1, 2]
-    assert file["notices"] == []
 
 
 async def test_a_passage_not_yet_approved_carries_the_first_note_and_the_live_frases(
@@ -1109,3 +1093,21 @@ async def test_an_archive_that_holds_no_release_is_named_with_its_stamp(
         f'attachment; filename="{file["release_id"]}-retroverificacao.json"'
     )
     assert file["notices"] == [NOT_APPROVED_YET]
+
+
+async def test_the_old_session_route_redirects_to_the_file_of_its_passage(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    live = await client.get(desk_retro(session.id), headers=desk)
+    zerar = await client.post(
+        f"{PREFIX}/facilitator/projects/{project.id}/passages/{P}/archive", headers=desk
+    )
+    archived = await client.get(desk_retro(session.id), headers=desk)
+
+    assert (live.status_code, live.headers["location"]) == (307, _passage_file(project.id))
+    assert archived.status_code == 307
+    assert archived.headers["location"] == _passage_file(project.id, zerar.json()["archive"]["id"])

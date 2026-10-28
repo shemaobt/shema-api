@@ -55,10 +55,10 @@ from tests.release_harness import (
     PREFIX,
     a_claimed_device,
     at_the_desk,
-    desk_retro,
     ready_session,
     rehearsed_session,
     reported_playback,
+    session_retro,
     team_headers,
 )
 from tests.room_harness import (
@@ -190,7 +190,7 @@ async def _the_file(
 ) -> dict[str, Any]:
     """The retroverification file, served the way the facilitator reads it."""
     desk, _user = await at_the_desk(db, room_app, project)
-    answered = await client.get(desk_retro(session.id), headers=desk)
+    answered = await session_retro(client, session.id, desk)
     assert answered.status_code == 200, answered.text
     return dict(answered.json())
 

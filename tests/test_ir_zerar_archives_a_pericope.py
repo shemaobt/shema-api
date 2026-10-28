@@ -63,11 +63,11 @@ from tests.release_harness import (
     at_the_desk,
     desk_release,
     desk_release_at,
-    desk_retro,
     ensaio_take,
     ready_session,
     releases_of,
     reported_playback,
+    session_retro,
     team_headers,
     team_release,
     told_back_with_an_open_finding,
@@ -231,11 +231,13 @@ async def what_the_facilitator_reads(
         ("conversation", f"{PREFIX}/facilitator/sessions/{session_id}/conversation"),
         ("takes", f"{PREFIX}/facilitator/sessions/{session_id}/takes"),
         ("release", desk_release_at(session_id, 1)),
-        ("file", desk_retro(session_id)),
     ):
         answered = await client.get(url, headers=desk)
         assert answered.status_code == 200, f"{name}: {answered.text[:300]}"
         read[name] = answered.json()
+    file = await session_retro(client, session_id, desk)
+    assert file.status_code == 200, file.text[:300]
+    read["file"] = file.json()
     read["file"].pop("generated_at")
     return read
 
@@ -653,9 +655,9 @@ async def test_the_retroverification_file_of_a_new_session_lists_no_archived_dra
     await zerar(client, desk, team.id, P)
     after = await ready_session(db_session, project_id=team.id)
 
-    unapproved = await client.get(desk_retro(after.id), headers=desk)
+    unapproved = await session_retro(client, after.id, desk)
     approved = await client.post(team_release(after.id), headers=team_headers(tablet))
-    listed = await client.get(desk_retro(after.id), headers=desk)
+    listed = await session_retro(client, after.id, desk)
 
     assert unapproved.status_code == 200, unapproved.text[:300]
     assert unapproved.json()["releases"] == []

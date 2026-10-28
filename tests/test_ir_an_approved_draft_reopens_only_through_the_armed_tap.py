@@ -45,9 +45,9 @@ from tests.release_harness import (
     checked_heard_and_approved,
     desk_release,
     desk_release_at,
-    desk_retro,
     releases_of,
     reported_playback,
+    session_retro,
     team_release,
 )
 from tests.room_harness import (
@@ -408,7 +408,7 @@ async def test_a_check_that_comes_back_clean_over_a_forced_v1_is_the_one_check_e
 
     read = await _approval(client, session.id)
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
-    retro = (await client.get(desk_retro(session.id), headers=desk)).json()
+    retro = (await session_retro(client, session.id, desk)).json()
 
     assert read is not None
     assert (read["version"], read["forced"]) == (1, True)
@@ -442,7 +442,7 @@ async def test_a_finding_raised_after_the_approval_is_the_standing_versions_chec
     )
 
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
-    retro = (await client.get(desk_retro(session.id), headers=desk)).json()
+    retro = (await session_retro(client, session.id, desk)).json()
 
     assert (stored["check"]["conferida"], retro["checked"]) == (False, False)
     assert [one["idx"] for one in stored["check"]["findings"]] == [told[0].id]
@@ -462,7 +462,7 @@ async def test_the_translation_started_over_after_the_approval_is_the_standing_v
     assert restarted.status_code == 200, restarted.text
 
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
-    retro = (await client.get(desk_retro(session.id), headers=desk)).json()
+    retro = (await session_retro(client, session.id, desk)).json()
     assert (stored["check"]["conferida"], retro["checked"]) == (False, False)
 
 

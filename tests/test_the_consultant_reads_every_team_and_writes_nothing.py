@@ -362,7 +362,6 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/takes",
         f"{IR}/facilitator/sessions/{session}/release",
         f"{IR}/facilitator/sessions/{session}/releases/1",
-        f"{IR}/facilitator/sessions/{session}/retroverificacao",
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals",
         f"{IR}/facilitator/sessions/{session}/coverage",
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
@@ -398,11 +397,10 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         reads[1],
         reads[2],
         reads[5],
-        reads[6],
-        reads[9],
+        reads[8],
+        reads[10],
         reads[11],
         reads[12],
-        reads[13],
     ):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 

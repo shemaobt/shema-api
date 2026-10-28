@@ -34,7 +34,7 @@ from tests.release_harness import (
     TABLET,
     a_claimed_device,
     at_the_desk,
-    desk_retro,
+    session_retro,
     team_headers,
 )
 from tests.room_harness import (
@@ -566,7 +566,7 @@ async def test_telling_a_stale_stretch_again_leaves_the_file_as_it_was(
 
     assert told.status_code == 200, told.text
     desk, _user = await at_the_desk(db_session, room_app, project)
-    filed = await client.get(desk_retro(session.id), headers=desk)
+    filed = await session_retro(client, session.id, desk)
     assert filed.status_code == 200, filed.text
     file = filed.json()
     assert stale in [row["segment_id"] for row in file["abandoned"]], (
