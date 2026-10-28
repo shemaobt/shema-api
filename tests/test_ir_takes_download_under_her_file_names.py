@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import uuid
+import wave
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -716,3 +718,137 @@ async def test_a_consultant_reads_the_downloads_of_any_team(client, db_session, 
     listed = await read_downloads(client, {"Authorization": f"Bearer {access}"}, session.id)
 
     assert [each["filename"] for each in listed["takes"]] == [f"{RELEASE_V1}-S1.wav"]
+
+
+def whole_of(session_id: str) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/takes/whole"
+
+
+async def three_scenes(client, db_session, credential, project_id) -> IRSession:
+    session = await a_rehearsal(db_session, project_id)
+    for part, seconds in enumerate((1, 2, 0.5), start=1):
+        await send(client, credential, session.id, recording(seconds, part), part=part)
+    return session
+
+
+async def test_the_list_offers_the_whole_passage_with_the_sum_of_the_takes_lengths(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await three_scenes(client, db_session, credential, project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    listed = await read_downloads(client, desk, session.id)
+
+    assert listed["whole"] == {
+        "filename": f"{RELEASE_V1}-inteira.wav",
+        "url": whole_of(session.id),
+        "duration_ms": 3500,
+    }
+
+
+async def test_one_take_that_is_not_wav_takes_the_whole_out_of_the_list(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    await send(client, credential, session.id, recording(1, 1), part=1)
+    await send(client, credential, session.id, b"m4a bytes", part=2, content_type="audio/mp4")
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    listed = await read_downloads(client, desk, session.id)
+
+    assert listed["whole"] is None
+
+
+async def test_the_whole_redirects_to_an_hour_link_of_the_three_takes_laid_end_to_end(
+    client, db_session, room_app, store
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await three_scenes(client, db_session, credential, project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    answer = await client.get(whole_of(session.id), headers=desk, follow_redirects=False)
+
+    assert answer.status_code == 307
+    link = read_link(answer.headers["location"])
+    assert link.lasts_s == AN_HOUR
+    assert link.saves_as == saves_as(f"{RELEASE_V1}-inteira.wav")
+    assert pcm_of(store.objects[link.key]) == b"".join(
+        pcm_of(recording(seconds, part)) for part, seconds in enumerate((1, 2, 0.5), start=1)
+    )
+
+
+async def test_the_whole_asked_twice_is_one_file_and_a_scene_recorded_again_makes_another(
+    client, db_session, room_app, store
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await three_scenes(client, db_session, credential, project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    async def asked() -> str:
+        answer = await client.get(whole_of(session.id), headers=desk, follow_redirects=False)
+        return read_link(answer.headers["location"]).key
+
+    first = await asked()
+    stored = dict(store.objects)
+    assert await asked() == first
+    assert store.objects == stored, "o arquivo foi refeito"
+    await send(client, credential, session.id, recording(2, 9), part=2)
+
+    again = await asked()
+
+    assert again != first
+    assert first in store.objects, "o arquivo antigo foi apagado"
+
+
+async def test_a_take_the_record_calls_wav_but_whose_header_is_not_16khz_mono_refuses_the_whole(
+    client, db_session, room_app, store
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    await send(client, credential, session.id, recording(1, 1), part=1)
+    await send(client, credential, session.id, a_wav(rate=44_100), part=2)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    answer = await client.get(whole_of(session.id), headers=desk, follow_redirects=False)
+
+    assert answer.status_code == 409
+    assert answer.json()["code"] == "NOT_ALL_WAV"
+    assert not [key for key in store.objects if "/whole/" in key]
+
+
+async def test_a_passage_with_no_take_has_no_whole_to_build(client, db_session, room_app, store):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    answer = await client.get(whole_of(session.id), headers=desk, follow_redirects=False)
+
+    assert answer.status_code == 409
+    assert answer.json()["code"] == "NOT_ALL_WAV"
+    assert not [key for key in store.objects if "/whole/" in key]
+
+
+async def test_a_tablets_credential_does_not_open_the_whole(client, db_session, room_app):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await three_scenes(client, db_session, credential, project.id)
+
+    answer = await client.get(whole_of(session.id), headers=team_headers(credential))
+
+    assert answer.status_code == 401
+
+
+def pcm_of(audio: bytes) -> bytes:
+    with wave.open(io.BytesIO(audio)) as file:
+        return file.readframes(file.getnframes())
+
+
+def a_wav(*, rate: int) -> bytes:
+    out = io.BytesIO()
+    with wave.open(out, "wb") as file:
+        file.setnchannels(1)
+        file.setsampwidth(2)
+        file.setframerate(rate)
+        file.writeframes(b"\x07\x00" * rate)
+    return out.getvalue()

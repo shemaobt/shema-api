@@ -6,11 +6,31 @@ import hashlib
 
 from app.core.exceptions import NotAllWav
 from app.db.models.internalization_room import IRTake
-from app.services.internalization_room.takes import TakeStore
+from app.services.internalization_room.takes import TakeStore, is_declared, is_wav
 from app.services.internalization_room.wav import Pcm, pcm16
 
 RATE = 16000
 CHANNELS = 1
+
+WHOLE_ROUTE = "/api/internalization-room/facilitator/sessions/{session_id}/takes/whole"
+
+
+def whole_filename(release_id: str) -> str:
+    return f"{release_id}-inteira.wav"
+
+
+def whole_url(session_id: str) -> str:
+    return WHOLE_ROUTE.format(session_id=session_id)
+
+
+def whole_is_offered(parts: list[IRTake]) -> bool:
+    """Her rule: the whole is offered when every part is WAV by its content type.
+
+    A part the text seam only declared has no bytes to lay down, so it keeps the whole away.
+    """
+    return bool(parts) and all(
+        not is_declared(part) and is_wav(part.content_type) for part in parts
+    )
 
 
 def whole_key(release_id: str, takes: list[IRTake]) -> str:

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import NotAllWav, ValidationError
 from app.db.models.internalization_room import IRGrain, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     GrainSwitchRequest,
@@ -36,8 +36,9 @@ from app.services.internalization_room.scene_rehearsals import (
     refuse_an_origin_that_is_no_scene_rehearsal,
 )
 from app.services.internalization_room.session_takes import mother_tongue_takes_of
-from app.services.internalization_room.take_downloads import take_downloads_of
+from app.services.internalization_room.take_downloads import _release_id, take_downloads_of
 from app.services.internalization_room.takes import (
+    DOWNLOAD_LINK_SECONDS,
     LONGEST_TAKE_MS,
     TakeStore,
     current_parts,
@@ -46,12 +47,18 @@ from app.services.internalization_room.takes import (
     of_the_grain_left_behind,
     refuse_a_join_over_a_moved_part,
     set_aside_moment,
+    signed_url,
     store_take,
     take_for_reader,
     take_in_session,
     take_store,
     takes_of,
     the_take_this_keep_already_is,
+)
+from app.services.internalization_room.whole_passage import (
+    whole_filename,
+    whole_is_offered,
+    whole_passage,
 )
 from app.utils.stored_time import as_utc
 
@@ -394,6 +401,36 @@ async def read_the_take_downloads(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     return await take_downloads_of(db, session)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/takes/whole",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+    responses={409: {"description": "`NOT_ALL_WAV`: a take is not 16 kHz mono 16-bit WAV"}},
+)
+async def download_the_whole_passage(
+    session_id: str,
+    user: ReaderUser,
+    db: AsyncSession = Depends(get_db),
+    store: TakeStore = Depends(take_store),
+) -> RedirectResponse:
+    """The live takes laid end to end as one WAV, built once and served by a link of an hour."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    parts = current_parts(await takes_of(db, session.id))
+    release_id = await _release_id(db, session, parts)
+    if not whole_is_offered(parts):
+        raise NotAllWav("the passage has a take that is not WAV")
+    key = await whole_passage(store, release_id, parts)
+    url = await signed_url(
+        key,
+        "audio/wav",
+        minutes=DOWNLOAD_LINK_SECONDS // 60,
+        disposition=f'attachment; filename="{whole_filename(release_id)}"',
+    )
+    await db.commit()
+    return RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get(

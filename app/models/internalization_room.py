@@ -1321,6 +1321,14 @@ class SupersededTakeDownload(TakeDownload):
     set_aside_at: str | None = None
 
 
+class WholeDownload(BaseModel):
+    """The whole passage as one WAV: the route that serves it, built when it is asked."""
+
+    filename: str
+    url: str
+    duration_ms: int | None
+
+
 class TakeDownloadsResponse(BaseModel):
     """The session's rehearsal takes by file name, live parts and superseded takes apart."""
 
@@ -1329,6 +1337,7 @@ class TakeDownloadsResponse(BaseModel):
     links_valid_for_s: int
     takes: list[TakeDownload]
     superseded_takes: list[SupersededTakeDownload]
+    whole: WholeDownload | None = None
 
 
 class SceneFraseView(BaseModel):

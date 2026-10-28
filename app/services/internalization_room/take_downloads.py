@@ -12,6 +12,7 @@ from app.models.internalization_room import (
     SupersededTakeDownload,
     TakeDownload,
     TakeDownloadsResponse,
+    WholeDownload,
 )
 from app.services.internalization_room.approved_draft import (
     approved_draft,
@@ -33,6 +34,11 @@ from app.services.internalization_room.takes import (
     set_aside_moment,
     signed_url,
     takes_of,
+)
+from app.services.internalization_room.whole_passage import (
+    whole_filename,
+    whole_is_offered,
+    whole_url,
 )
 from app.utils.stored_time import as_utc
 
@@ -169,12 +175,23 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
                     set_aside_at=set_aside_moment(take),
                 )
             )
+    lengths = [part.duration_ms for part in parts]
+    whole = (
+        WholeDownload(
+            filename=whole_filename(release_id),
+            url=whole_url(session.id),
+            duration_ms=None if None in lengths else sum(length or 0 for length in lengths),
+        )
+        if whole_is_offered(parts)
+        else None
+    )
     return TakeDownloadsResponse(
         session_id=session.id,
         release_id=release_id,
         links_valid_for_s=DOWNLOAD_LINK_SECONDS,
         takes=live,
         superseded_takes=superseded,
+        whole=whole,
     )
 
 
