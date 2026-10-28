@@ -25,11 +25,12 @@ from app.services.internalization_room.passage_retroverification import (
     NOT_APPROVED,
 )
 from app.services.internalization_room.retro_export import retro_export
-from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import capture_segment, final_segments
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
+    PREFIX,
     a_claimed_device,
     a_p02_telling_with_the_swapped_cause,
     a_rehearsal_only_half_heard,
@@ -44,6 +45,9 @@ from tests.release_harness import (
     the_part_recorded_again,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory
+
+WORDS = "Noemi voltou com Rute"
+TOLD_AGAIN = "Noemi voltou com Rute, contado outra vez"
 
 
 @pytest.fixture()
@@ -83,7 +87,9 @@ async def test_an_approved_passage_opens_with_her_keys_in_her_order(client, db_s
 
     file = await _exported(db_session, session.id)
 
-    assert list(file) == ["releaseId", "pericopeId", "version", "finalized", "approval"]
+    assert list(file) == [
+        "releaseId", "pericopeId", "version", "finalized", "approval", "frases", "history",
+    ]  # fmt: skip
     assert (file["releaseId"], file["pericopeId"], file["version"], file["finalized"]) == (
         "release-1", pericope, 1, True,
     )  # fmt: skip
@@ -101,7 +107,10 @@ async def test_an_unapproved_passage_has_no_approval_and_says_so(db_session) -> 
 
     file = await _exported(db_session, session.id)
 
-    assert list(file) == ["releaseId", "pericopeId", "version", "finalized", "note", "approval"]
+    assert list(file) == [
+        "releaseId", "pericopeId", "version", "finalized", "note", "approval", "frases", "history",
+    ]  # fmt: skip
+    assert [one["transcript"] for one in file["frases"]] == [WORDS]
     assert (file["finalized"], file["approval"], file["version"]) == (False, None, 1)
     assert file["note"] == NOT_APPROVED
 
@@ -252,3 +261,94 @@ async def test_a_packet_that_froze_no_frase_numbers_lists_no_frase_in_the_approv
     await db_session.commit()
 
     assert (await _exported(db_session, session.id))["approval"]["frases"] == []
+
+
+async def test_the_frases_carry_her_places_and_the_words_as_they_stand(client, db_session) -> None:
+    session, _ = await _approved(client, db_session)
+    (stretch,) = await final_segments(db_session, session.id)
+    stretch_id = stretch.id
+
+    (frase,) = (await _exported(db_session, session.id))["frases"]
+
+    assert list(frase) == [
+        "n", "idx", "clipKey", "coversFrom", "coversTo",
+        "transcript", "pass", "recordedAt", "stale",
+    ]  # fmt: skip
+    assert (frase["n"], frase["idx"], frase["clipKey"], frase["coversTo"]) == (
+        1, stretch_id, "whole", CLIP_MS / 1000,
+    )  # fmt: skip
+    assert (frase["transcript"], frase["pass"], frase["stale"]) == (WORDS, 1, False)
+    assert frase["recordedAt"]
+
+
+async def test_restarting_over_an_approved_draft_keeps_the_numbers_and_empties_the_words(
+    client, db_session
+) -> None:
+    session, headers = await _approved(client, db_session)
+    restarted = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/restart", headers=headers
+    )
+    assert restarted.status_code == 200, restarted.text
+
+    file = await _exported(db_session, session.id)
+
+    (frase,) = file["frases"]
+    assert (frase["n"], frase["transcript"], frase["stale"]) == (1, "", True)
+    (abandoned,) = file["history"]
+    assert (abandoned["transcript"], abandoned["superseded"]) == (WORDS, False)
+
+
+async def test_history_keeps_the_telling_a_new_one_replaced(client, db_session) -> None:
+    session, _ = await _approved(client, db_session)
+    (first,) = await final_segments(db_session, session.id)
+    again = await capture_segment(
+        db_session,
+        session,
+        take_id=first.take_id,
+        starts_ms=first.starts_ms,
+        ends_ms=first.ends_ms,
+        bridge_take_id="retro-de-novo",
+        transcript=TOLD_AGAIN,
+        replaces=first,
+    )
+    first_id, again_id = first.id, again.id
+
+    file = await _exported(db_session, session.id)
+
+    old, new = file["history"]
+    assert (old["idx"], old["superseded"], old["pass"]) == (first_id, True, 1)
+    assert (new["idx"], new["superseded"], new["supersedes"]) == (again_id, False, first_id)
+    assert (new["transcript"], file["frases"][0]["transcript"]) == (TOLD_AGAIN, WORDS)
+    assert file["frases"][0]["stale"] is True
+
+
+async def test_a_telling_told_again_before_approval_lists_the_new_one_that_replaces_the_old(
+    db_session,
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    (first,) = await final_segments(db_session, session.id)
+    again = await capture_segment(
+        db_session,
+        session,
+        take_id=first.take_id,
+        starts_ms=first.starts_ms,
+        ends_ms=first.ends_ms,
+        bridge_take_id="retro-de-novo",
+        transcript=TOLD_AGAIN,
+        pass_number=2,
+        replaces=first,
+    )
+    first_id, again_id = first.id, again.id
+
+    file = await _exported(db_session, session.id)
+
+    (frase,) = file["frases"]
+    assert (frase["idx"], frase["supersedes"], frase["pass"], frase["clipKey"]) == (
+        again_id, first_id, 2, "whole",
+    )  # fmt: skip
+    assert (frase["coversFrom"], frase["coversTo"]) == (0, CLIP_MS / 1000)
+    assert [(one["pass"], one["clipKey"]) for one in file["history"]] == [
+        (1, "whole"),
+        (2, "whole"),
+    ]
