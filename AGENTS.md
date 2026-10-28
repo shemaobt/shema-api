@@ -12,7 +12,7 @@ JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -n 4 --dist load
 
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
-uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py --explicit-package-bases
+uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py scripts/her_golden_round.py --explicit-package-bases
 uv run python scripts/check_doctrine.py
 uv run python scripts/sync_doctrine.py --check
 TRIPOD_COMPILER_REPO=~/tripod_compiler uv run python scripts/sync_internalization_canon.py --check
@@ -39,6 +39,15 @@ real Postgres can show it (ADR 0079). The three selections partition the whole s
 The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is one file per process, in the system temporary directory and named by the xdist worker or, in a serial run, by the pid, so two runs in one checkout and four workers in one run do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that one file and leaves it behind — so a run that names its own database runs serially, without `-n`. The schema is created once per process and each test is given a clean database by a sweep, not by recreating it.
 
 ## Golden runs
+
+**The measure is her runner.** Our backend is accepted by her 23 scripts and her 45 checks, played by her own runner at the pin in `docs/doctrine/FREEZE_PIN` from a checkout of her repository, over `--http` against the Golden doors. One command does it, and keeps her reports in `golden/reports/<date>/` beside the backend commit judged and the pin; it refuses a checkout that is not at the pin or carries changes to it, and its exit is hers (0 passed, 1 a session failed, 2 her preflight stopped the run, 3 the backend died mid-script) or 4 for a refusal before anything played. Her runner needs `ANTHROPIC_API_KEY` for her judge and her preflight.
+
+```sh
+TRIPOD_INTERNALIZATION_REPO=~/Tripod-Internalization INTERNALIZATION_ROOM_RUNNER_KEY=<key> \
+  uv run python scripts/her_golden_round.py --base-url <host>/api/internalization-room
+```
+
+Our Python runners below, `scripts/golden_runner.py` with its checks and `scripts/bt_golden_runner.py`, are **no longer the measure** (Henok, ENG-1339): they stay as a way to replay a script or a back-translation locally, and a pass there accepts nothing.
 
 Marcia's golden scripts are played against a running server through two doors that exist only
 where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and both answer 404. The

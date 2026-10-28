@@ -70,7 +70,7 @@ jobs:
         run: uv run python -c "import app.main"
 
       - name: Run mypy
-        run: uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py --explicit-package-bases
+        run: uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py scripts/her_golden_round.py --explicit-package-bases
 
       # Marcia's ruling (04/09) bans six mechanisms from code — speech ceilings, probe/station
       # contracts, memory windows, "say less" notes, a non-frontier model on the voice, app-owned
