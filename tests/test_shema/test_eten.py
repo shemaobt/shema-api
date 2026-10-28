@@ -459,6 +459,7 @@ async def test_a_completion_saved_on_31_july_counts_for_the_year_that_closes(
             user=strategist,
             expected_version=1,
             day=day,
+            authorization_in_view=True,
         )
 
     today = cut(YEAR) + timedelta(days=60)

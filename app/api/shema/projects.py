@@ -308,7 +308,9 @@ async def patch_record(
     **The body is whatever the tab owns and nothing else.** Ten tabs saving the whole record
     would have tab 3 writing tab 7's values as they stood when tab 3 was opened — a silent
     overwrite inside one person's own payload, which no version guard between people can catch.
-    Absent means unchanged, all the way down.
+    Absent means unchanged, all the way down — the prayer request's authorization included: the
+    tab shows it beside the text, so a request reworded here keeps it
+    (``authorization_in_view=True``, OBT-597).
 
     **And whatever the tab owns, the reader may not own all of it** (OBT-528): a reader who is
     not coordination is refused the place and the flag — and, on a withheld record, the base,
@@ -330,6 +332,7 @@ async def patch_record(
             user=user,
             expected_version=_expected_version(if_match),
             day=_local_day(local_day, utc_today=today),
+            authorization_in_view=True,
         )
     except RecordVersionConflict as conflict:
         return _conflict(conflict)
