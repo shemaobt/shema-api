@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.project_health._deps import interview_token_dep
 from app.core.database import get_db
-from app.core.rate_limit import limiter
+from app.core.rate_limit import bearer_token_key, interview_pair_key, limiter
 from app.models.project_health import (
     InterviewCompleteResponse,
     InterviewCreate,
@@ -20,12 +20,17 @@ from app.services.project_health.complete_interview import InterviewIncompleteEr
 router = APIRouter()
 
 
+async def _name_the_pair(request: Request, payload: InterviewCreate = Body(...)) -> None:
+    request.state.interview_pair = f"{payload.project_name}\x00{payload.team_name}"
+
+
 @router.post(
     "/interviews",
     response_model=InterviewCreateResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_name_the_pair)],
 )
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=interview_pair_key)
 async def create_interview_endpoint(
     request: Request,
     payload: InterviewCreate = Body(...),
@@ -74,7 +79,7 @@ async def get_interview_endpoint(
     response_model=InterviewMessageResponse,
     dependencies=[interview_token_dep],
 )
-@limiter.limit("60/minute")
+@limiter.limit("60/minute", key_func=bearer_token_key)
 async def post_message_endpoint(
     request: Request,
     interview_id: str,
