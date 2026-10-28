@@ -32,9 +32,7 @@ async def client(db_session, ph_app, stub_llm):
         yield db_session
 
     app.dependency_overrides[get_db] = _get_db
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
 
 
@@ -106,8 +104,7 @@ async def test_team_reports_of_different_ids_from_one_address_are_all_accepted(c
 
 async def test_the_team_report_past_the_limit_for_one_id_is_refused(client):
     statuses = [
-        (await client.get(f"{CALLS}/reports/team/r1")).status_code
-        for _ in range(REPORT_LIMIT + 1)
+        (await client.get(f"{CALLS}/reports/team/r1")).status_code for _ in range(REPORT_LIMIT + 1)
     ]
 
     assert statuses[-1] == 429
