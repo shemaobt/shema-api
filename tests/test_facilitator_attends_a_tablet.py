@@ -612,15 +612,17 @@ async def test_attending_a_halt_the_tablet_has_since_raised_again_changes_nothin
     assert (await queued_device(client, team_a, stopped.device_id))["attended_at"] is None
 
 
-async def test_attending_without_naming_a_halt_is_refused_and_writes_nothing(
+async def test_attending_without_a_halt_or_with_one_lacking_an_offset_is_refused_and_writes_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession, team_a: Team
 ) -> None:
     stopped = await a_tablet(db_session, team_a)
     assert (await the_tablet_halts(client, stopped)).status_code == 200
 
-    refused = await client.post(f"{DEVICES}/{stopped.device_id}/attended", headers=team_a.headers)
+    for params in ({}, {"needs_person_since": "2026-10-28T12:00:00"}):
+        url = f"{DEVICES}/{stopped.device_id}/attended"
+        refused = await client.post(url, headers=team_a.headers, params=params)
+        assert refused.status_code == 422, refused.text[:300]
 
-    assert refused.status_code == 422, refused.text[:300]
     assert await queued_device(client, team_a, stopped.device_id) is not None
 
 
