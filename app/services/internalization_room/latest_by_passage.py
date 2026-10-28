@@ -1,4 +1,4 @@
-"""What the Desk reads on each of a team's passages: its latest release, its open findings and its draft session.
+"""What the Desk reads on each of a team's passages: its release, findings and draft.
 
 One statement each for the whole team, not one per passage. Both read live sessions only (ADR
 0047), and a release is kept or dropped by its session, because a release forced on a session
