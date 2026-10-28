@@ -1,8 +1,7 @@
 """ENG-1801 — the head of the retroverificação file carries her fields in her order.
 
-Her `retroExport.ts` at the pin (18fa7c4) opens with the release, the version and the approval
-it stands under. Read off the rows the room
-wrote, through its own write paths.
+Her `retroExport.ts` at the pin (18fa7c4), read off the rows the room wrote, through its own
+write paths.
 """
 
 from __future__ import annotations
@@ -25,16 +24,23 @@ from app.services.internalization_room.passage_retroverification import (
     NOT_APPROVED,
 )
 from app.services.internalization_room.retro_export import retro_export
-from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import (
+    capture_segment,
+    divide_segment,
+    final_segments,
+    retired_segments,
+)
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
+    PREFIX,
     a_claimed_device,
     a_p02_telling_with_the_swapped_cause,
     a_rehearsal_only_half_heard,
     at_the_desk,
     checked_heard_and_approved,
+    checked_telling_back,
     desk_release,
     one_stretch,
     ready_session,
@@ -43,7 +49,13 @@ from tests.release_harness import (
     the_one_part_of,
     the_part_recorded_again,
 )
-from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.room_harness import (
+    room_client,
+    the_bucket_is_in_memory,
+)
+
+WORDS = "Noemi voltou com Rute"
+TOLD_AGAIN = "Noemi voltou com Rute, contado outra vez"
 
 
 @pytest.fixture()
@@ -68,9 +80,9 @@ async def _exported(db: AsyncSession, session_id: str) -> dict:
     return exported.model_dump(mode="json", by_alias=True)
 
 
-async def _approved(client, db: AsyncSession) -> tuple[IRSession, dict[str, str]]:
+async def _approved(client, db: AsyncSession, tell=None) -> tuple[IRSession, dict[str, str]]:
     project, credential = await a_claimed_device(db)
-    session = await ready_session(db, project_id=project.id)
+    session = await ready_session(db, project_id=project.id, tell=tell)
     headers = team_headers(credential)
     await checked_heard_and_approved(client, db, session.id, headers=headers)
     return session, headers
@@ -83,7 +95,9 @@ async def test_an_approved_passage_opens_with_her_keys_in_her_order(client, db_s
 
     file = await _exported(db_session, session.id)
 
-    assert list(file) == ["releaseId", "pericopeId", "version", "finalized", "approval"]
+    assert list(file) == [
+        "releaseId", "pericopeId", "version", "finalized", "approval", "frases",
+    ]  # fmt: skip
     assert (file["releaseId"], file["pericopeId"], file["version"], file["finalized"]) == (
         "release-1", pericope, 1, True,
     )  # fmt: skip
@@ -101,7 +115,12 @@ async def test_an_unapproved_passage_has_no_approval_and_says_so(db_session) -> 
 
     file = await _exported(db_session, session.id)
 
-    assert list(file) == ["releaseId", "pericopeId", "version", "finalized", "note", "approval"]
+    assert list(file) == [
+        "releaseId", "pericopeId", "version", "finalized", "note", "approval", "frases",
+    ]  # fmt: skip
+    assert [(one["n"], one["transcript"]) for one in file["frases"]] == [(1, WORDS)]
+    (live,) = file["frases"]
+    assert (live["clipKey"], live["coversFrom"], live["coversTo"]) == ("whole", 0, CLIP_MS / 1000)
     assert (file["finalized"], file["approval"], file["version"]) == (False, None, 1)
     assert file["note"] == NOT_APPROVED
 
@@ -252,3 +271,162 @@ async def test_a_packet_that_froze_no_frase_numbers_lists_no_frase_in_the_approv
     await db_session.commit()
 
     assert (await _exported(db_session, session.id))["approval"]["frases"] == []
+
+
+async def _two_stretches(db, session) -> BackTranslationState:
+    part = await the_one_part_of(db, session)
+    told = [
+        await capture_segment(
+            db,
+            session,
+            take_id=part.id,
+            starts_ms=start,
+            ends_ms=end,
+            bridge_take_id="retro",
+            transcript=words,
+        )
+        for start, end, words in ((0, 30000, "um"), (30000, CLIP_MS, "dois"))
+    ]
+    return BackTranslationState(
+        scope=session.pericope, checked=True, analysed_segment_ids=[one.id for one in told]
+    )
+
+
+async def _restarted(client, session, headers) -> None:
+    restarted = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/restart", headers=headers
+    )
+    assert restarted.status_code == 200, restarted.text
+
+
+async def test_the_frases_carry_her_places_and_the_words_as_they_stand(client, db_session) -> None:
+    session, _ = await _approved(client, db_session)
+    (stretch,) = await final_segments(db_session, session.id)
+    stretch_id, stamped = stretch.id, stretch.created_at.isoformat()
+
+    (frase,) = (await _exported(db_session, session.id))["frases"]
+
+    assert list(frase) == [
+        "n", "idx", "clipKey", "coversFrom", "coversTo",
+        "transcript", "pass", "recordedAt", "stale",
+    ]  # fmt: skip
+    assert (frase["n"], frase["idx"], frase["clipKey"], frase["coversTo"]) == (
+        1, stretch_id, "whole", CLIP_MS / 1000,
+    )  # fmt: skip
+    assert (frase["transcript"], frase["pass"], frase["stale"]) == (WORDS, 1, False)
+    assert (frase["recordedAt"], frase["coversFrom"]) == (stamped, 0)
+
+
+async def test_dividing_an_approved_stretch_leaves_its_frase_with_its_own_words(
+    client, db_session
+) -> None:
+    session, _ = await _approved(client, db_session, tell=_two_stretches)
+    first, *_ = await final_segments(db_session, session.id)
+    await divide_segment(db_session, session, first, at_ms=15000)
+
+    frases = (await _exported(db_session, session.id))["frases"]
+
+    assert [(one["n"], one["transcript"], one["stale"]) for one in frases] == [
+        (1, "um", False),
+        (2, "dois", False),
+    ]
+
+
+async def _in_pieces(db, session) -> BackTranslationState:
+    part = await the_one_part_of(db, session)
+    first = await capture_segment(
+        db, session, take_id=part.id, starts_ms=0, ends_ms=30000,
+        bridge_take_id="retro", transcript="um",
+    )  # fmt: skip
+    second = await capture_segment(
+        db, session, take_id=part.id, starts_ms=30000, ends_ms=CLIP_MS,
+        bridge_take_id="retro", transcript="dois",
+    )  # fmt: skip
+    told = []
+    pieces = await divide_segment(db, session, first, at_ms=15000)
+    for piece, words in zip(pieces, ("meio", "fim"), strict=True):
+        told.append(
+            await capture_segment(
+                db,
+                session,
+                take_id=part.id,
+                starts_ms=piece.starts_ms,
+                ends_ms=piece.ends_ms,
+                bridge_take_id="retro",
+                transcript=words,
+                replaces=piece,
+            )
+        )
+    return BackTranslationState(
+        scope=session.pericope,
+        checked=True,
+        analysed_segment_ids=[*(one.id for one in told), second.id],
+    )
+
+
+async def test_an_approved_frase_on_a_piece_of_a_divided_stretch_keeps_the_pieces_words(
+    client, db_session
+) -> None:
+    session, _ = await _approved(client, db_session, tell=_in_pieces)
+
+    frases = (await _exported(db_session, session.id))["frases"]
+
+    assert [(one["n"], one["transcript"], one["stale"]) for one in frases] == [
+        (1, "meio", False),
+        (2, "fim", False),
+        (3, "dois", False),
+    ]
+    assert not any("supersedes" in one for one in frases)
+    assert [one["coversFrom"] for one in frases] == [0, 15, 30]
+
+
+async def _corrected(db, session) -> BackTranslationState:
+    await checked_telling_back(db, session)
+    (first,) = await final_segments(db, session.id)
+    again = await capture_segment(
+        db, session, take_id=first.take_id, starts_ms=first.starts_ms, ends_ms=first.ends_ms,
+        bridge_take_id="retro-de-novo", transcript=TOLD_AGAIN, pass_number=2, replaces=first,
+    )  # fmt: skip
+    return BackTranslationState(
+        scope=session.pericope, checked=True, analysed_segment_ids=[again.id]
+    )
+
+
+async def test_a_frase_approved_after_a_correction_names_the_telling_it_replaced(
+    client, db_session
+) -> None:
+    session, _ = await _approved(client, db_session, tell=_corrected)
+    (old,) = await retired_segments(db_session, session.id)
+    old_id = old.id
+
+    (frase,) = (await _exported(db_session, session.id))["frases"]
+
+    assert (frase["transcript"], frase["pass"], frase["supersedes"]) == (TOLD_AGAIN, 2, old_id)
+
+
+async def test_an_approved_frase_whose_stretch_no_longer_stands_is_empty_and_stale(
+    client, db_session
+) -> None:
+    session, headers = await _approved(client, db_session)
+    (first,) = await final_segments(db_session, session.id)
+    first_id = first.id
+    await _restarted(client, session, headers)
+
+    (frase,) = (await _exported(db_session, session.id))["frases"]
+
+    assert (frase["n"], frase["idx"], frase["transcript"], frase["stale"]) == (
+        1, first_id, "", True,
+    )  # fmt: skip
+
+
+async def test_a_draft_not_approved_lists_no_frase_for_a_piece_not_yet_told(db_session) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_two_stretches)
+    first, *_ = await final_segments(db_session, session.id)
+    await divide_segment(db_session, session, first, at_ms=15000)
+
+    (frase,) = (await _exported(db_session, session.id))["frases"]
+
+    assert (frase["n"], frase["transcript"], frase["coversFrom"], frase["coversTo"]) == (
+        1, "dois", 30, CLIP_MS / 1000,
+    )  # fmt: skip

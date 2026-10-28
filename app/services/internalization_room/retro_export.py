@@ -6,19 +6,27 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRRelease, IRSession
+from app.db.models.internalization_room import IRRelease, IRSegment, IRSession
 from app.models.retro_export import (
     RetroApproval,
     RetroApprovalFinding,
     RetroApprovalFrase,
     RetroApprovalTake,
     RetroExport,
+    RetroFrase,
 )
 from app.services.internalization_room.approved_draft import latest_release
+from app.services.internalization_room.back_translation import frase_numbers
 from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.passage_retroverification import (
     APPROVED_BEFORE_THE_RECORD,
     NOT_APPROVED,
+)
+from app.services.internalization_room.segments import (
+    current_segments,
+    final_segments,
+    retired_segments,
+    told_back,
 )
 from app.services.internalization_room.take_downloads import keys_of_the_takes
 from app.services.internalization_room.takes import takes_of
@@ -79,12 +87,60 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
 async def retro_export(
     db: AsyncSession, session: IRSession, release: IRRelease | None, release_id: str
 ) -> RetroExport:
-    """The head of her file: the release, its version and the approval it stands under.
+    """Her file down to the frases of the telling.
 
     ``release`` is the version the draft stands approved under, or none while it is a draft.
+    An approved frase takes its words from its own stretch while it is current.
     """
     keys = keys_of_the_takes(await takes_of(db, session.id))
+    standing = {row.id: row for row in await current_segments(db, session.id)}
+    leaves = await final_segments(db, session.id)
+    retired = await retired_segments(db, session.id)
     approval = _approval(release, keys) if release else None
+    replaces = {
+        row.superseded_by_id: row.id for row in retired if row.superseded_by_id and row.transcript
+    }
+
+    def _frase(
+        n: int,
+        idx: str,
+        row: IRSegment | None,
+        place: tuple[str, float | None, float | None],
+        *,
+        stale: bool = False,
+    ) -> RetroFrase:
+        return RetroFrase(
+            n=n,
+            idx=idx,
+            clipKey=place[0],
+            coversFrom=place[1],
+            coversTo=place[2],
+            transcript=(row.transcript or "") if row else "",
+            pass_number=row.pass_number if row else 1,
+            recordedAt=row.created_at.isoformat() if row else "",
+            supersedes=replaces.get(row.id) if row else None,
+            stale=stale or row is None,
+        )
+
+    numbers = frase_numbers(told_back(leaves))
+    told = [row for row in leaves if row.id in numbers]
+    if approval:
+        frases = []
+        for one in approval.frases:
+            place = (one.clipKey, one.coversFrom, one.coversTo)
+            frases.append(_frase(one.n, one.idx, standing.get(one.idx), place))
+    else:
+        counted = [(numbers[row.id], row, False) for row in told]
+        frases = [
+            _frase(
+                n,
+                row.id,
+                row,
+                (keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000),
+                stale=stale,
+            )
+            for n, row, stale in counted
+        ]
     latest = (
         None
         if release or session.project_id is None
@@ -99,4 +155,5 @@ async def retro_export(
         if approval
         else (NOT_APPROVED if release is None else APPROVED_BEFORE_THE_RECORD),
         approval=approval,
+        frases=frases,
     )

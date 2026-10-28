@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, model_serializer
+from pydantic import BaseModel, Field, model_serializer
 
 
 class _Hers(BaseModel):
@@ -64,6 +64,21 @@ class RetroApproval(_Hers):
     takes: list[RetroApprovalTake] | None = None
 
 
+class RetroFrase(_Hers):
+    absent_when_none = ("supersedes",)
+
+    n: int
+    idx: str
+    clipKey: str
+    coversFrom: float | None
+    coversTo: float | None
+    transcript: str
+    pass_number: int = Field(serialization_alias="pass")
+    recordedAt: str
+    supersedes: str | None = None
+    stale: bool
+
+
 class RetroExport(_Hers):
     absent_when_none = ("note",)
 
@@ -73,3 +88,4 @@ class RetroExport(_Hers):
     finalized: bool
     note: str | None = None
     approval: RetroApproval | None
+    frases: list[RetroFrase]
