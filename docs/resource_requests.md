@@ -1216,7 +1216,13 @@ this section is what it asks of this module and what it writes here.
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
   `require_role` each return early on `user.is_platform_admin` before consulting a grant.
   Negative tests written per role must not use an admin account, and no capability check
-  in this module can be assumed to have run for one.
+  in this module can be assumed to have run for one: `require_capability` returns early too,
+  the mesa's `edit_evaluation` and `assign_fund` included — the two neither the Gestor nor the
+  Admin holds (§5.4). **Kept · OBT-618 (27/oct/2026)**, over limiting them to the Gestor's set:
+  a refusal here would close nothing, because the PME's surface refuses a self-grant but the
+  raw `POST /api/roles/assign` keeps admitting the installation admin for this app and asks
+  no such question, and `scripts/grant_app_role.py` on the server neither.
+  `require_capability`'s docstring carries the whole argument.
 - **A grant written outside this process is not seen until the entry ages out.** Both guards
   now read one cached list per user and app (`app/core/auth_cache.py`), so they agree with
   each other — the five-minute disagreement this section was written about is gone, and the
