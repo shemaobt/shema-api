@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRGrain, IRSession
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
@@ -33,12 +33,17 @@ from app.services.internalization_room.segments import (
     final_segments,
     retired_segments,
 )
-from app.services.internalization_room.sessions import report_playback
+from app.services.internalization_room.sessions import (
+    create_session,
+    report_playback,
+    switch_the_grain,
+)
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
     PREFIX,
+    P,
     a_claimed_device,
     a_p02_telling_with_the_swapped_cause,
     a_rehearsal_only_half_heard,
@@ -46,6 +51,7 @@ from tests.release_harness import (
     checked_heard_and_approved,
     checked_telling_back,
     desk_release,
+    ensaio_take,
     one_stretch,
     ready_session,
     rehearsed_session,
@@ -868,3 +874,53 @@ async def test_a_check_of_an_approved_draft_numbers_its_findings_as_the_approval
     first, *_ = (await _exported(db_session, session.id))["checks"]
 
     assert first["findings"][0]["frase"] == 1
+
+
+async def test_a_grain_switch_is_one_earlier_life_and_its_takes_are_listed_nowhere_else(
+    db_session,
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session, _take = await rehearsed_session(db_session, project_id=project.id)
+    moments = []
+
+    async def _part(sha: str, hours: int) -> None:
+        db_session.add(
+            ensaio_take(
+                session.id,
+                pericope=session.pericope,
+                scope="parte-1",
+                ordinal=1,
+                sha256=sha * 64,
+                created_at=datetime.now(UTC) + timedelta(hours=hours),
+                project_id=project.id,
+            )
+        )
+        await db_session.commit()
+
+    async def _switch(grain: IRGrain) -> None:
+        await switch_the_grain(db_session, session, grain, reopens_the_approved_draft=False)
+        await db_session.refresh(session)
+        moments.append(session.grain_switched_at.isoformat())
+
+    await _part("c", 1)
+    await _switch(IRGrain.WHOLE)
+    await _switch(IRGrain.SCENE)
+    await _part("d", 2)
+    await _switch(IRGrain.WHOLE)
+
+    file = await _exported(db_session, session.id)
+
+    assert list(file)[-2:] == ["previous", "exportedAt"]
+    assert file["previous"] == [
+        {"at": moments[0], "grain": "scene"},
+        {"at": moments[2], "grain": "scene"},
+    ]
+    assert file["supersededTakes"] == []
+
+
+async def test_choosing_a_grain_before_any_take_is_no_earlier_life(db_session) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session = await create_session(db_session, pericope=P, project_id=project.id)
+    await switch_the_grain(db_session, session, IRGrain.SCENE, reopens_the_approved_draft=False)
+
+    assert "previous" not in await _exported(db_session, session.id)

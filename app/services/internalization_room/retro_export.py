@@ -7,7 +7,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTakeKind
+from app.db.models.internalization_room import (
+    IRRelease,
+    IRSegment,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
 from app.models.internalization_room import PlayedTake
 from app.models.retro_export import (
     RetroApproval,
@@ -19,6 +25,7 @@ from app.models.retro_export import (
     RetroExport,
     RetroFrase,
     RetroHistoryEntry,
+    RetroPrevious,
     RetroSupersededTake,
 )
 from app.services.internalization_room.approved_draft import latest_release
@@ -104,6 +111,29 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
             for one in packet_takes
         ],
     )
+
+
+def _previous(takes: list[IRTake]) -> list[RetroPrevious]:
+    """The earlier lives a grain switch set aside, oldest first, each named by its moment.
+
+    A switch stamps every take the session held with its time, so the stamps are the switches
+    that archived something: a first choice, or a flip over nothing, stamps none and names none
+    (her `previousAfterSwitch`). The grain a stamp abandoned is that of the last take recorded
+    under it, which is the one in force: a whole has no number.
+    """
+    stamped: dict[datetime, list[IRTake]] = {}
+    for take in takes:
+        if take.set_aside_at:
+            stamped.setdefault(take.set_aside_at, []).append(take)
+    return [
+        RetroPrevious(
+            at=as_utc(moment).isoformat(),
+            grain="whole"
+            if max(group, key=lambda one: one.created_at).ordinal is None
+            else "scene",
+        )
+        for moment, group in sorted(stamped.items())
+    ]
 
 
 def _heard(entry: PlayedTake | None) -> float:
@@ -291,7 +321,9 @@ async def retro_export(
             for take in takes
             if take.kind is IRTakeKind.ENSAIO
             and _with_bytes(take)
+            and take.set_aside_at is None
             and take.id not in {part.id for part in parts}
         ],
+        previous=_previous(takes) or None,
         exportedAt=datetime.now(UTC).isoformat(),
     )
