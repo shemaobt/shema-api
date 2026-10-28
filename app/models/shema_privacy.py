@@ -104,6 +104,7 @@ from pydantic import (
 
 from app.db.models.shema_enums import ShemaRegionKey
 from app.utils.shema_derivations import get_region
+from app.utils.shema_printed_names import stands_in_for_a_name
 
 
 class ShemaAudience(enum.StrEnum):
@@ -425,7 +426,7 @@ class LeavingShape(BaseModel):
         name = next((getattr(self, f) for f in NAME_FIELDS if f in self.model_fields), "")
         if not isinstance(name, str) or not name.strip():
             return fallback
-        if self.language_name_withheld and name in _REGION_VALUES:
+        if stands_in_for_a_name(name, withheld=self.language_name_withheld):
             return fallback
         return name
 

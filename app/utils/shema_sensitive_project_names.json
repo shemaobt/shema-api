@@ -1,0 +1,20 @@
+{
+  "en": {
+    "south-america": "Sensitive project — South America",
+    "north-america": "Sensitive project — North America",
+    "africa": "Sensitive project — Africa",
+    "asia": "Sensitive project — Asia",
+    "oceania": "Sensitive project — Pacific",
+    "europe": "Sensitive project — Europe",
+    "other": "Sensitive project — Central America"
+  },
+  "pt-BR": {
+    "south-america": "Projeto sensível — América do Sul",
+    "north-america": "Projeto sensível — América do Norte",
+    "africa": "Projeto sensível — África",
+    "asia": "Projeto sensível — Ásia",
+    "oceania": "Projeto sensível — Pacífico",
+    "europe": "Projeto sensível — Europa",
+    "other": "Projeto sensível — América Central"
+  }
+}
