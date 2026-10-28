@@ -24,10 +24,6 @@ from app.services.internalization_room.take_downloads import keys_of_the_takes
 from app.services.internalization_room.takes import takes_of
 
 
-def _seconds(ms: int) -> float:
-    return ms / 1000
-
-
 def _finding(entry: dict[str, Any]) -> RetroApprovalFinding:
     return RetroApprovalFinding(
         kind=entry["kind"],
@@ -53,14 +49,14 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
         heardComplete=check["heardComplete"],
         lastCheckAt=check["lastCheckAt"],
         findings=[_finding(one) for one in check["findings"]],
-        nuances=[_finding(one) for one in check["nuances"]] or None,
+        nuances=[_finding(one) for one in check.get("nuances", [])] or None,
         frases=[
             RetroApprovalFrase(
                 n=one["frase"],
                 idx=one["segment_id"],
                 clipKey=one.get("scene") or keys[one["take_id"]],
-                coversFrom=_seconds(one["starts_ms"]),
-                coversTo=_seconds(one["ends_ms"]),
+                coversFrom=one["starts_ms"] / 1000,
+                coversTo=one["ends_ms"] / 1000,
             )
             for one in stretches
             if one.get("frase") is not None
@@ -69,10 +65,10 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
         if packet_takes is None
         else [
             RetroApprovalTake(
-                key=one["key"],
+                key=one.get("key") or keys[one["take_id"]],
                 takeId=one["take_id"],
                 sha256=one["sha256"],
-                durationMs=one["duration_ms"],
+                durationMs=one.get("duration_ms"),
                 bytes=one["size_bytes"],
             )
             for one in packet_takes
@@ -90,7 +86,9 @@ async def retro_export(
     keys = keys_of_the_takes(await takes_of(db, session.id))
     approval = _approval(release, keys) if release else None
     latest = (
-        None if release else await latest_release(db, session.project_id or "", session.pericope)
+        None
+        if release or session.project_id is None
+        else await latest_release(db, session.project_id, session.pericope)
     )
     return RetroExport(
         releaseId=release_id,

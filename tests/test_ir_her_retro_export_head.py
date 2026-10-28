@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.approved_draft import approved_draft
+from app.services.internalization_room.passage_retroverification import NOT_APPROVED
 from app.services.internalization_room.retro_export import retro_export
 from app.services.internalization_room.segments import final_segments
 from tests.baker import make_app, make_role
@@ -86,6 +87,7 @@ async def test_an_unapproved_passage_has_no_approval_and_says_so(db_session) -> 
 
     assert list(file) == ["releaseId", "pericopeId", "version", "finalized", "note", "approval"]
     assert (file["finalized"], file["approval"], file["version"]) == (False, None, 1)
+    assert file["note"] == NOT_APPROVED
 
 
 async def test_a_forced_approval_keeps_its_open_findings_by_address_and_never_the_note(
@@ -99,8 +101,10 @@ async def test_a_forced_approval_keeps_its_open_findings_by_address_and_never_th
     (stretch,) = await final_segments(db_session, session.id)
     stretch_id = stretch.id
 
-    approval = (await _exported(db_session, session.id))["approval"]
+    file = await _exported(db_session, session.id)
+    approval = file["approval"]
 
+    assert "note" not in file
     assert (approval["forced"], approval["conferida"]) == (True, False)
     assert approval["findings"] == [
         {"kind": "addition", "frase": 1, "idx": stretch_id, "clipKey": "whole"}
