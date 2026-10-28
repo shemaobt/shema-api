@@ -40,6 +40,15 @@ The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordin
 
 ## Golden runs
 
+**The measure is her runner.** Our backend is accepted by her 23 scripts and her 45 checks, played by her own runner at the pin in `docs/doctrine/FREEZE_PIN` from a checkout of her repository, over `--http` against the Golden doors. One command does it, and keeps her reports in `golden/reports/<date>/` beside the backend commit judged and the pin; it refuses a checkout that is not at the pin, and its exit is hers (0 passed, 1 a session failed, 2 her preflight stopped the run, 3 the backend died mid-script) or 4 for a refusal before anything played. Her runner needs `ANTHROPIC_API_KEY` for her judge and her preflight.
+
+```sh
+TRIPOD_INTERNALIZATION_REPO=~/Tripod-Internalization INTERNALIZATION_ROOM_RUNNER_KEY=<key> \
+  uv run python scripts/her_golden_round.py --base-url <host>/api/internalization-room
+```
+
+Our Python runners below, `scripts/golden_runner.py` with its checks and `scripts/bt_golden_runner.py`, are **no longer the measure** (Henok, ENG-1339): they stay as a way to replay a script or a back-translation locally, and a pass there accepts nothing.
+
 Marcia's golden scripts are played against a running server through two doors that exist only
 where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and both answer 404. The
 Guide's conversation is played through the **Golden doors**,
