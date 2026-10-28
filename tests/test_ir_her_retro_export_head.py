@@ -203,7 +203,7 @@ async def test_a_packet_minted_before_nuances_and_keys_were_stored_still_exports
         del one["key"], one["duration_ms"]
     for one in packet["back_translation"]["segments"]:
         del one["scene"]
-    packet["release_id"] = packet["release_id"].replace("-v1", "-v3")
+    del packet["release_id"]
     release.packet = packet
     release.version = 3
     approved_at = release.approved_at.isoformat()

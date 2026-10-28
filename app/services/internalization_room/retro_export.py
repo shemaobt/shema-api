@@ -69,10 +69,9 @@ TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
 
 
 def version_in(release_id: str) -> int:
-    """The number a release id carries, which the file's version, name and take names all share.
+    """The version of a draft no release stands under: the number its release id ends in.
 
-    A passage zerada with no release has a stamp in place of a number, and reads as version 1
-    (ADR 0081).
+    A passage zerada with no release has a stamp in place of a number, and reads as version 1.
     """
     named = re.search(r"-v(\d+)$", release_id)
     return int(named.group(1)) if named else 1
@@ -270,7 +269,7 @@ async def retro_export(
     return RetroExport(
         releaseId=release_id,
         pericopeId=session.pericope,
-        version=version_in(release_id),
+        version=release.version if release else version_in(release_id),
         finalized=release is not None,
         note=None
         if approval

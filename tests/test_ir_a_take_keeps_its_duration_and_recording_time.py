@@ -35,6 +35,7 @@ from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
     PREFIX,
     TABLET,
+    exported_file,
     reported_playback,
 )
 from tests.room_harness import (
@@ -239,6 +240,17 @@ async def test_a_recording_time_sent_on_another_clock_is_kept_as_the_same_instan
     )
 
     assert answer["recorded_at"] == TEN_OH_TWO
+
+
+async def test_the_file_says_a_replaced_parts_recording_time_not_its_upload_time(
+    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession
+) -> None:
+    await kept(client, session.id, recording(3, 3), part=1, recorded_at="2026-10-20T10:02:00Z")
+    await kept(client, session.id, recording(3, 4), part=1, recorded_at="2026-10-20T10:09:00Z")
+
+    file = await exported_file(db_session, session.id)
+
+    assert [take["recordedAt"] for take in file["supersededTakes"]] == [TEN_OH_TWO]
 
 
 async def test_every_take_in_the_packet_carries_the_length_of_its_sound(

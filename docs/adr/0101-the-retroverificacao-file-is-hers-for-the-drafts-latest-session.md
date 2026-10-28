@@ -15,10 +15,12 @@ rulings of 2026-10-27 and 28:
   is left out: `retiredBelow`, `restartedAt`, `splices` and `inserts` (ENG-1285 adds the last two).
 - `clipKey` is the Part key and `idx` the stretch id, in frases, history and findings. The take id
   appears only as `supersededTakes[].takeId`. No `origin`: our join carries no scene frase.
-- `version`, `releaseId`, the file's name and the `supersededTakes` file names carry one number,
-  the one `take_downloads._release_id` names (ADR 0081): the draft's release, the next version of a
-  reopened draft, 1 for a draft never approved, and for an archive its release or the zerada stamp
-  with version 1. Her own number (`finalizeCount`) gave way to that rule.
+- `releaseId` is the name `take_downloads._release_id` gives (ADR 0081) and names the file and the
+  `supersededTakes` file names. `version` is the number of the release when one stands (the
+  release row's own, from one within the passage and team, which holds for releases stored before
+  ADR 0048 too), the next one for a reopened draft, 1 for a draft never approved, and for an
+  archive its release's or 1 under the zerada stamp. Her own number (`finalizeCount`) gave way to
+  that rule.
 - An approved frase keeps its number and place and finds its live stretch by its `idx`: the stretch
   itself while current (a divided one with its own words), else the one that took its place, else
   after a restart the top stretch of its part starting where it did; with none, it is empty and
@@ -35,6 +37,10 @@ approved frase to a stretch by counting (a split renumbers and a number is not a
 
 Consequences:
 
-- The Desk, which read the old fields (releases, hard-stretch marks, per-part listening, nuances,
-  superseded attempts), reads the release and the session retro for them from now on.
+- The file lists the checks of the live record only: her restart archives the record and drops its
+  frases and checks (`bt/restart/route.ts:3-6`), so ours does the same, as Henok decided on
+  26 October. The findings of superseded attempts stay in the database for ENG-1343.
+- The old file's other data (the releases listing with who forced, hard-stretch marks, per-part
+  listening, nuances) is served by no route now; the Desk never read the file, and the stored
+  packets and rows keep it.
 - ENG-1256 fills `supersededAt` in the file and in the download list.
