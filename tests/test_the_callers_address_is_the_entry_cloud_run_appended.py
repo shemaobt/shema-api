@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from fastapi import APIRouter
 from httpx import ASGITransport
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -15,9 +16,18 @@ from app.core.rate_limit import limiter
 from app.main import create_app
 
 TEAM_REPORT_LIMIT = 60
-TEAM_REPORT = "/api/project-health/reports/team/nope"
+TEAM_REPORT = "/probe"
 PROXY_APPENDED = "203.0.113.7"
 ANOTHER_CALLER = "198.51.100.9"
+
+
+probe_router = APIRouter()
+
+
+@probe_router.get("/probe")
+@limiter.limit("60/minute")
+async def probe(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("ok")
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +44,8 @@ def _app(monkeypatch, db_session, k_service):
         monkeypatch.setenv("K_SERVICE", k_service)
     get_settings.cache_clear()
     app = create_app()
+
+    app.include_router(probe_router)
 
     async def _get_db():
         yield db_session
@@ -67,7 +79,7 @@ async def _exhaust(client, forwarded_for):
     for i in range(TEAM_REPORT_LIMIT):
         headers = {"X-Forwarded-For": forwarded_for(i)} if forwarded_for else {}
         r = await client.get(TEAM_REPORT, headers=headers)
-        assert r.status_code == 404
+        assert r.status_code == 200
 
 
 async def _status(client, forwarded_for=None):
@@ -94,7 +106,7 @@ async def test_on_cloud_run_a_client_written_entry_never_moves_the_caller_to_ano
 async def test_on_cloud_run_the_limit_keys_on_the_address_the_proxy_appended(on_cloud_run):
     await _exhaust(on_cloud_run, lambda i: f"192.0.2.{i}, {PROXY_APPENDED}")
 
-    assert await _status(on_cloud_run, f"192.0.2.1, {ANOTHER_CALLER}") == 404
+    assert await _status(on_cloud_run, f"192.0.2.1, {ANOTHER_CALLER}") == 200
     assert await _status(on_cloud_run, f"192.0.2.1, {PROXY_APPENDED}") == 429
 
 
@@ -102,7 +114,7 @@ async def test_on_cloud_run_a_request_with_no_forwarded_for_keys_on_the_socket(o
     await _exhaust(on_cloud_run, None)
 
     assert await _status(on_cloud_run) == 429
-    assert await _status(on_cloud_run, ANOTHER_CALLER) == 404
+    assert await _status(on_cloud_run, ANOTHER_CALLER) == 200
 
 
 @pytest.mark.parametrize("empty", ["", ",", " , "])
@@ -129,14 +141,14 @@ async def test_on_cloud_run_the_request_keeps_the_scheme_the_proxy_forwarded(on_
     r = await on_cloud_run.get(TEAM_REPORT + "/", headers={"X-Forwarded-Proto": "https"})
 
     assert r.status_code == 307
-    assert r.headers["location"].startswith("https://test/api/project-health/reports/team/nope")
+    assert r.headers["location"].startswith("https://test/probe")
 
 
 async def test_off_cloud_run_the_forwarded_scheme_is_not_taken(off_cloud_run):
     r = await off_cloud_run.get(TEAM_REPORT + "/", headers={"X-Forwarded-Proto": "https"})
 
     assert r.status_code == 307
-    assert r.headers["location"].startswith("http://test/api/project-health/reports/team/nope")
+    assert r.headers["location"].startswith("http://test/probe")
 
 
 async def _through_middleware(raw_headers):
