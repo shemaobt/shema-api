@@ -48,6 +48,18 @@ async def test_a_grant_and_a_membership_add_up(db_session, client, rrf_app) -> N
     assert res.json() == {"roles": ["equipe", "gestor"], "projects": ["kadiweu"]}
 
 
+async def test_a_retired_grant_is_not_a_role_here(db_session, client, rrf_app) -> None:
+    """A ``lider`` grant that survived FE-49 (OBT-517) names a role the form no longer models:
+    ``/me`` does not list it, so the account reads as *without a role* — RRF-ACE-030 (OBT-639)."""
+    user = await make_user(db_session, email="lider@me.test")
+    await grant(db_session, user, rrf_app, "lider")
+
+    res = await client.get(ME, headers=await auth_header(db_session, user))
+
+    assert res.status_code == 200, res.text
+    assert res.json() == {"roles": [], "projects": []}
+
+
 async def test_a_removed_member_is_no_longer_equipe(db_session, client, rrf_app) -> None:
     user = await make_user(db_session, email="saiu@me.test")
     stay = await make_membership(db_session, user, "kadiweu")

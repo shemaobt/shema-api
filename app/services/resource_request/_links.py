@@ -24,6 +24,7 @@ from app.models.resource_request import LinkStatus
 from app.services.common import tokens
 from app.services.resource_request._membership import granted_roles
 from app.services.shema._scope import ADMIN_ROLE
+from app.services.shema._scope import granted_roles as shema_granted_roles
 
 
 @dataclass
@@ -57,6 +58,6 @@ async def require_link_admin(
         return
     if ADMIN_ROLE in await granted_roles(db, user.id, app_key):
         return
-    if ADMIN_ROLE in await granted_roles(db, user.id, shema_app_key):
+    if ADMIN_ROLE in await shema_granted_roles(db, user.id, shema_app_key):
         return
     raise AuthorizationError(refusal)

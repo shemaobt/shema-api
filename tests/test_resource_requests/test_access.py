@@ -22,6 +22,7 @@ from app.services.resource_request import RETIRED_ROLES
 from app.services.shema._scope import ADMIN_ROLE
 from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS, seeded_roles
 from tests.baker import grant_app_role, make_app, make_user
+from tests.resource_request_harness import REQUESTS
 from tests.test_resource_requests.conftest import (
     FRONTEND_ROLE_IDS,
     MESA_PROBE,
@@ -130,6 +131,29 @@ async def test_the_guard_refuses_an_account_with_no_role(db_session, client, rrf
     assert res.status_code == 403
     assert APP_KEY in res.json()["detail"]
     assert "contact support" in res.json()["detail"].lower()
+
+
+@pytest.mark.parametrize("role_key", RETIRED_ROLES)
+async def test_a_grant_on_a_retired_role_is_refused_at_the_door(
+    db_session, client, rrf_app, role_key
+) -> None:
+    """A grant that survived its role's retirement — staging still had a ``lider`` one on
+    26/oct/2026 (OBT-639) — is refused by the door, with the door's sentence, and not let in
+    to be refused later by a capability: the account is an outsider and is told how to get in,
+    on the probe and on the listing RRF-ACE-030 calls alike."""
+    user = await make_user(db_session, email=f"{role_key}-residual@rrf.example")
+    await grant(db_session, user, rrf_app, role_key)
+    headers = await auth_header(db_session, user)
+    door = (
+        f"You don't have access to the '{APP_KEY}' application. "
+        "Please contact support to request access."
+    )
+
+    for path in (PROBE, REQUESTS):
+        res = await client.get(path, headers=headers)
+
+        assert res.status_code == 403, f"{path}: {res.status_code}"
+        assert res.json()["detail"] == door, path
 
 
 async def test_the_guard_does_not_carry_a_role_over_from_another_app(

@@ -18,6 +18,9 @@ proving nothing.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from app.api.resource_requests._deps import APP_KEY
@@ -258,9 +261,10 @@ async def test_a_team_token_reaches_no_evaluation_and_no_fund(db_session, client
 async def test_a_retired_lider_grant_opens_nothing(db_session, client, rrf_app) -> None:
     """The Líder de Base's role row survives the retirement (FE-49, OBT-517) and holds nothing.
 
-    ``20260930_rr12`` revoked every grant on it, and the map no longer names it — so a grant
-    that somehow survived answers 403 on every capability, which is the whole point of
-    retiring a role rather than leaving it in the table with a column nobody reads.
+    ``20260930_rr12`` revoked every grant on it, and staging still carried one on 26/oct/2026
+    (OBT-639). Every capability refuses it, and refuses it **at the door**: the grants are read
+    through ``ROLES_IN_FORCE``, so the account is an outsider here, told so in the sentence that
+    names the app — until OBT-639 the door counted the row and the capability answered instead.
     """
     user = await make_user(db_session, email="lider@rrf.test")
     await grant(db_session, user, rrf_app, "lider")
@@ -270,6 +274,45 @@ async def test_a_retired_lider_grant_opens_nothing(db_session, client, rrf_app) 
         res = await client.get(CAP_PROBES[capability], headers=headers)
 
         assert res.status_code == 403, f"lider · {capability}: got {res.status_code}"
+        assert APP_KEY in res.json()["detail"], f"lider · {capability}: {res.json()['detail']}"
+
+
+def test_only_the_membership_and_the_door_read_the_forms_grants_raw() -> None:
+    """Every other reader of this app's grants goes through ``_membership.granted_roles``, which
+    keeps the roles in force and drops a retired one (OBT-639). ``enters_the_form`` is the one
+    exception and filters the same way: it fills the platform's role cache, whose raw pairs
+    ``require_role`` reads too. The grants have two raw doors, ``list_roles`` and the cache's
+    ``get_cached_roles``, and a file in the service or in the router that called either itself
+    would count a retired grant again, so a new caller changes this list, which is the line a
+    reviewer reads.
+    """
+    root = Path(__file__).resolve().parents[2]
+    packages = (
+        root / "app" / "services" / "resource_request",
+        root / "app" / "api" / "resource_requests",
+    )
+    raw_doors = {"list_roles", "get_cached_roles"}
+
+    def reads_the_grants_raw(path: Path) -> bool:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                if name in raw_doors:
+                    return True
+        return False
+
+    readers = sorted(
+        str(path.relative_to(root))
+        for package in packages
+        for path in package.glob("*.py")
+        if reads_the_grants_raw(path)
+    )
+
+    assert readers == [
+        "app/services/resource_request/_membership.py",
+        "app/services/resource_request/enters_the_form.py",
+    ]
 
 
 async def test_the_gestor_moves_the_board_and_does_not_score(db_session, client, rrf_app) -> None:

@@ -64,7 +64,9 @@ and to no `Referer`; the receiving app reads it, exchanges it and clears the URL
   project enters it with no grant, because that is who the team is since GATE-04. The handoff
   asks the form's own `enters_the_form` (`docs/resource_requests.md` §5.4.1) rather than a copy
   of it — a copy is what refused the member the door admits, and the PME → form flow
-  (OBT-538, OBT-544) with it. A membership opens no other app.
+  (OBT-538, OBT-544) with it. A membership opens no other app. And a grant counts there only on
+  a role the form still models (`ROLES_IN_FORCE`): a surviving `lider` grant mints nothing
+  (OBT-639, `docs/resource_requests.md` §5.4.6).
 - `context` is a JSON object the server never reads — the PME sends `{"projectId": …}` so the
   form opens the right instance — handed back exactly as it came. At most 1024 bytes of
   compact UTF-8 JSON, and no `NaN` or `Infinity`; either refusal is 422

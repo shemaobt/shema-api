@@ -186,6 +186,24 @@ async def test_a_member_reads_a_teammates_draft_and_submission_and_nothing_of_an
     assert (await client.get(f"{REQUESTS}/{foreign['id']}", headers=bia)).status_code == 404
 
 
+async def test_a_member_who_kept_a_retired_grant_reads_only_their_project(
+    db_session, client, rrf_app
+) -> None:
+    """A retired ``lider`` grant beside a membership is no grant (OBT-639): the reach counts the
+    roles in force, so it does not widen the member's reading to the whole board — another
+    project's request stays out of the listing and answers 404 by id."""
+    holder, holder_headers = await member_of(db_session, "kadiweu", "residual@rr.test")
+    await grant(db_session, holder, rrf_app, "lider")
+    _caio, caio = await member_of(db_session, "fataluku", "caio@rr.test")
+    foreign = await create(client, caio)
+
+    listed = {row["id"] for row in (await client.get(REQUESTS, headers=holder_headers)).json()}
+
+    assert foreign["id"] not in listed
+    read = await client.get(f"{REQUESTS}/{foreign['id']}", headers=holder_headers)
+    assert read.status_code == 404
+
+
 # ——— what a member writes: reading a teammate's request is not editing it ——————————————
 
 

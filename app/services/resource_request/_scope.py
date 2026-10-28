@@ -18,8 +18,10 @@ everything else reaches everything:
 * **the base leader reaches nothing here**, and that is BE-23 (OBT-535): since the 22/set
   meeting the leader has no account and reads the one request a link was mailed for, through
   the link's own public door (``read_endorsement``), never through this scope. BE-16's middle
-  reach — every submitted request, no draft — left with the account it was built for, and
-  ``20260930_rr12`` revokes every live ``lider`` grant, so the subtraction below never meets one.
+  reach — every submitted request, no draft — left with the account it was built for.
+  ``20260930_rr12`` revokes every live ``lider`` grant, and one that survived it is not read:
+  ``granted_roles`` keeps only the roles in force (OBT-639), so the subtraction below never meets
+  one — until then such a grant beside a membership reached the whole board.
 
 **The wide rule subtracts rather than tests for membership, and that is the whole of it.**
 An account carries a row per grant, ``user_app_roles`` has no constraint on ``(user_id,

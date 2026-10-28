@@ -7,8 +7,8 @@ from app.services.resource_request._membership import TEAM_ROLE, granted_roles, 
 
 
 class FormIdentity(NamedTuple):
-    #: The roles this account holds **in the form**: its grants, plus ``equipe`` when it is a
-    #: live member of any PME project.
+    #: The roles this account holds **in the form**: its grants on the roles in force (a retired
+    #: one is not listed, OBT-639), plus ``equipe`` when it is a live member of any PME project.
     roles: tuple[str, ...]
     #: The PME projects it is a live member of — the ones it may open a request from.
     projects: tuple[str, ...]
@@ -22,7 +22,7 @@ async def who_am_i(db: AsyncSession, user: User, app_key: str) -> FormIdentity:
     (GATE-04 D1). So for every team account that route answers an empty list, and the form —
     which translated that list into its session role — refused the team at login and signed
     it out at every boot revalidation. This is the form's own answer, read by the same rule
-    its door applies (``enters_the_form``): a grant, or a live membership.
+    its door applies (``enters_the_form``): a grant on a role in force, or a live membership.
 
     **The membership is read once and serves both fields**: the project ids, and whether
     ``equipe`` is among the roles. That route is platform surface and serves every app; the
