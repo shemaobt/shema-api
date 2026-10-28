@@ -291,9 +291,9 @@ COORDINATION_WRITES: Final[frozenset[str]] = frozenset(
 #: ``""`` is not a base a reader may type over, and neither are the notes (OBT-556).
 #: ``language_name`` joined them with OBT-560: a withheld record hands everyone else the public
 #: name in its place, and a value typed over it would overwrite the real one unseen. The prayer
-#: request joined them with OBT-655, for the notes' reason; its authorization did not — on a
-#: withheld record ``rede`` only queues the request for the coordination's release (OBT-575), and
-#: the OBT Lab stating it is that module's own tested door.
+#: request joined them with OBT-655, for the notes' reason; its authorization did not, and the
+#: OBT Lab still states it — on a withheld record what ``rede`` puts on the wall is only ever a
+#: text the coordination released for those words (OBT-575).
 WITHHELD_WRITES: Final[frozenset[str]] = frozenset(
     (*BASE_FIELDS, *CONTACT_FIELDS, *FREE_TEXT_FIELDS, *PRAYER_REQUEST_FIELDS, "language_name")
 )

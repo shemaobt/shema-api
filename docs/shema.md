@@ -1029,8 +1029,9 @@ behaviour on it.
 >   coordination and the Admin read what they read before. It holds whatever the team authorized,
 >   because the record holds the team's words and what reaches the wall from a withheld record is
 >   the text the coordination released (§6.12) — that path did not change. Two doors stay open on
->   purpose: the visibility, which the OBT Lab still states — on a withheld record `rede` only
->   queues the request for the release, and `test_prayer_review.py` pins that door — and the health
+>   purpose: the visibility, which the OBT Lab still states — on a withheld record what `rede` puts
+>   on the wall is only ever a text the coordination released for those words, and
+>   `test_prayer_review.py` pins that door — and the health
 >   wizard, where the reading the OBT Lab files carries a request in its own words, which it sees as
 >   it types, as it carries the reading's notes; the record it answers reads it back blank.
 > - **The recording travels nowhere yet.** `prayer_requests_audio` takes any string a save writes,
