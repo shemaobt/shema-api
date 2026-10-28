@@ -25,7 +25,9 @@ ninety field names, and the consultant reads them. Decided for ENG-1801, the Def
   after a restart the top stretch of its part starting where it did; with none, it is empty and
   stale. A restart or a correction leaves the version standing (ADR 0081).
 - The history lists every told stretch, abandoned ones included; `superseded` is true only when a
-  replacement took the place. Stale frases of a draft not approved follow the told ones.
+  replacement took the place. A frase or a history line names only a predecessor that was itself
+  told. Stale frases of a draft not approved follow the told ones, numbered on in sequence from the
+  last, so a stale line in one part moves no other part's number.
 - `supersededTakes` is the draft's replaced takes only. A grain switch that set something aside
   archives the whole earlier life, named as one `previous` entry. `supersededAt` has one source,
   the stamp ENG-1256 adds; until then the key is absent, never derived.
