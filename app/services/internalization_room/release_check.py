@@ -27,6 +27,7 @@ from app.services.internalization_room.check_block import standing_state
 from app.services.internalization_room.manifest import manifest_clips
 from app.services.internalization_room.segments import final_segments, told_back
 from app.services.internalization_room.sessions import back_translation_of
+from app.services.internalization_room.take_downloads import part_keys_by_number
 from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
@@ -39,7 +40,11 @@ from app.services.internalization_room.takes import (
 logger = logging.getLogger(__name__)
 
 SPAN_TOLERANCE_MS = 50
-NOTED = "frases_fit_their_takes"
+
+
+async def _kept_intact(store: TakeStore, key: str, sha256: str) -> bool:
+    audio = await store.get(key)
+    return audio is not None and bool(audio) and recording_digest(audio) == sha256
 
 
 async def _bytes_match_their_sha256(db: AsyncSession, store: TakeStore, release: IRRelease) -> bool:
@@ -50,10 +55,7 @@ async def _bytes_match_their_sha256(db: AsyncSession, store: TakeStore, release:
         take = held.get(one["take_id"])
         if take is None:
             return False
-        if is_declared(take):
-            continue
-        audio = await store.get(take.storage_key)
-        if not audio or recording_digest(audio) != one["sha256"]:
+        if not is_declared(take) and not await _kept_intact(store, take.storage_key, one["sha256"]):
             return False
     return True
 
@@ -71,17 +73,21 @@ def frases_fit_their_takes(parts: list[IRTake], told: list[IRSegment]) -> tuple[
             passed &= covered_to - starts <= SPAN_TOLERANCE_MS
             passed &= not part.duration_ms or ends - part.duration_ms <= SPAN_TOLERANCE_MS
             covered_to = max(covered_to, ends)
+        if part.duration_ms and part.duration_ms - covered_to >= UNTRANSLATED_MIN_MS:
+            notes.append(f"{part.id}: {part.duration_ms - covered_to} ms uncovered at the end")
     return passed, notes
 
 
-def splices_are_intact(sentences: list[LaidInSentence], takes: list[IRTake]) -> bool:
-    by_id = {take.id: take for take in takes}
-    return all(
-        (take := by_id.get(one.take_id)) is not None
-        and one.previous_take_id in by_id
-        and take.sha256 == one.sha256
-        for one in sentences
-    )
+async def splices_are_intact(
+    store: TakeStore, sentences: list[LaidInSentence], takes: list[IRTake]
+) -> bool:
+    held = {take.id for take in takes}
+    for one in sentences:
+        if not {one.take_id, one.previous_take_id} <= held:
+            return False
+        if not await _kept_intact(store, one.storage_key, one.sha256):
+            return False
+    return True
 
 
 async def _every_origin_resolves(db: AsyncSession, parts: list[IRTake]) -> bool:
@@ -90,12 +96,21 @@ async def _every_origin_resolves(db: AsyncSession, parts: list[IRTake]) -> bool:
     return origins <= set(found.scalars())
 
 
-async def _the_manifest_names_the_pinned_takes(db: AsyncSession, session: IRSession) -> bool:
+async def _the_manifest_names_the_pinned_takes(
+    db: AsyncSession, session: IRSession, release: IRRelease
+) -> tuple[bool, list[str]]:
     try:
-        await manifest_clips(db, session)
+        _release, takes, clips = await manifest_clips(db, session)
     except DraftNotApproved:
-        return False
-    return True
+        return True, ["manifest_unread"]
+    keys = part_keys_by_number(current_parts(takes))
+    declared = {take.id for take in takes if is_declared(take)}
+    pinned = [
+        [one["key"], one["take_id"], one["sha256"]]
+        for one in release.packet["audio"]["rehearsal_takes"]
+        if one["take_id"] not in declared
+    ]
+    return [[keys[clip.ordinal], clip.id, clip.sha256] for clip in clips] == pinned, []
 
 
 async def run_release_check(
@@ -107,28 +122,26 @@ async def run_release_check(
     telling_back = await standing_state(db, session.id, back_translation_of(session), takes)
     standing = await approved_draft(db, session)
     parts = current_parts(takes)
-    fit, notes = frases_fit_their_takes(parts, told_back(stretches))
+    fit, fit_notes = frases_fit_their_takes(parts, told_back(stretches))
+    same, same_notes = await _the_manifest_names_the_pinned_takes(db, session, release)
     verdicts = {
         "bytes_match_sha256": await _bytes_match_their_sha256(db, store, release),
         "frases_fit_their_takes": fit,
         "nothing_awaiting_translation": told_back(stretches) == stretches,
-        "splices_intact": splices_are_intact(telling_back.sentences, takes),
+        "splices_intact": await splices_are_intact(store, telling_back.sentences, takes),
         "every_origin_resolves": await _every_origin_resolves(db, parts),
         "everything_heard": not (
             rehearsed_parts(stretches) and unheard_parts(telling_back, parts, stretches)
         ),
         "approval_matches_live_state": standing is not None and standing.id == release.id,
-        "manifest_names_the_same_takes": await _the_manifest_names_the_pinned_takes(db, session),
+        "manifest_names_the_same_takes": same,
     }
+    notes = {"frases_fit_their_takes": fit_notes, "manifest_names_the_same_takes": same_notes}
     return {
         "ran_at": datetime.now(UTC).isoformat(),
         "whole": all(verdicts.values()),
         "checks": [
-            {
-                "name": name,
-                "passed": passed,
-                **({"notes": notes} if notes and name == NOTED else {}),
-            }
+            {"name": name, "passed": passed, **({"notes": notes[name]} if notes.get(name) else {})}
             for name, passed in verdicts.items()
         ],
     }
