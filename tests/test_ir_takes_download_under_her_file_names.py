@@ -467,17 +467,19 @@ async def test_the_session_approved_after_a_zerar_mints_a_version_no_zerada_file
         sha256=hashlib.sha256(recording(1, 9)).hexdigest(),
     )
     desk, facilitator = await at_the_desk(db_session, room_app, project)
-    await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+    archive = await archive_pericope(db_session, facilitator, project_id=project.id, pericope=P)
+    archive.archived_at = datetime(2026, 10, 24, 18, 30, tzinfo=UTC)
+    await db_session.commit()
+    archived = await read_downloads(client, desk, zeroed.id)
     again = await ready_to_approve(db_session, project.id, ("audio/wav",))
     await approved(client, credential, again)
 
-    archived = await read_downloads(client, desk, zeroed.id)
     minted = await read_downloads(client, desk, again.id)
 
+    zerada = "internalize-terena-p03-zerada-20261024-1830-pt"
+    assert [each["filename"] for each in archived["takes"]] == [f"{zerada}-S1.m4a"]
     assert minted["release_id"] == RELEASE_V2
-    stems = [each["filename"].rsplit(".", 1)[0] for each in (*archived["takes"], *minted["takes"])]
-    assert len(set(stems)) == len(stems)
-    assert not any(stem.startswith(RELEASE_V2) for stem in stems[:1])
+    assert [each["filename"] for each in minted["takes"]] == [f"{RELEASE_V2}-S1.wav"]
 
 
 async def test_a_release_stored_before_adr_0048_names_the_files_by_its_uuid(

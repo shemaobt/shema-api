@@ -7,7 +7,6 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRArchive, IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     SupersededTakeDownload,
@@ -62,7 +61,7 @@ async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake])
             return released_as(own)
         archive = await db.get(IRArchive, session.archive_id)
         if archive is None:
-            raise NotFoundError(f"Archive {session.archive_id} of session {session.id} is gone")
+            raise RuntimeError(f"Archive {session.archive_id} of session {session.id} is gone")
         return zeroed_name(await _mother_tongue(db, session), session, archive.archived_at)
     latest = (
         None
