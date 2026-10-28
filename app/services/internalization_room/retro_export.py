@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,6 @@ from app.models.retro_export import (
     RetroApprovalTake,
     RetroExport,
     RetroFrase,
-    RetroHistoryEntry,
 )
 from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.back_translation import frase_numbers
@@ -24,7 +24,6 @@ from app.services.internalization_room.passage_retroverification import (
     NOT_APPROVED,
 )
 from app.services.internalization_room.segments import (
-    current_segments,
     final_segments,
     retired_segments,
     stale_segments,
@@ -89,58 +88,71 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
 async def retro_export(
     db: AsyncSession, session: IRSession, release: IRRelease | None, release_id: str
 ) -> RetroExport:
-    """Her file down to the history of every frase.
+    """Her file down to the frases of the telling.
 
-    ``release`` is the version the draft stands approved under, or none while it is a draft. An
-    approval stands only while the stretches it numbered are the ones counting: a restart or a
-    correction over it reopens the draft, whose frases are then the live telling (ruling of
-    2026-10-28), the approved lines staying in the history.
+    ``release`` is the version the draft stands approved under, or none while it is a draft.
+    An approved frase keeps its number and place and takes its words from the live stretch at
+    the same position of the same part, empty and stale when none stands there (ADR 0067).
     """
     keys = keys_of_the_takes(await takes_of(db, session.id))
-    standing = await current_segments(db, session.id)
     leaves = await final_segments(db, session.id)
     retired = await retired_segments(db, session.id)
     waiting = await stale_segments(db, session.id)
     live = {row.id for row in leaves}
     approval = _approval(release, keys) if release else None
-    if approval and not all(one.idx in live for one in approval.frases):
-        release, approval = None, None
     replaces = {row.superseded_by_id: row.id for row in retired if row.superseded_by_id}
 
     def _frase(
-        n: int, row: IRSegment, clip_key: str, starts: float | None, ends: float | None
+        n: int,
+        idx: str,
+        row: IRSegment | None,
+        clip_key: str,
+        starts: float | None,
+        ends: float | None,
     ) -> RetroFrase:
         return RetroFrase(
             n=n,
-            idx=row.id,
+            idx=idx,
             clipKey=clip_key,
             coversFrom=starts,
             coversTo=ends,
-            transcript=row.transcript or "",
-            pass_number=row.pass_number,
-            recordedAt=row.created_at.isoformat(),
-            supersedes=replaces.get(row.id),
-            stale=row.id not in live,
+            transcript=(row.transcript or "") if row else "",
+            pass_number=row.pass_number if row else 1,
+            recordedAt=row.created_at.isoformat() if row else "",
+            supersedes=replaces.get(row.id) if row else None,
+            stale=row is None or row.id not in live,
         )
 
+    numbers = frase_numbers(told_back(leaves))
+    told = [row for row in leaves if row.id in numbers]
     if approval:
-        by_id = {row.id: row for row in leaves}
-        frases = [
-            _frase(one.n, by_id[one.idx], one.clipKey, one.coversFrom, one.coversTo)
-            for one in approval.frases
-        ]
+        by_part: dict[str, list[IRSegment]] = defaultdict(list)
+        for row in told:
+            by_part[keys[row.take_id]].append(row)
+        seen: Counter[str] = Counter()
+        frases = []
+        for one in approval.frases:
+            at, seen[one.clipKey] = seen[one.clipKey], seen[one.clipKey] + 1
+            there = by_part[one.clipKey]
+            frases.append(
+                _frase(
+                    one.n,
+                    one.idx,
+                    there[at] if at < len(there) else None,
+                    one.clipKey,
+                    one.coversFrom,
+                    one.coversTo,
+                )
+            )
     else:
-        numbers = frase_numbers(told_back(leaves))
-        told = [(numbers[row.id], row) for row in leaves if row.id in numbers]
-        told += [(len(told) + k, row) for k, row in enumerate(waiting, 1)]
+        counted = [(numbers[row.id], row) for row in told]
+        waiting_on = [(len(told) + k, row) for k, row in enumerate(waiting, 1)]
         frases = [
-            _frase(n, row, keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000)
-            for n, row in told
+            _frase(
+                n, row.id, row, keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000
+            )
+            for n, row in counted + waiting_on
         ]
-    ever_told = sorted(
-        (*standing, *retired),
-        key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
-    )
     latest = (
         None
         if release or session.project_id is None
@@ -156,18 +168,4 @@ async def retro_export(
         else (NOT_APPROVED if release is None else APPROVED_BEFORE_THE_RECORD),
         approval=approval,
         frases=frases,
-        history=[
-            RetroHistoryEntry(
-                idx=row.id,
-                clipKey=keys.get(row.take_id, ""),
-                coversFrom=row.starts_ms / 1000,
-                coversTo=row.ends_ms / 1000,
-                transcript=row.transcript or "",
-                pass_number=row.pass_number,
-                recordedAt=row.created_at.isoformat(),
-                supersedes=replaces.get(row.id),
-                superseded=row.superseded_by_id is not None,
-            )
-            for row in ever_told
-        ],
     )
