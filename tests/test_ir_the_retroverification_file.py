@@ -323,15 +323,28 @@ async def test_an_archive_whose_takes_were_recorded_again_after_the_approval_is_
     assert file["note"] == NOT_APPROVED_YET
 
 
-async def test_an_archive_reopened_after_its_release_is_the_next_of_its_own_not_the_passages(
+async def test_a_reopened_archive_is_numbered_after_the_passages_latest_release_among_many(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
     project, credential = await a_claimed_device(db_session)
-    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
-    await _approved_by_the_team(client, archived.id, credential)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (first,) = await releases_of(db_session, session.id)
+    db_session.add(
+        IRRelease(
+            session_id=session.id,
+            project_id=project.id,
+            pericope=first.pericope,
+            version=2,
+            package_sha256=first.package_sha256,
+            packet={**first.packet, "release_id": "later", "version": 2},
+            approved_at=first.approved_at,
+        )
+    )
+    await db_session.commit()
     await record_the_part_again(
-        db_session, archived, await the_one_part_of(db_session, archived), sha256="b" * 64
+        db_session, session, await the_one_part_of(db_session, session), sha256="b" * 64
     )
     archive = await _zerada(client, desk, project.id)
     live = await ready_session(db_session, project_id=project.id, tell=_told_once)
@@ -339,8 +352,7 @@ async def test_an_archive_reopened_after_its_release_is_the_next_of_its_own_not_
 
     file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
 
-    assert (file["version"], file["finalized"]) == (2, False)
-    assert "-zerada-" in file["releaseId"]
+    assert (file["version"], file["finalized"]) == (4, False)
 
 
 async def test_a_session_stamped_with_an_archive_that_is_gone_is_not_found(

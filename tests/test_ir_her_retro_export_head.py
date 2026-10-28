@@ -25,7 +25,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.retro_export import (
     APPROVED_BEFORE_THE_RECORD,
     NOT_APPROVED,
-    retro_export,
 )
 from app.services.internalization_room.segments import (
     capture_segment,
@@ -38,8 +37,6 @@ from app.services.internalization_room.sessions import (
     report_playback,
     switch_the_grain,
 )
-from app.services.internalization_room.take_downloads import _release_id
-from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -61,6 +58,9 @@ from tests.release_harness import (
     team_release,
     the_one_part_of,
     the_part_recorded_again,
+)
+from tests.release_harness import (
+    exported_file as _exported,
 )
 from tests.room_harness import (
     PART_MS,
@@ -86,15 +86,6 @@ async def room_app(db_session: AsyncSession):
     app = await make_app(db_session, app_key=APP_KEY, name="Internalization Room")
     await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
     return app
-
-
-async def _exported(db: AsyncSession, session_id: str) -> dict:
-    db.expire_all()
-    session = await db.get(IRSession, session_id)
-    assert session is not None
-    release_id = await _release_id(db, session, current_parts(await takes_of(db, session.id)))
-    exported = await retro_export(db, session, await approved_draft(db, session), release_id)
-    return exported.model_dump(mode="json", by_alias=True)
 
 
 async def _approved(client, db: AsyncSession, tell=None) -> tuple[IRSession, dict[str, str]]:

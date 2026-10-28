@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import (
@@ -70,27 +69,18 @@ TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
 
 
 async def _version(db: AsyncSession, session: IRSession, release: IRRelease | None) -> int:
-    """The number of the draft: its release's when one stands, else the next after the latest.
+    """The draft's release number when one stands, else the passage's latest plus one, else 1.
 
-    Always the column and never the name: a release stored before ADR 0048 is named by its row id.
-    The latest is the session's own in an archive and the passage's in the live draft; with none
-    ever (a passage zerada included) the draft is the first.
+    The column and never the name (a release before ADR 0048 is named by its row id). The counter
+    is the passage's, in the live draft and in an archive alike, as the download list reads it.
     """
     if release is not None:
         return release.version
-    if session.archive_id:
-        latest = await db.scalar(
-            select(IRRelease)
-            .where(IRRelease.session_id == session.id)
-            .order_by(IRRelease.version.desc())
-            .limit(1)
-        )
-    else:
-        latest = (
-            await latest_release(db, session.project_id, session.pericope)
-            if session.project_id
-            else None
-        )
+    latest = (
+        await latest_release(db, session.project_id, session.pericope)
+        if session.project_id
+        else None
+    )
     return latest.version + 1 if latest else 1
 
 

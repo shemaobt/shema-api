@@ -32,10 +32,9 @@ async def _read_as_an_archive(
 ) -> tuple[IRRelease | None, str]:
     """The release the archive's takes still stand on, else the archive's own stamp.
 
-    ``approved_draft`` is the wrong question here: a Zerar retires every draft. This is the
-    question ``take_downloads`` asks of an archived session (ADR 0081), so the file, its note
-    and the takes' downloads agree: a release the takes were re-recorded past is not their name.
-    The stamp is ENG-1782's format, from the archive's UTC moment, and carries no number.
+    ``approved_draft`` is the wrong question here: a Zerar retires every draft. This is what
+    ``take_downloads`` asks of an archived session (ADR 0081). The stamp is ENG-1782's format and
+    carries no number.
     """
     own = await db.scalar(
         select(IRRelease)
