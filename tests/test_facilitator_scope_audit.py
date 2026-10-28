@@ -84,6 +84,8 @@ FORCE = {"json": {"force": True}}
 #: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
 NEVER_HALTED = {"params": {"halt": 0}}
 
+NO_SUCH_HALT = {"params": {"needs_person_since": "2020-01-01T00:00:00+00:00"}}
+
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
@@ -307,14 +309,15 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "POST",
-            "owned": (f"{DESK}/devices/{attend_device}/attended", {}),
-            "absent": (f"{DESK}/devices/{absent}/attended", {}),
+            "owned": (f"{DESK}/devices/{attend_device}/attended", NO_SUCH_HALT),
+            "absent": (f"{DESK}/devices/{absent}/attended", NO_SUCH_HALT),
             "ids": (attend_device, absent),
+            "owner_expects": 409,
         },
         {
             "method": "DELETE",
-            "owned": (f"{DESK}/devices/{unattend_device}/attended", {}),
-            "absent": (f"{DESK}/devices/{absent}/attended", {}),
+            "owned": (f"{DESK}/devices/{unattend_device}/attended", NO_SUCH_HALT),
+            "absent": (f"{DESK}/devices/{absent}/attended", NO_SUCH_HALT),
             "ids": (unattend_device, absent),
         },
         {

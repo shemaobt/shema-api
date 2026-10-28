@@ -289,6 +289,17 @@ class HaltMoved(ConflictError):
         self.warned_at = warned_at
 
 
+class DeviceHaltMoved(ConflictError):
+    """A visit to a tablet or its undo naming a halt the tablet has moved past (ENG-1785)."""
+
+    def __init__(
+        self, needs_person_since: datetime | None, attended_lifted_since: datetime | None
+    ) -> None:
+        super().__init__("The tablet halted again since it was read.")
+        self.needs_person_since = needs_person_since
+        self.attended_lifted_since = attended_lifted_since
+
+
 class RoleError(Exception):
     pass
 
@@ -755,6 +766,18 @@ async def handle_halt_moved(_request: Request, exc: HaltMoved) -> JSONResponse:
     )
 
 
+async def handle_device_halt_moved(_request: Request, exc: DeviceHaltMoved) -> JSONResponse:
+    since, lifted = exc.needs_person_since, exc.attended_lifted_since
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_HALT_MOVED)
+        | {
+            "needs_person_since": since.isoformat() if since is not None else None,
+            "attended_lifted_since": lifted.isoformat() if lifted is not None else None,
+        },
+    )
+
+
 async def handle_frase_out_of_place(_request: Request, exc: FraseOutOfPlace) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -943,6 +966,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
     app.add_exception_handler(TakeMoved, handle_take_moved)  # type: ignore[arg-type]
     app.add_exception_handler(HaltMoved, handle_halt_moved)  # type: ignore[arg-type]
+    app.add_exception_handler(DeviceHaltMoved, handle_device_halt_moved)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
     app.add_exception_handler(SentenceRefused, handle_sentence_refused)  # type: ignore[arg-type]

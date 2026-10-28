@@ -314,7 +314,13 @@ async def test_a_team_with_no_sessions_stands_in_ruth_on_its_first_passage_with_
 @pytest.mark.parametrize("book", ["Esther", "Jonah"])
 def test_the_standing_of_a_book_the_team_is_not_in_has_no_current_passage(book: str) -> None:
     passages = standing(
-        set(), book=book, here=resolve(set(), book="Ruth"), releases={}, approved=set(), findings={}
+        set(),
+        book=book,
+        here=resolve(set(), book="Ruth"),
+        releases={},
+        approved=set(),
+        findings={},
+        drafts={},
     )
 
     assert {entry.position.value for entry in passages} == {"future"}
@@ -477,6 +483,38 @@ async def test_a_facilitators_visit_to_an_old_room_does_not_move_the_team_back_t
     assert card["active_passage"]["pericope"] == "J02"
     assert [entry["pericope"] for entry in listed] == JONAH
     assert opened.status_code == 200, opened.text[:300]
+    assert opened.json()["pericope"] == "J02"
+
+
+async def test_a_long_press_on_an_old_room_does_not_move_the_team_back_to_its_book(
+    room, desk_client, db_session, team_at_the_desk
+) -> None:
+    team, tablet, desk = team_at_the_desk
+    ruth = await having_closed(db_session, team.id, "P05")
+    await db_session.execute(
+        update(IRSession)
+        .where(IRSession.id == ruth.id)
+        .values(halt_kind="blocking", halts_raised=1, person_arrived_at=None)
+    )
+    await last_touched(db_session, ruth.id, datetime.now(UTC) - timedelta(hours=2))
+    jonah = await having_closed(db_session, team.id, "J01")
+    await last_touched(db_session, jonah.id, datetime.now(UTC) - timedelta(hours=1))
+
+    pressed = await room.post(
+        f"{PREFIX}/sessions/{ruth.id}/person-arrived", headers=team_headers(tablet)
+    )
+    card = await the_card(desk_client, desk, team.id)
+    listed = await the_pericopes(desk_client, desk, team.id)
+    opened = await an_open_naming_no_passage(room, tablet)
+    await db_session.refresh(ruth)
+
+    assert pressed.status_code == 200, pressed.text[:300]
+    assert pressed.json()["person_arrived_at"] == ruth.person_arrived_at.isoformat()
+    assert ruth.halt_kind == "blocking"
+    assert ruth.halts_raised == 1
+    assert card is not None
+    assert card["active_passage"]["pericope"] == "J02"
+    assert [entry["pericope"] for entry in listed] == JONAH
     assert opened.json()["pericope"] == "J02"
 
 

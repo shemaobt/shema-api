@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRTakeKind
+from app.services.device.needs_person import record_needs_person
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.baker import (
@@ -481,16 +482,19 @@ async def test_a_refused_visit_writes_nothing_and_nudges_nothing(
 
 
 async def test_attending_a_tablet_and_undoing_it_nudge_halts(
-    desk_app: FastAPI, client: httpx.AsyncClient, team: Team
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:
     attended = f"{DESK}/devices/{team.device_id}/attended"
+    since, _ = await record_needs_person(db_session, team.device_id)
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
-        marked = await client.post(attended, headers=team.desk)
+        halt = {"needs_person_since": since.isoformat()}
+        marked = await client.post(attended, headers=team.desk, params=halt)
         assert marked.status_code == 200, marked.text
         assert await nudges_heard(desk) == ["halts"]
 
-        undone = await client.delete(attended, headers=team.desk)
+        lifted = {"needs_person_since": marked.json()["attended_lifted_since"]}
+        undone = await client.delete(attended, headers=team.desk, params=lifted)
         assert undone.status_code == 200, undone.text
         assert await nudges_heard(desk) == ["halts"]
 

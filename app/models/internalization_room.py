@@ -184,6 +184,8 @@ class PericopeStanding(BaseModel):
     release: PassageRelease | None
     open_findings: int
     approved: bool
+    session_id: str | None
+    has_takes: bool
 
 
 class BookStanding(BaseModel):

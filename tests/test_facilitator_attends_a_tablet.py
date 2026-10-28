@@ -185,12 +185,23 @@ async def the_tablet_halts(client: httpx.AsyncClient, tablet: Tablet) -> httpx.R
     )
 
 
-async def attend(client: httpx.AsyncClient, device_id: str, who: Team) -> httpx.Response:
-    return await client.post(f"{DEVICES}/{device_id}/attended", headers=who.headers)
+NO_SUCH_HALT = "2020-01-01T00:00:00+00:00"
 
 
-async def unattend(client: httpx.AsyncClient, device_id: str, who: Team) -> httpx.Response:
-    return await client.delete(f"{DEVICES}/{device_id}/attended", headers=who.headers)
+async def attend(client: httpx.AsyncClient, id: str, who: Team, saw: str = NO_SUCH_HALT):
+    params = {"needs_person_since": saw}
+    return await client.post(f"{DEVICES}/{id}/attended", headers=who.headers, params=params)
+
+
+async def unattend(client: httpx.AsyncClient, id: str, who: Team, saw: str = NO_SUCH_HALT):
+    params = {"needs_person_since": saw}
+    return await client.delete(f"{DEVICES}/{id}/attended", headers=who.headers, params=params)
+
+
+async def standing_halt(client: httpx.AsyncClient, who: Team, device_id: str) -> str:
+    row = await queued_device(client, who, device_id)
+    assert row is not None, "o tablet parou e a fila não o mostra"
+    return row["since"]
 
 
 async def queued_devices(client: httpx.AsyncClient, who: Team) -> list[dict]:
@@ -256,11 +267,13 @@ async def test_marking_a_tablet_attended_lifts_its_halt_and_records_who_went(
     assert standing["attended_at"] is None
     assert standing["attended_by"] is None
 
-    marked = await attend(client, stopped.device_id, team_a)
+    seen = await standing_halt(client, team_a, stopped.device_id)
+    marked = await attend(client, stopped.device_id, team_a, seen)
 
     assert marked.status_code == 200, marked.text[:300]
     answered = marked.json()
     assert answered["device_id"] == stopped.device_id
+    assert moment(answered["attended_lifted_since"]) == moment(seen)
     assert answered["needs_person_since"] is None, (
         "quem foi até o tablet o atendeu, e a parada continua de pé"
     )
@@ -277,13 +290,6 @@ async def test_marking_a_tablet_attended_lifts_its_halt_and_records_who_went(
     assert panel[stopped.device_id]["attended_by"] == team_a.user.id
     assert panel[working.device_id]["attended_at"] is None
     assert panel[working.device_id]["attended_by"] is None
-
-    again = await attend(client, stopped.device_id, team_a)
-
-    assert again.status_code == 200, again.text[:300]
-    assert again.json()["attended_at"] == answered["attended_at"], (
-        "dois toques são uma visita, e a marca passou a dizer quando alguém mexeu na mesa"
-    )
 
 
 # --- Case 2 — scoped ----------------------------------------------------------------------
@@ -319,7 +325,9 @@ async def test_only_a_facilitator_of_the_tablets_own_team_can_mark_it_attended(
     assert (await attend(client, str(uuid.uuid4()), team_a)).status_code == 404
     assert (await attend(client, retired.device_id, team_a)).status_code == 409
 
-    allowed = await attend(client, stopped.device_id, team_a)
+    allowed = await attend(
+        client, stopped.device_id, team_a, await standing_halt(client, team_a, stopped.device_id)
+    )
 
     assert allowed.status_code == 200, allowed.text[:300]
     assert allowed.json()["attended_by"] == team_a.user.id
@@ -346,10 +354,13 @@ async def test_undoing_the_mark_puts_the_halt_back_at_the_moment_it_was_raised(
     assert raised is not None
     since = raised["since"]
 
-    assert (await attend(client, stopped.device_id, team_a)).status_code == 200
+    marked = await attend(client, stopped.device_id, team_a, since)
+    assert marked.status_code == 200, marked.text[:300]
     assert await queued_device(client, team_a, stopped.device_id) is None
 
-    undone = await unattend(client, stopped.device_id, team_a)
+    undone = await unattend(
+        client, stopped.device_id, team_a, marked.json()["attended_lifted_since"]
+    )
 
     assert undone.status_code == 200, undone.text[:300]
     assert undone.json()["attended_at"] is None
@@ -381,13 +392,14 @@ async def test_undoing_the_mark_after_the_tablet_came_back_does_not_stop_it_agai
     stopped = await a_tablet(db_session, team_a)
 
     assert (await the_tablet_halts(client, stopped)).status_code == 200
-    assert await queued_device(client, team_a, stopped.device_id) is not None
-    assert (await attend(client, stopped.device_id, team_a)).status_code == 200
+    seen = await standing_halt(client, team_a, stopped.device_id)
+    marked = await attend(client, stopped.device_id, team_a, seen)
+    assert marked.status_code == 200, marked.text[:300]
 
     resumed = await open_a_session(client, stopped.credential)
     assert resumed.status_code == 200, resumed.text[:300]
 
-    undone = await unattend(client, stopped.device_id, team_a)
+    undone = await unattend(client, stopped.device_id, team_a, seen)
 
     assert undone.status_code == 200, undone.text[:300]
     assert undone.json()["attended_at"] is None
@@ -401,33 +413,26 @@ async def test_undoing_the_mark_after_the_tablet_came_back_does_not_stop_it_agai
 # --- Case 5 — a mark on a tablet that never halted -----------------------------------------
 
 
-async def test_a_tablet_that_never_halted_can_be_marked_and_moves_nowhere(
+async def test_a_tablet_with_no_standing_halt_is_not_attendable_and_its_undo_moves_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession, team_a: Team
 ) -> None:
-    """They went anyway, and that is worth recording; halting a working tablet is not.
-
-    The undo of such a mark is the case that separates "put back what this mark lifted" from
-    "put back a halt": there was none, so nothing comes back and the tablet stays out of the
-    queue it was never in.
-    """
+    """A mark with no halt to answer writes nothing; an undo of a tablet nobody marked is 200."""
     working = await a_tablet(db_session, team_a)
 
     marked = await attend(client, working.device_id, team_a)
 
-    assert marked.status_code == 200, marked.text[:300]
-    assert marked.json()["attended_at"]
-    assert marked.json()["attended_by"] == team_a.user.id
+    assert marked.status_code == 409, marked.text[:300]
+    assert marked.json()["code"] == "HALT_MOVED"
     assert marked.json()["needs_person_since"] is None
-    assert await queued_devices(client, team_a) == []
+    assert (await device_rows(client, team_a))[working.device_id]["attended_at"] is None
 
     undone = await unattend(client, working.device_id, team_a)
 
     assert undone.status_code == 200, undone.text[:300]
     assert undone.json()["attended_at"] is None
     assert await queued_devices(client, team_a) == [], (
-        "desfazer uma visita a um tablet que nunca parou inventou uma parada"
+        "desfazer uma visita que ninguém fez inventou uma parada"
     )
-    assert (await device_rows(client, team_a))[working.device_id]["needs_person_since"] is None
 
 
 # --- Case 6 — the long press reaches the server, once per halt -----------------------------
@@ -566,7 +571,8 @@ async def test_a_tablet_that_halts_again_after_a_visit_comes_back_unanswered(
     stopped = await a_tablet(db_session, team_a)
 
     assert (await the_tablet_halts(client, stopped)).status_code == 200
-    assert (await attend(client, stopped.device_id, team_a)).status_code == 200
+    seen = await standing_halt(client, team_a, stopped.device_id)
+    assert (await attend(client, stopped.device_id, team_a, seen)).status_code == 200
     assert await queued_device(client, team_a, stopped.device_id) is None
 
     assert (await the_tablet_halts(client, stopped)).status_code == 200
@@ -578,3 +584,65 @@ async def test_a_tablet_that_halts_again_after_a_visit_comes_back_unanswered(
     )
     assert asking_again["attended_by"] is None
     assert (await device_rows(client, team_a))[stopped.device_id]["attended_at"] is None
+
+
+# --- Case 7 — the mark names the halt the Desk saw (ENG-1785) -----------------------------
+
+
+async def halts_again(client: httpx.AsyncClient, tablet: Tablet) -> None:
+    assert (await open_a_session(client, tablet.credential)).status_code == 200
+    assert (await the_tablet_halts(client, tablet)).status_code == 200
+
+
+async def test_attending_a_halt_the_tablet_has_since_raised_again_changes_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, team_a: Team
+) -> None:
+    stopped = await a_tablet(db_session, team_a)
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
+    seen = await standing_halt(client, team_a, stopped.device_id)
+    await halts_again(client, stopped)
+    newer = await standing_halt(client, team_a, stopped.device_id)
+    assert moment(newer) > moment(seen)
+
+    refused = await attend(client, stopped.device_id, team_a, seen)
+
+    assert refused.status_code == 409, refused.text[:300]
+    assert refused.json()["code"] == "HALT_MOVED"
+    assert moment(refused.json()["needs_person_since"]) == moment(newer)
+    assert (await queued_device(client, team_a, stopped.device_id))["attended_at"] is None
+
+
+async def test_attending_without_a_halt_or_with_one_lacking_an_offset_is_refused_and_writes_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, team_a: Team
+) -> None:
+    stopped = await a_tablet(db_session, team_a)
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
+
+    for params in ({}, {"needs_person_since": "2026-10-28T12:00:00"}):
+        url = f"{DEVICES}/{stopped.device_id}/attended"
+        refused = await client.post(url, headers=team_a.headers, params=params)
+        assert refused.status_code == 422, refused.text[:300]
+
+    assert await queued_device(client, team_a, stopped.device_id) is not None
+
+
+async def test_an_undo_naming_another_halt_than_the_one_the_visit_lifted_changes_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, team_a: Team
+) -> None:
+    """A stale undo would otherwise reverse a colleague's later visit."""
+    stopped = await a_tablet(db_session, team_a)
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
+    first = await standing_halt(client, team_a, stopped.device_id)
+    assert (await attend(client, stopped.device_id, team_a, first)).status_code == 200
+    await halts_again(client, stopped)
+    second = await standing_halt(client, team_a, stopped.device_id)
+    colleague = await attend(client, stopped.device_id, team_a, second)
+    assert colleague.status_code == 200, colleague.text[:300]
+
+    stale = await unattend(client, stopped.device_id, team_a, first)
+
+    assert stale.status_code == 409, stale.text[:300]
+    assert moment(stale.json()["attended_lifted_since"]) == moment(second)
+    assert (await device_rows(client, team_a))[stopped.device_id]["attended_at"] == (
+        colleague.json()["attended_at"]
+    )

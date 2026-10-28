@@ -35,7 +35,7 @@ answer of 2026-10-23:
   clear (ADR 0064). A halt raised or lifted after the undo read the room is the
   one it answers.
 - The server's own visit to a demo team's halt names the halt it has just raised.
-- The tablet's own halt (`/facilitator/devices/{id}/attended`) is not changed.
+- The tablet's own halt (`/facilitator/devices/{id}/attended`) follows the same rule since ENG-1785: both verbs take `needs_person_since` as a required query instant, compared under the row lock with the halt that stands (the mark) or with the one the visit lifted, `attended_lifted_since` (the undo). A mismatch is 409 `HALT_MOVED` with both values in the body. A tablet with no standing halt is not attendable.
 
 Consequences:
 

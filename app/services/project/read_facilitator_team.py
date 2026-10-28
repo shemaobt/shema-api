@@ -29,7 +29,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
-from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
+from app.services.internalization_room.latest_by_passage import latest_releases, live_sessions
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import (
     book_standings,
@@ -50,11 +50,13 @@ async def read_facilitator_team(
     and one that is not the caller's are indistinguishable from here, which is what lets the
     route answer them with one refusal. Telling them apart is the enumeration ENG-443 closed.
 
-    Five statements and none of them grows: the team's row, the passages it has finished, the
-    books of its live sessions, its latest releases, and the necklace of the passage it is
-    standing on. The finished passages serve the active passage, ``closed_total`` and each
-    book's completeness from one read, and the releases serve both ``approved_total`` and
-    ``books``.
+    Six statements and none of them grows: the team's row, the passages it has finished, the
+    books of its live sessions, its latest releases, their open findings, and the necklace of
+    the passage it is standing on. The finished passages serve the active passage,
+    ``closed_total`` and each book's completeness from one read, and the releases serve both
+    ``approved_total`` and ``books``. The standing of the Current book's passages is served
+    from that same reading (ENG-1781), so the Desk never draws an active passage from one
+    request and the list from another that a session entered in between could have moved.
 
     The necklace read was measured on a throwaway Postgres 17 with 210,000 events over 200
     teams, ``ANALYZE``d and not against an empty table: a **Bitmap Index Scan** on
@@ -75,6 +77,7 @@ async def read_facilitator_team(
         return None
 
     releases = await latest_releases(db, team_id)
+    findings, drafts = await live_sessions(db, team_id)
     approved = await standing_approvals(db, team_id, among=releases)
     passages = standing(
         whereabouts.finished,
@@ -82,7 +85,8 @@ async def read_facilitator_team(
         here=here,
         releases=releases,
         approved=approved,
-        findings={},
+        findings=findings,
+        drafts=drafts,
     )
     closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
     active = None
@@ -110,6 +114,7 @@ async def read_facilitator_team(
         closed_total=closed,
         approved_total=sum(1 for entry in passages if entry.approved),
         books=book_standings(whereabouts, approved=approved),
+        pericopes=passages,
         scene_the_team_is_in=await _scene_they_are_in(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
@@ -169,11 +174,13 @@ async def team_standing(db: AsyncSession, project_id: str) -> list[PericopeStand
     and open findings."""
     whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
     releases = await latest_releases(db, project_id)
+    findings, drafts = await live_sessions(db, project_id)
     return standing(
         whereabouts.finished,
         book=whereabouts.book,
         here=whereabouts.passage,
         releases=releases,
         approved=await standing_approvals(db, project_id, among=releases),
-        findings=await open_findings(db, project_id),
+        findings=findings,
+        drafts=drafts,
     )

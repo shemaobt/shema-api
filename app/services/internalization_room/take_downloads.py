@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRArchive, IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
     SupersededTakeDownload,
     TakeDownload,
@@ -22,6 +22,7 @@ from app.services.internalization_room.release import (
     _mother_tongue,
     release_name,
     released_as,
+    zeroed_name,
 )
 from app.services.internalization_room.takes import (
     DOWNLOAD_LINK_SECONDS,
@@ -37,12 +38,14 @@ from app.utils.stored_time import as_utc
 
 
 async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake]) -> str:
-    """The id of the version this draft stands approved under, or the name the next will have.
+    """The id of the version this draft stands approved under, the name the next will have, or
+    the archive's name for a session a Zerar archived.
 
     A file names a release only while the draft stands under it (ADR 0081): after a re-open the
     takes are the next version's draft, numbered on from the passage's last. A session a Zerar
     archived is no draft any more, and keeps the name of the release its takes were approved
-    as, while they still stand on it.
+    as, while they still stand on it; past that they carry the archive's name, never a version
+    an approval can mint.
     """
     standing = await approved_draft(db, session)
     if standing is not None:
@@ -56,6 +59,10 @@ async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake])
         )
         if own is not None and stands_on(own, parts):
             return released_as(own)
+        archive = await db.get(IRArchive, session.archive_id)
+        if archive is None:
+            raise RuntimeError(f"Archive {session.archive_id} of session {session.id} is gone")
+        return zeroed_name(await _mother_tongue(db, session), session, archive.archived_at)
     latest = (
         None
         if session.project_id is None
