@@ -8,7 +8,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import (
-    IRGrain,
     IRRelease,
     IRSegment,
     IRSession,
@@ -114,25 +113,26 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
     )
 
 
-def _previous(session: IRSession, takes: list[IRTake]) -> list[RetroPrevious]:
-    """The earlier lives a grain switch left behind, oldest first, each named by its moment.
+def _previous(takes: list[IRTake]) -> list[RetroPrevious]:
+    """The earlier lives a grain switch set aside, oldest first, each named by its moment.
 
-    A switch stamps every take the session held with its time, so the stamps are the switches.
-    They alternate between the two grains, which puts the grain abandoned at the last one
-    opposite the grain in force and at each earlier one the grain in force again.
+    A switch stamps every take the session held with its time, so the stamps are the switches
+    that archived something: a first choice, or a flip over nothing, stamps none and names none
+    (her `previousAfterSwitch`). The grain a stamp abandoned is that of the last take recorded
+    under it, which is the one in force: a whole has no number.
     """
-    if session.grain is None:
-        return []
-    moments = {take.set_aside_at for take in takes if take.set_aside_at}
-    if session.grain_switched_at:
-        moments.add(session.grain_switched_at)
-    other = IRGrain.WHOLE if session.grain is IRGrain.SCENE else IRGrain.SCENE
+    stamped: dict[datetime, list[IRTake]] = {}
+    for take in takes:
+        if take.set_aside_at:
+            stamped.setdefault(take.set_aside_at, []).append(take)
     return [
         RetroPrevious(
             at=as_utc(moment).isoformat(),
-            grain=(other if (len(moments) - 1 - at) % 2 == 0 else session.grain).value,
+            grain="whole"
+            if max(group, key=lambda one: one.created_at).ordinal is None
+            else "scene",
         )
-        for at, moment in enumerate(sorted(moments))
+        for moment, group in sorted(stamped.items())
     ]
 
 
@@ -324,6 +324,6 @@ async def retro_export(
             and take.set_aside_at is None
             and take.id not in {part.id for part in parts}
         ],
-        previous=_previous(session, takes) or None,
+        previous=_previous(takes) or None,
         exportedAt=datetime.now(UTC).isoformat(),
     )
