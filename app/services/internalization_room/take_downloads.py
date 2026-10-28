@@ -76,6 +76,14 @@ def part_keys_by_number(parts: list[IRTake]) -> dict[int | None, str]:
     }
 
 
+def keys_of_the_takes(takes: list[IRTake]) -> dict[str, str]:
+    """The **Part key** of every rehearsal take, a replaced one under the number it carried."""
+    rehearsals = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
+    by_number = part_keys_by_number(current_parts(takes))
+    keys = {take.id: by_number[take.ordinal] for take in rehearsals if take.set_aside_at is None}
+    return keys | _keys_as_they_stood(rehearsals)
+
+
 def file_name(release_id: str, key: str, take: IRTake, *, superseded: bool = False) -> str:
     """The name a take downloads under, and the name the **Manifest** gives it (ADR 0073)."""
     stem = f"{release_id}-{key}"
@@ -104,9 +112,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     release_id = await _release_id(db, session, parts)
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
-    by_number = part_keys_by_number(parts)
-    keys = {take.id: by_number[take.ordinal] for take in rehearsals if take.set_aside_at is None}
-    keys |= _keys_as_they_stood(rehearsals)
+    keys = keys_of_the_takes(takes)
     replaced_at = {
         take.id: as_utc(successor.created_at).isoformat()
         for take, successor in _each_with_its_successor(takes)
