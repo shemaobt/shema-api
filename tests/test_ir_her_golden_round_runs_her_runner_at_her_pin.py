@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -18,7 +17,7 @@ KEY = "the-runner-key"
 BASE = "http://localhost:8000/api/internalization-room"
 FAKE_NPM = """#!/bin/sh
 mkdir -p .golden
-echo "$GOLDEN_HTTP_TOKEN|$*" > .ran
+echo "$GOLDEN_HTTP_TOKEN|$*" > .golden/ran
 echo "played" > ".golden/P01-opening.2026-10-28T10-00-00.md"
 exit "${FAKE_NPM_EXIT:-0}"
 """
@@ -70,7 +69,9 @@ def test_a_round_at_the_pin_runs_her_runner_over_http_with_the_key_and_keeps_her
     code, out = _round(tmp_path, pin, backend="b4ckend")
 
     assert code == 0
-    assert (her_checkout / ".ran").read_text().strip() == f"{KEY}|run golden -- --http {BASE}"
+    assert (
+        her_checkout / ".golden" / "ran"
+    ).read_text().strip() == f"{KEY}|run golden -- --http {BASE}"
     assert (out / "P01-opening.2026-10-28T10-00-00.md").read_text().strip() == "played"
     (judged,) = out.glob("JUDGED.*.md")
     assert "b4ckend" in judged.read_text()
@@ -86,7 +87,7 @@ def test_a_checkout_at_another_commit_is_refused_naming_the_pin_and_plays_nothin
 
     assert code == her_golden_round.REFUSED
     assert pin in capsys.readouterr().err
-    assert not (her_checkout / ".ran").exists()
+    assert not (her_checkout / ".golden" / "ran").exists()
     assert not out.exists()
 
 
@@ -112,7 +113,7 @@ def test_a_round_without_the_runner_key_is_refused_before_anything_runs(
     code, _ = _round(tmp_path, pin)
 
     assert code == her_golden_round.REFUSED
-    assert not (her_checkout / ".ran").exists()
+    assert not (her_checkout / ".golden" / "ran").exists()
 
 
 def test_a_checkout_carrying_a_change_to_the_pin_is_refused_and_plays_nothing(
@@ -127,7 +128,7 @@ def test_a_checkout_carrying_a_change_to_the_pin_is_refused_and_plays_nothing(
     code, _ = _round(tmp_path, pin)
 
     assert code == her_golden_round.REFUSED
-    assert not (her_checkout / ".ran").exists()
+    assert not (her_checkout / ".golden" / "ran").exists()
 
 
 @pytest.mark.parametrize("where", ["missing", "not-a-checkout"])
@@ -159,25 +160,57 @@ def test_reports_already_in_her_checkout_are_not_copied_and_a_second_round_keeps
 
 
 @pytest.fixture()
-def a_backend_that_reports_its_build() -> Iterator[str]:
-    class Version(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(json.dumps({"build": "deployed-sha"}).encode())
+def a_backend() -> Iterator[Callable[[bytes], str]]:
+    servers: list[HTTPServer] = []
 
-    server = HTTPServer(("127.0.0.1", 0), Version)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}/api/internalization-room"
-    server.shutdown()
+    def serve(body: bytes) -> str:
+        class Version(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+
+        server = HTTPServer(("127.0.0.1", 0), Version)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        servers.append(server)
+        return f"http://127.0.0.1:{server.server_port}/api/internalization-room"
+
+    yield serve
+    for server in servers:
+        server.shutdown()
 
 
 def test_the_backend_commit_judged_is_the_one_the_running_backend_reports(
-    her_checkout: Path, tmp_path: Path, a_backend_that_reports_its_build: str
+    her_checkout: Path, tmp_path: Path, a_backend: Callable[[bytes], str]
 ) -> None:
     pin = _git(her_checkout, "rev-parse", "HEAD")
-    code, out = _round(tmp_path, pin, base=a_backend_that_reports_its_build, backend=None)
+    code, out = _round(tmp_path, pin, base=a_backend(b'{"build": "deployed-sha"}'), backend=None)
 
     assert code == 0
     (judged,) = out.glob("JUDGED.*.md")
     assert "backend commit: deployed-sha" in judged.read_text()
+
+
+@pytest.mark.parametrize("answer", [b'{"build": "unknown"}', b"<html>", b"{}"])
+def test_a_backend_that_does_not_name_its_build_is_refused_not_recorded_as_unknown(
+    her_checkout: Path, tmp_path: Path, a_backend: Callable[[bytes], str], answer: bytes
+) -> None:
+    pin = _git(her_checkout, "rev-parse", "HEAD")
+
+    code, _ = _round(tmp_path, pin, base=a_backend(answer), backend=None)
+
+    assert code == her_golden_round.REFUSED
+    assert not (her_checkout / ".golden" / "ran").exists()
+
+
+def test_a_script_added_to_her_checkout_without_a_commit_is_refused(
+    her_checkout: Path, tmp_path: Path
+) -> None:
+    pin = _git(her_checkout, "rev-parse", "HEAD")
+    (her_checkout / "golden" / "sessions").mkdir(parents=True)
+    (her_checkout / "golden" / "sessions" / "ours.json").write_text("{}")
+
+    code, _ = _round(tmp_path, pin)
+
+    assert code == her_golden_round.REFUSED
+    assert not (her_checkout / ".golden" / "ran").exists()

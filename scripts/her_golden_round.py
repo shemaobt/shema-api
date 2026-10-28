@@ -1,10 +1,11 @@
 """Play a golden round through her own runner, from her checkout at the pin.
 
-Nothing of hers is patched. The command finds her checkout through `TRIPOD_INTERNALIZATION_REPO`,
-refuses one that is not at the commit `docs/doctrine/FREEZE_PIN` names or carries changes to it,
-runs `npm run golden -- --http <base>` with our key as `GOLDEN_HTTP_TOKEN`, and copies the reports
-that run wrote into `golden/reports/<date>/` beside a `JUDGED.<stamp>.md` naming the pin and the
-backend commit the running backend reports at `/api/version`.
+Nothing of hers is patched. The command finds her checkout through `TRIPOD_INTERNALIZATION_REPO`
+and refuses one that is not at the commit `docs/doctrine/FREEZE_PIN` names, or holds any change
+or untracked file beside its own `.golden/` output. It runs `npm run golden -- --http <base>` with
+our key as `GOLDEN_HTTP_TOKEN` and copies the reports that run wrote into `golden/reports/<date>/`
+beside a `JUDGED.<stamp>.md` naming the pin and the backend commit the running backend reports at
+`/api/version`; a backend started without `GIT_SHA` names none, and the round is refused.
 
 Her exit code is the round's: 0 passed, 1 a session failed, 2 her preflight stopped the run,
 3 the backend died mid-script. 4 is ours: refused before anything was played.
@@ -39,7 +40,10 @@ def _git(where: Path, *args: str) -> str | None:
 def _backend_commit(base_url: str) -> str:
     version = base_url.partition("/api/")[0] + "/api/version"
     with urllib.request.urlopen(version, timeout=10) as answered:
-        return str(json.load(answered)["build"])
+        build = str(json.load(answered)["build"])
+    if build == "unknown":
+        raise ValueError("it was started without GIT_SHA; start it with GIT_SHA=<commit>")
+    return build
 
 
 def _reports(checkout: Path) -> set[Path]:
@@ -68,13 +72,14 @@ def main(argv: list[str]) -> int:
     if _git(checkout, "rev-parse", "HEAD") != pin:
         print(f"refused: {checkout} is not a checkout at the pin {pin}", file=sys.stderr)
         return REFUSED
-    if _git(checkout, "status", "--porcelain", "--untracked-files=no"):
+    changes = (_git(checkout, "status", "--porcelain", "--untracked-files=all") or "").splitlines()
+    if [line for line in changes if not line.startswith("?? .golden/")]:
         print(f"refused: {checkout} carries changes to the pin {pin}", file=sys.stderr)
         return REFUSED
     try:
         backend = args.backend_commit or _backend_commit(args.base_url)
-    except OSError as error:
-        print(f"refused: no backend answered at {args.base_url} ({error})", file=sys.stderr)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"refused: no backend named its build at {args.base_url} ({error})", file=sys.stderr)
         return REFUSED
 
     before = _reports(checkout)
