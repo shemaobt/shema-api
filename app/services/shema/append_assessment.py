@@ -17,9 +17,18 @@ no assessment behind it. Appending and re-projecting happen under one commit, wh
 
 **A backdated assessment does not overwrite a newer reading.** The projection is decided by
 comparing days, not by assuming the last write wins: a reading filed today for a visit three
-months ago is kept in the history and changes nothing on the record, because the team has been
-read since. FE-44 §9.4 asks for this in one line and it is the reason the projection is a
+months ago is kept in the history and leaves the record's reading where it was, because the team
+has been read since. FE-44 §9.4 asks for this in one line and it is the reason the projection is a
 comparison rather than an assignment.
+
+**The pastoral answer it carried stays off the record too** (OBT-623). The wizard sends one with
+every reading — ``nao``, ``""`` and ``now`` when nobody picked otherwise — so the answer is that
+reading's own conclusion and lands only with it: applied regardless of the day, a visit from
+August written up today replaced the escalation the current reading had set with a default nobody
+chose. The backdated answer is not kept anywhere else either, since the history has no column for
+it and the one on the record belongs to the reading that is current. **The prayer request is not
+held back**, on purpose: it travels only when somebody wrote one, so it is a request a person
+made rather than a reading's answer, and dropping it would lose their words behind a 201.
 
 **What it steps aside for is a newer reading, and a date alone is not one.** A record holding
 a ``health_assessment_date`` with four empty dimensions is the row ``docs/shema.md`` §7.4 warns
@@ -45,7 +54,8 @@ for its reason:
    the notice's *before* and the projection's *is this record actually rated*;
 4. the carried entry, if the record predates the history;
 5. the new entry;
-6. the projection, and the record-side fields the submission carried;
+6. the projection, and the record-side fields the submission carried — its pastoral answer
+   only when the projection took this reading;
 7. the edit trail, and the notices if the reading entered critical — staged, committed once.
 
 **There is no** ``If-Match`` **here, and that is a departure from the record's own write.**
@@ -94,7 +104,7 @@ from app.models.shema_health import RECORD_FIELDS, ShemaHealthAssessmentSubmissi
 from app.models.shema_privacy import ShemaReader
 from app.services.shema import _audit
 from app.services.shema._consent import request_written, shared_prayer_text, withdrawn_request
-from app.services.shema._health_audience import require_files_assessments
+from app.services.shema._health_audience import PASTORAL_WRITES, require_files_assessments
 from app.services.shema._health_notice import entered_critical, notify_critical
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
@@ -208,6 +218,26 @@ async def _has_history(db: AsyncSession, project_id: str) -> bool:
     return (await db.execute(stmt)).scalar_one_or_none() is not None
 
 
+def _projected_entry(
+    project: ShemaProject, entries: list[ShemaHealthAssessment], *, before: OverallHealth
+) -> ShemaHealthAssessment | None:
+    """The entry the record reads once ``entries`` land, or ``None`` when it keeps its own.
+
+    The newest of them, unless the record holds a newer reading — the module docstring's
+    comparison of days, which asks whether the record is rated before it asks whose day is later.
+    Asked once and answered twice: the seven flat fields move to this entry, and the pastoral
+    answer the submission carried moves only when this entry **is** the submission's reading.
+    ``is not None`` would not do: on a record that predates the history the carried row can be
+    the newest, and projecting it re-writes the record's own values while the submission's
+    reading stays behind it in the history.
+    """
+    newest = max(entries, key=_sort_key)
+    on_record = project.health_assessment_date
+    if on_record is None or before is OverallHealth.NA or _sort_key(newest)[0] >= on_record:
+        return newest
+    return None
+
+
 def _project_onto(project: ShemaProject, entry: ShemaHealthAssessment) -> None:
     """Write one entry onto the record's seven flat fields, and nothing else."""
     for column, source in _PROJECTION:
@@ -282,15 +312,15 @@ async def append_assessment(
     entries.append(assessed)
     db.add_all(entries)
 
-    newest = max(entries, key=_sort_key)
-    on_record = project.health_assessment_date
-    if on_record is None or before is OverallHealth.NA or _sort_key(newest)[0] >= on_record:
-        _project_onto(project, newest)
+    projected = _projected_entry(project, entries, before=before)
+    if projected is not None:
+        _project_onto(project, projected)
 
     sent = {
         column: getattr(payload, column)
         for column in RECORD_FIELDS
         if column in payload.model_fields_set
+        and (projected is assessed or column not in PASTORAL_WRITES)
     }
     shared = shared_prayer_text(project)
     withdrawn = withdrawn_request(project, sent)

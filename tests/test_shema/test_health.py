@@ -27,7 +27,7 @@ from sqlalchemy import event, select
 from app.db.models.notification import Notification
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
-from app.db.models.shema_enums import ShemaHealthLevel, ShemaRegionKey
+from app.db.models.shema_enums import ShemaHealthLevel, ShemaRegionKey, ShemaYesNo
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.models.shema_health import compile_notes
 from app.services.shema._health_notice import EVENT_TYPE, TITLE, entered_critical
@@ -174,6 +174,77 @@ async def test_a_backdated_reading_is_kept_and_does_not_overwrite_a_newer_one(
     assert body["healthEmotional"] == "boa"
     assert body["healthAssessmentDate"] == "2026-09-10"
     assert [entry["date"] for entry in body["healthHistory"]] == ["2026-06-01", "2026-09-10"]
+
+
+#: The pastoral answer the wizard sends when nobody picked one — FE-44's ``emptyDraft``, which
+#: travels with every reading, backdated or not.
+UNPICKED = {
+    "needsPastoralIntervention": "nao",
+    "pastoralInterventionName": "",
+    "pastoralInterventionWhen": "now",
+}
+
+
+async def test_a_backdated_reading_leaves_the_pastoral_answer_of_the_newer_one(
+    client, headers, project
+) -> None:
+    """OBT-623: the backdated reading's default answer used to replace the escalation the
+    current reading had set, while its ratings were rightly kept out of the record."""
+    await _file(
+        client,
+        headers,
+        project,
+        date="2026-10-26",
+        emotional="atencao",
+        needsPastoralIntervention="sim",
+        pastoralInterventionName="Daniel — visita de campo em junho",
+        pastoralInterventionWhen="30d",
+    )
+    body = (
+        await _file(client, headers, project, date="2026-08-15", emotional="critica", **UNPICKED)
+    ).json()
+
+    assert body["needsPastoralIntervention"] == "sim"
+    assert body["pastoralInterventionName"] == "Daniel — visita de campo em junho"
+    assert body["pastoralInterventionWhen"] == "30d"
+    assert [entry["date"] for entry in body["healthHistory"]] == ["2026-08-15", "2026-10-26"]
+
+
+async def test_a_first_reading_backdated_before_the_carried_one_leaves_its_pastoral_answer(
+    client, db_session, headers, project
+) -> None:
+    """The record predates the history, so the carried row is the newer reading — and the
+    projection re-writing the record's own values must not let the backdated answer through."""
+    row = await db_session.get(ShemaProject, project)
+    row.health_assessment_date = date(2026, 5, 14)
+    row.health_emotional = ShemaHealthLevel.ATENCAO
+    row.needs_pastoral_intervention = ShemaYesNo.PT_SIM
+    row.pastoral_intervention_name = "Pr. João"
+    row.pastoral_intervention_when = "30d"
+    await db_session.commit()
+
+    body = (
+        await _file(client, headers, project, date="2026-01-20", emotional="critica", **UNPICKED)
+    ).json()
+
+    assert [entry["date"] for entry in body["healthHistory"]] == ["2026-01-20", "2026-05-14"]
+    assert body["needsPastoralIntervention"] == "sim"
+    assert body["pastoralInterventionName"] == "Pr. João"
+    assert body["pastoralInterventionWhen"] == "30d"
+
+
+async def test_a_backdated_reading_still_files_the_prayer_request_somebody_wrote(
+    client, headers, project
+) -> None:
+    """A request travels only when somebody wrote one, so it is not the reading's answer to keep
+    with the reading — dropping it would lose what a person typed (OBT-623's decision)."""
+    await _file(client, headers, project, date="2026-10-26")
+    body = (
+        await _file(client, headers, project, date="2026-08-15", prayerRequests="orem pela família")
+    ).json()
+
+    assert body["healthAssessmentDate"] == "2026-10-26"
+    assert body["prayerRequests"] == "orem pela família"
 
 
 async def test_the_last_entry_a_client_sees_is_the_one_the_record_projects(

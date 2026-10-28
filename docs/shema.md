@@ -849,6 +849,15 @@ behaviour on it.
 > refused the assessment, off FE-44 §5.8's own table. The same list addresses the critical notice,
 > because notifying somebody who may not read it leaks the fact that it exists.
 
+> **A backdated reading moves neither the reading nor the pastoral answer on the record —
+> [OBT-623](https://linear.app/shema-obt/issue/OBT-623).** The wizard sends the pastoral answer
+> with every reading (`nao`, `""`, `now` when nobody picked otherwise), so it is that reading's
+> conclusion and follows its projection: a reading dated before the record's lands in the history
+> and leaves the seven flat fields and the three pastoral ones where they were. One
+> decision in `append_assessment.py` answers both. The backdated answer is not kept — the history
+> has no column for it. The prayer request is not part of the reading: it is sent only when somebody
+> wrote one, and a backdated reading still files it.
+
 > **BE-11 ([OBT-400](https://linear.app/shema-obt/issue/OBT-400)) built row 5.11, after GATE-01
 > closed on 25/sep/2026** — and the number it produces leaves the organisation, so the
 > decisions are about making it explainable from stored data rather than reconstructible from code.

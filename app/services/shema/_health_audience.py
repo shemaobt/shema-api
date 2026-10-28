@@ -247,6 +247,8 @@ def health_as_read(shape: BaseModel, *, reads_health: bool) -> dict[str, Any]:
 #: The health fields the record's own write takes: the pastoral follow-up. The rest of the
 #: projection has one writer, the assessment, which already refuses everybody outside the
 #: audience — and ``ShemaProjectUpdate`` refuses its names outright.
+#: ``append_assessment`` reads the same list for a second reason: a submission's pastoral
+#: answer lands only with a reading that becomes the current one (OBT-623).
 PASTORAL_WRITES: Final[tuple[str, ...]] = (
     "needs_pastoral_intervention",
     "pastoral_intervention_name",

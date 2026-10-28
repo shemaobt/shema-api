@@ -74,7 +74,9 @@ _OUTWARD = ConfigDict(
 )
 
 #: The record-side fields a submission may carry, as column names. The service applies
-#: whichever of them arrived and leaves the rest untouched.
+#: whichever of them arrived and leaves the rest untouched — the pastoral three only when the
+#: reading is the one the record now projects, since a backdated reading's answer is not the
+#: current one (``append_assessment``, OBT-623).
 #:
 #: **A list and not five attribute reads**, which is what keeps ``prayer_requests`` from having
 #: a second reader: ``app/services/shema/_consent.py`` owns that column, and a service that
