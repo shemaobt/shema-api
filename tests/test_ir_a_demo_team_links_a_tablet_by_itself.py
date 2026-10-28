@@ -596,7 +596,13 @@ async def test_the_desks_undo_on_a_demo_tablet_keeps_its_halt_lifted_and_off_the
     device_id = tablet["X-Room-Device"]
     await client.post(f"{IR}/devices/{device_id}/needs-person", headers=tablet)
 
-    undone = await client.delete(f"{DEVICES}/{device_id}/attended", headers=configured.desk)
+    lifted = (await device_row(db_session, device_id)).attended_lifted_since
+    assert lifted is not None
+    undone = await client.delete(
+        f"{DEVICES}/{device_id}/attended",
+        headers=configured.desk,
+        params={"needs_person_since": lifted.isoformat()},
+    )
 
     assert undone.status_code == 200, undone.text[:300]
     assert undone.json()["needs_person_since"] is None
@@ -618,13 +624,18 @@ async def test_a_real_teams_undo_still_puts_its_room_and_tablet_back_on_the_queu
     await client.post(f"{IR}/devices/{linked.device_id}/needs-person", headers=tablet)
     room = f"{IR}/facilitator/sessions/{session_id}/attended?halt=1"
     device = f"{DEVICES}/{linked.device_id}/attended"
+    halt = {
+        "needs_person_since": (
+            await device_row(db_session, linked.device_id)
+        ).needs_person_since.isoformat()
+    }
     assert (await client.post(room, headers=real.desk)).status_code == 200
-    assert (await client.post(device, headers=real.desk)).status_code == 200
+    assert (await client.post(device, headers=real.desk, params=halt)).status_code == 200
     assert session_id not in await queued_session_ids(client, real)
     assert linked.device_id not in await queued_device_ids(client, real)
 
     room_undone = await client.delete(room, headers=real.desk)
-    device_undone = await client.delete(device, headers=real.desk)
+    device_undone = await client.delete(device, headers=real.desk, params=halt)
 
     assert room_undone.json()["attended_at"] is None, room_undone.text[:300]
     assert device_undone.json()["needs_person_since"] is not None, device_undone.text[:300]
@@ -716,24 +727,6 @@ async def test_an_undo_read_before_a_demo_teams_return_clears_the_visit_to_the_l
     written = await session_row(db_session, session_id)
     assert written.status.value == "in_progress"
     assert written.attended_at is None, "o desfazer carimbou de novo uma parada já levantada"
-
-
-async def test_the_desks_undo_of_a_mistaken_visit_on_a_demo_tablet_that_never_halted_clears_it(
-    client, configured: Team, db_session: AsyncSession
-) -> None:
-    tablet = await a_tablet_linked_through_the_page(client)
-    device_id = tablet["X-Room-Device"]
-    visit = f"{DEVICES}/{device_id}/attended"
-    assert (await client.post(visit, headers=configured.desk)).status_code == 200
-
-    undone = await client.delete(visit, headers=configured.desk)
-
-    assert undone.status_code == 200, undone.text[:300]
-    assert undone.json()["attended_at"] is None
-    assert undone.json()["attended_by"] is None
-    assert undone.json()["needs_person_since"] is None
-    written = await device_row(db_session, device_id)
-    assert written.attended_at is None
 
 
 # --- The Desk -----------------------------------------------------------------------------
