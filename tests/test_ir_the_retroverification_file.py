@@ -319,7 +319,28 @@ async def test_an_archive_whose_takes_were_recorded_again_after_the_approval_is_
 
     assert "-zerada-" in file["releaseId"]
     assert not file["releaseId"].endswith("-v1")
+    assert file["version"] == 2
     assert file["note"] == NOT_APPROVED_YET
+
+
+async def test_an_archive_reopened_after_its_release_is_the_next_of_its_own_not_the_passages(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, archived.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await record_the_part_again(
+        db_session, archived, await the_one_part_of(db_session, archived), sha256="b" * 64
+    )
+    archive = await _zerada(client, desk, project.id)
+    live = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, live.id, credential)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert (file["version"], file["finalized"]) == (2, False)
+    assert "-zerada-" in file["releaseId"]
 
 
 async def test_a_session_stamped_with_an_archive_that_is_gone_is_not_found(
@@ -395,6 +416,7 @@ async def test_an_archive_that_holds_no_release_is_named_with_its_stamp(
 
     file = answered.json()
     assert file["releaseId"].endswith(f"-{P.lower()}-zerada-{stamp}")
+    assert file["version"] == 1
     assert file["releaseId"].startswith("internalize-terena-")
     assert answered.headers["content-disposition"] == (
         f'attachment; filename="{file["releaseId"]}-retroverificacao.json"'

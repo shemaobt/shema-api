@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import (
@@ -29,6 +29,7 @@ from app.models.retro_export import (
     RetroPrevious,
     RetroSupersededTake,
 )
+from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.back_translation import (
     JOINED_WITHIN_MS,
     frase_numbers,
@@ -68,13 +69,29 @@ APPROVED_BEFORE_THE_RECORD = (
 TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
 
 
-def version_in(release_id: str) -> int:
-    """The version of a draft no release stands under: the number its release id ends in.
+async def _version(db: AsyncSession, session: IRSession, release: IRRelease | None) -> int:
+    """The number of the draft: its release's when one stands, else the next after the latest.
 
-    A passage zerada with no release has a stamp in place of a number, and reads as version 1.
+    Always the column and never the name: a release stored before ADR 0048 is named by its row id.
+    The latest is the session's own in an archive and the passage's in the live draft; with none
+    ever (a passage zerada included) the draft is the first.
     """
-    named = re.search(r"-v(\d+)$", release_id)
-    return int(named.group(1)) if named else 1
+    if release is not None:
+        return release.version
+    if session.archive_id:
+        latest = await db.scalar(
+            select(IRRelease)
+            .where(IRRelease.session_id == session.id)
+            .order_by(IRRelease.version.desc())
+            .limit(1)
+        )
+    else:
+        latest = (
+            await latest_release(db, session.project_id, session.pericope)
+            if session.project_id
+            else None
+        )
+    return latest.version + 1 if latest else 1
 
 
 def _finding(entry: dict[str, Any]) -> RetroApprovalFinding:
@@ -269,7 +286,7 @@ async def retro_export(
     return RetroExport(
         releaseId=release_id,
         pericopeId=session.pericope,
-        version=release.version if release else version_in(release_id),
+        version=await _version(db, session, release),
         finalized=release is not None,
         note=None
         if approval

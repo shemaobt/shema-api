@@ -26,7 +26,6 @@ from app.services.internalization_room.retro_export import (
     APPROVED_BEFORE_THE_RECORD,
     NOT_APPROVED,
     retro_export,
-    version_in,
 )
 from app.services.internalization_room.segments import (
     capture_segment,
@@ -931,8 +930,3 @@ async def test_choosing_a_grain_before_any_take_is_no_earlier_life(db_session) -
     await switch_the_grain(db_session, session, IRGrain.SCENE, reopens_the_approved_draft=False)
 
     assert "previous" not in await _exported(db_session, session.id)
-
-
-def test_the_version_is_the_number_a_release_id_ends_in_and_a_zerada_stamp_has_none() -> None:
-    assert version_in("internalize-terena-p01-v12") == 12
-    assert version_in("internalize-v5-p01-zerada-20261028-1200") == 1

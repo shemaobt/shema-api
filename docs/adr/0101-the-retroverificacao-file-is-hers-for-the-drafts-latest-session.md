@@ -16,11 +16,11 @@ rulings of 2026-10-27 and 28:
 - `clipKey` is the Part key and `idx` the stretch id, in frases, history and findings. The take id
   appears only as `supersededTakes[].takeId`. No `origin`: our join carries no scene frase.
 - `releaseId` is the name `take_downloads._release_id` gives (ADR 0081) and names the file and the
-  `supersededTakes` file names. `version` is the number of the release when one stands (the
-  release row's own, from one within the passage and team, which holds for releases stored before
-  ADR 0048 too), the next one for a reopened draft, 1 for a draft never approved, and for an
-  archive its release's or 1 under the zerada stamp. Her own number (`finalizeCount`) gave way to
-  that rule.
+  `supersededTakes` file names. `version` is always read from the release column, never parsed from
+  the name (a release stored before ADR 0048 is named by its row id): the release's own when it
+  stands, the latest release's plus one for a reopened draft (the passage's in the live draft, the
+  session's own in an archive), 1 when there has never been one, a zeroed passage included. Her own
+  number (`finalizeCount`) gave way to that rule.
 - An approved frase keeps its number and place and finds its live stretch by its `idx`: the stretch
   itself while current (a divided one with its own words), else the one that took its place, else
   after a restart the top stretch of its part starting where it did; with none, it is empty and
