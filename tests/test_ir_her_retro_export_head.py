@@ -58,7 +58,6 @@ from tests.room_harness import (
     PART_MS,
     record_the_part_again,
     rehearsed_in_parts,
-    rehearsed_in_parts_of,
     room_client,
     the_bucket_is_in_memory,
 )
@@ -111,6 +110,9 @@ async def test_an_approved_passage_opens_with_her_keys_in_her_order(client, db_s
     assert (file["releaseId"], file["pericopeId"], file["version"], file["finalized"]) == (
         "release-1", pericope, 1, True,
     )  # fmt: skip
+    assert abs(datetime.now(UTC) - datetime.fromisoformat(file["exportedAt"])) < timedelta(
+        minutes=1
+    )
     approval = file["approval"]
     assert (approval["v"], approval["forced"], approval["conferida"]) == (1, False, True)
     assert approval["heardComplete"] is True
@@ -730,9 +732,10 @@ async def _checked_three_times(db, session) -> BackTranslationState:
         take_id=part.id, starts_ms=0, ends_ms=CLIP_MS, voiced="now",
     )  # fmt: skip
     found = Finding(kind=FindingKind.ADDITION, note="NOTA-1", segment_id=told.id, chunk=1)
+    missing_at_the_end = Finding(kind=FindingKind.MISSING, note="FALTOU-NO-FIM", chunk=2)
     rounds = [
         CheckRound(
-            at=first_at, findings=[found], spoken="vocês acrescentaram",
+            at=first_at, findings=[found, missing_at_the_end], spoken="vocês acrescentaram",
             outcome="corrected", conferida=False,
         ),
         CheckRound(
@@ -764,13 +767,15 @@ async def test_every_check_is_listed_with_its_findings_notes_and_the_voice(db_se
         "vocês acrescentaram", "corrected", False,
     )  # fmt: skip
     assert first["findings"] == [
-        {"kind": "addition", "note": "NOTA-1", "frase": 1, "idx": stretch_id, "clipKey": "whole"}
+        {"kind": "addition", "note": "NOTA-1", "frase": 1, "idx": stretch_id, "clipKey": "whole"},
+        {"kind": "missing", "note": "FALTOU-NO-FIM"},
     ]
     (nuance,) = second["findings"]
     assert list(nuance) == ["kind", "note", "frase", "idx", "clipKey", "quote", "story", "voiced"]
-    assert (nuance["kind"], nuance["quote"], nuance["story"], nuance["voiced"]) == (
-        "nuance", "Rute", "a história diz Noemi", "now",
+    assert (nuance["kind"], nuance["note"], nuance["quote"], nuance["voiced"]) == (
+        "nuance", "detalhe", "Rute", "now",
     )  # fmt: skip
+    assert nuance["story"] == "a história diz Noemi"
     assert (third["findings"], third["conferida"]) == ([], True)
 
 
@@ -780,9 +785,11 @@ async def test_heard_by_clip_is_the_share_of_each_part_the_team_heard(db_session
     session, (first, second) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
     lone, lone_part = await rehearsed_session(db_session, project_id=project.id)
     half_id, session_id, lone_id = half.id, session.id, lone.id
+    second.duration_ms = 40000
+    await db_session.commit()
     played = {
         first.id: [(0, 30000), (30200, PART_MS)],
-        second.id: [(30000, 40000), (50000, 90000)],
+        second.id: [(0, 10000), (10200, 20000), (30000, 90000)],
     }
     await report_playback(
         db_session,
@@ -811,45 +818,53 @@ async def test_heard_by_clip_is_the_share_of_each_part_the_team_heard(db_session
     }
     assert (await _exported(db_session, session_id))["heardByClip"] == {
         "S1": pytest.approx(1.0),
-        "S2": pytest.approx(21 / 61),
+        "S2": pytest.approx(0.75),
     }
     assert (await _exported(db_session, lone_id))["heardByClip"] == {"whole": 0}
 
 
-async def test_a_replaced_take_is_listed_under_her_name_with_the_time_it_stopped_being_live(
+async def test_a_replaced_take_is_listed_under_her_name_and_with_no_time_until_the_stamp_exists(
     client, db_session
 ) -> None:
     session, _ = await _approved(client, db_session)
     old = await the_one_part_of(db_session, session)
-    old_facts = (old.id, old.sha256, old.size_bytes, old.recorded_at.isoformat())
-    fresh = await the_part_recorded_again(db_session, session)
-    replaced_at = fresh.created_at.isoformat()
+    old.duration_ms = 1234
+    await db_session.commit()
+    wanted = {
+        "key": "whole", "takeId": old.id, "sha256": old.sha256, "durationMs": 1234,
+        "bytes": old.size_bytes, "contentType": "audio/mp4",
+        "recordedAt": old.recorded_at.isoformat(),
+        "filename": f"release-1-whole-substituida-{old.id}.m4a",
+        "url": f"/api/internalization-room/facilitator/takes/{old.id}/audio",
+    }  # fmt: skip
+    await the_part_recorded_again(db_session, session)
 
     (take,) = (await _exported(db_session, session.id))["supersededTakes"]
 
-    assert list(take) == [
-        "key", "takeId", "sha256", "durationMs", "bytes", "contentType", "recordedAt",
-        "supersededAt", "filename", "url",
-    ]  # fmt: skip
-    assert (take["key"], take["takeId"], take["sha256"], take["bytes"]) == ("whole", *old_facts[:3])
-    assert (take["recordedAt"], take["supersededAt"]) == (old_facts[3], replaced_at)
-    assert take["filename"] == f"release-1-whole-substituida-{old.id}.m4a"
-    assert take["url"] == f"/api/internalization-room/facilitator/takes/{old.id}/audio"
+    assert list(take) == list(wanted)
+    assert take == wanted
 
 
-async def test_a_take_nothing_replaced_carries_no_time(db_session) -> None:
-    session, (whole, _part) = await rehearsed_in_parts_of(db_session, [1, 1], unnumbered_first=True)
+async def test_a_declared_part_is_no_take_to_download(client, db_session) -> None:
+    session, _ = await _approved(client, db_session)
+    old = await the_one_part_of(db_session, session)
+    old.storage_key = f"text-seam/{session.id}/S1"
+    await db_session.commit()
+    await the_part_recorded_again(db_session, session)
 
-    (take,) = (await _exported(db_session, session.id))["supersededTakes"]
-
-    assert (take["takeId"], "supersededAt" in take) == (whole.id, False)
+    assert (await _exported(db_session, session.id))["supersededTakes"] == []
 
 
-async def test_the_file_says_when_it_was_exported(db_session) -> None:
-    project, _ = await a_claimed_device(db_session)
-    session = await ready_session(db_session, project_id=project.id)
-    before = datetime.now(UTC)
+async def test_a_check_of_an_approved_draft_numbers_its_findings_as_the_approval_did(
+    client, db_session
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_checked_three_times)
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+    assert approved.status_code == 200, approved.text
+    (only,) = await final_segments(db_session, session.id)
+    await divide_segment(db_session, session, only, at_ms=15000)
 
-    stamped = (await _exported(db_session, session.id))["exportedAt"]
+    first, *_ = (await _exported(db_session, session.id))["checks"]
 
-    assert before <= datetime.fromisoformat(stamped) <= datetime.now(UTC)
+    assert first["findings"][0]["frase"] == 1

@@ -43,14 +43,12 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.take_downloads import (
-    _each_with_its_successor,
     _with_bytes,
     file_name,
     keys_of_the_takes,
 )
 from app.services.internalization_room.takes import (
     current_parts,
-    set_aside_moment,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -204,11 +202,11 @@ async def retro_export(
     rows = {row.id: row for row in (*standing.values(), *retired)}
     numbered = {one.idx: one.n for one in approval.frases} if approval else numbers
 
-    def _address(segment_id: str) -> dict[str, Any]:
-        row = rows.get(segment_id)
+    def _address(segment_id: str | None) -> dict[str, Any]:
+        row = rows.get(segment_id or "")
         return {
             "idx": segment_id,
-            "frase": numbered.get(segment_id),
+            "frase": numbered.get(segment_id or ""),
             "clipKey": keys.get(row.take_id) if row else None,
         }
 
@@ -218,10 +216,6 @@ async def retro_export(
         for entry in listening_to_the_parts(telling_back.played_by_take, parts, leaves)
     }
     heard_by_clip = {part.id: _heard(listened.get(part.id)) for part in parts}
-    replaced_at = {
-        take.id: as_utc(successor.created_at).isoformat()
-        for take, successor in _each_with_its_successor(takes)
-    }
     ever_told = sorted(
         (row for row in (*standing.values(), *retired) if row.transcript),
         key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
@@ -263,7 +257,6 @@ async def retro_export(
                         kind=one.kind.value, note=one.note, **_address(one.segment_id)
                     )
                     for one in check.findings
-                    if one.segment_id
                 ]
                 + [
                     RetroCheckFinding(
@@ -292,7 +285,6 @@ async def retro_export(
                 bytes=take.size_bytes,
                 contentType=take.content_type,
                 recordedAt=as_utc(take.recorded_at).isoformat(),
-                supersededAt=replaced_at.get(take.id) or set_aside_moment(take),
                 filename=file_name(release_id, keys[take.id], take, superseded=True),
                 url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
             )
