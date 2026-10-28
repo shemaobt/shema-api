@@ -108,19 +108,21 @@ async def _check_again(db: AsyncSession, session_id: str) -> dict[str, bool]:
 
 
 async def test_an_approval_with_every_take_intact_stores_a_whole_result_once(
-    client, db_session, bucket
+    client, db_session, bucket, monkeypatch, caplog
 ):
     session_id, credential = await _rehearsed(db_session, bucket)
     headers = team_headers(credential)
     await checked_heard_and_approved(client, db_session, session_id, headers=headers)
     first = await _result(db_session, session_id)
-    again = await client.post(f"{PREFIX}/sessions/{session_id}/release", headers=headers)
     bucket.objects.clear()
     (release,) = await releases_of(db_session, session_id)
     await release_check.check_release(release.id)
+    monkeypatch.setattr(release_check, "take_store", lambda: 1 / 0)
+
+    again = await client.post(f"{PREFIX}/sessions/{session_id}/release", headers=headers)
 
     assert again.status_code == 200, again.text
-    assert first is not None
+    assert not [record for record in caplog.records if record.levelname == "ERROR"]
     assert first["whole"] is True
     assert datetime.fromisoformat(first["ran_at"])
     assert await _result(db_session, session_id) == first
@@ -147,7 +149,6 @@ async def test_a_take_whose_bytes_no_longer_match_fails_check_one_and_the_approv
 @pytest.mark.parametrize(
     "door",
     [lambda s, p, c: desk_release(s), lambda s, p, c: desk_passage_release(p, c)],
-    ids=["session", "passage"],
 )
 async def test_a_forced_approval_gets_its_check_like_any_other(
     client, db_session, room_app, bucket, door
