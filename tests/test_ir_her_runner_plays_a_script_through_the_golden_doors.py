@@ -24,6 +24,7 @@ from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from app.services.internalization_room import llm
+from tests.golden_rehearsal_harness import an_open_session, the_room_stands_in
 from tests.text_seam_harness import (
     BEARER,
     GOLDEN,
@@ -547,6 +548,187 @@ async def test_scene_rehearsals_the_passage_has_are_kept_with_the_turn(
         None,
         ["S1", "S2"],
     ], "a lista de ensaios de cena que o runner dela manda era descartada e o turno não a guardava"
+
+
+HER_TWO_PIECES_NOTE = (
+    "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por frase "
+    "(2 frases). Segue a tradução, na ordem:]"
+)
+HER_ONE_PIECE_NOTE_EN = (
+    "[The team rehearsed this scene in their own language and translated the scene rehearsal. "
+    "The translation follows:]"
+)
+HER_REHEARSAL = f"{HER_TWO_PIECES_NOTE} Noemi disse: voltem. Rute ficou com ela."
+
+
+async def _the_last_turn(db_session: AsyncSession, session_id: str) -> dict[str, Any]:
+    session = await room.get_session(db_session, session_id)
+    await db_session.refresh(session)
+    return dict(session.messages[-1])
+
+
+async def test_a_rehearsal_her_runner_sends_as_team_text_reaches_the_guide_once_and_is_credited(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await _an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": HER_REHEARSAL, "sceneRehearsals": ["S1"]},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_inputs == [HER_REHEARSAL]
+    assert answered.json()["transcript"] == HER_REHEARSAL
+    kept = (await _the_last_turn(db_session, session_id))["scene_rehearsal"]
+    assert (kept["scene"], kept["frases"]) == ("S1", 2)
+
+
+async def test_a_rehearsal_that_adds_no_scene_to_the_carried_list_is_unmarked(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+    for _ in range(2):
+        answered = await client.post(
+            f"{GOLDEN}/turn",
+            json={"sessionId": session_id, "teamText": HER_REHEARSAL, "sceneRehearsals": ["S1"]},
+        )
+        assert answered.status_code == 200, answered.text
+
+    kept = (await _the_last_turn(db_session, session_id))["scene_rehearsal"]
+
+    assert kept["scene"] is None
+
+
+async def test_the_scene_is_the_id_the_list_gained_not_the_ones_it_already_carried(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+    for carried in (["S1"], ["S1", "S2"]):
+        answered = await client.post(
+            f"{GOLDEN}/turn",
+            json={"sessionId": session_id, "teamText": HER_REHEARSAL, "sceneRehearsals": carried},
+        )
+        assert answered.status_code == 200, answered.text
+
+    kept = (await _the_last_turn(db_session, session_id))["scene_rehearsal"]
+
+    assert kept["scene"] == "S2"
+
+
+async def test_her_english_note_with_no_count_is_a_rehearsal_of_one_frase(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    created = await client.post(
+        f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "English"}
+    )
+    session_id = str(created.json()["sessionId"])
+    agent = the_models_answer(monkeypatch)
+    text = f"{HER_ONE_PIECE_NOTE_EN} Naomi said: come back."
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": text, "sceneRehearsals": ["S1"]},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_inputs == [text]
+    kept = (await _the_last_turn(db_session, session_id))["scene_rehearsal"]
+    assert (kept["scene"], kept["frases"]) == ("S1", 1)
+
+
+HER_ONE_PIECE_NOTE = (
+    "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue a tradução:]"
+)
+
+
+async def test_a_rehearsal_credited_to_a_scene_moves_the_moment_and_hands_the_guide_its_readings(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 4})
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={
+            "sessionId": session_id,
+            "teamText": f"{HER_ONE_PIECE_NOTE} Ele deu a sandália.",
+            "sceneRehearsals": ["S4"],
+        },
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["acceptedIds"] == ["R5"]
+    assert "ACCEPTED READINGS" in agent.guide_systems[-1]
+    moment = (await _the_last_turn(db_session, session_id))["moment"]
+    assert (moment["after"]["at"], moment["by"]) == ("articulation", ["scene_rehearsal"])
+
+
+async def test_a_rehearsal_credited_to_no_scene_leaves_the_moment_and_the_readings_alone(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    await the_room_stands_in(db_session, session_id, {"at": "internalization", "part": 4})
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={
+            "sessionId": session_id,
+            "teamText": f"{HER_ONE_PIECE_NOTE} Ele deu a sandália.",
+            "sceneRehearsals": [],
+        },
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert "acceptedIds" not in answered.json()
+    assert "ACCEPTED READINGS" not in agent.guide_systems[-1]
+    moment = (await _the_last_turn(db_session, session_id))["moment"]
+    assert (moment["after"]["at"], moment["by"]) == ("internalization", [])
+
+
+async def test_her_note_with_no_pieces_behind_it_credits_no_scene(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": HER_ONE_PIECE_NOTE, "sceneRehearsals": ["S1"]},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert "scene_rehearsal" not in await _the_last_turn(db_session, session_id)
+
+
+async def test_team_words_that_are_not_her_rehearsal_note_are_not_a_rehearsal(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": TEAM_LINE, "sceneRehearsals": ["S1"]},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert "scene_rehearsal" not in await _the_last_turn(db_session, session_id)
+
+
+async def test_the_record_of_a_mother_tongue_turn_invents_no_language_probability(
+    client, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 12},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert (await _the_last_turn(db_session, session_id))["language_probability"] is None
 
 
 async def test_the_opening_on_a_session_that_already_spoke_is_still_refused(client) -> None:

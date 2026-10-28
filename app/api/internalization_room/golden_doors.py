@@ -14,6 +14,7 @@ configured, which production never sets, and nothing on a tablet knows their pat
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from functools import partial
@@ -30,7 +31,7 @@ from app.api.internalization_room.text_seam import (
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, ValidationError
-from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
+from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room_golden_doors import (
     GoldenRehearsalRequest,
     GoldenRehearsalResponse,
@@ -46,13 +47,13 @@ from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.golden_rehearsal import keep_a_golden_rehearsal
-from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.passage_turn import accepted_send_backs
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.session_turns import last_turn_number
 from app.services.internalization_room.sessions import the_opening_note, was_opened
-from app.services.internalization_room.turn.speech import mother_tongue_note
+from app.services.internalization_room.turn.speech import mother_tongue_note, scene_rehearsal_note
 
 router = APIRouter()
 
@@ -64,14 +65,16 @@ async def require_golden_runner(authorization: str | None = Header(default=None)
 
 golden_runner_dep = Depends(require_golden_runner)
 
+_HER_COUNT = re.compile(r"\((\d+) (?:frases|phrases)\)")
+
 
 def _heard(payload: GoldenTurnRequest, *, language: str) -> HeardSpeech:
     """Her turn mapped onto what the transcriber would have handed over.
 
     The opening has no team side. A mother-tongue note carries the one fact the recognizer
-    reports about such a take — a confident detection of a language that is not the
-    session's — and nothing invented about which language it was; `und` is the code the
-    room's own tests give an undetermined language. Her `teamText`, empty or not, is the
+    reports about such a take — a language that is not the session's — and nothing invented
+    about how sure it was or which language it was; `und` is the code the room's own tests
+    give an undetermined language. Her `teamText`, empty or not, is the
     team's words. The room renders its own notes, so her `noteText` is not read; the
     response's `transcript` says what the Guide was handed. A turn with neither words nor a
     room note is refused.
@@ -85,7 +88,6 @@ def _heard(payload: GoldenTurnRequest, *, language: str) -> HeardSpeech:
             text=mother_tongue_note(language, take_ms),
             bridge_language=language,
             language_code="und",
-            language_probability=1.0,
             take_ms=take_ms,
             interrupted=cut,
         )
@@ -104,6 +106,55 @@ def _scene_rehearsals(
     if unknown:
         raise ValidationError(f"{pericope} has no scene {', '.join(unknown)}")
     return payload.sceneRehearsals
+
+
+def _her_rehearsal(text: str) -> tuple[int, str] | None:
+    """Her `rehearsalTeamText` read back: the frases her note counts, one without a count, and
+    the pieces behind the note."""
+    counted = _HER_COUNT.search(text.partition("]")[0])
+    frases = int(counted.group(1)) if counted else 1
+    for code in ("pt", "en"):
+        note = scene_rehearsal_note(code, frases)
+        pieces = text[len(note) :].strip()
+        if text.startswith(note) and pieces:
+            return frases, pieces
+    return None
+
+
+def _the_scene_that_entered(carried: list[str] | None, session: IRSession) -> str | None:
+    """The one scene the carried list gained since the last turn that carried one."""
+    before: list[str] = next(
+        (
+            m["scene_rehearsals"]
+            for m in reversed(session.messages or [])
+            if m.get("scene_rehearsals") is not None
+        ),
+        [],
+    )
+    entered = [scene for scene in carried or [] if scene not in before]
+    return entered[0] if len(entered) == 1 else None
+
+
+def _as_a_rehearsal_arriving(
+    heard: HeardSpeech, carried: list[str] | None, session: IRSession
+) -> HeardSpeech:
+    """A team turn whose words open with her rehearsal note is a scene rehearsal arriving: the
+    turn is handed the pieces and the rehearsal, and the room renders her note once, in front."""
+    rehearsal = _her_rehearsal(heard.text)
+    if rehearsal is None:
+        return heard
+    frases, pieces = rehearsal
+    return heard.model_copy(
+        update={
+            "text": pieces,
+            "scene_rehearsal": SentSceneRehearsal(
+                rehearsal_id="",
+                n=0,
+                frases=frases,
+                scene=_the_scene_that_entered(carried, session),
+            ),
+        }
+    )
 
 
 @router.post(
@@ -224,6 +275,7 @@ async def play_golden_turn(
     heard = _heard(payload, language=session.language)
     with reading_the_canon_of(session.canon_pin):
         rehearsed = _scene_rehearsals(payload, session.pericope)
+    heard = _as_a_rehearsal_arriving(heard, rehearsed, session)
     await db.commit()
 
     started = time.monotonic()
@@ -245,6 +297,7 @@ async def play_golden_turn(
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
+            scene_rehearsal=heard.scene_rehearsal,
             scene_rehearsals=rehearsed,
             opening_note=the_opening_note(session) if opening else "",
             commit=False,
