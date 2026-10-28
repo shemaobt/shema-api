@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
@@ -50,17 +50,18 @@ async def read_the_passages_retroverification_file(
     response: Response,
     user: ReaderUser,
     pericope: str = Path(max_length=120),
+    archive: str | None = Query(default=None, min_length=1),
     db: AsyncSession = Depends(get_db),
 ) -> PassageRetroverificationFile:
     """The file of one passage, every session of it, named after its release.
 
-    The live sessions. A team the caller does not read is refused as one that does not exist. A
-    stored telling-back that cannot be read answers 503: a file without that session would read
-    as a passage nobody told.
+    The live sessions, or those of the Archive named in ``archive``. A team the caller does not
+    read is refused as one that does not exist. A stored telling-back that cannot be read
+    answers 503: a file without that session would read as a passage nobody told.
     """
     try:
         file = await passage_retroverification_file(
-            db, user, project_id=project_id, pericope=pericope
+            db, user, project_id=project_id, pericope=pericope, archive_id=archive
         )
     except RetroverificationUnreadable as unreadable:
         raise HTTPException(

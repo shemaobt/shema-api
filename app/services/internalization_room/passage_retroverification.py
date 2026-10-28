@@ -10,17 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRArchive, IRRelease, IRSession
 from app.models.internalization_room import PassageRetroverificationFile
-from app.services.internalization_room.approved_draft import approved_draft
+from app.services.internalization_room.approved_draft import approved_draft, stands_on
 from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.live import live
+from app.services.internalization_room.release import _mother_tongue, _slug, released_as
 from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.take_downloads import _release_id
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
 from app.services.project.reads_project import reads_project
+from app.utils.stored_time import as_utc
 
 NOT_APPROVED = (
     "rascunho ainda não aprovado — as frases abaixo são a tradução ao vivo, não uma versão fechada"
@@ -46,10 +48,37 @@ async def _read_as_the_draft(db: AsyncSession, latest: IRSession) -> tuple[str, 
     return release_id, notices
 
 
+async def _read_as_an_archive(
+    db: AsyncSession, latest: IRSession, archive_id: str
+) -> tuple[str, list[str]]:
+    """The release the archive's takes still stand on, else the archive's own stamp.
+
+    ``approved_draft`` is the wrong question here: a Zerar retires every draft. This is the
+    question ``take_downloads`` asks of an archived session (ADR 0081), so the file, its note
+    and the takes' downloads agree: a release the takes were re-recorded past is not their name.
+    The stamp is ENG-1782's format, from the archive's UTC moment.
+    """
+    own = await db.scalar(
+        select(IRRelease)
+        .where(IRRelease.session_id == latest.id)
+        .order_by(IRRelease.version.desc())
+        .limit(1)
+    )
+    if own is not None and stands_on(own, current_parts(await takes_of(db, latest.id))):
+        notices = [] if "check" in own.packet else [APPROVED_BEFORE_THE_RECORD]
+        return released_as(own), notices
+    archive = await db.get(IRArchive, archive_id)
+    if archive is None:
+        raise NotFoundError(f"Archive {archive_id} of session {latest.id} is gone")
+    stamp = as_utc(archive.archived_at).strftime("%Y%m%d-%H%M")
+    tongue = _slug(await _mother_tongue(db, latest))
+    return f"internalize-{tongue}-{latest.pericope.lower()}-zerada-{stamp}", [NOT_APPROVED]
+
+
 async def passage_retroverification_file(
-    db: AsyncSession, user: User, *, project_id: str, pericope: str
+    db: AsyncSession, user: User, *, project_id: str, pericope: str, archive_id: str | None
 ) -> PassageRetroverificationFile:
-    """The passage's live sessions, oldest first.
+    """The passage's sessions in one archive (the live ones by default), oldest first.
 
     A session whose stored telling-back cannot be read makes the whole file unreadable: left
     out, it would read as a session nobody told.
@@ -59,7 +88,7 @@ async def passage_retroverification_file(
     in_scope = (
         IRSession.project_id == project_id,
         IRSession.pericope == pericope,
-        live(),
+        IRSession.archive_id == archive_id if archive_id else live(),
     )
     sessions = list(
         await db.scalars(
@@ -71,7 +100,11 @@ async def passage_retroverification_file(
     )
     if latest is None:
         raise NotFoundError(f"No sessions of {pericope} for this team")
-    release_id, notices = await _read_as_the_draft(db, latest)
+    release_id, notices = (
+        await _read_as_an_archive(db, latest, archive_id)
+        if archive_id
+        else await _read_as_the_draft(db, latest)
+    )
     for session in sessions:
         try:
             back_translation_of(session)

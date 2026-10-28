@@ -22,14 +22,14 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -867,8 +867,9 @@ APPROVED_BEFORE_THE_RECORD = (
 )
 
 
-def _passage_file(project_id: str) -> str:
-    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
+def _passage_file(project_id: str, archive: str | None = None) -> str:
+    url = f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/retroverificacao"
+    return f"{url}?archive={archive}" if archive else url
 
 
 async def test_a_passage_worked_over_two_sessions_is_one_file_named_after_its_release(
@@ -946,3 +947,165 @@ async def test_a_translation_that_cannot_be_read_answers_try_again_and_no_file(
 
     assert answered.status_code == 503, answered.text
     assert "sessions" not in answered.json()
+
+
+async def test_the_passage_file_serves_the_live_sessions_unless_an_archive_is_named(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    zerar = await client.post(
+        f"{PREFIX}/facilitator/projects/{project.id}/passages/{P}/archive", headers=desk
+    )
+    live = await ready_session(db_session, project_id=project.id, tell=_told_in_two_stretches)
+
+    in_force = (await client.get(_passage_file(project.id), headers=desk)).json()
+    kept = (
+        await client.get(_passage_file(project.id, zerar.json()["archive"]["id"]), headers=desk)
+    ).json()
+
+    assert [one["session_id"] for one in in_force["sessions"]] == [live.id]
+    assert [one["session_id"] for one in kept["sessions"]] == [archived.id]
+    assert (
+        await client.get(f"{_passage_file(project.id)}?archive=", headers=desk)
+    ).status_code == 422
+
+
+async def _zerada(client: httpx.AsyncClient, desk: dict[str, str], project_id: str) -> dict:
+    zerar = await client.post(
+        f"{PREFIX}/facilitator/projects/{project_id}/passages/{P}/archive", headers=desk
+    )
+    return zerar.json()["archive"]
+
+
+async def test_an_archive_that_holds_a_release_is_read_as_that_release(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, session.id)
+    archive = await _zerada(client, desk, project.id)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert file["release_id"] == row.packet["release_id"]
+    assert file["notices"] == []
+
+
+async def test_an_archive_whose_release_predates_the_approval_record_carries_the_second_note(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, session.id)
+    row.packet = {key: value for key, value in row.packet.items() if key != "check"}
+    await db_session.commit()
+    archive = await _zerada(client, desk, project.id)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert file["notices"] == [APPROVED_BEFORE_THE_RECORD]
+
+
+async def test_an_archive_whose_takes_were_recorded_again_after_the_approval_is_not_that_release(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await record_the_part_again(
+        db_session, session, await the_one_part_of(db_session, session), sha256="b" * 64
+    )
+    archive = await _zerada(client, desk, project.id)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert "-zerada-" in file["release_id"]
+    assert not file["release_id"].endswith("-v1")
+    assert file["notices"] == [NOT_APPROVED_YET]
+
+
+async def test_a_session_stamped_with_an_archive_that_is_gone_is_not_found(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    session.archive_id = "gone"
+    await db_session.commit()
+
+    answered = await client.get(_passage_file(project.id, "gone"), headers=desk)
+
+    assert answered.status_code == 404, answered.text
+
+
+async def test_an_archive_keeps_its_release_when_the_live_draft_is_approved_after(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    archived = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, archived.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (row,) = await releases_of(db_session, archived.id)
+    archive = await _zerada(client, desk, project.id)
+    live = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, live.id, credential)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert row.packet["release_id"].endswith("-v1")
+    assert file["release_id"] == row.packet["release_id"]
+
+
+async def test_an_archive_reads_the_latest_release_its_session_wrote(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    (first,) = await releases_of(db_session, session.id)
+    later = first.packet["release_id"].replace("-v1", "-v2")
+    db_session.add(
+        IRRelease(
+            session_id=session.id,
+            project_id=project.id,
+            pericope=first.pericope,
+            version=2,
+            package_sha256=first.package_sha256,
+            packet={**first.packet, "release_id": later, "version": 2},
+            approved_at=first.approved_at,
+        )
+    )
+    await db_session.commit()
+    archive = await _zerada(client, desk, project.id)
+
+    file = (await client.get(_passage_file(project.id, archive["id"]), headers=desk)).json()
+
+    assert file["release_id"] == later
+
+
+async def test_an_archive_that_holds_no_release_is_named_with_its_stamp(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    archive = await _zerada(client, desk, project.id)
+    stamp = datetime.fromisoformat(archive["archived_at"]).astimezone(UTC).strftime("%Y%m%d-%H%M")
+
+    answered = await client.get(_passage_file(project.id, archive["id"]), headers=desk)
+
+    file = answered.json()
+    assert file["release_id"].endswith(f"-{P.lower()}-zerada-{stamp}")
+    assert file["release_id"].startswith("internalize-terena-")
+    assert answered.headers["content-disposition"] == (
+        f'attachment; filename="{file["release_id"]}-retroverificacao.json"'
+    )
+    assert file["notices"] == [NOT_APPROVED_YET]
