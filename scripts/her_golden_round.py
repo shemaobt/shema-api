@@ -1,26 +1,24 @@
 """Play a golden round through her own runner, from her checkout at the pin.
 
-Her runner (`npm run golden -- --http <base>`) plays her scripts against the Golden doors, runs
-her judge and her mechanical checks, and writes `.golden/<name>.<stamp>.md`. Nothing here
-patches it: the command finds her checkout through `TRIPOD_INTERNALIZATION_REPO`, refuses one
-that is not at the commit `docs/doctrine/FREEZE_PIN` names, hands the runner our key as
-`GOLDEN_HTTP_TOKEN`, and copies the reports that run wrote into `golden/reports/<date>/` beside
-a `JUDGED.md` naming the backend commit and the pin.
+Nothing of hers is patched. The command finds her checkout through `TRIPOD_INTERNALIZATION_REPO`,
+refuses one that is not at the commit `docs/doctrine/FREEZE_PIN` names or carries changes to it,
+runs `npm run golden -- --http <base>` with our key as `GOLDEN_HTTP_TOKEN`, and copies the reports
+that run wrote into `golden/reports/<date>/` beside a `JUDGED.<stamp>.md` naming the pin and the
+backend commit the running backend reports at `/api/version`.
 
 Her exit code is the round's: 0 passed, 1 a session failed, 2 her preflight stopped the run,
 3 the backend died mid-script. 4 is ours: refused before anything was played.
-
-    TRIPOD_INTERNALIZATION_REPO=~/Tripod-Internalization INTERNALIZATION_ROOM_RUNNER_KEY=<key> \\
-        uv run python scripts/her_golden_round.py --base-url <host>/api/internalization-room
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,10 +31,15 @@ def _pin(record: str) -> str:
     return next(line.split()[1] for line in record.splitlines() if line.startswith("commit "))
 
 
-def _head(where: Path) -> str:
-    return subprocess.run(
-        ["git", "-C", str(where), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-    ).stdout.strip()
+def _git(where: Path, *args: str) -> str | None:
+    done = subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True)
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _backend_commit(base_url: str) -> str:
+    version = base_url.partition("/api/")[0] + "/api/version"
+    with urllib.request.urlopen(version, timeout=10) as answered:
+        return str(json.load(answered)["build"])
 
 
 def _reports(checkout: Path) -> set[Path]:
@@ -62,8 +65,16 @@ def main(argv: list[str]) -> int:
         return REFUSED
     checkout = Path(where)
     pin = _pin(args.pin_file.read_text())
-    if _head(checkout) != pin:
-        print(f"refused: {checkout} is not at the pin {pin}", file=sys.stderr)
+    if _git(checkout, "rev-parse", "HEAD") != pin:
+        print(f"refused: {checkout} is not a checkout at the pin {pin}", file=sys.stderr)
+        return REFUSED
+    if _git(checkout, "status", "--porcelain", "--untracked-files=no"):
+        print(f"refused: {checkout} carries changes to the pin {pin}", file=sys.stderr)
+        return REFUSED
+    try:
+        backend = args.backend_commit or _backend_commit(args.base_url)
+    except OSError as error:
+        print(f"refused: no backend answered at {args.base_url} ({error})", file=sys.stderr)
         return REFUSED
 
     before = _reports(checkout)
@@ -77,8 +88,8 @@ def main(argv: list[str]) -> int:
     out.mkdir(parents=True, exist_ok=True)
     for report in _reports(checkout) - before:
         shutil.copy(report, out / report.name)
-    (out / "JUDGED.md").write_text(
-        f"backend commit: {args.backend_commit or _head(ROOT)}\n"
+    (out / f"JUDGED.{datetime.now(UTC):%Y%m%dT%H%M%S%f}.md").write_text(
+        f"backend commit: {backend}\n"
         f"her pin: {pin}\n"
         f"base: {args.base_url}\n"
         f"exit: {played.returncode}\n"
