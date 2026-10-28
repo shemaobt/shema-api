@@ -126,8 +126,13 @@ class RetroSupersededTake(_Hers):
     url: str
 
 
+class RetroPrevious(_Hers):
+    at: str
+    grain: Literal["whole", "scene"]
+
+
 class RetroExport(_Hers):
-    absent_when_none = ("note",)
+    absent_when_none = ("note", "previous")
 
     releaseId: str
     pericopeId: str
@@ -140,4 +145,5 @@ class RetroExport(_Hers):
     checks: list[RetroCheck]
     heardByClip: dict[str, float]
     supersededTakes: list[RetroSupersededTake]
+    previous: list[RetroPrevious] | None = None
     exportedAt: str
