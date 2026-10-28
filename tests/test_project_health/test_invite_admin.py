@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from app.core.exceptions import NotFoundError
@@ -33,3 +35,27 @@ async def test_invite_admin_rejects_unknown_email(db_session, ph_app):
     inviter = await make_user(db_session, email="inviter@test.com")
     with pytest.raises(NotFoundError):
         await invite_admin(db_session, email="ghost@test.com", invited_by_user_id=inviter.id)
+
+
+async def test_the_invite_lines_keep_their_sentence_and_name_the_account_never_the_address(
+    db_session, ph_app, caplog
+):
+    inviter = await make_user(db_session, email="inviter@test.com")
+    invitee = await make_user(db_session, email="newbie@test.com")
+    caplog.set_level(logging.INFO, logger="app.services.project_health.invite_admin")
+
+    await invite_admin(db_session, email="newbie@test.com", invited_by_user_id=inviter.id)
+    with pytest.raises(NotFoundError):
+        await invite_admin(db_session, email="ghost@test.com", invited_by_user_id=inviter.id)
+
+    granted, denied = (
+        r for r in caplog.records if r.name == "app.services.project_health.invite_admin"
+    )
+    assert granted.getMessage() == "project_health.invite_admin granted"
+    assert granted.ph_event == "ph_invite_admin_granted"
+    assert granted.target_user_id == invitee.id
+    assert denied.getMessage() == "project_health.invite_admin denied: no user with that email"
+    assert denied.ph_event == "ph_invite_admin_denied"
+    for record in (granted, denied):
+        assert not {"event", "target_email"} & vars(record).keys()
+        assert not any("@test.com" in str(value) for value in vars(record).values())

@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import ast
 import importlib
+import io
 import json
+import logging
 import threading
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,7 @@ import httpx
 import pytest
 from sqlalchemy import Enum, String, Text, event, select
 
+from app.core.logging import log_formatter
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
@@ -592,6 +595,53 @@ async def test_every_export_is_logged_with_who_when_scope_and_what(
     assert len(entry.request_ids) == 2
     recorded = json.dumps([entry.project_ids, entry.request_ids], ensure_ascii=False)
     assert SHARED not in recorded and KEPT not in recorded
+
+
+@pytest.fixture()
+def production_log():
+    """What the export's logger prints in production, read through the formatter the server
+    installs. The handler hangs on the module's own logger, so it formats the record before any
+    handler pytest keeps on the root does — untouched, as in production."""
+    lines = io.StringIO()
+    handler = logging.StreamHandler(lines)
+    handler.setFormatter(log_formatter(production=True))
+    exporter = logging.getLogger("app.services.shema.export_projects")
+    level = exporter.level
+    exporter.addHandler(handler)
+    exporter.setLevel(logging.INFO)
+    try:
+        yield lines
+    finally:
+        exporter.removeHandler(handler)
+        exporter.setLevel(level)
+
+
+async def test_an_export_leaves_a_production_log_line_naming_its_record_scope_and_counts(
+    client, db_session, coordinator, mixed, sensitive, production_log
+) -> None:
+    meta = document(await export(client, coordinator))["meta"]
+    (entry,) = (await db_session.execute(select(ShemaExport))).scalars().all()
+
+    (printed,) = production_log.getvalue().splitlines()
+    line = json.loads(printed)
+    stamp = datetime.fromisoformat(line.pop("timestamp"))
+
+    assert abs(stamp - datetime.now(UTC)) < timedelta(minutes=1)
+    assert line == {
+        "event": "shema projects exported",
+        "level": "info",
+        "logger": "app.services.shema.export_projects",
+        "shema_operation": "export_projects",
+        "shema_export_id": meta["exportId"],
+        "shema_user_id": entry.exported_by,
+        "shema_scope_global": False,
+        "shema_scope_regions": [HOME.value],
+        "shema_format": "json",
+        "shema_projects": 3,
+        "shema_withheld": 1,
+        "shema_requests": 2,
+    }
+    assert entry.id == meta["exportId"]
 
 
 async def test_the_export_log_cannot_be_edited(client, db_session, strategist) -> None:
