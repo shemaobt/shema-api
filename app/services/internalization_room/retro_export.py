@@ -93,7 +93,7 @@ async def retro_export(
     return RetroExport(
         releaseId=release_id,
         pericopeId=session.pericope,
-        version=release.version if release else (latest.version if latest else 1),
+        version=release.version if release else (latest.version + 1 if latest else 1),
         finalized=release is not None,
         note=None
         if approval
