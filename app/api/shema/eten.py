@@ -29,7 +29,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from app.api.shema._deps import APP_KEY, CurrentUser, Db, Scope, WriteScope
+from app.api.shema._deps import APP_KEY, ConsoleLanguage, CurrentUser, Db, Scope, WriteScope
 from app.models.shema_eten import (
     FIRST_REPORT_YEAR,
     LAST_REPORT_YEAR,
@@ -47,13 +47,16 @@ FiscalYear = Annotated[int, Query(ge=FIRST_REPORT_YEAR, le=LAST_REPORT_YEAR)]
 
 @router.get("/eten/report", response_model=EtenYearReport)
 async def read_eten_report(
-    year: FiscalYear, db: Db, scope: Scope, user: CurrentUser
+    year: FiscalYear, db: Db, scope: Scope, user: CurrentUser, language: ConsoleLanguage
 ) -> EtenYearReport:
     """One fiscal year's credits, with the working behind each line — recorded as answered.
 
     ``year`` is required: a report defaulted to a year nobody chose is a figure nobody asked for.
+    ``language`` is the console's, and only orders the lines (OBT-657).
     """
-    return await eten_report(db, scope, year, user=user, today=datetime.now(UTC).date())
+    return await eten_report(
+        db, scope, year, user=user, today=datetime.now(UTC).date(), language=language
+    )
 
 
 @router.get("/eten/credits", response_model=list[EtenCreditEntry])

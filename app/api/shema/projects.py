@@ -29,7 +29,14 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.shema._deps import PER_READER_CACHE_CONTROL, CurrentUser, Db, Reading, Scope
+from app.api.shema._deps import (
+    PER_READER_CACHE_CONTROL,
+    ConsoleLanguage,
+    CurrentUser,
+    Db,
+    Reading,
+    Scope,
+)
 from app.core.exceptions import ERROR_CODE_BAD_REQUEST, ValidationError
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.models.shema_projects import ShemaProjectPage, ShemaProjectQuery
@@ -61,7 +68,12 @@ ProjectQuery = Annotated[ShemaProjectQuery, Query()]
 
 @router.get("/projects", response_model=ShemaProjectPage)
 async def list_projects(
-    db: Db, scope: Scope, reading: Reading, query: ProjectQuery, response: Response
+    db: Db,
+    scope: Scope,
+    reading: Reading,
+    query: ProjectQuery,
+    response: Response,
+    language: ConsoleLanguage,
 ) -> ShemaProjectPage:
     """Every project the caller's role and region allow, filtered, counted, ordered and paged.
 
@@ -78,11 +90,13 @@ async def list_projects(
     Each card is built for the caller's reader (OBT-528): a coordination reader's card carries
     the truth of a sensitive place and everybody else's the region — the service decides, from
     the ``Reading`` handed down here — so one URL answers two bodies, and the page carries
-    :data:`PER_READER_CACHE_CONTROL` for the reason the record does.
+    :data:`PER_READER_CACHE_CONTROL` for the reason the record does. The console states in a
+    header the language it prints in, which orders a withheld name where it is printed (OBT-657)
+    and stays out of the query: the query is the screen's address.
     """
     response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return await browse_projects(
-        db, scope, query, readership=reading, today=datetime.now(UTC).date()
+        db, scope, query, readership=reading, today=datetime.now(UTC).date(), language=language
     )
 
 

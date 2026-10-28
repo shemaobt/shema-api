@@ -808,7 +808,9 @@ def test_the_published_parameters_are_the_screens_own_url_parameters() -> None:
 
     spec = create_app().openapi()
     published = {
-        parameter["name"] for parameter in spec["paths"]["/api/shema/projects"]["get"]["parameters"]
+        parameter["name"]
+        for parameter in spec["paths"]["/api/shema/projects"]["get"]["parameters"]
+        if parameter["in"] == "query"
     }
     assert published == {
         "q",

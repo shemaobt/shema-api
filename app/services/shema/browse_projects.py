@@ -61,6 +61,7 @@ from app.db.models.shema_enums import ShemaMediaKind
 from app.db.models.shema_media import ShemaMediaItem
 from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_progress import ShemaProgressEntry
+from app.models.shema_prayer import PulseLanguage
 from app.models.shema_projects import (
     DEFAULT_SORT,
     ShemaFacetCounts,
@@ -74,7 +75,7 @@ from app.services.shema._health_audience import health_as_read
 from app.services.shema._redaction import searchable_text, withheld_note
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
-from app.utils.shema_facets import collation_key, filter_projects, sort_records
+from app.utils.shema_facets import filter_projects, reading_key, sort_records
 
 
 async def _needs_by_project(db: AsyncSession, ids: list[str]) -> dict[str, list[ShemaNeedCard]]:
@@ -210,16 +211,21 @@ def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFa
 
 
 async def _cards(
-    db: AsyncSession, projects: list[ShemaProject], readership: Readership
+    db: AsyncSession,
+    projects: list[ShemaProject],
+    readership: Readership,
+    language: PulseLanguage,
 ) -> list[ShemaProjectCard]:
     """One card per project, built for its reader, with what a row cannot answer joined in —
-    in the order of the name each card carries.
+    in the order of the name each card carries, as the console prints it.
 
     **That order is the tiebreak of every sort the screen has** (OBT-563). ``sort_records`` is
     stable, so two cards with the same deadline, the same team or no deadline at all keep the
     order they arrived in; had that been the real name, a reader who is not coordination could
     place a sensitive project by its real name from where it sits among its ties. Ordered by the
-    name the card carries, a card sits where the name the reader reads puts it.
+    name the card carries, a card sits where the name the reader reads puts it — and a card whose
+    name is the region key sits where the console's words for it put it, in the ``language`` it
+    prints in (OBT-657): *Projeto sensível — África* among the P's, not *africa* before *Afrikaans*.
 
     The card is validated **off the row**, which is what applies the sensitive-country rule
     without this file naming the flag: a shape that inherits ``LeavingShape`` is redacted by
@@ -247,13 +253,19 @@ async def _cards(
                 }
             )
         )
-    return sorted(cards, key=_by_name_read)
+    return sorted(cards, key=lambda card: _by_name_read(card, language))
 
 
-def _by_name_read(card: ShemaProjectCard) -> tuple[bool, tuple[str, str], str]:
-    """The name the card carries, blanks last — ``sort_key``'s rule, for its stated reason."""
+def _by_name_read(
+    card: ShemaProjectCard, language: PulseLanguage
+) -> tuple[bool, tuple[str, str], str]:
+    """The name the card carries as the console prints it, blanks last — ``sort_key``'s rule."""
     name = card.language_name or ""
-    return (not name, collation_key(name), card.id)
+    return (
+        not name,
+        reading_key(name, withheld=card.language_name_withheld, language=language),
+        card.id,
+    )
 
 
 async def browse_projects(
@@ -263,6 +275,7 @@ async def browse_projects(
     *,
     readership: Readership,
     today: date,
+    language: PulseLanguage = PulseLanguage.PT_BR,
 ) -> ShemaProjectPage:
     """The Projetos screen's answer: the filtered list, its facet counts and the window.
 
@@ -283,12 +296,16 @@ async def browse_projects(
     The withheld notice is addressed to the caller — coordination when they coordinate any
     region, and then only (GATE-04) — and so are the count and the filter of the withheld
     projects (OBT-556): one addressee for the three, so they cannot disagree.
+
+    ``language`` is the one the console prints in, and it only orders: a withheld name nobody
+    registered sits where the console's words for it put it (OBT-657). Portuguese by default, the
+    language the console falls back to, for a caller that shows no order.
     """
-    cards = await _cards(db, await list_projects(db, scope), readership)
+    cards = await _cards(db, await list_projects(db, scope), readership, language)
     query = _query_as_read(query, readership)
     result = filter_projects(cards, query, today)
 
-    window = sort_records(result.visible, query.sort)
+    window = sort_records(result.visible, query.sort, language=language)
     start = query.offset
     stop = None if query.limit is None else start + query.limit
     items = [

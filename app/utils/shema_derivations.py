@@ -284,10 +284,13 @@ class Sortable(Derivable, Protocol):
     """The two text columns the Projetos screen orders by, on top of what it derives.
 
     The orders themselves are ``app/utils/shema_facets.py``'s, with the progress bands: they
-    are the screen's, not FE-44 §7's, and this file is the nine.
+    are the screen's, not FE-44 §7's, and this file is the nine. ``language_name_withheld`` says
+    whether the name is the reader's reduction, which is what tells a region key standing in for
+    a name from a name (OBT-657).
     """
 
     language_name: str
+    language_name_withheld: bool
     team: str
 
 
