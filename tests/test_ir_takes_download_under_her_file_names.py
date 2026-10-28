@@ -800,6 +800,9 @@ async def test_the_whole_asked_twice_is_one_file_and_a_scene_recorded_again_make
 
     assert again != first
     assert first in store.objects, "o arquivo antigo foi apagado"
+    assert pcm_of(store.objects[again]) == b"".join(
+        pcm_of(recording(seconds, tone)) for seconds, tone in ((1, 1), (2, 9), (0.5, 3))
+    ), "a gravação inteira levou uma tomada substituída"
 
 
 async def test_a_take_the_record_calls_wav_but_whose_header_is_not_16khz_mono_refuses_the_whole(
@@ -816,6 +819,31 @@ async def test_a_take_the_record_calls_wav_but_whose_header_is_not_16khz_mono_re
     assert answer.status_code == 409
     assert answer.json()["code"] == "NOT_ALL_WAV"
     assert not [key for key in store.objects if "/whole/" in key]
+
+
+async def test_a_passage_with_no_take_offers_no_whole_in_the_list(client, db_session, room_app):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    listed = await read_downloads(client, desk, session.id)
+
+    assert listed["whole"] is None
+
+
+async def test_a_declared_part_that_says_wav_still_keeps_the_whole_out_of_the_list(
+    client, db_session, room_app
+):
+    from app.services.internalization_room.takes import declare_rehearsal_parts
+
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    await declare_rehearsal_parts(db_session, session, ["S1"], content_types={"S1": "audio/wav"})
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    listed = await read_downloads(client, desk, session.id)
+
+    assert listed["whole"] is None
 
 
 async def test_a_passage_with_no_take_has_no_whole_to_build(client, db_session, room_app, store):
