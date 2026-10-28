@@ -203,6 +203,63 @@ async def test_the_latest_session_is_the_most_recently_active_one_across_languag
     assert (english_latest, portuguese_latest) == (0, 1)
 
 
+async def test_the_standing_names_the_session_holding_takes_over_a_newer_one_without(
+    desk_client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    rehearsed, _ = await rehearsed_session(db_session, project_id=team.id, language="pt")
+    bare = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    await db_session.execute(
+        update(IRSession).where(IRSession.id == bare.id).values(messages=[{"role": "user"}])
+    )
+    await last_active_at(db_session, rehearsed, datetime(2026, 10, 1, 9, tzinfo=UTC))
+    await last_active_at(db_session, bare, datetime(2026, 10, 1, 10, tzinfo=UTC))
+
+    passage = (await listed(desk_client, desk, team.id))[P]
+
+    assert passage["session_id"] == rehearsed.id
+    assert passage["has_takes"] is True
+
+
+async def test_a_session_without_a_take_is_named_and_holds_none(
+    desk_client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    bare = await open_ir_session(db_session, pericope=P, project_id=team.id)
+
+    passage = (await listed(desk_client, desk, team.id))[P]
+
+    assert passage["session_id"] == bare.id
+    assert passage["has_takes"] is False
+
+
+async def test_a_passage_never_opened_names_no_session(desk_client, db_session, room_app) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+
+    passage = (await listed(desk_client, desk, team.id))[CANON[-1]]
+
+    assert passage["session_id"] is None
+    assert passage["has_takes"] is False
+
+
+async def test_an_archived_session_is_never_named(room, desk_client, db_session, room_app) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    await rehearsed_session(db_session, project_id=team.id)
+    zerado = await room.post(
+        f"{PREFIX}/facilitator/projects/{team.id}/passages/{P}/archive", headers=desk
+    )
+    assert zerado.status_code == 200, zerado.text[:300]
+
+    passage = (await listed(desk_client, desk, team.id))[P]
+
+    assert passage["session_id"] is None
+    assert passage["has_takes"] is False
+
+
 async def test_an_archived_release_does_not_approve_the_passage(
     room, desk_client, db_session, room_app
 ) -> None:

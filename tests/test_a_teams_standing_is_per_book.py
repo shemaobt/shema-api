@@ -314,7 +314,13 @@ async def test_a_team_with_no_sessions_stands_in_ruth_on_its_first_passage_with_
 @pytest.mark.parametrize("book", ["Esther", "Jonah"])
 def test_the_standing_of_a_book_the_team_is_not_in_has_no_current_passage(book: str) -> None:
     passages = standing(
-        set(), book=book, here=resolve(set(), book="Ruth"), releases={}, approved=set(), findings={}
+        set(),
+        book=book,
+        here=resolve(set(), book="Ruth"),
+        releases={},
+        approved=set(),
+        findings={},
+        drafts={},
     )
 
     assert {entry.position.value for entry in passages} == {"future"}

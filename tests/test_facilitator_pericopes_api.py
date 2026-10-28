@@ -189,7 +189,17 @@ async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, 
     assert sum(1 for entry in body if entry["position"] == "closed") == 2
     assert all(
         set(entry)
-        == {"pericope", "reference", "title", "position", "release", "open_findings", "approved"}
+        == {
+            "pericope",
+            "reference",
+            "title",
+            "position",
+            "release",
+            "open_findings",
+            "approved",
+            "session_id",
+            "has_takes",
+        }
         for entry in body
     )
 
