@@ -173,10 +173,7 @@ async def mark_device_attended_route(
     about the physical world, and the person who taps it is the person who will notice thirty
     seconds later that they tapped the wrong row.
 
-    ``attend_device`` is where the refusals are argued.
-
-    ``needs_person_since`` is the halt the Desk read; another, or none standing, is
-    ``HALT_MOVED`` (ENG-1785).
+    ``needs_person_since`` is the halt the Desk read; another is ``HALT_MOVED``.
     """
     device = await attend_device(
         db, user=user, device_id=device_id, needs_person_since=needs_person_since
@@ -200,8 +197,7 @@ async def undo_device_attended_route(
     and treating the absence as an error would make an idempotent undo impossible to write on
     the Desk.
 
-    ``needs_person_since`` is the halt the visit lifted, which the answer to the mark serves as
-    ``attended_lifted_since``; another is ``HALT_MOVED`` (ENG-1785).
+    ``needs_person_since`` is the halt the visit lifted; another is ``HALT_MOVED``.
     """
     device = await unattend_device(
         db, user=user, device_id=device_id, needs_person_since=needs_person_since

@@ -94,9 +94,8 @@ async def attend_device(
     **Keeps the first stamp.** A stamp that moved on every tap would record when somebody last
     touched the Desk rather than when they went to the tablet.
 
-    **It names the halt it answers** (ENG-1785): ``needs_person_since`` as the Desk read it. A
-    tablet that halted again since, or has no halt standing, answers ``HALT_MOVED`` with the
-    tablet's current halt and writes nothing, so a visit never lifts a halt nobody saw.
+    **It names the halt it answers** (ENG-1785): a tablet that halted again since, or has no
+    halt standing, answers ``HALT_MOVED`` and writes nothing.
     """
     device = await _device_to_attend(db, user=user, device_id=device_id)
     held = await _locked(db, device)
@@ -117,9 +116,9 @@ async def unattend_device(
     cleared by that session — there is no halt left to restore, because the tablet's own exit
     already happened.
 
-    **It names the halt the visit lifted** (ENG-1785), compared with ``attended_lifted_since``:
-    another value is ``HALT_MOVED`` and writes nothing, so a stale undo never reverses a
-    colleague's later visit.
+    **It names the halt the visit lifted** (ENG-1785): another value is ``HALT_MOVED`` and
+    writes nothing, so a stale undo never reverses a colleague's later visit. A visit whose
+    lift record is gone, the tablet having opened a session, has no halt left to move.
 
     A tablet nobody marked answers 200 and changes nothing: there is no claim to withdraw, and
     treating the absence as an error would make an idempotent undo impossible to write on the
@@ -132,7 +131,8 @@ async def unattend_device(
     device = await _locked(db, device)
     if device.attended_at is None:
         return device
-    _refuse_unless(device, needs_person_since, device.attended_lifted_since)
+    if device.attended_lifted_since is not None:
+        _refuse_unless(device, needs_person_since, device.attended_lifted_since)
 
     lifted = device.attended_lifted_since
     device.attended_at = None
