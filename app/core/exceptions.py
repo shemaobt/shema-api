@@ -45,6 +45,7 @@ ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
 #: approved as it stands. Its own code because there is no version to reload and no blocker to
 #: name: the passage is approved first.
 ERROR_CODE_DRAFT_NOT_APPROVED: Final = "DRAFT_NOT_APPROVED"
+ERROR_CODE_NOT_ALL_WAV: Final = "NOT_ALL_WAV"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: A heard mark on a question nobody has answered. Its own code for the reason above: there is
 #: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
@@ -196,6 +197,15 @@ class DraftNotApproved(ConflictError):
     Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
     promises a version to reload from, and there is no version to reload; approve the
     passage first.
+    """
+
+
+class NotAllWav(ConflictError):
+    """The whole passage asked of takes one of which is no 16 kHz mono 16-bit PCM by its own
+    header, whatever its stored content type says.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code promises
+    a version to reload from, and the way out is another recording, not a reload.
     """
 
 
@@ -591,6 +601,13 @@ async def handle_draft_not_approved(_request: Request, exc: DraftNotApproved) ->
     )
 
 
+async def handle_not_all_wav(_request: Request, exc: NotAllWav) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOT_ALL_WAV),
+    )
+
+
 async def handle_reply_moved_on(_request: Request, exc: ReplyMovedOn) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -920,6 +937,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(DraftNotApproved, handle_draft_not_approved)  # type: ignore[arg-type]
+    app.add_exception_handler(NotAllWav, handle_not_all_wav)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
