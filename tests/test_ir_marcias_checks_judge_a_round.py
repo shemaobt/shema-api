@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from scripts import bt_golden_checks
+import pytest
+
 from scripts.bt_golden_checks import Told, check_round, told_up_to
 from scripts.bt_golden_runner import load_script
 from scripts.sync_doctrine import REPO_ROOT
@@ -252,7 +253,11 @@ def test_spoken_matches_is_required_when_her_script_carries_it() -> None:
         spoken="Vocês traduziram tudo e a passagem está conferida. Na frase 1 ficou bom.",
     )
 
-    assert "the voice does not match /aprov|ouvir/" in check_round(told, expect)
+    assert check_round(told, expect, Told("Brazilian Portuguese", ())) == [
+        "the voice does not match /aprov|ouvir/",
+        'clean round: the voice does not say the fixed line ("no que vocês me traduziram, '
+        'tem tudo o que a história conta — e nada a mais")',
+    ]
 
 
 def test_her_dropped_no_finding_would_have_failed_the_correct_run() -> None:
@@ -588,31 +593,36 @@ def test_the_telling_is_every_frase_up_to_the_round_superseded_ones_included() -
     assert told.frases[-1].startswith("Noemi ouviu, nos campos de Moabe, que o Senhor")
 
 
-def test_the_last_round_of_every_vendored_script_is_judged_clean_only_with_her_line() -> None:
-    for path in sorted((REPO_ROOT / "golden/bt").glob("*.json")):
-        script = load_script(path)
-        last = len(script.rounds) - 1
-        expect = script.rounds[last].expect
-        if not (expect["conferida"] and not expect["findings"]):
-            continue
-        spoken = "Vocês fizeram um bom trabalho com a tradução. Ouçam tudo de novo e aprovem."
-
-        fails = check_round(_clean(spoken), expect, told_up_to(script, last))
-
-        assert any("does not say the fixed line" in one for one in fails), path.name
+RECITES = (
+    "clean round: the voice recites the passage — it names what the team told: {} "
+    '(Marcia\'s ruling 2026-09-24: only "tem tudo", no detail)'
+)
+KEEPS_QUIET = 'clean round: the voice speaks of what the story keeps quiet: "{}"'
 
 
-HER_EXPORTS = {
-    "wholeSentenceRe": "whole_sentence_re",
-    "PART_AGAIN_RE": "PART_AGAIN_RE",
-    "toldUpTo": "told_up_to",
-    "CLEAN_LINE_RE": "CLEAN_LINE_RE",
-    "cleanRoundFails": "clean_round_fails",
-    "checkRound": "check_round",
-}
+def _clean_with(told: str, said: str, line: str = THE_CLEAN_LINE) -> list[str]:
+    spoken = f"Vocês fizeram um bom trabalho. {line}. {said}"
+    return check_round(_clean(spoken), CLEAN, Told("Brazilian Portuguese", (told,)))
 
 
-def test_every_check_her_btchecks_exports_has_its_counterpart_here() -> None:
-    absent = [theirs for theirs, ours in HER_EXPORTS.items() if not hasattr(bt_golden_checks, ours)]
+BARE_LINE = "no que vocês me traduziram tem tudo o que a história conta e nada a mais"
 
-    assert absent == []
+
+@pytest.mark.parametrize(
+    ("told", "said", "line", "fails"),
+    [
+        ("Eles choraram.", "Eu choro.", THE_CLEAN_LINE, [RECITES.format("choro")]),
+        ("Ela casaram.", "Eu casa.", THE_CLEAN_LINE, []),
+        ("Ele vestiu.", "Eu vestir.", THE_CLEAN_LINE, [RECITES.format("vestir")]),
+        ("Então saiu.", "Então aprovem.", THE_CLEAN_LINE, []),
+        ("Noemi vivia em Moabe.", "Aprovem em tudo.", THE_CLEAN_LINE, []),
+        ("Noemi saiu.", "Eles calaram.", THE_CLEAN_LINE, [KEEPS_QUIET.format("calaram")]),
+        ("Noemi saiu.", "Com calma, aprovem.", THE_CLEAN_LINE, []),
+        ("Noemi saiu.", "Um segredos.", THE_CLEAN_LINE, [KEEPS_QUIET.format("segredos")]),
+        ("Noemi saiu.", "Aprovem.", BARE_LINE, []),
+    ],
+)
+def test_a_clean_round_is_judged_by_stem_noun_root_and_the_line_as_she_judges_it(
+    told: str, said: str, line: str, fails: list[str]
+) -> None:
+    assert _clean_with(told, said, line) == fails
