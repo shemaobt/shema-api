@@ -12,9 +12,13 @@ import pytest
 from sqlalchemy import null
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room import release_check
-from app.services.internalization_room.segments import capture_segment
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    LaidInSentence,
+)
+from app.services.internalization_room.segments import capture_segment, final_segments
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     CLIP_MS,
@@ -27,6 +31,7 @@ from tests.release_harness import (
     desk_release,
     ready_session,
     releases_of,
+    reported_playback,
     team_headers,
     the_one_part_of,
     the_part_recorded_again,
@@ -34,7 +39,9 @@ from tests.release_harness import (
 from tests.room_harness import the_bucket_is_in_memory
 
 BYTES = b"the team's rehearsal"
-NAMES = ["bytes_match_sha256", "nothing_awaiting_translation", "approval_matches_live_state"]
+NAMES = ["bytes_match_sha256", "frases_fit_their_takes", "nothing_awaiting_translation"]
+NAMES += ["splices_intact", "every_origin_resolves", "everything_heard"]
+NAMES += ["approval_matches_live_state", "manifest_names_the_same_takes"]
 
 
 bucket = pytest.fixture(the_bucket_is_in_memory)
@@ -178,11 +185,30 @@ async def _a_stretch_without_words(db: AsyncSession, session: IRSession) -> None
     )
 
 
+async def _a_listening_that_stops_short(db: AsyncSession, session: IRSession) -> None:
+    told = await final_segments(db, session.id)
+    state = BackTranslationState(
+        scope=session.pericope,
+        findings=[],
+        checked=True,
+        analysed_segment_ids=[one.id for one in told],
+    )
+    await reported_playback(db, session, state, played_ranges=[[0, 1000]])
+
+
+async def _an_origin_nobody_kept(db: AsyncSession, session: IRSession) -> None:
+    (await the_one_part_of(db, session)).origin = "no-such-scene-rehearsal"
+    await db.commit()
+
+
 @pytest.mark.parametrize(
     ("name", "after_the_approval"),
     [
         ("nothing_awaiting_translation", _a_stretch_without_words),
+        ("everything_heard", _a_listening_that_stops_short),
         ("approval_matches_live_state", the_part_recorded_again),
+        ("manifest_names_the_same_takes", the_part_recorded_again),
+        ("every_origin_resolves", _an_origin_nobody_kept),
     ],
 )
 async def test_what_changes_after_the_approval_fails_its_check(
@@ -210,3 +236,51 @@ async def test_a_check_that_breaks_leaves_the_release_without_a_result(
 
     assert approved.status_code == 200, approved.text
     assert await _stored(db_session, session_id) is None
+
+
+@pytest.mark.parametrize(
+    ("spans", "passed", "notes"),
+    [
+        ([("t1", 0, 1000), ("t1", 1000, 2000)], True, 0),
+        ([("t1", 0, 1000), ("t1", 920, 2000)], False, 0),
+        ([("t1", 0, 1000), ("t1", 950, 2000)], True, 0),
+        ([("t1", 0, 1000), ("t1", 1600, 2000)], True, 1),
+        ([("t1", 0, 2051)], False, 0),
+        ([("t1", 0, 2050)], True, 0),
+        ([("t1", 0, 2000), ("t2", 0, 500)], False, 0),
+        ([], False, 0),
+    ],
+)
+def test_the_frases_fit_their_take_within_fifty_milliseconds(spans, passed, notes):
+    part = IRTake(id="t1", duration_ms=2000)
+    told = [
+        IRSegment(id=f"s{n}", take_id=t, starts_ms=a, ends_ms=b)
+        for n, (t, a, b) in enumerate(spans)
+    ]
+
+    verdict, noted = release_check.frases_fit_their_takes([part], told)
+
+    assert (verdict, len(noted)) == (passed, notes)
+
+
+@pytest.mark.parametrize(
+    ("sentence_sha", "previous", "intact"),
+    [("a", "t0", True), ("b", "t0", False), ("a", "gone", False)],
+)
+def test_a_splice_is_intact_when_both_its_takes_stand_and_its_digest_is_the_takes(
+    sentence_sha, previous, intact
+):
+    takes = [IRTake(id="t0", sha256="z"), IRTake(id="t1", sha256="a")]
+    laid = LaidInSentence(
+        sentence_id="x",
+        segment_id="s",
+        previous_take_id=previous,
+        take_id="t1",
+        starts_ms=0,
+        ends_ms=1,
+        sha256=sentence_sha,
+        storage_key="k",
+        heard_before=False,
+    )
+
+    assert release_check.splices_are_intact([laid], takes) is intact

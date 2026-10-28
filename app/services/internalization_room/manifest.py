@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DraftNotApproved
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake
+from app.db.models.internalization_room import IRRelease, IRSceneRehearsal, IRSession, IRTake
 from app.services.internalization_room.approved_draft import approved_draft, stands_on
 from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.canon.book_material import meaning_map_ref
@@ -64,6 +64,17 @@ _HER_CHECK = (
 )
 
 
+async def manifest_clips(
+    db: AsyncSession, session: IRSession
+) -> tuple[IRRelease, list[IRTake], list[IRTake]]:
+    release = await approved_draft(db, session)
+    takes = await takes_of(db, session.id)
+    parts = current_parts(takes)
+    if release is None or not stands_on(release, parts):
+        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
+    return release, takes, [part for part in parts if not is_declared(part)]
+
+
 async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """The manifest of this session's approved draft, or ``DraftNotApproved``.
 
@@ -77,15 +88,11 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     with reading_the_canon_of(session.canon_pin):
         meaning_map = meaning_map_ref(session.pericope)
         reference = load_map(session.pericope).reference
-    release = await approved_draft(db, session)
-    takes = await takes_of(db, session.id)
+    release, takes, clips = await manifest_clips(db, session)
     parts = current_parts(takes)
-    if release is None or not stands_on(release, parts):
-        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
     packet = packet_as_read(release)
     release_id = released_as(release)
     keys = part_keys_by_number(parts)
-    clips = [part for part in parts if not is_declared(part)]
     names = [file_name(release_id, keys[part.ordinal], part) for part in clips]
     links = await asyncio.gather(
         *(download_link(part, name) for part, name in zip(clips, names, strict=True))
