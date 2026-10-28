@@ -25,7 +25,11 @@ from app.services.internalization_room.passage_retroverification import (
     NOT_APPROVED,
 )
 from app.services.internalization_room.retro_export import retro_export
-from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.segments import (
+    capture_segment,
+    divide_segment,
+    final_segments,
+)
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -278,7 +282,7 @@ async def _restarted(client, session, headers) -> None:
 async def test_the_frases_carry_her_places_and_the_words_as_they_stand(client, db_session) -> None:
     session, _ = await _approved(client, db_session)
     (stretch,) = await final_segments(db_session, session.id)
-    stretch_id = stretch.id
+    stretch_id, stamped = stretch.id, stretch.created_at.isoformat()
 
     (frase,) = (await _exported(db_session, session.id))["frases"]
 
@@ -290,7 +294,7 @@ async def test_the_frases_carry_her_places_and_the_words_as_they_stand(client, d
         1, stretch_id, "whole", CLIP_MS / 1000,
     )  # fmt: skip
     assert (frase["transcript"], frase["pass"], frase["stale"]) == (WORDS, 1, False)
-    assert frase["recordedAt"]
+    assert (frase["recordedAt"], frase["coversFrom"]) == (stamped, 0)
 
 
 async def test_restarting_over_an_approved_draft_keeps_the_approval_and_empties_the_words(
@@ -314,11 +318,11 @@ async def test_restarting_over_an_approved_draft_keeps_the_approval_and_empties_
 
     await capture_segment(
         db_session, session, take_id=take_id, starts_ms=0, ends_ms=CLIP_MS,
-        bridge_take_id="retro-depois", transcript=TOLD_AGAIN,
+        bridge_take_id="retro-depois", transcript=TOLD_AGAIN, pass_number=2,
     )  # fmt: skip
     (told,) = (await _exported(db_session, session.id))["frases"]
-    assert (told["n"], told["idx"], told["transcript"], told["stale"]) == (
-        1, first_id, TOLD_AGAIN, False,
+    assert (told["n"], told["idx"], told["transcript"], told["pass"], told["stale"]) == (
+        1, first_id, TOLD_AGAIN, 2, False,
     )  # fmt: skip
 
 
@@ -380,28 +384,29 @@ async def test_stale_frases_follow_the_told_ones_without_moving_their_numbers(db
     ]
 
 
+async def _two_stretches(db, session) -> BackTranslationState:
+    part = await the_one_part_of(db, session)
+    told = [
+        await capture_segment(
+            db,
+            session,
+            take_id=part.id,
+            starts_ms=start,
+            ends_ms=end,
+            bridge_take_id="retro",
+            transcript=words,
+        )
+        for start, end, words in ((0, 30000, "um"), (30000, CLIP_MS, "dois"))
+    ]
+    return BackTranslationState(
+        scope=session.pericope, checked=True, analysed_segment_ids=[one.id for one in told]
+    )
+
+
 async def test_an_approved_frase_finds_its_words_at_its_position_in_its_part(
     client, db_session
 ) -> None:
-    async def _told_in_two(db, session) -> BackTranslationState:
-        part = await the_one_part_of(db, session)
-        told = [
-            await capture_segment(
-                db,
-                session,
-                take_id=part.id,
-                starts_ms=start,
-                ends_ms=end,
-                bridge_take_id="retro",
-                transcript=words,
-            )
-            for start, end, words in ((0, 30000, "um"), (30000, CLIP_MS, "dois"))
-        ]
-        return BackTranslationState(
-            scope=session.pericope, checked=True, analysed_segment_ids=[one.id for one in told]
-        )
-
-    session, headers = await _approved(client, db_session, tell=_told_in_two)
+    session, headers = await _approved(client, db_session, tell=_two_stretches)
     part = await the_one_part_of(db_session, session)
     take_id = part.id
     await _restarted(client, session, headers)
@@ -418,23 +423,16 @@ async def test_an_approved_frase_finds_its_words_at_its_position_in_its_part(
     ]
 
 
-async def test_an_approved_frase_of_a_later_part_is_told_again_in_its_own_part(
+async def test_dividing_an_approved_stretch_leaves_its_frase_with_its_own_words(
     client, db_session
 ) -> None:
-    project, credential = await a_claimed_device(db_session)
-    session, (_first, second) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
-    headers = team_headers(credential)
-    await checked_heard_and_approved(client, db_session, session.id, headers=headers)
-    second_id = second.id
-    await _restarted(client, session, headers)
-    await capture_segment(
-        db_session, session, take_id=second_id, starts_ms=0, ends_ms=61000,
-        bridge_take_id="retro-depois", transcript=TOLD_AGAIN,
-    )  # fmt: skip
+    session, _ = await _approved(client, db_session, tell=_two_stretches)
+    first, *_ = await final_segments(db_session, session.id)
+    await divide_segment(db_session, session, first, at_ms=15000)
 
     frases = (await _exported(db_session, session.id))["frases"]
 
-    assert [(one["clipKey"], one["transcript"], one["stale"]) for one in frases] == [
-        ("S1", "", True),
-        ("S2", TOLD_AGAIN, False),
+    assert [(one["n"], one["transcript"], one["stale"]) for one in frases] == [
+        (1, "um", False),
+        (2, "dois", False),
     ]

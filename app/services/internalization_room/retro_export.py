@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +23,7 @@ from app.services.internalization_room.passage_retroverification import (
     NOT_APPROVED,
 )
 from app.services.internalization_room.segments import (
+    current_segments,
     final_segments,
     retired_segments,
     stale_segments,
@@ -91,67 +91,76 @@ async def retro_export(
     """Her file down to the frases of the telling.
 
     ``release`` is the version the draft stands approved under, or none while it is a draft.
-    An approved frase keeps its number and place and takes its words from the live stretch at
-    the same position of the same part, empty and stale when none stands there (ADR 0067).
+    An approved frase keeps its number and place and finds its live stretch by its idx: the row
+    itself while current, else the row that took its place, else after a restart the leaf of the
+    same part starting where the frase did; none leaves it empty and stale.
     """
     keys = keys_of_the_takes(await takes_of(db, session.id))
+    standing = {row.id: row for row in await current_segments(db, session.id)}
     leaves = await final_segments(db, session.id)
     retired = await retired_segments(db, session.id)
     waiting = await stale_segments(db, session.id)
-    live = {row.id for row in leaves}
     approval = _approval(release, keys) if release else None
     replaces = {row.superseded_by_id: row.id for row in retired if row.superseded_by_id}
+    by_id = {row.id: row for row in retired}
 
     def _frase(
         n: int,
         idx: str,
         row: IRSegment | None,
-        clip_key: str,
-        starts: float | None,
-        ends: float | None,
+        place: tuple[str, float | None, float | None],
+        *,
+        stale: bool,
     ) -> RetroFrase:
         return RetroFrase(
             n=n,
             idx=idx,
-            clipKey=clip_key,
-            coversFrom=starts,
-            coversTo=ends,
+            clipKey=place[0],
+            coversFrom=place[1],
+            coversTo=place[2],
             transcript=(row.transcript or "") if row else "",
             pass_number=row.pass_number if row else 1,
             recordedAt=row.created_at.isoformat() if row else "",
             supersedes=replaces.get(row.id) if row else None,
-            stale=row is None or row.id not in live,
+            stale=stale,
+        )
+
+    def _live(idx: str, place: tuple[str, float | None, float | None]) -> IRSegment | None:
+        at, seen = idx, set()
+        while at in by_id and by_id[at].superseded_by_id and at not in seen:
+            seen.add(at)
+            at = by_id[at].superseded_by_id or at
+        if at in standing:
+            return standing[at]
+        return next(
+            (
+                row
+                for row in leaves
+                if keys.get(row.take_id) == place[0] and row.starts_ms / 1000 == place[1]
+            ),
+            None,
         )
 
     numbers = frase_numbers(told_back(leaves))
     told = [row for row in leaves if row.id in numbers]
     if approval:
-        by_part: dict[str, list[IRSegment]] = defaultdict(list)
-        for row in told:
-            by_part[keys[row.take_id]].append(row)
-        seen: Counter[str] = Counter()
         frases = []
         for one in approval.frases:
-            at, seen[one.clipKey] = seen[one.clipKey], seen[one.clipKey] + 1
-            there = by_part[one.clipKey]
-            frases.append(
-                _frase(
-                    one.n,
-                    one.idx,
-                    there[at] if at < len(there) else None,
-                    one.clipKey,
-                    one.coversFrom,
-                    one.coversTo,
-                )
-            )
+            place = (one.clipKey, one.coversFrom, one.coversTo)
+            row = _live(one.idx, place)
+            frases.append(_frase(one.n, one.idx, row, place, stale=row is None or row.stale))
     else:
-        counted = [(numbers[row.id], row) for row in told]
-        waiting_on = [(len(told) + k, row) for k, row in enumerate(waiting, 1)]
+        counted = [(numbers[row.id], row, False) for row in told]
+        waiting_on = [(len(told) + k, row, True) for k, row in enumerate(waiting, 1)]
         frases = [
             _frase(
-                n, row.id, row, keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000
+                n,
+                row.id,
+                row,
+                (keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000),
+                stale=stale,
             )
-            for n, row in counted + waiting_on
+            for n, row, stale in counted + waiting_on
         ]
     latest = (
         None
