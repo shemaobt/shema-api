@@ -45,6 +45,11 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.release_harness import (
+    rehearsed_session,
+    reported_playback,
+    told_back_with_an_open_finding,
+)
 
 TEAM_NOT_FOUND = "Team not found"
 ENGAGED = CoverageStatus.ENGAGED.value
@@ -397,6 +402,28 @@ async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_s
 # --------------------------------------------------------------------------------- what it costs
 
 
+async def test_the_detail_carries_the_standing_the_pericopes_door_answers(
+    client, db_session
+) -> None:
+    """ENG-1781: the Desk's page needs the active passage and the book's standing from one
+    reading of where the team stands, or a session entered between two requests leaves it
+    with a passage that none of the listed ones is current."""
+    _user, team, headers = await a_facilitator(db_session, email="mesma-leitura@x.com")
+    await having_closed(db_session, team, FIRST, SECOND)
+    session, _take = await rehearsed_session(db_session, pericope=THIRD, project_id=team.id)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+    listed = (await client.get(f"{team_url(team.id)}/pericopes", headers=headers)).json()
+
+    assert body["pericopes"] == listed
+    assert {e["pericope"]: e["open_findings"] for e in listed}[THIRD] == 1
+    current = [entry["pericope"] for entry in body["pericopes"] if entry["position"] == "current"]
+    assert current == [body["active_passage"]["pericope"]] == [THIRD]
+
+
 async def test_the_answer_does_not_pay_per_bead_or_per_team(
     client, db_session, test_engine
 ) -> None:
@@ -424,7 +451,7 @@ async def test_the_answer_does_not_pay_per_bead_or_per_team(
     against_events = [s for s in seen if "ir_coverage_events" in s]
 
     assert len(against_events) <= 2, f"mais de duas leituras dos eventos: {against_events}"
-    assert len(seen) <= 6, f"a resposta custou {len(seen)} statements: {seen}"
+    assert len(seen) <= 7, f"a resposta custou {len(seen)} statements: {seen}"
 
 
 async def test_two_default_facilitators_get_two_different_project_names(db_session):
