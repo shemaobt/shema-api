@@ -1,5 +1,5 @@
 ---
-status: accepted; extends ADR 0071, amends ADR 0078
+status: accepted; extends ADR 0071, amends ADR 0078; amended by ADR 0101
 date: 2026-10-23
 ---
 

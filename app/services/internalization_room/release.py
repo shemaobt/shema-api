@@ -657,7 +657,10 @@ async def approve_release(
     standing version, and so is a facilitator forcing it, with no force recorded. "Unchanged"
     is measured against the last release of this pericope and project — a packet that comes
     back to an earlier version's takes is a later draft, not that version again, and giving
-    its number back would put comments on a draft nobody is looking at.
+    its number back would put comments on a draft nobody is looking at. A forced version is
+    the one exception: once no blocker stands over its takes, the next approval mints the next
+    version, not forced, as her approve gate offers the button again over a forced release and
+    her finalize mints it (ADR 0101).
 
     The comparison happens before the gate is judged, which is what ADR 0019 means by ADR
     0014 holding under force: a draft a facilitator already forced is a draft that exists, so
@@ -685,7 +688,7 @@ async def approve_release(
     passed are rewritten — the rest of the block is about the telling-back, which the
     compare-first read has already established is the same telling-back. The early return
     above writes nothing, so a packet a facilitator forced comes back saying so however many
-    times the team asks again (ADR 0020).
+    times the team asks again while a blocker stands (ADR 0020).
 
     The house loop for this shape retries the allocation instead — ``tier_a_service`` and
     ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
@@ -704,7 +707,9 @@ async def approve_release(
 
     packet, blockers = await compose_internalization_release(db, session)
     standing = await approved_draft(db, session)
-    if standing is not None:
+    if standing is not None and (
+        blockers or not was_forced(standing.forced_by, standing.forced_blockers)
+    ):
         await refuse_if_archived(db, session)
         return standing
     latest = await latest_release(db, session.project_id, session.pericope)
