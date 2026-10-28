@@ -47,7 +47,6 @@ async def run_release_check(
 ) -> dict[str, Any]:
     session = await db.get_one(IRSession, release.session_id)
     takes = await takes_of(db, session.id)
-    parts = current_parts(takes)
     stretches = await final_segments(db, session.id, takes)
     telling_back = await standing_state(db, session.id, back_translation_of(session), takes)
     standing = await approved_draft(db, session)
@@ -55,7 +54,8 @@ async def run_release_check(
         "bytes_match_sha256": await _bytes_match_their_sha256(db, store, release),
         "nothing_awaiting_translation": told_back(stretches) == stretches,
         "everything_heard": not (
-            rehearsed_parts(stretches) and unheard_parts(telling_back, parts, stretches)
+            rehearsed_parts(stretches)
+            and unheard_parts(telling_back, current_parts(takes), stretches)
         ),
         "approval_matches_live_state": standing is not None and standing.id == release.id,
     }
