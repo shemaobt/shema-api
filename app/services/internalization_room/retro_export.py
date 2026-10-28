@@ -26,7 +26,6 @@ from app.services.internalization_room.segments import (
     current_segments,
     final_segments,
     retired_segments,
-    stale_segments,
     told_back,
 )
 from app.services.internalization_room.take_downloads import keys_of_the_takes
@@ -91,17 +90,16 @@ async def retro_export(
     """Her file down to the frases of the telling.
 
     ``release`` is the version the draft stands approved under, or none while it is a draft.
-    An approved frase finds its live stretch by its idx: itself while current, else its
-    replacement, else after a restart the top stretch of its part starting where it did.
+    An approved frase takes its words from its own stretch while it is current.
     """
     keys = keys_of_the_takes(await takes_of(db, session.id))
     standing = {row.id: row for row in await current_segments(db, session.id)}
     leaves = await final_segments(db, session.id)
     retired = await retired_segments(db, session.id)
-    waiting = await stale_segments(db, session.id)
     approval = _approval(release, keys) if release else None
-    replaces = {row.superseded_by_id: row.id for row in retired if row.superseded_by_id}
-    by_id = {row.id: row for row in retired}
+    replaces = {
+        row.superseded_by_id: row.id for row in retired if row.superseded_by_id and row.transcript
+    }
 
     def _frase(
         n: int,
@@ -109,7 +107,7 @@ async def retro_export(
         row: IRSegment | None,
         place: tuple[str, float | None, float | None],
         *,
-        stale: bool,
+        stale: bool = False,
     ) -> RetroFrase:
         return RetroFrase(
             n=n,
@@ -124,39 +122,15 @@ async def retro_export(
             stale=stale or not (row and row.transcript),
         )
 
-    def _live(idx: str, place: tuple[str, float | None, float | None]) -> IRSegment | None:
-        at, seen = idx, set()
-        while at in by_id and by_id[at].superseded_by_id and at not in seen:
-            seen.add(at)
-            at = by_id[at].superseded_by_id or at
-        if at in standing:
-            return standing[at]
-        return next(
-            (
-                row
-                for row in standing.values()
-                if row.parent_id is None
-                and keys.get(row.take_id) == place[0]
-                and row.starts_ms / 1000 == place[1]
-            ),
-            None,
-        )
-
     numbers = frase_numbers(told_back(leaves))
     told = [row for row in leaves if row.id in numbers]
     if approval:
         frases = []
         for one in approval.frases:
             place = (one.clipKey, one.coversFrom, one.coversTo)
-            row = _live(one.idx, place)
-            frases.append(
-                _frase(
-                    one.n, one.idx, row, place, stale=row is None or not row.transcript or row.stale
-                )
-            )
+            frases.append(_frase(one.n, one.idx, standing.get(one.idx), place))
     else:
         counted = [(numbers[row.id], row, False) for row in told]
-        waiting_on = [(len(told) + k, row, True) for k, row in enumerate(waiting, 1)]
         frases = [
             _frase(
                 n,
@@ -165,7 +139,7 @@ async def retro_export(
                 (keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000),
                 stale=stale,
             )
-            for n, row, stale in counted + waiting_on
+            for n, row, stale in counted
         ]
     latest = (
         None
