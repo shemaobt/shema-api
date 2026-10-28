@@ -283,7 +283,7 @@ async def test_the_frases_carry_her_places_and_the_words_as_they_stand(client, d
     assert frase["recordedAt"]
 
 
-async def test_restarting_over_an_approved_draft_keeps_the_numbers_and_empties_the_words(
+async def test_restarting_over_an_approved_draft_reopens_it_and_keeps_the_lines_in_history(
     client, db_session
 ) -> None:
     session, headers = await _approved(client, db_session)
@@ -294,13 +294,15 @@ async def test_restarting_over_an_approved_draft_keeps_the_numbers_and_empties_t
 
     file = await _exported(db_session, session.id)
 
-    (frase,) = file["frases"]
-    assert (frase["n"], frase["transcript"], frase["stale"]) == (1, "", True)
+    assert (file["approval"], file["finalized"], file["note"]) == (None, False, NOT_APPROVED)
+    assert file["frases"] == []
     (abandoned,) = file["history"]
     assert (abandoned["transcript"], abandoned["superseded"]) == (WORDS, False)
 
 
-async def test_history_keeps_the_telling_a_new_one_replaced(client, db_session) -> None:
+async def test_a_correction_over_an_approved_draft_reopens_it_and_lists_the_new_telling(
+    client, db_session
+) -> None:
     session, _ = await _approved(client, db_session)
     (first,) = await final_segments(db_session, session.id)
     again = await capture_segment(
@@ -320,8 +322,12 @@ async def test_history_keeps_the_telling_a_new_one_replaced(client, db_session) 
     old, new = file["history"]
     assert (old["idx"], old["superseded"], old["pass"]) == (first_id, True, 1)
     assert (new["idx"], new["superseded"], new["supersedes"]) == (again_id, False, first_id)
-    assert (new["transcript"], file["frases"][0]["transcript"]) == (TOLD_AGAIN, WORDS)
-    assert file["frases"][0]["stale"] is True
+    assert new["transcript"] == TOLD_AGAIN
+    assert (file["approval"], file["finalized"], file["version"]) == (None, False, 2)
+    (frase,) = file["frases"]
+    assert (frase["idx"], frase["transcript"], frase["supersedes"], frase["stale"]) == (
+        again_id, TOLD_AGAIN, first_id, False,
+    )  # fmt: skip
 
 
 async def test_a_telling_told_again_before_approval_lists_the_new_one_that_replaces_the_old(
@@ -407,3 +413,19 @@ async def test_stretches_written_in_one_transaction_are_listed_in_their_reading_
     file = await _exported(db_session, session.id)
 
     assert [one["transcript"] for one in file["history"]] == said
+
+
+async def test_a_part_recorded_again_and_not_told_again_keeps_its_frase_listed_as_stale(
+    db_session,
+) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    (waiting,) = await final_segments(db_session, session.id)
+    waiting_id = waiting.id
+    await the_part_recorded_again(db_session, session)
+
+    (frase,) = (await _exported(db_session, session.id))["frases"]
+
+    assert (frase["n"], frase["idx"], frase["transcript"], frase["stale"]) == (
+        1, waiting_id, WORDS, True,
+    )  # fmt: skip
