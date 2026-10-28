@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, BackgroundTasks, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser, ReaderUser
@@ -26,6 +26,7 @@ from app.services.internalization_room.release import (
     release_by_version,
     was_forced,
 )
+from app.services.internalization_room.release_check import check_release
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
 
@@ -45,6 +46,11 @@ def forced_answer(release: IRRelease) -> ForcedReleaseResponse:
             else None
         ),
     )
+
+
+def check_later(background: BackgroundTasks, release: IRRelease) -> None:
+    if release.release_check is None:
+        background.add_task(check_release, release.id)
 
 
 def approval_of(release: IRRelease) -> ApprovedDraftView:
@@ -114,6 +120,7 @@ async def force_internalization_release(
     session_id: str,
     payload: ForceReleaseRequest,
     user: FacilitatorUser,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> ForcedReleaseResponse:
     """A facilitator mints this release past every blocker but a missing recording.
@@ -138,6 +145,7 @@ async def force_internalization_release(
         )
     session = await room.get_session_for_facilitator(db, user, session_id)
     release = await approve_release(db, session, forced_by=user.id)
+    check_later(background, release)
     nudge(session.project_id, "release")
     return forced_answer(release)
 
@@ -150,6 +158,7 @@ async def force_passage_release(
     project_id: str,
     payload: ForceReleaseRequest,
     user: FacilitatorUser,
+    background: BackgroundTasks,
     pericope: str = Path(max_length=120),
     db: AsyncSession = Depends(get_db),
 ) -> ForcedReleaseResponse:
@@ -165,6 +174,7 @@ async def force_passage_release(
             "this route only mints a release past the gate, and nothing asked it to"
         )
     release = await force_passage(db, user, project_id=project_id, pericope=pericope)
+    check_later(background, release)
     nudge(project_id, "release")
     return forced_answer(release)
 
@@ -210,6 +220,7 @@ async def _team_release_blocked(
 )
 async def approve_internalization_release(
     session_id: str,
+    background: BackgroundTasks,
     project_id: str = device_project_dep,
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
@@ -245,6 +256,7 @@ async def approve_internalization_release(
         release = await approve_release(db, session, device_id=device_id)
     except InternalizationReleaseBlocked as exc:
         return await _team_release_blocked(db, session, exc.blockers)
+    check_later(background, release)
     nudge(session.project_id, "release")
     approval = approval_of(release)
     return TeamReleaseResponse(

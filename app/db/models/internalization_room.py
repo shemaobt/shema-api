@@ -790,6 +790,8 @@ class IRRelease(Base):
     forced_blockers: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The silent check's verdict, written once by a background job; null until it has run.
+    release_check: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class IRExternalCheck(Base):
