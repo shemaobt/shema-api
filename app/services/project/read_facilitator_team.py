@@ -29,7 +29,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
-from app.services.internalization_room.latest_by_passage import latest_releases, open_findings
+from app.services.internalization_room.latest_by_passage import latest_releases, live_sessions
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import (
     book_standings,
@@ -77,6 +77,7 @@ async def read_facilitator_team(
         return None
 
     releases = await latest_releases(db, team_id)
+    findings, drafts = await live_sessions(db, team_id)
     approved = await standing_approvals(db, team_id, among=releases)
     passages = standing(
         whereabouts.finished,
@@ -84,7 +85,8 @@ async def read_facilitator_team(
         here=here,
         releases=releases,
         approved=approved,
-        findings=await open_findings(db, team_id),
+        findings=findings,
+        drafts=drafts,
     )
     closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
     active = None
@@ -172,11 +174,13 @@ async def team_standing(db: AsyncSession, project_id: str) -> list[PericopeStand
     and open findings."""
     whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
     releases = await latest_releases(db, project_id)
+    findings, drafts = await live_sessions(db, project_id)
     return standing(
         whereabouts.finished,
         book=whereabouts.book,
         here=whereabouts.passage,
         releases=releases,
         approved=await standing_approvals(db, project_id, among=releases),
-        findings=await open_findings(db, project_id),
+        findings=findings,
+        drafts=drafts,
     )

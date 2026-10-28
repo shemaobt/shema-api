@@ -136,6 +136,7 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
         releases={},
         approved=set(),
         findings={},
+        drafts={},
     )
 
     assert [entry.pericope for entry in positions] == CANON
@@ -153,6 +154,7 @@ def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
             releases={},
             approved=set(),
             findings={},
+            drafts={},
         )
     }
 
@@ -176,6 +178,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
             releases={},
             approved=set(),
             findings={},
+            drafts={},
         )
     }
 
@@ -192,6 +195,7 @@ def test_a_finished_team_has_no_current_passage() -> None:
         releases={},
         approved=set(),
         findings={},
+        drafts={},
     )
 
     assert all(entry.position is PericopePosition.CLOSED for entry in positions)

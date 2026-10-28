@@ -100,6 +100,7 @@ from app.services.internalization_room.canon.parse_map import (
 )
 from app.services.internalization_room.coverage import PANORAMA_PREFIX
 from app.services.internalization_room.entered import latest_entered_first
+from app.services.internalization_room.latest_by_passage import Draft
 from app.services.internalization_room.live import live
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
@@ -155,6 +156,7 @@ def standing(
     releases: Mapping[str, PassageRelease],
     approved: Collection[str],
     findings: Mapping[str, int],
+    drafts: Mapping[str, Draft],
 ) -> list[PericopeStanding]:
     """Every passage of one served book with its position already resolved — closed, current,
     or future.
@@ -188,6 +190,10 @@ def standing(
             release=releases.get(meaning_map.pericope_num),
             open_findings=findings.get(meaning_map.pericope_num, 0),
             approved=meaning_map.pericope_num in approved,
+            session_id=draft.session_id
+            if (draft := drafts.get(meaning_map.pericope_num))
+            else None,
+            has_takes=draft.has_takes if draft else False,
         )
         for meaning_map in load_book(book)
     ]

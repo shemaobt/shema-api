@@ -1,4 +1,4 @@
-"""What the Desk reads on each of a team's passages: its latest release and its open findings.
+"""What the Desk reads on each of a team's passages: its latest release, its open findings and its draft session.
 
 One statement each for the whole team, not one per passage. Both read live sessions only (ADR
 0047), and a release is kept or dropped by its session, because a release forced on a session
@@ -7,10 +7,12 @@ after its Zerar is written unstamped.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRRelease, IRSession
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import PassageRelease
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -49,20 +51,43 @@ async def latest_releases(db: AsyncSession, project_id: str) -> dict[str, Passag
     return latest
 
 
-async def open_findings(db: AsyncSession, project_id: str) -> dict[str, int]:
-    """The open findings on each passage's latest live session, in any language.
+class Draft(NamedTuple):
+    session_id: str
+    has_takes: bool
 
-    Latest is the order the Desk already reads a team's sessions in: a room the team entered,
-    then the most recent activity.
+
+async def live_sessions(
+    db: AsyncSession, project_id: str
+) -> tuple[dict[str, int], dict[str, Draft]]:
+    """What each passage's live sessions say, in any language, from one statement.
+
+    The open findings on the latest session: the order the Desk already reads a team's
+    sessions in, a room the team entered, then the most recent activity. And the draft the
+    hand-off reads, the one the force would pick (ADR 0075): the latest holding a rehearsal
+    take; when none does, the latest.
     """
+    rehearsed = (
+        select(IRTake.id)
+        .where(IRTake.session_id == IRSession.id, IRTake.kind == IRTakeKind.ENSAIO)
+        .exists()
+    )
     rows = await db.execute(
-        select(IRSession.pericope, IRSession.back_translation)
+        select(
+            IRSession.pericope,
+            IRSession.id,
+            IRSession.back_translation,
+            rehearsed.label("has_takes"),
+        )
         .where(IRSession.project_id == project_id, live())
         .order_by(*latest_entered_first())
     )
-    latest: dict[str, int] = {}
+    findings: dict[str, int] = {}
+    drafts: dict[str, Draft] = {}
     for row in rows:
-        if row.pericope not in latest:
+        if row.pericope not in findings:
             state = BackTranslationState.model_validate(row.back_translation or {})
-            latest[row.pericope] = findings_remaining(state.findings)
-    return latest
+            findings[row.pericope] = findings_remaining(state.findings)
+        held = drafts.get(row.pericope)
+        if held is None or (row.has_takes and not held.has_takes):
+            drafts[row.pericope] = Draft(row.id, row.has_takes)
+    return findings, drafts
