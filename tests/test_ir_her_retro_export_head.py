@@ -181,10 +181,11 @@ async def test_the_approval_pins_its_takes_and_its_nuances_with_what_the_voice_s
 ) -> None:
     project, credential = await a_claimed_device(db_session)
 
+    now = datetime.now(UTC)
+
     async def _told(db, session) -> BackTranslationState:
         told = await one_stretch(db, session)
         part = await the_one_part_of(db, session)
-        now = datetime.now(UTC)
         said = Nuance(
             note="n", chunk=1, segment_id=told.id, quote="Rute", story="s", take_id=part.id,
             starts_ms=0, ends_ms=CLIP_MS, voiced="now",
@@ -199,15 +200,17 @@ async def test_the_approval_pins_its_takes_and_its_nuances_with_what_the_voice_s
         )  # fmt: skip
 
     session = await ready_session(db_session, project_id=project.id, tell=_told)
+    (await the_one_part_of(db_session, session)).duration_ms = CLIP_MS
+    await db_session.commit()
     answered = await client.post(team_release(session.id), headers=team_headers(credential))
     assert answered.status_code == 200, answered.text
     (stretch,) = await final_segments(db_session, session.id)
     part = await the_one_part_of(db_session, session)
-    wanted = (stretch.id, part.id, part.sha256, part.size_bytes, part.duration_ms)
+    wanted = (stretch.id, part.id, part.sha256, part.size_bytes, CLIP_MS)
 
     approval = (await _exported(db_session, session.id))["approval"]
 
-    assert approval["lastCheckAt"] is not None
+    assert approval["lastCheckAt"] == now.isoformat()
     assert [one.get("voiced") for one in approval["nuances"]] == [
         "now",
         None,
