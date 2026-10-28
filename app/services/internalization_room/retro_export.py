@@ -14,6 +14,7 @@ from app.models.retro_export import (
     RetroApprovalTake,
     RetroExport,
     RetroFrase,
+    RetroHistoryEntry,
 )
 from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.back_translation import frase_numbers
@@ -88,7 +89,7 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
 async def retro_export(
     db: AsyncSession, session: IRSession, release: IRRelease | None, release_id: str
 ) -> RetroExport:
-    """Her file down to the frases of the telling.
+    """Her file down to the history of every frase.
 
     ``release`` is the version the draft stands approved under, or none while it is a draft.
     An approved frase finds its live stretch by its idx: itself while current, else its
@@ -164,6 +165,10 @@ async def retro_export(
             )
             for n, row, stale in counted + waiting_on
         ]
+    ever_told = sorted(
+        (row for row in (*standing.values(), *retired) if row.transcript),
+        key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
+    )
     latest = (
         None
         if release or session.project_id is None
@@ -179,4 +184,18 @@ async def retro_export(
         else (NOT_APPROVED if release is None else APPROVED_BEFORE_THE_RECORD),
         approval=approval,
         frases=frases,
+        history=[
+            RetroHistoryEntry(
+                idx=row.id,
+                clipKey=keys.get(row.take_id, ""),
+                coversFrom=row.starts_ms / 1000,
+                coversTo=row.ends_ms / 1000,
+                transcript=row.transcript or "",
+                pass_number=row.pass_number,
+                recordedAt=row.created_at.isoformat(),
+                supersedes=replaces.get(row.id),
+                superseded=row.superseded_by_id is not None,
+            )
+            for row in ever_told
+        ],
     )

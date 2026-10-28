@@ -79,6 +79,20 @@ class RetroFrase(_Hers):
     stale: bool
 
 
+class RetroHistoryEntry(_Hers):
+    absent_when_none = ("supersedes",)
+
+    idx: str
+    clipKey: str
+    coversFrom: float | None
+    coversTo: float | None
+    transcript: str
+    pass_number: int = Field(serialization_alias="pass")
+    recordedAt: str
+    supersedes: str | None = None
+    superseded: bool
+
+
 class RetroExport(_Hers):
     absent_when_none = ("note",)
 
@@ -89,3 +103,4 @@ class RetroExport(_Hers):
     note: str | None = None
     approval: RetroApproval | None
     frases: list[RetroFrase]
+    history: list[RetroHistoryEntry]
