@@ -39,6 +39,7 @@ from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
+    CheckRound,
     Finding,
     FindingKind,
     Nuance,
@@ -374,23 +375,21 @@ async def planted_and_forced(
     )
     assert again.status_code == 200, again.text
     [told] = await final_segments(db, session.id)
+    found = Finding(kind=FindingKind.ADDITION, note=FINDING_NOTE, segment_id=told.id, chunk=1)
+    nuance = Nuance(
+        note=NUANCE_NOTE,
+        chunk=1,
+        segment_id=told.id,
+        quote=NUANCE_QUOTE,
+        story=NUANCE_STORY,
+        take_id=told.take_id,
+        starts_ms=told.starts_ms,
+        ends_ms=told.ends_ms,
+    )
     state = BackTranslationState(
         scope=P01,
-        findings=[
-            Finding(kind=FindingKind.ADDITION, note=FINDING_NOTE, segment_id=told.id, chunk=1)
-        ],
-        nuances=[
-            Nuance(
-                note=NUANCE_NOTE,
-                chunk=1,
-                segment_id=told.id,
-                quote=NUANCE_QUOTE,
-                story=NUANCE_STORY,
-                take_id=told.take_id,
-                starts_ms=told.starts_ms,
-                ends_ms=told.ends_ms,
-            )
-        ],
+        findings=[found],
+        nuances=[nuance],
         superseded=[
             SupersededAttempt(
                 findings=[
@@ -398,6 +397,16 @@ async def planted_and_forced(
                         kind=FindingKind.ADDITION, note=ATTEMPT_NOTE, segment_id=first.id, chunk=1
                     )
                 ]
+            )
+        ],
+        checks=[
+            CheckRound(
+                at=datetime(2026, 10, 1, tzinfo=UTC),
+                findings=[found],
+                nuances=[nuance],
+                spoken="x",
+                outcome="pass",
+                conferida=False,
             )
         ],
         checked=False,
@@ -665,7 +674,7 @@ async def test_what_the_manifest_leaves_out_is_in_the_retroverificacao_file(
 
     assert retro.status_code == 200, retro.text
     kept_for_the_consultant = json.dumps(retro.json(), ensure_ascii=False)
-    for planted in (TOLD_WORDS, OLD_WORDS, FINDING_NOTE, NUANCE_QUOTE, NUANCE_STORY, ATTEMPT_NOTE):
+    for planted in (TOLD_WORDS, OLD_WORDS, FINDING_NOTE, NUANCE_QUOTE, NUANCE_STORY):
         assert planted in kept_for_the_consultant
     assert record.status_code == 200, record.text
     stored = json.dumps(record.json(), ensure_ascii=False)

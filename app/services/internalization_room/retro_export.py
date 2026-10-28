@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,7 +29,6 @@ from app.models.retro_export import (
     RetroPrevious,
     RetroSupersededTake,
 )
-from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.back_translation import (
     JOINED_WITHIN_MS,
     frase_numbers,
@@ -36,11 +36,6 @@ from app.services.internalization_room.back_translation import (
     listening_to_the_parts,
 )
 from app.services.internalization_room.forced import was_forced
-from app.services.internalization_room.passage_retroverification import (
-    APPROVED_BEFORE_THE_RECORD,
-    NOT_APPROVED,
-)
-from app.services.internalization_room.retroverification import TAKE_AUDIO_ROUTE
 from app.services.internalization_room.segments import (
     current_segments,
     final_segments,
@@ -59,6 +54,28 @@ from app.services.internalization_room.takes import (
     takes_of,
 )
 from app.utils.stored_time import as_utc
+
+NOT_APPROVED = (
+    "rascunho ainda não aprovado — as frases abaixo são a tradução ao vivo, não uma versão fechada"
+)
+APPROVED_BEFORE_THE_RECORD = (
+    "esta versão foi aprovada antes do registro de aprovação existir — "
+    "sem estado de conferência gravado; as frases abaixo são a tradução ao vivo"
+)
+
+#: Where a facilitator's browser fetches one take, as the file points at it. A path and never
+#: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
+TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
+
+
+def version_in(release_id: str) -> int:
+    """The number a release id carries, which the file's version, name and take names all share.
+
+    A passage zerada with no release has a stamp in place of a number, and reads as version 1
+    (ADR 0081).
+    """
+    named = re.search(r"-v(\d+)$", release_id)
+    return int(named.group(1)) if named else 1
 
 
 def _finding(entry: dict[str, Any]) -> RetroApprovalFinding:
@@ -250,15 +267,10 @@ async def retro_export(
         (row for row in (*standing.values(), *retired) if row.transcript),
         key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
     )
-    latest = (
-        None
-        if release or session.project_id is None
-        else await latest_release(db, session.project_id, session.pericope)
-    )
     return RetroExport(
         releaseId=release_id,
         pericopeId=session.pericope,
-        version=release.version if release else (latest.version + 1 if latest else 1),
+        version=version_in(release_id),
         finalized=release is not None,
         note=None
         if approval

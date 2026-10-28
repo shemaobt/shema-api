@@ -666,5 +666,5 @@ async def test_a_consultant_reads_the_retroverification_file_of_team_bs_passage(
     stranger = await client.get(url, headers=desk.readers["facilitator"])
 
     assert consultant.status_code == 200, consultant.text[:300]
-    assert [one["session_id"] for one in consultant.json()["sessions"]] == [team.session]
+    assert consultant.json()["pericopeId"] == P
     assert stranger.status_code == 404

@@ -22,11 +22,12 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     Nuance,
 )
-from app.services.internalization_room.passage_retroverification import (
+from app.services.internalization_room.retro_export import (
     APPROVED_BEFORE_THE_RECORD,
     NOT_APPROVED,
+    retro_export,
+    version_in,
 )
-from app.services.internalization_room.retro_export import retro_export
 from app.services.internalization_room.segments import (
     capture_segment,
     divide_segment,
@@ -38,6 +39,8 @@ from app.services.internalization_room.sessions import (
     report_playback,
     switch_the_grain,
 )
+from app.services.internalization_room.take_downloads import _release_id
+from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -90,7 +93,8 @@ async def _exported(db: AsyncSession, session_id: str) -> dict:
     db.expire_all()
     session = await db.get(IRSession, session_id)
     assert session is not None
-    exported = await retro_export(db, session, await approved_draft(db, session), "release-1")
+    release_id = await _release_id(db, session, current_parts(await takes_of(db, session.id)))
+    exported = await retro_export(db, session, await approved_draft(db, session), release_id)
     return exported.model_dump(mode="json", by_alias=True)
 
 
@@ -113,9 +117,8 @@ async def test_an_approved_passage_opens_with_her_keys_in_her_order(client, db_s
         "releaseId", "pericopeId", "version", "finalized", "approval", "frases", "history",
         "checks", "heardByClip", "supersededTakes", "exportedAt",
     ]  # fmt: skip
-    assert (file["releaseId"], file["pericopeId"], file["version"], file["finalized"]) == (
-        "release-1", pericope, 1, True,
-    )  # fmt: skip
+    assert file["releaseId"].endswith("-v1")
+    assert (file["pericopeId"], file["version"], file["finalized"]) == (pericope, 1, True)
     assert abs(datetime.now(UTC) - datetime.fromisoformat(file["exportedAt"])) < timedelta(
         minutes=1
     )
@@ -200,6 +203,7 @@ async def test_a_packet_minted_before_nuances_and_keys_were_stored_still_exports
         del one["key"], one["duration_ms"]
     for one in packet["back_translation"]["segments"]:
         del one["scene"]
+    packet["release_id"] = packet["release_id"].replace("-v1", "-v3")
     release.packet = packet
     release.version = 3
     approved_at = release.approved_at.isoformat()
@@ -840,14 +844,17 @@ async def test_a_replaced_take_is_listed_under_her_name_and_with_no_time_until_t
         "key": "whole", "takeId": old.id, "sha256": old.sha256, "durationMs": 1234,
         "bytes": old.size_bytes, "contentType": "audio/mp4",
         "recordedAt": old.recorded_at.isoformat(),
-        "filename": f"release-1-whole-substituida-{old.id}.m4a",
         "url": f"/api/internalization-room/facilitator/takes/{old.id}/audio",
     }  # fmt: skip
+    old_id = old.id
     await the_part_recorded_again(db_session, session)
 
-    (take,) = (await _exported(db_session, session.id))["supersededTakes"]
+    file = await _exported(db_session, session.id)
 
-    assert list(take) == list(wanted)
+    (take,) = file["supersededTakes"]
+    assert file["version"] == 2
+    wanted["filename"] = f"{file['releaseId']}-whole-substituida-{old_id}.m4a"
+    assert file["releaseId"].endswith("-v2")
     assert take == wanted
 
 
@@ -924,3 +931,8 @@ async def test_choosing_a_grain_before_any_take_is_no_earlier_life(db_session) -
     await switch_the_grain(db_session, session, IRGrain.SCENE, reopens_the_approved_draft=False)
 
     assert "previous" not in await _exported(db_session, session.id)
+
+
+def test_the_version_is_the_number_a_release_id_ends_in_and_a_zerada_stamp_has_none() -> None:
+    assert version_in("internalize-terena-p01-v12") == 12
+    assert version_in("internalize-v5-p01-zerada-20261028-1200") == 1

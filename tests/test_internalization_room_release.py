@@ -20,7 +20,6 @@ from app.services.internalization_room.release import (
     approve_release,
     compose_internalization_release,
 )
-from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import (
     capture_segment,
     divide_segment,
@@ -251,7 +250,6 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     await db_session.commit()
 
     artifact, _blockers = await compose_internalization_release(db_session, session)
-    file = await retroverification_file(db_session, session)
 
     seen = [
         (take["ordinal"], take["pass_number"], take["sha256"])
@@ -262,9 +260,6 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
         "nos rótulos dizia qual era qual; e pela passada a escolha sairia trocada, porque a "
         "passada 1 chegou depois da 2"
-    )
-    assert "b" * 64 in [take.sha256 for take in file.takes], (
-        "e a tomada abandonada continua inteira no arquivo de retroverificação"
     )
 
 

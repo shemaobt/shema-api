@@ -104,43 +104,6 @@ async def _the_file(client: httpx.AsyncClient, session_id: str, desk: dict[str, 
     return answered.json()
 
 
-async def test_the_archived_attempt_in_the_file_keeps_its_rounds_with_the_voices_words(
-    client: httpx.AsyncClient, db_session: AsyncSession, room_app
-) -> None:
-    session, desk = await _restarted(client, db_session, room_app)
-
-    the_file = await _the_file(client, session.id, desk)
-
-    (attempt,) = the_file["superseded_attempts"]
-    (round_,) = attempt["checks"]
-    assert round_["spoken"] == THE_VOICES_WORDS, "a fala da voz na rodada de antes sumia"
-    assert (round_["at"], round_["outcome"], round_["conferida"]) == (
-        "2026-10-20T14:05:00+00:00",
-        "pass",
-        False,
-    )
-    assert [(one["kind"], one["note"], one["chunk"]) for one in round_["findings"]] == [
-        ("addition", THE_ANALYSTS_NOTE, 1)
-    ], "o achado da rodada de antes sumia"
-
-
-async def test_the_archived_rounds_in_the_file_keep_their_nuances_and_whether_the_voice_said_them(
-    client: httpx.AsyncClient, db_session: AsyncSession, room_app
-) -> None:
-    session, desk = await _restarted(client, db_session, room_app)
-
-    the_file = await _the_file(client, session.id, desk)
-
-    (attempt,) = the_file["superseded_attempts"]
-    (round_,) = attempt["checks"]
-    assert [
-        (one["chunk"], one["quote"], one["story"], one["said"]) for one in round_["nuances"]
-    ] == [
-        (1, THE_SAID_QUOTE, "tornou", True),
-        (1, THE_UNSAID_QUOTE, "tornou", False),
-    ], "as nuances da rodada de antes sumiam"
-
-
 async def test_the_file_keeps_the_restarted_frases_with_their_words_apart_from_the_current_ones(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -148,10 +111,10 @@ async def test_the_file_keeps_the_restarted_frases_with_their_words_apart_from_t
 
     the_file = await _the_file(client, session.id, desk)
 
-    assert [one["transcript"] for one in the_file["abandoned"]] == ["Noemi voltou alegre"], (
+    assert [one["transcript"] for one in the_file["history"]] == ["Noemi voltou alegre"], (
         "a frase traduzida antes do recomeçar sumia do arquivo"
     )
-    assert the_file["stretches"] == [], "a frase de antes ainda contava como a de agora"
+    assert the_file["frases"] == [], "a frase de antes ainda contava como a de agora"
 
 
 async def test_the_record_after_a_restart_reads_only_the_frase_told_since(

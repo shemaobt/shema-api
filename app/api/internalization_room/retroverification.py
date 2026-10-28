@@ -4,10 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.models.internalization_room import (
-    PassageRetroverificationFile,
-    SessionRetroResponse,
-)
+from app.models.internalization_room import SessionRetroResponse
+from app.models.retro_export import RetroExport
 from app.services import internalization_room as room
 from app.services.internalization_room.check_block import passage_retro_url
 from app.services.internalization_room.passage_retroverification import (
@@ -34,7 +32,7 @@ async def redirect_to_the_passages_retroverification_file(
 
 @router.get(
     "/facilitator/projects/{project_id}/passages/{pericope}/retroverificacao",
-    response_model=PassageRetroverificationFile,
+    response_model=RetroExport,
 )
 async def read_the_passages_retroverification_file(
     project_id: str,
@@ -43,12 +41,12 @@ async def read_the_passages_retroverification_file(
     pericope: str = Path(max_length=120),
     archive: str | None = Query(default=None, min_length=1),
     db: AsyncSession = Depends(get_db),
-) -> PassageRetroverificationFile:
-    """The file of one passage, every session of it, named after its release.
+) -> RetroExport:
+    """The file of one passage's draft, in her fields, named after its release.
 
-    The live sessions, or those of the Archive named in ``archive``. A team the caller does not
-    read is refused as one that does not exist. A stored telling-back that cannot be read
-    answers 503: a file without that session would read as a passage nobody told.
+    The live session, or the Archive's named in ``archive``. A team the caller does not read is
+    refused as one that does not exist. A stored telling-back that cannot be read answers 503:
+    a file without that session would read as a passage nobody told.
     """
     try:
         file = await passage_retroverification_file(
@@ -59,7 +57,7 @@ async def read_the_passages_retroverification_file(
             status_code=503, detail="The retroverification file cannot be read now; try again"
         ) from unreadable
     response.headers["content-disposition"] = (
-        f'attachment; filename="{file.release_id}-retroverificacao.json"'
+        f'attachment; filename="{file.releaseId}-retroverificacao.json"'
     )
     return file
 

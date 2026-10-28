@@ -504,22 +504,20 @@ async def test_a_take_of_the_earlier_grain_that_lands_after_the_switch_is_set_as
     assert [take["key"] for take in downloads["takes"]] == ["whole"]
 
 
-async def test_the_retroverification_file_lists_the_set_aside_takes_flagged_with_the_switchs_time(
+async def test_the_retroverification_file_names_the_switch_as_one_earlier_life_and_lists_no_take(
     client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
 ) -> None:
-    session, parts, whole, before, after = await _switched_to_the_whole_over_joined_parts(
+    session, _parts, _whole, before, after = await _switched_to_the_whole_over_joined_parts(
         client, db_session
     )
 
     retro = await session_retro(client, session.id, desk)
 
     assert retro.status_code == 200, retro.text
-    rehearsals = {
-        take["take_id"]: take for take in retro.json()["takes"] if take["kind"] == "ensaio"
-    }
-    assert set(rehearsals) == {*parts, whole}
-    _one_instant([rehearsals[part]["set_aside_at"] for part in parts], before, after)
-    assert rehearsals[whole]["set_aside_at"] is None
+    (earlier,) = retro.json()["previous"]
+    _one_instant([earlier["at"]], before, after)
+    assert earlier["grain"] == "scene"
+    assert retro.json()["supersededTakes"] == []
 
 
 async def test_the_desks_takes_listing_names_the_grain_and_flags_the_set_aside_takes(
@@ -538,7 +536,7 @@ async def test_the_desks_takes_listing_names_the_grain_and_flags_the_set_aside_t
     assert rehearsals[whole]["set_aside_at"] is None
 
 
-async def test_the_retroverification_file_of_a_session_never_switched_flags_no_take(
+async def test_the_retroverification_file_of_a_session_never_switched_has_no_previous(
     client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
 ) -> None:
     session = await ready_session(db_session)
@@ -546,10 +544,7 @@ async def test_the_retroverification_file_of_a_session_never_switched_flags_no_t
     retro = await session_retro(client, session.id, desk)
 
     assert retro.status_code == 200, retro.text
-    assert retro.json()["takes"]
-    assert [take["set_aside_at"] for take in retro.json()["takes"]] == [None] * len(
-        retro.json()["takes"]
-    )
+    assert "previous" not in retro.json()
 
 
 async def test_a_switch_from_a_tablet_of_another_team_is_refused_before_anything_changes(

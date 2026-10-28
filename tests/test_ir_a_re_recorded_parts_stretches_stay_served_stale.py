@@ -569,11 +569,13 @@ async def test_telling_a_stale_stretch_again_leaves_the_file_as_it_was(
     filed = await session_retro(client, session.id, desk)
     assert filed.status_code == 200, filed.text
     file = filed.json()
-    assert stale in [row["segment_id"] for row in file["abandoned"]], (
+    kept = next(row for row in file["history"] if row["idx"] == stale)
+    assert kept["superseded"] is False, (
         "a linha regravada saiu das abandonadas quando a equipe a contou de novo"
     )
-    fresh = next(row for row in file["stretches"] if row["take_id"] == again.json()["take_id"])
-    assert fresh["history"] == [], "a contagem nova herdou as contagens da gravação anterior"
+    fresh = next(row for row in file["frases"] if row["clipKey"] == "S2")
+    assert fresh["idx"] != stale
+    assert "supersedes" not in fresh, "a contagem nova herdou as contagens da gravação anterior"
 
 
 async def test_a_hard_stretch_marked_before_the_part_was_recorded_again_can_be_marked_anew(

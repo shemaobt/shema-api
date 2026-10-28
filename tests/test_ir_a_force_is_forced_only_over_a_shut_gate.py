@@ -30,7 +30,6 @@ from tests.release_harness import (
     never_analysed_telling_back,
     ready_session,
     releases_of,
-    session_retro,
     team_headers,
     team_release,
     told_back_with_an_open_finding,
@@ -167,15 +166,12 @@ async def test_a_release_stored_as_a_force_that_waived_nothing_reads_as_an_ordin
 
     read = await room.get(f"{PREFIX}/sessions/{session.id}", headers=team_headers(tablet))
     listed = await desk_client.get(f"/api/facilitator/teams/{team.id}/pericopes", headers=desk)
-    retro = await session_retro(room, session.id, desk)
     served = await room.get(desk_release_at(session.id, 1), headers=desk)
     forced_again = await room.post(desk_passage_release(team.id, P), headers=desk, json=FORCE)
 
     assert read.json()["approved"]["forced"] is False
     (passage,) = [entry for entry in listed.json() if entry["pericope"] == P]
     assert passage["release"]["forced_at"] is None
-    (version,) = retro.json()["releases"]
-    assert (version["forced_by"], version["forced_at"]) == (None, None)
     check = served.json()["check"]
     assert (check["forced"], check["status"]) == (False, "conferida")
     assert (check["forcedBy"], check["forcedAt"], check["forcedBlockers"]) == (None, None, None)

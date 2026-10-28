@@ -238,7 +238,7 @@ async def what_the_facilitator_reads(
     file = await session_retro(client, session_id, desk)
     assert file.status_code == 200, file.text[:300]
     read["file"] = file.json()
-    read["file"].pop("generated_at")
+    read["file"].pop("exportedAt")
     return read
 
 
@@ -265,9 +265,6 @@ async def test_a_facilitators_zerar_keeps_all_of_a_pericopes_work_under_one_arch
     assert await row_counts(per_request) == counted
     assert set(bucket.objects) == kept
     after = await what_the_facilitator_reads(client, desk, session.id)
-    assert (before["file"].pop("approved"), after["file"].pop("approved")) == (True, False), (
-        "a Zerar retires the approved draft, as the wheel and the Desk read it (ADR 0081)"
-    )
     assert after == before
 
 
@@ -644,7 +641,7 @@ async def test_release_versions_keep_counting_after_a_zerar(client, db_session, 
     assert (v1.json()["version"], v2.json()["version"]) == (1, 2)
 
 
-async def test_the_retroverification_file_of_a_new_session_lists_no_archived_draft(
+async def test_the_retroverification_file_of_a_new_session_is_the_next_version_of_no_archived_draft(
     client, db_session, room_app
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
@@ -660,9 +657,9 @@ async def test_the_retroverification_file_of_a_new_session_lists_no_archived_dra
     listed = await session_retro(client, after.id, desk)
 
     assert unapproved.status_code == 200, unapproved.text[:300]
-    assert unapproved.json()["releases"] == []
+    assert (unapproved.json()["approval"], unapproved.json()["version"]) == (None, 2)
     assert approved.status_code == 200, approved.text[:300]
-    assert [release["version"] for release in listed.json()["releases"]] == [2]
+    assert (listed.json()["approval"]["v"], listed.json()["version"]) == (2, 2)
 
 
 async def the_teams_marks(client: httpx.AsyncClient, tablet: str) -> dict[str, bool]:

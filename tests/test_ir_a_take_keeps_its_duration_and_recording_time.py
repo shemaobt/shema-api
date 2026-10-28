@@ -25,21 +25,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSceneRehearsal, IRSession, IRTake
-from app.db.models.project import Project
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.takes import takes_of
 from app.utils.stored_time import as_utc
-from tests.baker import grant_room_app_role, make_app, make_role, make_user
+from tests.baker import grant_room_app_role, make_user
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
-    APP_KEY,
     PREFIX,
     TABLET,
-    at_the_desk,
     reported_playback,
-    session_retro,
 )
 from tests.room_harness import (
     rehearsed_in_parts,
@@ -243,24 +239,6 @@ async def test_a_recording_time_sent_on_another_clock_is_kept_as_the_same_instan
     )
 
     assert answer["recorded_at"] == TEN_OH_TWO
-
-
-async def test_the_retroverification_file_says_the_parts_recording_time_not_its_upload_time(
-    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession
-) -> None:
-    room_app = await make_app(db_session, app_key=APP_KEY, name="Internalization Room")
-    await make_role(
-        db_session, room_app.id, role_key="facilitator", label="Facilitator", is_system=True
-    )
-    team = await db_session.get(Project, session.project_id)
-    assert team is not None
-    desk, _user = await at_the_desk(db_session, room_app, team)
-    await kept(client, session.id, recording(3, 3), recorded_at="2026-10-20T10:02:00Z")
-
-    answer = await session_retro(client, session.id, desk)
-
-    assert answer.status_code == 200, answer.text
-    assert [take["recorded_at"] for take in answer.json()["takes"]] == [TEN_OH_TWO]
 
 
 async def test_every_take_in_the_packet_carries_the_length_of_its_sound(

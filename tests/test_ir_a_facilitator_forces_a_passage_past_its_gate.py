@@ -43,7 +43,6 @@ from tests.release_harness import (
     rehearsed_session,
     releases_of,
     reported_playback,
-    session_retro,
     team_headers,
     team_release,
     the_part_recorded_again,
@@ -295,8 +294,6 @@ async def test_after_a_forced_version_1_the_part_recorded_again_a_clean_check_an
     assert first.packet["check"]["forced"] is True
     assert second.packet["check"]["status"] == "conferida"
     assert second.packet["check"]["forced"] is False
-    versions = (await session_retro(room, session.id, desk)).json()["releases"]
-    assert [(v["version"], v["forced_at"] is not None) for v in versions] == [(1, True), (2, False)]
 
 
 async def test_the_by_session_force_follows_the_same_widened_rule(room, db_session, room_app):
@@ -363,10 +360,8 @@ async def test_a_release_forced_before_forced_blockers_existed_still_reads_as_fo
     )
     await db_session.commit()
 
-    versions = (await session_retro(room, session.id, desk)).json()["releases"]
     listed = await desk_client.get(f"/api/facilitator/teams/{team.id}/pericopes", headers=desk)
 
-    assert [v["forced_at"] is not None for v in versions] == [True]
     (passage,) = [entry for entry in listed.json() if entry["pericope"] == P]
     assert passage["release"]["forced_at"] is not None
 
