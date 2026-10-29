@@ -226,6 +226,7 @@ async def test_a_passage_approved_as_v1_reads_approved_v1_with_the_approvals_nam
         "release_id": approval["release_id"],
         "approved_at": approval["approved_at"],
         "forced": False,
+        "forced_blockers": [],
         "listeners": 0,
     }
 
@@ -277,6 +278,23 @@ async def test_a_facilitators_forced_approval_reads_forced(client, db_session, r
     read = await the_tablet_reads(client, tablet, session.id)
     assert read["approved"]["forced"] is True
     assert read["approved"]["version"] == forced.json()["version"]
+
+
+async def test_the_snapshot_of_a_forced_draft_names_the_blockers_it_was_forced_past(
+    client, db_session, room_app
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    session, _take = await rehearsed_session(db_session, project_id=team.id)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text
+
+    read = await the_tablet_reads(client, tablet, session.id)
+
+    assert read["approved"]["forced_blockers"] == ["telling_back_not_checked"]
 
 
 async def test_a_part_recorded_again_after_approval_un_approves_the_draft_and_the_next_approval_is_v2(  # noqa: E501

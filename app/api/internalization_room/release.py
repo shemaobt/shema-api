@@ -54,11 +54,13 @@ def check_later(background: BackgroundTasks, release: IRRelease) -> None:
 
 
 def approval_of(release: IRRelease) -> ApprovedDraftView:
+    forced = was_forced(release.forced_by, release.forced_blockers)
     return ApprovedDraftView(
         version=release.version,
         release_id=release.packet["release_id"],
         approved_at=as_utc(release.approved_at).isoformat(),
-        forced=was_forced(release.forced_by, release.forced_blockers),
+        forced=forced,
+        forced_blockers=(release.forced_blockers or []) if forced else [],
     )
 
 
@@ -266,4 +268,6 @@ async def approve_internalization_release(
         package_sha256=release.package_sha256,
         approved_at=approval.approved_at,
         blockers=[],
+        forced=approval.forced,
+        forced_blockers=approval.forced_blockers,
     )

@@ -130,6 +130,39 @@ async def last_active_at(db: AsyncSession, session: IRSession, moment: datetime)
     await db.commit()
 
 
+async def test_the_teams_approval_after_a_force_past_no_telling_back_answers_version_1_forced_naming_no_telling_back(  # noqa: E501
+    room, db_session, room_app
+):
+    team, tablet = await a_claimed_device(db_session)
+    session, _take = await rehearsed_session(db_session, project_id=team.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, team)
+    forced = await room.post(desk_passage_release(team.id, P), headers=desk, json=FORCE)
+    assert forced.status_code == 200, forced.text
+
+    approved = await room.post(team_release(session.id), headers=team_headers(tablet))
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["version"] == 1
+    assert approved.json()["forced"] is True
+    assert approved.json()["forced_blockers"] == ["no_telling_back"]
+    assert approved.json()["blockers"] == []
+    assert len(await releases_of_team(db_session, team.id)) == 1
+
+
+async def test_the_teams_approval_with_no_force_before_answers_forced_false_and_no_forced_blockers(
+    room, db_session
+):
+    team, tablet = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=team.id)
+
+    approved = await room.post(team_release(session.id), headers=team_headers(tablet))
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["version"] == 1
+    assert approved.json()["forced"] is False
+    assert approved.json()["forced_blockers"] == []
+
+
 async def test_a_passage_with_two_takes_an_unchecked_telling_back_and_an_untold_stretch_is_forced_with_both_blockers_recorded(  # noqa: E501
     room, db_session, room_app
 ):
@@ -289,6 +322,8 @@ async def test_after_a_forced_version_1_the_part_recorded_again_a_clean_check_an
 
     assert approved.status_code == 200, approved.text
     assert approved.json()["version"] == 2
+    assert approved.json()["forced"] is False
+    assert approved.json()["forced_blockers"] == []
     first, second = await releases_of_team(db_session, team.id)
     assert first.packet["check"]["status"] == "forcada"
     assert first.packet["check"]["forced"] is True

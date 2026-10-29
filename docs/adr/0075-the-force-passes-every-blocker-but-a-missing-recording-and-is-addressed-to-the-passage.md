@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ADR 0080: forced only when the gate was shut
+status: accepted; amended by ADR 0080: forced only when the gate was shut; amended 28 Oct 2026 by ENG-1776 (the team's route answers a forced release as forced)
 date: 2026-10-20
 ---
 
@@ -25,8 +25,10 @@ approval (a force over a conferida translation, ruling of 7 September; her page 
 force there); we keep `forced` true and the blocker named so that the listening passed over is on
 the record, which is the one place this ADR records more than she does. The force is addressed to
 the passage, like the Zerar: the server picks the passage's live session that holds rehearsal takes,
-the most recently active if there are several. The team's own route still refuses every blocker:
-approval stays the team's act and forcing the facilitator's (ADR 0019's second half holds).
+the most recently active if there are several. The team's route cannot force, and a new
+draft is refused there while any blocker stands. Asked again over content a facilitator already
+forced, it answers that release marked forced, naming the blockers it was forced past. Approval
+stays the team's act and forcing the facilitator's.
 
 The packet records the force as the row does. Who forced it, when and the blockers it passed
 travel in the **Check block** beside `forced`, as `forcedBy`, `forcedAt` and `forcedBlockers`:
