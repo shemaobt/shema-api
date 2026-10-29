@@ -282,6 +282,23 @@ async def test_a_health_reading_from_the_obt_lab_may_not_carry_a_request_over_on
     assert await _history(db_session) == 0
 
 
+async def test_a_blank_request_from_the_obt_lab_is_no_request_and_the_reading_is_filed(
+    client, db_session, shema_app, withheld
+) -> None:
+    """OBT-658: a request sent with nothing written in it is not sent, so the refusal above has no
+    request to refuse — the reading is filed and the request the OBT Lab reads blank stays as the
+    coordination wrote it."""
+    filed = await client.post(
+        f"{PROJECTS}/{WITHHELD_ID}/health-assessments",
+        json={**READING, "prayerRequests": ""},
+        headers=await _headers(db_session, shema_app, "obtLab"),
+    )
+
+    assert filed.status_code == 201, filed.text
+    assert (await _stored(db_session)).prayer_requests == REQUEST
+    assert await _history(db_session) == 1
+
+
 async def test_the_obt_labs_reading_without_a_request_is_filed_and_the_coordination_files_one(
     client, db_session, shema_app, withheld
 ) -> None:

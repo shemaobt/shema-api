@@ -861,6 +861,24 @@ behaviour on it.
 > has no column for it. The prayer request is not part of the reading: it is sent only when somebody
 > wrote one, and a backdated reading still files it.
 
+> **A blank prayer request in a health reading is no request — [OBT-658](https://linear.app/shema-obt/issue/OBT-658),
+> 29/oct/2026, Levi, following the issue's recommendation, for Karina to validate** (the
+> alternative was what the API did until then: the blank replaced the request). The wizard leaves
+> `prayerRequests` out when its box is blank and promises that the request on the record stays
+> (PME-FRM-071), but the API took a `""` it was sent as a new text: the E2E run of 29/oct/2026 filed
+> a reading with `prayerRequests: ""` and the record's request was emptied and left the wall.
+> `ShemaHealthAssessmentSubmission` now drops a request with nothing written in it — `""`, nothing
+> but spaces, or `null`, which reached the commit as a 500 — before anything reads it, so it is
+> *not sent* everywhere after: the reading is filed, and the request, its authorization and the
+> wall stay as they were, on every record (on a withheld one OBT-655's refusal has no request to
+> refuse). It is the Pulse's own rule for an empty answer (`_form_validation._is_empty`), at this
+> door. Only the text: a visibility sent beside a blank request is read as one sent alone, so the
+> withdrawal rule of §5.6 (OBT-561, OBT-576) does not move; and emptying the request stays the
+> ficha's, where the text is in view (`_consent.request_written`). Whether the wizard's *Depois que
+> um pedido é enviado à rede, ele não pode ser recolhido* still holds beside the ficha's withdrawal
+> went to Karina with it; it stays, since a withdrawal takes the request off the wall and the next
+> Pulses and recalls nothing already sent — her own rule for the Pulse's file (22/sep).
+
 > **BE-11 ([OBT-400](https://linear.app/shema-obt/issue/OBT-400)) built row 5.11, after GATE-01
 > closed on 25/sep/2026** — and the number it produces leaves the organisation, so the
 > decisions are about making it explainable from stored data rather than reconstructible from code.

@@ -28,7 +28,10 @@ August written up today replaced the escalation the current reading had set with
 chose. The backdated answer is not kept anywhere else either, since the history has no column for
 it and the one on the record belongs to the reading that is current. **The prayer request is not
 held back**, on purpose: it travels only when somebody wrote one, so it is a request a person
-made rather than a reading's answer, and dropping it would lose their words behind a 201.
+made rather than a reading's answer, and dropping it would lose their words behind a 201. A
+request with nothing written in it is not one: the submission drops it before this file reads it
+(OBT-658), so a reading sent with the box blank leaves the record's request, and the wall, as
+they were.
 
 **What it steps aside for is a newer reading, and a date alone is not one.** A record holding
 a ``health_assessment_date`` with four empty dimensions is the row ``docs/shema.md`` §7.4 warns
