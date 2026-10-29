@@ -13,7 +13,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRQuestion, IRTakeKind
 from app.services.device.needs_person import record_needs_person
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.hearing import HeardSpeech
@@ -347,8 +347,63 @@ async def test_a_nudge_reaches_only_its_own_team(
         assert (ours.status, theirs.status) == (200, 200)
         await raise_a_hand(client, team, session_id)
 
-        assert await nudges_heard(ours) == ["hands"]
+        assert await nudges_heard(ours) == ["hands", "hands"]
         assert await nudges_heard(theirs) == [], "a Mesa de outra equipe ouviu esta sala"
+
+
+async def a_hand_waiting_for_its_transcript(db: AsyncSession, team: Team) -> str:
+    session_id = await a_session(db, team)
+    question = IRQuestion(
+        device_id=team.device_id,
+        session_id=session_id,
+        pericope=P,
+        audio_key="perguntas/a-equipe-levantou-a-mao.m4a",
+    )
+    db.add(question)
+    await db.commit()
+    return str(question.id)
+
+
+async def test_a_raised_hands_transcript_landing_nudges_hands(
+    desk_app: FastAPI, db_session: AsyncSession, team: Team
+) -> None:
+    from app.services.internalization_room import background
+
+    question_id = await a_hand_waiting_for_its_transcript(db_session, team)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        assert desk.status == 200
+        await background.transcribe_question(question_id=question_id, audio=b"a equipe perguntou")
+
+        assert await nudges_heard(desk) == ["hands"], (
+            "o texto da pergunta chegava e o cartão da Mesa seguia sem ele"
+        )
+
+    kept = await db_session.get(IRQuestion, question_id)
+    await db_session.refresh(kept)
+    assert kept.transcript == "a equipe perguntou quem era Noemi"
+
+
+async def test_a_raised_hands_transcript_that_never_lands_nudges_nothing(
+    desk_app: FastAPI,
+    db_session: AsyncSession,
+    team: Team,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.exceptions import UpstreamServiceError
+    from app.services.internalization_room import background
+    from app.services.internalization_room import questions as question_service
+
+    async def _down(*_: Any, **__: Any) -> str:
+        raise UpstreamServiceError("o provedor caiu")
+
+    monkeypatch.setattr(question_service, "transcribe_speech", _down)
+    question_id = await a_hand_waiting_for_its_transcript(db_session, team)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        await background.transcribe_question(question_id=question_id, audio=b"a equipe perguntou")
+
+        assert await nudges_heard(desk) == []
 
 
 @pytest.mark.parametrize("turn_id", [None, "turno-1"], ids=["without-turn-id", "with-turn-id"])
