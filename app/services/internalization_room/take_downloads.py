@@ -227,7 +227,6 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
                 key=key,
                 filename=insert_name(key, laid.sentence_id),
                 url=link,
-                sha256=laid.sha256,
             )
             for (laid, key), link in zip(inserts, insert_links, strict=True)
         ],

@@ -181,6 +181,7 @@ async def test_the_retroverification_file_lists_each_raw_sentence_under_inserts(
     after = (await retro_export(db_session, session, None, "internalize-x-v1")).model_dump()
     (insert,) = (await take_downloads_of(db_session, session)).inserts
 
+    assert "splices" not in before | after, "a chave splices não é servida: não guardamos carimbos"
     assert "inserts" not in before, "uma passagem sem frase regravada trazia a chave inserts"
     assert after["inserts"] == [
         {

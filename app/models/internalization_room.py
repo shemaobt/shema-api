@@ -1337,7 +1337,6 @@ class InsertDownload(BaseModel):
     key: str
     filename: str
     url: str
-    sha256: str
 
 
 class WholeDownload(BaseModel):
