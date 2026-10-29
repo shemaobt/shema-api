@@ -69,6 +69,7 @@ from app.utils.shema_derivations import (
     is_recently_updated,
     stale_filter_matches,
 )
+from app.utils.shema_printed_names import printed_name
 
 #: The sixteen groups the sidebar counts, in FE-44's own order.
 FACET_GROUPS: Final[tuple[str, ...]] = (
@@ -332,7 +333,19 @@ def collation_key(value: str) -> tuple[str, str]:
     return (normalize_search_text(value), value)
 
 
-def sort_key(record: Sortable, derived: Derivations, key: str) -> tuple[int, Any]:
+def reading_key(name: str, *, withheld: bool, language: str) -> tuple[str, str]:
+    """How a name orders for a reader of the console: :func:`collation_key` of what it prints.
+
+    OBT-563 orders every list by the name its reader reads. A withheld name nobody registered
+    arrives as the region key, and the console prints it as words — *Projeto sensível — África*
+    among the P's, *Sensitive project — Africa* among the S's — so ordering by the key put the line
+    before *Afrikaans* (OBT-657). ``language`` is the one the console prints in
+    (``X-Shema-Language``); every other name, a public one included, orders as itself.
+    """
+    return collation_key(printed_name(name, withheld=withheld, language=language))
+
+
+def sort_key(record: Sortable, derived: Derivations, key: str, *, language: str) -> tuple[int, Any]:
     """The Projetos screen's five orders, as a key the caller sorts ascending by.
 
     ``src/components/pages/projetos/sorting.ts`` is the reference, and the half worth keeping
@@ -341,7 +354,8 @@ def sort_key(record: Sortable, derived: Derivations, key: str) -> tuple[int, Any
     records at the top of the busiest screen, which is where nobody is looking for them.
 
     ``progress`` and ``health`` descend over there; the leading ``0``/``1`` here is the blank
-    flag, and the value is negated so one ascending sort serves all five.
+    flag, and the value is negated so one ascending sort serves all five. The name orders as the
+    console prints it in ``language`` (:func:`reading_key`).
     """
     if key == "progress":
         return (0, -derived.progress)
@@ -353,7 +367,12 @@ def sort_key(record: Sortable, derived: Derivations, key: str) -> tuple[int, Any
         return (1, ("", "")) if not record.team else (0, collation_key(record.team))
     if not record.language_name:
         return (1, ("", ""))
-    return (0, collation_key(record.language_name))
+    return (
+        0,
+        reading_key(
+            record.language_name, withheld=record.language_name_withheld, language=language
+        ),
+    )
 
 
 def _in_band(derived: Derivations, band: str) -> bool:
@@ -556,7 +575,7 @@ def filter_projects(
 
 
 def sort_records(
-    visible: list[tuple[RecordT, Derivations]], key: str
+    visible: list[tuple[RecordT, Derivations]], key: str, *, language: str
 ) -> list[tuple[RecordT, Derivations]]:
     """Order the visible list by one of the screen's five sorts, blanks last.
 
@@ -565,4 +584,4 @@ def sort_records(
     page, and a window taken before the counts were computed would count a page rather than
     the set.
     """
-    return sorted(visible, key=lambda pair: sort_key(pair[0], pair[1], key))
+    return sorted(visible, key=lambda pair: sort_key(pair[0], pair[1], key, language=language))

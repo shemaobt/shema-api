@@ -29,6 +29,16 @@ lines that came out of it, which is how an aggregate cannot count a place the li
 withholds — and a withheld project still counts, because a funder total that dropped it would be
 wrong. The recorded content carries the region and never the country.
 
+**Recorded in one order, answered in the reader's (OBT-657).** The lines are ordered by name after
+the figures, and a line withheld with no public name carries the region key, which the console
+prints as words — *Projeto sensível — África* among the P's in Portuguese, *Sensitive project —
+Africa* among the S's in English. So the answer is ordered by the name the console prints in the
+language it states (``X-Shema-Language``), and the record keeps the order of the names the lines
+carry, in no language: ``shema_eten_reports`` keeps the data and not the form
+(``ShemaEtenReport``), and a record that followed the reader's language would be written again each
+time a Portuguese and an English reader took turns. :func:`_order` is the one rule; only the name it
+is handed differs. The answer carries the record's id, whose figures are the answer's.
+
 **This file computes and records; it does not decide the form.** The report leaves in
 FE-44 §9.8's shape because that is how :class:`~app.models.shema_eten.EtenYearReport`
 serialises, and it is recorded by :meth:`~app.models.shema_eten.EtenYearReport.recorded`, which
@@ -41,6 +51,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
@@ -58,6 +69,7 @@ from app.models.shema_eten import (
     EtenYearReport,
     EtenYearSnapshot,
 )
+from app.models.shema_prayer import PulseLanguage
 from app.services.shema._audit import author_name
 from app.services.shema._scope import RegionScope, visible_projects
 from app.utils.shema_derivations import (
@@ -67,7 +79,7 @@ from app.utils.shema_derivations import (
     fiscal_year_end,
     fiscal_year_start,
 )
-from app.utils.shema_facets import collation_key
+from app.utils.shema_facets import collation_key, reading_key
 
 
 async def _history(db: AsyncSession, ids: list[str]) -> dict[str, list[ProgressPoint]]:
@@ -166,15 +178,34 @@ def _line(
     )
 
 
-def _order(line: EtenYearSnapshot) -> tuple[int, int, tuple[str, str], str]:
-    """``buildEtenReport``'s order: credits down (no figure last), advance down, then the name.
+def _order(line: EtenYearSnapshot, name: tuple[str, str]) -> tuple[int, int, tuple[str, str], str]:
+    """``buildEtenReport``'s order: credits down (no figure last), advance down, then ``name``.
 
-    The name is compared by the Projetos screen's own ``collation_key``
-    (``app/utils/shema_facets.py``), which carries why a code-point sort is wrong for these names.
+    ``name`` is a key of the Projetos screen's own (``app/utils/shema_facets.py``), which carries
+    why a code-point sort is wrong for these names: :func:`_as_carried` or :func:`_as_printed`.
     The id last keeps the order total, which the recorded digest depends on.
     """
     credits = -1 if line.credits is None else line.credits
-    return (-credits, -line.advanced, collation_key(line.language_name), line.project_id)
+    return (-credits, -line.advanced, name, line.project_id)
+
+
+def _as_carried(line: EtenYearSnapshot) -> tuple[int, int, tuple[str, str], str]:
+    """The order the report is recorded in: by the name each line carries, in no language."""
+    return _order(line, collation_key(line.language_name))
+
+
+def _as_printed(
+    language: PulseLanguage,
+) -> Callable[[EtenYearSnapshot], tuple[int, int, tuple[str, str], str]]:
+    """The order a reader is answered in: by the name the console prints in ``language``."""
+
+    def key(line: EtenYearSnapshot) -> tuple[int, int, tuple[str, str], str]:
+        name = reading_key(
+            line.language_name, withheld=line.language_name_withheld, language=language
+        )
+        return _order(line, name)
+
+    return key
 
 
 def _digest(content: dict[str, Any]) -> str:
@@ -230,12 +261,15 @@ async def eten_report(
     *,
     user: User,
     today: date,
+    language: PulseLanguage = PulseLanguage.PT_BR,
 ) -> EtenYearReport:
     """The fiscal year ``year`` — 1 August of ``year - 1`` to 31 July of ``year`` — recorded.
 
     ``scope`` is positional and has no default, for ``list_projects``'s stated reason. ``today``
     is injected: it decides only which year is still open, which is where the rule reads the
-    record as it stands instead of a history entry.
+    record as it stands instead of a history entry. ``language`` is the one the console prints in
+    and only orders the answer (the module docstring); Portuguese by default, the language the
+    console falls back to.
 
     **An empty report is an honest one.** With nothing listed, or nothing read, the answer says
     so — ``listedProjects`` zero, ``hasData`` false — and nothing is invented to fill it.
@@ -246,23 +280,26 @@ async def eten_report(
     history = await _history(db, ids)
     ledger = await _manual(db, ids, year)
 
-    lines = sorted(
-        (
-            _line(project, history.get(project.id, []), ledger.get(project.id), year, today)
-            for project in projects
-        ),
-        key=_order,
-    )
+    lines = [
+        _line(project, history.get(project.id, []), ledger.get(project.id), year, today)
+        for project in projects
+    ]
     report = EtenYearReport(
         year=year,
         listed_projects=len(lines),
         advancing_projects=sum(1 for line in lines if line.advanced > 0),
         total_credits=sum(line.credits or 0 for line in lines),
         has_data=any(line.has_data or line.credits is not None for line in lines),
-        snapshots=lines,
+        snapshots=sorted(lines, key=_as_carried),
         period_start=fiscal_year_start(year),
         period_end=fiscal_year_end(year),
         as_of=today,
     )
     recorded = await _record(db, report, scope=scope, user=user)
-    return report.model_copy(update={"report_id": recorded.id, "recorded_at": recorded.created_at})
+    return report.model_copy(
+        update={
+            "snapshots": sorted(lines, key=_as_printed(language)),
+            "report_id": recorded.id,
+            "recorded_at": recorded.created_at,
+        }
+    )

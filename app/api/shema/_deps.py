@@ -93,7 +93,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import Depends, Response
+from fastapi import Depends, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import require_app_access, require_role
@@ -102,6 +102,7 @@ from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
 from app.db.models.shema_consent import ShemaConsentContext
+from app.models.shema_prayer import PulseLanguage
 from app.services.shema._consent import reads_withheld_requests
 from app.services.shema._directory import (
     NETWORK_KEEPERS,
@@ -417,3 +418,35 @@ async def _door_scope(user: SignedIn, db: Db, roles: SessionRoles) -> RegionScop
 
 #: The caller's region scope behind the door — for a route every door account may call.
 DoorScope = Annotated[RegionScope, Depends(_door_scope)]
+
+
+#: The header the console states the language it prints in (OBT-657) — beside
+#: ``X-Shema-Local-Date``, the one it states its own day in.
+CONSOLE_LANGUAGE_HEADER = "X-Shema-Language"
+
+
+async def _console_language(
+    stated: Annotated[str | None, Header(alias=CONSOLE_LANGUAGE_HEADER)] = None,
+) -> PulseLanguage:
+    """The language the console prints in, which orders a withheld name where a list is cut.
+
+    The ETEN report and the Projetos list order a withheld name nobody registered by what the
+    console prints in its place (``app/utils/shema_printed_names.py``), and that sits among the
+    P's in Portuguese and among the S's in English. **A header and not a parameter:** the language
+    filters nothing and never enters the screen's address or a saved view —
+    ``ShemaProjectQuery`` is that address, ``extra="forbid"`` — and a server that does not read it
+    ignores it, so neither side has to ship first. ``?lang=`` stays where it picks the language a
+    file is written in (the Pulse, the export).
+
+    Read by the console's own rule (``pulseLanguage``): ``en…`` is English and anything else, the
+    absence included, is Portuguese, the language the console falls back to — so an unexpected
+    value orders like Portuguese and is never a 422. No ``Vary``: every answer here is ``private,
+    no-store`` (:data:`NO_STORE`), so no cache keeps a body for it to vary.
+    """
+    if (stated or "").strip().lower().startswith("en"):
+        return PulseLanguage.EN
+    return PulseLanguage.PT_BR
+
+
+#: The language the console prints in — for a read that hands out an order of names.
+ConsoleLanguage = Annotated[PulseLanguage, Depends(_console_language)]
