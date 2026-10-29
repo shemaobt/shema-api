@@ -25,6 +25,7 @@ from app.models.retro_export import (
     RetroExport,
     RetroFrase,
     RetroHistoryEntry,
+    RetroInsert,
     RetroPrevious,
     RetroSupersededTake,
 )
@@ -47,6 +48,8 @@ from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.take_downloads import (
     _with_bytes,
     file_name,
+    insert_name,
+    inserts_of,
     keys_of_the_takes,
 )
 from app.services.internalization_room.takes import (
@@ -66,6 +69,10 @@ APPROVED_BEFORE_THE_RECORD = (
 #: Where a facilitator's browser fetches one take, as the file points at it. A path and never
 #: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
 TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
+INSERT_AUDIO_ROUTE = (
+    "/api/internalization-room/facilitator/sessions/{session_id}"
+    "/re-recorded-sentences/{sentence_id}/audio"
+)
 
 
 async def _version(db: AsyncSession, session: IRSession, release: IRRelease | None) -> int:
@@ -344,5 +351,15 @@ async def retro_export(
             and take.id not in {part.id for part in parts}
         ],
         previous=_previous(takes) or None,
+        inserts=[
+            RetroInsert(
+                spliceId=laid.sentence_id,
+                clipKey=key,
+                filename=insert_name(key, laid.sentence_id),
+                url=INSERT_AUDIO_ROUTE.format(session_id=session.id, sentence_id=laid.sentence_id),
+            )
+            for laid, key in inserts_of(session, keys)
+        ]
+        or None,
         exportedAt=datetime.now(UTC).isoformat(),
     )
