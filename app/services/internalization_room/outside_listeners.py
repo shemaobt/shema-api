@@ -10,7 +10,6 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
-from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +26,7 @@ from app.db.models.internalization_room import (
     IRSession,
 )
 from app.models.internalization_room import (
+    ExternalCheckPointer,
     ListenerFacts,
     ListenerFactsFrase,
     ListenerFraseView,
@@ -428,14 +428,16 @@ async def comments_counted(db: AsyncSession, release: IRRelease) -> int:
     return int(counted or 0)
 
 
-async def external_check_pointer(db: AsyncSession, release: IRRelease) -> dict[str, Any] | None:
+async def external_check_pointer(
+    db: AsyncSession, release: IRRelease
+) -> ExternalCheckPointer | None:
     """Her ``externalCheck`` for a release: how many listened, how many commented, and the
     facilitator's read of them; none while the team has not opened the check."""
     check = await db.scalar(select(IRExternalCheck).where(IRExternalCheck.release_id == release.id))
     if check is None:
         return None
-    return {
-        "listeners": await listeners_counted(db, release),
-        "comments": await comments_counted(db, release),
-        "url": EXTERNAL_CHECK_ROUTE.format(session_id=check.session_id, version=check.version),
-    }
+    return ExternalCheckPointer(
+        listeners=await listeners_counted(db, release),
+        comments=await comments_counted(db, release),
+        url=EXTERNAL_CHECK_ROUTE.format(session_id=check.session_id, version=check.version),
+    )

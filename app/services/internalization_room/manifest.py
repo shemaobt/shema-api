@@ -24,7 +24,10 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.check_block import passage_retro_url
 from app.services.internalization_room.coverage import is_panorama
-from app.services.internalization_room.outside_listeners import external_check_pointer
+from app.services.internalization_room.outside_listeners import (
+    ExternalCheckPointer,
+    external_check_pointer,
+)
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     _mother_tongue,
@@ -97,7 +100,7 @@ class _Reading:
     finalized_at: str | None
     finalize_count: int
     check: dict[str, Any] | None
-    external_check: dict[str, Any] | None
+    external_check: ExternalCheckPointer | None
     warn_no_check: bool
 
 
@@ -162,7 +165,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     else:
         reading = await _of_the_live_draft(db, session)
     clips = [part for part in parts if not is_declared(part)]
-    if reading.finalized_at is None and not clips:
+    if reading.finalized_at is None and not parts:
         raise NotFoundError(f"Internalization room session {session.id} holds no take")
     release_id = reading.release_id
     keys = part_keys_by_number(parts)
@@ -210,7 +213,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
         manifest["whole"] = {"filename": whole_filename(release_id), "url": whole_url(session.id)}
     manifest |= {
         "integrity": INTEGRITY,
-        "externalCheck": reading.external_check,
+        "externalCheck": reading.external_check.model_dump() if reading.external_check else None,
         "check": reading.check,
     }
     if warnings:

@@ -1325,3 +1325,19 @@ async def test_a_reopened_drafts_live_manifest_points_to_no_external_check(
 
     assert manifest["finalizedAt"] is None
     assert manifest["externalCheck"] is None
+
+
+async def test_a_seam_session_that_holds_declared_parts_downloads_its_live_manifest(
+    client, db_session, room_app
+):
+    from app.services.internalization_room.takes import declare_rehearsal_parts
+
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await create_session(db_session, pericope=P01, project_id=project.id, language="pt")
+    await declare_rehearsal_parts(db_session, session, ["S1", "S2"])
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["finalizedAt"] is None
+    assert manifest["clips"] == []
