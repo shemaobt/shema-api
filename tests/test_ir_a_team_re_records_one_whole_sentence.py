@@ -8,19 +8,24 @@ frases after it move by the difference in length.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.release import compose_internalization_release
+from app.services.internalization_room.retro_export import retro_export
 from app.services.internalization_room.segments import (
     current_segments,
     divide_segment,
     final_segments,
 )
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
+from app.services.internalization_room.take_downloads import take_downloads_of
 from tests.device_harness import a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
@@ -116,7 +121,75 @@ async def test_a_sentence_over_four_megabytes_is_refused_before_anything_is_read
     assert (refused.status_code, refused.json().get("code")) == (413, "SENTENCE_TOO_LONG"), (
         "uma frase de mais de 4 MB passava da porta, ou só depois de procurar a frase"
     )
+    assert refused.json()["detail"] == "frase longa demais — regravem a cena", (
+        "a tela não recebia as palavras dela para a frase longa"
+    )
     assert store.objects == kept, "a frase longa demais deixava algo guardado"
+
+
+@pytest.fixture()
+def links_are_signed(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _signed(bucket: str, key: str, *, expiry_minutes: int, **asked: str) -> str:
+        return (
+            f"https://storage.test/{bucket}/{key}?X-Goog-Expires={expiry_minutes * 60}"
+            f"&disposition={asked['response_disposition']}"
+        )
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde", raising=False)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed)
+
+
+async def test_the_raw_sentence_downloads_under_her_insert_name_for_an_hour(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    links_are_signed: None,
+) -> None:
+    session, _, ((frase,), _) = await rehearsed_in_wav(
+        db_session, store, [[(0, 2000)], [(0, 2000)]]
+    )
+    laid = await re_record(client, session.id, frase.id, spoken(1.0), sentence_id="sentence-0003")
+    assert laid.status_code == 200, laid.text
+
+    (insert,) = (await take_downloads_of(db_session, session)).inserts
+
+    assert insert.filename == "insert-S1-sentence-0003.wav"
+    assert (insert.sentence_id, insert.key) == ("sentence-0003", "S1")
+    link = urlsplit(insert.url)
+    assert parse_qs(link.query)["X-Goog-Expires"] == ["3600"], "o link da frase não durava uma hora"
+    assert parse_qs(link.query)["disposition"] == [
+        'attachment; filename="insert-S1-sentence-0003.wav"'
+    ]
+    assert store.objects[link.path.removeprefix("/balde/")] == spoken(1.0), (
+        "o link não apontava para a gravação crua da frase"
+    )
+
+
+async def test_the_retroverification_file_lists_each_raw_sentence_under_inserts(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    store: MemoryStore,
+    links_are_signed: None,
+) -> None:
+    session, _, ((frase,), _) = await rehearsed_in_wav(
+        db_session, store, [[(0, 2000)], [(0, 2000)]]
+    )
+    before = (await retro_export(db_session, session, None, "internalize-x-v1")).model_dump()
+    laid = await re_record(client, session.id, frase.id, spoken(1.0), sentence_id="sentence-0003")
+    assert laid.status_code == 200, laid.text
+
+    after = (await retro_export(db_session, session, None, "internalize-x-v1")).model_dump()
+    (insert,) = (await take_downloads_of(db_session, session)).inserts
+
+    assert "inserts" not in before, "uma passagem sem frase regravada trazia a chave inserts"
+    assert after["inserts"] == [
+        {
+            "spliceId": "sentence-0003",
+            "clipKey": "S1",
+            "filename": "insert-S1-sentence-0003.wav",
+            "url": insert.url,
+        }
+    ]
 
 
 @pytest.mark.parametrize(

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRArchive, IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
+    InsertDownload,
     SupersededTakeDownload,
     TakeDownload,
     TakeDownloadsResponse,
@@ -19,12 +20,15 @@ from app.services.internalization_room.approved_draft import (
     latest_release,
     stands_on,
 )
+from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.release import (
     _mother_tongue,
     release_name,
     released_as,
     zeroed_name,
 )
+from app.services.internalization_room.sentences import WAV
+from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.takes import (
     DOWNLOAD_LINK_SECONDS,
     current_parts,
@@ -105,6 +109,29 @@ def file_name(release_id: str, key: str, take: IRTake, *, superseded: bool = Fal
     return f"{stem}.{extension(take.content_type)}"
 
 
+def insert_name(key: str, sentence_id: str) -> str:
+    """The name a re-recorded sentence's raw recording downloads under (her insertDerivedName)."""
+    return f"insert-{key}-{sentence_id}.wav"
+
+
+def inserts_of(session: IRSession, keys: dict[str, str]) -> list[tuple[LaidInSentence, str]]:
+    """Every sentence laid into this session, with the **Part key** of the part it went into."""
+    return [
+        (laid, keys[laid.take_id])
+        for laid in back_translation_of(session).sentences
+        if laid.take_id in keys
+    ]
+
+
+def insert_link(laid: LaidInSentence, key: str) -> Awaitable[str]:
+    return signed_url(
+        laid.storage_key,
+        WAV,
+        minutes=DOWNLOAD_LINK_SECONDS // 60,
+        disposition=f'attachment; filename="{insert_name(key, laid.sentence_id)}"',
+    )
+
+
 def _with_bytes(take: IRTake) -> bool:
     return take.kind is IRTakeKind.ENSAIO and not is_declared(take)
 
@@ -175,6 +202,8 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
                     set_aside_at=set_aside_moment(take),
                 )
             )
+    inserts = inserts_of(session, keys)
+    insert_links = await asyncio.gather(*(insert_link(laid, key) for laid, key in inserts))
     lengths = [part.duration_ms for part in parts]
     whole = (
         WholeDownload(
@@ -192,6 +221,16 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
         takes=live,
         superseded_takes=superseded,
         whole=whole,
+        inserts=[
+            InsertDownload(
+                sentence_id=laid.sentence_id,
+                key=key,
+                filename=insert_name(key, laid.sentence_id),
+                url=link,
+                sha256=laid.sha256,
+            )
+            for (laid, key), link in zip(inserts, insert_links, strict=True)
+        ],
     )
 
 

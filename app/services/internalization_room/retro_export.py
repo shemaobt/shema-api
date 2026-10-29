@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,6 +26,7 @@ from app.models.retro_export import (
     RetroExport,
     RetroFrase,
     RetroHistoryEntry,
+    RetroInsert,
     RetroPrevious,
     RetroSupersededTake,
 )
@@ -47,6 +49,9 @@ from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.take_downloads import (
     _with_bytes,
     file_name,
+    insert_link,
+    insert_name,
+    inserts_of,
     keys_of_the_takes,
 )
 from app.services.internalization_room.takes import (
@@ -274,6 +279,8 @@ async def retro_export(
         (row for row in (*standing.values(), *retired) if row.transcript),
         key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
     )
+    inserts = inserts_of(session, keys)
+    insert_links = await asyncio.gather(*(insert_link(laid, key) for laid, key in inserts))
     return RetroExport(
         releaseId=release_id,
         pericopeId=session.pericope,
@@ -344,5 +351,15 @@ async def retro_export(
             and take.id not in {part.id for part in parts}
         ],
         previous=_previous(takes) or None,
+        inserts=[
+            RetroInsert(
+                spliceId=laid.sentence_id,
+                clipKey=key,
+                filename=insert_name(key, laid.sentence_id),
+                url=link,
+            )
+            for (laid, key), link in zip(inserts, insert_links, strict=True)
+        ]
+        or None,
         exportedAt=datetime.now(UTC).isoformat(),
     )

@@ -66,7 +66,7 @@ def refuse_a_sentence_too_long(audio: bytes) -> None:
         raise SentenceRefused(
             413,
             ERROR_CODE_SENTENCE_TOO_LONG,
-            f"A sentence weighs at most {SENTENCE_LIMIT_BYTES} bytes",
+            "frase longa demais — regravem a cena",
         )
 
 

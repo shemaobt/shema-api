@@ -12,7 +12,8 @@ ninety field names, and the consultant reads them. Decided for ENG-1801, the Def
 
 - The file is her file, in her order, for the draft of the passage: the team's latest session in
   the live archive, or the archive named. No key of ours is served, and a key with no stored source
-  is left out: `retiredBelow`, `restartedAt`, `splices` and `inserts` (ENG-1285 adds the last two).
+  is left out: `retiredBelow`, `restartedAt`, `splices` and `inserts` (ENG-1285 adds `inserts`;
+  `splices` stays out because `LaidInSentence` stores no stamps).
 - `clipKey` is the Part key and `idx` the stretch id; the take id appears only as
   `supersededTakes[].takeId`. No `origin`: our join carries no scene frase.
 - `releaseId` is the name `take_downloads._release_id` gives (ADR 0081). `version` is always read

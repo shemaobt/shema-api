@@ -1330,6 +1330,16 @@ class SupersededTakeDownload(TakeDownload):
     set_aside_at: str | None = None
 
 
+class InsertDownload(BaseModel):
+    """The raw recording of one re-recorded sentence, under her ``insert-`` name."""
+
+    sentence_id: str
+    key: str
+    filename: str
+    url: str
+    sha256: str
+
+
 class WholeDownload(BaseModel):
     """The whole passage as one WAV: the route that serves it, built when it is asked."""
 
@@ -1359,6 +1369,7 @@ class TakeDownloadsResponse(BaseModel):
     takes: list[TakeDownload]
     superseded_takes: list[SupersededTakeDownload]
     whole: WholeDownload | None = None
+    inserts: list[InsertDownload] = []
 
 
 class SceneFraseView(BaseModel):
