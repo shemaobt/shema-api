@@ -333,6 +333,20 @@ async def test_an_upload_gives_no_time_to_a_take_replaced_before_the_stamp_exist
     assert stamps[third["take_id"]] is None
 
 
+async def test_a_whole_that_arrives_over_scene_parts_is_stamped_itself_and_displaces_none(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    scene = await send(client, credential, session.id, recording(2, 1), part=1)
+    whole = await send(client, credential, session.id, recording(2, 2), part=None)
+
+    stamps = await _stamps(db_session, session.id)
+
+    assert stamps[whole["take_id"]] is not None
+    assert stamps[scene["take_id"]] is None
+
+
 async def test_every_link_lasts_an_hour_and_the_list_says_so(client, db_session, room_app):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_rehearsal(db_session, project.id)

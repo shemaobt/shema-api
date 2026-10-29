@@ -839,6 +839,17 @@ async def test_a_take_of_the_grain_left_behind_that_lands_after_the_switch_is_st
     assert stamp == aside
 
 
+async def test_a_late_take_of_the_grain_left_behind_does_not_stamp_the_whole_that_is_live(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    await _switched(client, session.id, "whole")
+    whole = _kept(await upload_a_part(client, session.id, part=None, audio=b"a inteira"))
+    await upload_a_part(client, session.id, part=1, audio=b"a que chegou tarde")
+
+    assert (await _stamps(db_session, session.id))[whole] is None
+
+
 async def test_a_take_of_the_earlier_grain_committed_while_the_switch_ran_is_set_aside_and_stamped(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
