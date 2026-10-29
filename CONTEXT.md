@@ -58,8 +58,12 @@ The facilitator's voice answer to a team's raised-hand question. It belongs to t
 _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 
 **Phase** (*fase*):
-One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
-_Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
+Where a team stands in Marcia's flow, as the Desk reads it in her words: the Familiarização of the whole passage; for each scene, the Internalização and then the Articulação, closed by the ensaio da cena; the Ensaio Final; the Checagem externa of each **Version**. The Desk draws no rows of phases: the record names the **Moment**, the coverage column the scene in motion, the passage head the check state (ENG-1230, 2026-10-29).
+_Avoid_: Retradução, Retroverificação as a phase (it is the file), step (the tablet's substate of a station), stage, tab, Etapa
+
+**Moment** (*momento*):
+Where a session's conversation stands in Marcia's flow as the voice last said it: the Familiarização, the Internalização or Articulação of scene n of k, or the Ensaio Final. Read from the lines the Guide spoke, kept per session and per turn with what moved it, served to the Desk and the dossier, and never guessed from the screen (her `momentAtTurnStart`). A session stored before moments were kept has none, and the Desk says so.
+_Avoid_: phase (the facilitator's reading of the whole flow), stage, step, Momento
 
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
