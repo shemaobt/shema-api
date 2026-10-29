@@ -1291,3 +1291,37 @@ async def test_a_release_stored_as_a_force_that_waived_nothing_reads_as_an_ordin
 
     assert (manifest["check"]["forced"], manifest["check"]["status"]) == (False, "conferida")
     assert facilitator.id not in json.dumps(manifest)
+
+
+async def test_a_new_session_with_no_take_has_no_manifest_though_the_passage_has_a_release(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    earlier = await ready_p01(db_session, project.id)
+    await approved(client, credential, earlier)
+    later = await create_session(db_session, pericope=P01, project_id=project.id, language="pt")
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    read = await client.get(desk_release(later.id), headers=desk)
+
+    assert read.status_code == 404, read.text
+
+
+async def test_a_reopened_drafts_live_manifest_points_to_no_external_check(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    parts = current_parts(await takes_of(db_session, session.id))
+    await approved(client, credential, session)
+    opened = await client.post(
+        f"{PREFIX}/sessions/{session.id}/external-check/open", headers=team_headers(credential)
+    )
+    assert opened.status_code == 200, opened.text
+    await record_the_part_again(db_session, session, parts[0], sha256="d" * 64)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["finalizedAt"] is None
+    assert manifest["externalCheck"] is None
