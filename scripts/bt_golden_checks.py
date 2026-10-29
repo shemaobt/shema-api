@@ -55,7 +55,7 @@ _TRADU = re.compile(r"tradu", re.IGNORECASE)
 _THE_MAP = re.compile(r"\bo mapa\b", re.IGNORECASE)
 _BLESSING = re.compile(r"vão com deus|deus (?:os|te) abençoe|amém", re.IGNORECASE)
 _A_FRASE = re.compile(r"frase\s+\d+", re.IGNORECASE)
-_A_PART_AGAIN = re.compile(
+PART_AGAIN_RE = re.compile(
     r"grav\w+ (?:de novo )?(?:essa|a) parte|regrav\w+ (?:essa|a) (?:parte|cena)", re.IGNORECASE
 )
 
@@ -92,6 +92,8 @@ def expected_findings(findings: list[dict[str, Any]], wanted: list[dict[str, Any
             None,
         )
         if hit is None:
+            if want.get("optional"):
+                continue
             fails.append(
                 f"expected a {want['kind']} finding matching /{want['note']}/ — "
                 f"got [{_notes(findings)}]"
@@ -122,8 +124,10 @@ def no_kinds(findings: list[dict[str, Any]], kinds: list[str]) -> list[str]:
     ]
 
 
-def no_findings_at_all(findings: list[dict[str, Any]], wanted: list[dict[str, Any]]) -> list[str]:
-    if wanted or not findings:
+def no_findings_at_all(
+    findings: list[dict[str, Any]], voice: list[dict[str, Any]], wanted: list[dict[str, Any]]
+) -> list[str]:
+    if wanted or not voice:
         return []
     return [f"expected no findings, got [{_notes(findings)}]"]
 
@@ -140,6 +144,35 @@ def quoted_in(quote: str, transcript: str) -> bool:
 
 def _says_the_nuance(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [one for one in findings if one["kind"] == "nuance" and one.get("voiced") == "now"]
+
+
+def _on_frase(one: dict[str, Any]) -> str:
+    return "" if one.get("frase") is None else f" on frase {one['frase']}"
+
+
+def nuances_asked(findings: list[dict[str, Any]], wanted: list[dict[str, Any]]) -> list[str]:
+    """A nuance, expected or not, is said once and never beside a blocking finding."""
+    fails = [
+        f"an unexpected nuance{_on_frase(one)}"
+        f': "{one["note"]}" (a false nuance costs the team attention)'
+        for one in findings
+        if one["kind"] == "nuance"
+        and one.get("voiced") != "before"
+        and not any(
+            want["kind"] == "nuance" and re.search(want["note"], one["note"], re.IGNORECASE)
+            for want in wanted
+        )
+    ]
+    said = _says_the_nuance(findings)
+    if len(said) > 1:
+        frases = ", ".join(str(one["frase"]) for one in said)
+        fails.append(f"more than one nuance named in one turn: frases {frases}")
+    if said and any(one["kind"] != "nuance" for one in findings):
+        fails.append(
+            "a nuance was named while a blocking finding is open (it comes alone): "
+            f"{_notes(findings)}"
+        )
+    return fails
 
 
 def conferida(reached: bool, expected: bool, outcome: str) -> list[str]:
@@ -209,21 +242,24 @@ def asks_translation(spoken: str) -> list[str]:
     return ["the voice does not ask whether it entered in the translation ('na tradução')"]
 
 
-def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
-    asked = re.search(
+def whole_sentence_re(number: int) -> re.Pattern[str]:
+    return re.compile(
         rf"regrav\w+[^.]*?\bfrase(?:\s+{number}\b|(?!\s+\d))[^.]*?\binteira"
         rf"|regrav\w+\s+inteira\s+a\s+frase|\bfrase\s+{number}\s+inteira"
         r"|a frase toda|nunca só um pedaço",
-        spoken,
         re.IGNORECASE,
     )
+
+
+def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
+    asked = whole_sentence_re(number).search(spoken)
     fails = []
     if not asked:
         fails.append(
             f'the voice does not ask to record frase {number} again WHOLE ("regravem a frase '
             f'{number} inteira" / "essa frase inteira" / "a frase toda")'
         )
-    part = _A_PART_AGAIN.search(spoken)
+    part = PART_AGAIN_RE.search(spoken)
     if part:
         fails.append(
             "the voice sends the team to a PART on a recording that can take a sentence: "
@@ -262,7 +298,7 @@ CLEAN_LINE_RE = re.compile(
 )
 
 #: Words a clean verdict may say whatever the team told, compared by stem.
-CLEAN_ALLOWED = " ".join(
+_CLEAN_ALLOWED = " ".join(
     [
         "no que vocês me traduziram, tem tudo o que a história conta — e nada a mais",
         "ouvir tudo de novo, do começo ao fim, e aprovar como rascunho final — o último passo, "
@@ -288,7 +324,7 @@ CLEAN_ALLOWED = " ".join(
 
 _LETTERS = r"[^\W\d_]"
 #: What the story keeps quiet, said any of the ways the voice has said it. Never "não conta".
-QUIET_RE = re.compile(
+_QUIET_RE = re.compile(
     rf"sil[êe]nci{_LETTERS}*"
     rf"|(?<!{_LETTERS})(?:cal(?:a|am|ou|aram|ada|adas|ado|ados|ar)|quiet{_LETTERS}*"
     rf"|segredo{_LETTERS}*)(?!{_LETTERS})"
@@ -315,7 +351,7 @@ def _stem(word: str) -> str:
     return word[:5]
 
 
-_ALLOWED_STEMS = {_stem(one) for one in _words(CLEAN_ALLOWED)}
+_ALLOWED_STEMS = {_stem(one) for one in _words(_CLEAN_ALLOWED)}
 
 
 def _tells_it(told: Told) -> Callable[[str], bool]:
@@ -356,7 +392,7 @@ def clean_round_fails(spoken: str, told: Told) -> list[str]:
             "clean round: the voice recites the passage — it names what the team told: "
             f'{", ".join(named)} (Marcia\'s ruling 2026-09-24: only "tem tudo", no detail)'
         )
-    quiet = QUIET_RE.search(spoken)
+    quiet = _QUIET_RE.search(spoken)
     if quiet:
         fails.append(
             f'clean round: the voice speaks of what the story keeps quiet: "{quiet.group(0)}"'
@@ -365,14 +401,14 @@ def clean_round_fails(spoken: str, told: Told) -> list[str]:
 
 
 #: The nuance pattern (her approved text, 2026-09-24): its words are free whatever the team told.
-NUANCE_PATTERN = (
+_NUANCE_PATTERN = (
     "Só um detalhe, na frase: vocês traduziram; a história conta que. Se foi só na tradução, "
     "toquem na frase e traduzam de novo. Se está assim no áudio e vocês quiserem mudar, "
     "regravem a frase inteira — a frase toda, nunca só um pedaço — e traduzam essa frase de "
     "novo. Se estiver bom assim, vocês podem ouvir tudo de novo, do começo ao fim, e aprovar "
     "como rascunho final."
 )
-_NUANCE_ALLOWED_STEMS = {_stem(one) for one in _words(NUANCE_PATTERN)}
+_NUANCE_ALLOWED_STEMS = {_stem(one) for one in _words(_NUANCE_PATTERN)}
 
 
 def nuance_round_fails(spoken: str, told: Told, finding: dict[str, Any]) -> list[str]:
@@ -419,7 +455,7 @@ def nuance_round_fails(spoken: str, told: Told, finding: dict[str, Any]) -> list
             "nuance round: the voice names more of the passage than the one detail — it says "
             f"what the team told: {', '.join(named)} (only the quote and the story's words for it)"
         )
-    kept_quiet = QUIET_RE.search(spoken)
+    kept_quiet = _QUIET_RE.search(spoken)
     if kept_quiet:
         fails.append(
             f'nuance round: the voice speaks of what the story keeps quiet: "{kept_quiet.group(0)}"'
@@ -468,7 +504,9 @@ def check_round(
         fails += no_finding(findings, expect["no_finding"])
     if expect.get("no_kinds"):
         fails += no_kinds(findings, expect["no_kinds"])
-    fails += no_findings_at_all(findings, expect["findings"])
+    voice = [one for one in findings if one["kind"] != "nuance" or one.get("voiced") == "now"]
+    fails += no_findings_at_all(findings, voice, expect["findings"])
+    fails += nuances_asked(findings, expect["findings"])
     if expect.get("voices_nuance") is not None:
         fails += voices_nuance(findings, expect["voices_nuance"], told, spoken)
     fails += conferida(result["conferida"], expect["conferida"], result["outcome"])
@@ -490,7 +528,7 @@ def check_round(
     if expect.get("spoken_whole_sentence") is not None:
         fails += asks_the_whole_sentence(spoken, expect["spoken_whole_sentence"])
     fails += one_frase_per_turn(spoken)
-    if expect["conferida"] and not expect["findings"] and not findings:
+    if expect["conferida"] and not expect["findings"] and not voice:
         fails += (
             clean_round_fails(spoken, told)
             if told
