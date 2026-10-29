@@ -485,15 +485,6 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{session_id}/release", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", {}),
             "ids": (session_id, absent),
-            #: The owner is refused too, and by a different door: 409 `DRAFT_NOT_APPROVED`,
-            #: because a session this far from approved has no manifest. That is the answer
-            #: to somebody who *is* the owner — a stranger gets 404, the same as for an id
-            #: that never existed. The two codes differing is what scoping means here, and
-            #: asserting 200 would mean approving a session inside a scope audit: the floor
-            #: met, rehearsal audio, a telling-back read by the analyst, a report of playback
-            #: and the approval. The audit would then fail whenever any of those changed,
-            #: which is every one of them except scope.
-            "owner_expects": 409,
         },
         {
             "method": "GET",

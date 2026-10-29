@@ -825,3 +825,26 @@ async def test_a_mark_made_while_the_passage_is_zerada_carries_the_archive_stamp
 
     assert archived
     assert await stamps_of(db_session, "ir_external_marks", session_id) == archived
+
+
+async def test_the_manifest_counts_the_external_checks_listeners_and_their_comments(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id, check = await an_open_check(room, db_session, tell=told_in_four_stretches)
+    by_number = {frase["frase"]: frase["segment_id"] for frase in check["frases"]}
+    await listener(room, session_id, 1)
+    await listener(room, session_id, 1)
+    await sent(room, session_id, 1, 1, recording(2, 41), "retell")
+    await sent(room, session_id, 1, 1, recording(2, 42), "whole")
+    await sent(room, session_id, 1, 1, recording(2, 43), "frase", by_number[3])
+
+    manifest = await room.client.get(
+        f"{IR}/facilitator/sessions/{session_id}/release", headers=room.desk
+    )
+
+    assert manifest.status_code == 200, manifest.text
+    assert manifest.json()["externalCheck"] == {
+        "listeners": 2,
+        "comments": 2,
+        "url": f"{IR}/facilitator/sessions/{session_id}/external-check/1",
+    }

@@ -356,14 +356,13 @@ def every_key(node: Any) -> Iterator[str]:
             yield from every_key(value)
 
 
-async def planted_and_forced(
+async def planted(
     client: httpx.AsyncClient, db: AsyncSession, room_app: App
 ) -> tuple[IRSession, dict[str, str]]:
     """A P01 session carrying a planted word in every place a frase, a note or a quote can sit.
 
     Its one stretch was told, then told again (the old words are a superseded row), the analyst
-    left a finding and a nuance on it, and an earlier attempt kept its own finding. The Desk
-    forced it.
+    left a finding and a nuance on it, and an earlier attempt kept its own finding.
     """
     project, credential = await a_claimed_device(db, language_name="Terena")
     session, part = await rehearsed_session(db, pericope=P01, project_id=project.id)
@@ -415,6 +414,13 @@ async def planted_and_forced(
     )
     await reported_playback(db, session, state)
     desk, _user = await at_the_desk(db, room_app, project)
+    return session, desk
+
+
+async def planted_and_forced(
+    client: httpx.AsyncClient, db: AsyncSession, room_app: App
+) -> tuple[IRSession, dict[str, str]]:
+    session, desk = await planted(client, db, room_app)
     await forced(client, desk, session)
     return session, desk
 
@@ -789,15 +795,135 @@ async def test_a_forced_drafts_manifest_says_forcada_and_names_nobody(client, db
     assert facilitator.id not in json.dumps(manifest)
 
 
-async def test_a_passage_never_approved_has_no_manifest(client, db_session, room_app):
+async def test_a_passage_never_approved_downloads_its_live_manifest_as_version_1(
+    client, db_session, room_app
+):
     project, _credential = await a_claimed_device(db_session, language_name="Terena")
     session = await ready_p01(db_session, project.id)
+    [take] = current_parts(await takes_of(db_session, session.id))
     desk, _user = await at_the_desk(db_session, room_app, project)
 
     read = await client.get(desk_release(session.id), headers=desk)
 
-    assert read.status_code == 409, read.text
-    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert read.status_code == 200, read.text
+    assert read.headers["content-disposition"] == saves_as(f"{RUTH_P01_V1}.json")
+    manifest = read.json()
+    assert list(manifest) == HER_KEYS
+    assert manifest["releaseId"] == RUTH_P01_V1
+    assert manifest["finalizedAt"] is None
+    assert manifest["finalizeCount"] == 0
+    assert manifest["check"] is None
+    assert manifest["externalCheck"] is None
+    [clip] = manifest["clips"]
+    assert clip["takeId"] == take.id
+    assert clip["filename"].startswith(f"{RUTH_P01_V1}-whole.")
+    assert not [w for w in manifest.get("warnings", []) if "approval record" in w]
+
+
+async def test_a_reopened_draft_downloads_its_live_manifest_under_the_last_releases_id(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    parts = current_parts(await takes_of(db_session, session.id))
+    await approved(client, credential, session)
+    again = await record_the_part_again(db_session, session, parts[0], sha256="d" * 64)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["releaseId"] == RUTH_P01_V1
+    assert manifest["finalizedAt"] is None
+    assert manifest["check"] is None
+    assert manifest["finalizeCount"] == 1
+    assert [clip["takeId"] for clip in manifest["clips"]] == [again.id, parts[1].id]
+    for clip in manifest["clips"]:
+        assert clip["filename"].startswith(f"{RUTH_P01_V1}-")
+
+
+async def test_a_passage_with_no_live_take_and_no_release_has_no_manifest(
+    client, db_session, room_app
+):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await create_session(db_session, pericope=P01, project_id=project.id, language="pt")
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    read = await client.get(desk_release(session.id), headers=desk)
+
+    assert read.status_code == 404, read.text
+
+
+async def test_the_live_manifest_carries_no_analysts_note(client, db_session, room_app):
+    session, desk = await planted(client, db_session, room_app)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["finalizedAt"] is None
+    carried = json.dumps(manifest, ensure_ascii=False)
+    for word in PLANTED:
+        assert word not in carried
+    assert CONSULTANT_KEYS.isdisjoint(every_key(manifest))
+
+
+async def test_a_live_manifests_take_links_last_one_hour(client, db_session, room_app):
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["clips"]
+    for clip in manifest["clips"]:
+        link = read_link(clip["url"])
+        assert link.lasts_s == AN_HOUR
+        assert link.saves_as == saves_as(clip["filename"])
+
+
+async def test_an_approved_passages_manifest_saves_as_its_release_id_with_the_approval_filled(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await ready_p01(db_session, project.id)
+    approval = await approved(client, credential, session)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    read = await client.get(desk_release(session.id), headers=desk)
+
+    assert read.status_code == 200, read.text
+    assert read.headers["content-disposition"] == saves_as(f"{RUTH_P01_V1}.json")
+    manifest = read.json()
+    assert manifest["releaseId"] == RUTH_P01_V1
+    assert manifest["finalizedAt"] == approval["approved_at"]
+    assert manifest["finalizeCount"] == 1
+    assert manifest["check"]["status"] == "conferida"
+
+
+async def test_the_whole_retro_and_external_check_links_open_for_the_facilitator_and_carry_no_expiry(  # noqa: E501
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    await approved(client, credential, session)
+    opened = await client.post(
+        f"{PREFIX}/sessions/{session.id}/external-check/open", headers=team_headers(credential)
+    )
+    assert opened.status_code == 200, opened.text
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    stranger, _other = await a_claimed_device(db_session, language_name="Kaiowá")
+    strangers_desk, _who = await at_the_desk(db_session, room_app, stranger)
+
+    manifest = await manifest_of(client, desk, session)
+
+    links = [
+        manifest["whole"]["url"],
+        manifest["check"]["retroUrl"],
+        manifest["externalCheck"]["url"],
+    ]
+    for link in links:
+        assert link.startswith(f"{PREFIX}/facilitator/")
+        assert "X-Goog-Expires" not in link
+        assert (await client.get(link, headers=desk)).status_code == 200, link
+        assert (await client.get(link, headers=strangers_desk)).status_code == 404, link
 
 
 async def test_a_frase_told_after_the_approval_leaves_the_manifest_of_the_approved_version(
@@ -852,17 +978,17 @@ async def test_a_force_over_a_standing_version_answers_it_and_records_no_force(
     assert len(await releases_of(db_session, session.id)) == 1
 
 
-async def test_a_passage_the_gate_refuses_has_no_manifest(client, db_session, room_app):
+async def test_a_passage_the_gate_refuses_downloads_its_live_manifest(client, db_session, room_app):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
     assert refused.json()["blockers"] == ["telling_back_not_checked"], refused.text
     desk, _user = await at_the_desk(db_session, room_app, project)
 
-    read = await client.get(desk_release(session.id), headers=desk)
+    manifest = await manifest_of(client, desk, session)
 
-    assert read.status_code == 409, read.text
-    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
+    assert manifest["finalizedAt"] is None
+    assert manifest["check"] is None
 
 
 async def test_a_facilitator_of_another_team_is_not_told_the_manifest_exists(
@@ -1083,7 +1209,7 @@ async def test_a_passage_whose_canon_is_gone_is_refused_by_its_canon_and_not_as_
     assert session.canon_pin in read.json()["detail"]
 
 
-async def test_a_take_that_lands_after_the_approval_is_judged_is_never_listed_as_approved(
+async def test_a_take_that_lands_after_the_approval_is_judged_is_read_live_never_as_approved(
     client, db_session, room_app, monkeypatch
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
@@ -1103,9 +1229,9 @@ async def test_a_take_that_lands_after_the_approval_is_judged_is_never_listed_as
 
     read = await client.get(desk_release(session.id), headers=desk)
 
-    assert read.status_code == 409, read.text
-    assert read.json()["code"] == "DRAFT_NOT_APPROVED"
-    assert landed[0].id not in read.text
+    assert read.status_code == 200, read.text
+    assert read.json()["finalizedAt"] is None
+    assert read.json()["check"] is None
 
 
 async def test_a_zerar_retires_the_approval_until_the_new_session_approves(
@@ -1166,3 +1292,53 @@ async def test_a_release_stored_as_a_force_that_waived_nothing_reads_as_an_ordin
 
     assert (manifest["check"]["forced"], manifest["check"]["status"]) == (False, "conferida")
     assert facilitator.id not in json.dumps(manifest)
+
+
+async def test_a_new_session_with_no_take_has_no_manifest_though_the_passage_has_a_release(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    earlier = await ready_p01(db_session, project.id)
+    await approved(client, credential, earlier)
+    later = await create_session(db_session, pericope=P01, project_id=project.id, language="pt")
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    read = await client.get(desk_release(later.id), headers=desk)
+
+    assert read.status_code == 404, read.text
+
+
+async def test_a_reopened_drafts_live_manifest_points_to_no_external_check(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
+    parts = current_parts(await takes_of(db_session, session.id))
+    await approved(client, credential, session)
+    opened = await client.post(
+        f"{PREFIX}/sessions/{session.id}/external-check/open", headers=team_headers(credential)
+    )
+    assert opened.status_code == 200, opened.text
+    await record_the_part_again(db_session, session, parts[0], sha256="d" * 64)
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["finalizedAt"] is None
+    assert manifest["externalCheck"] is None
+
+
+async def test_a_seam_session_that_holds_declared_parts_downloads_its_live_manifest(
+    client, db_session, room_app
+):
+    from app.services.internalization_room.takes import declare_rehearsal_parts
+
+    project, _credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await create_session(db_session, pericope=P01, project_id=project.id, language="pt")
+    await declare_rehearsal_parts(db_session, session, ["S1", "S2"])
+    desk, _user = await at_the_desk(db_session, room_app, project)
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert manifest["finalizedAt"] is None
+    assert manifest["clips"] == []

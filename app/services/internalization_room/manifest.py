@@ -3,26 +3,37 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import DraftNotApproved
+from app.core.exceptions import DraftNotApproved, NotFoundError
 from app.db.models.internalization_room import IRRelease, IRSceneRehearsal, IRSession, IRTake
-from app.services.internalization_room.approved_draft import approved_draft, stands_on
+from app.services.device.demo_team import is_the_demo_team
+from app.services.internalization_room.approved_draft import (
+    approved_draft,
+    latest_release,
+    stands_on,
+)
 from app.services.internalization_room.back_translation import LaidInSentence
 from app.services.internalization_room.canon.book_material import meaning_map_ref
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.check_block import passage_retro_url
 from app.services.internalization_room.coverage import is_panorama
+from app.services.internalization_room.outside_listeners import (
+    ExternalCheckPointer,
+    external_check_pointer,
+)
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     _mother_tongue,
     _recording_grain,
     packet_as_read,
+    release_name,
     released_as,
 )
 from app.services.internalization_room.sessions import back_translation_of
@@ -80,23 +91,83 @@ async def manifest_clips(
     return release, takes, [part for part in parts if not is_declared(part)]
 
 
-async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """The manifest of this session's approved draft, or ``DraftNotApproved``.
+@dataclass
+class _Reading:
+    """What differs between the manifest of a standing approval and the live one."""
 
-    Built from the release the draft stands approved under, the session's current parts and
-    the canon read at the session's pin. It carries no frase's words, no note, no superseded
-    take, nobody who forced it, no order clock and no clock offset: those are the consultant's,
-    in the **Retroverification file**, and the stored **Packet** stays the record.
+    release_id: str
+    language: str | None
+    finalized_at: str | None
+    finalize_count: int
+    check: dict[str, Any] | None
+    external_check: ExternalCheckPointer | None
+    warn_no_check: bool
+
+
+async def _of_the_approval(db: AsyncSession, session: IRSession, release: IRRelease) -> _Reading:
+    packet = packet_as_read(release)
+    stored_check = packet.get("check")
+    check = _her_check(stored_check, session) if stored_check else None
+    return _Reading(
+        release_id=released_as(release),
+        language=packet["language"] if "language" in packet else await _mother_tongue(db, session),
+        finalized_at=as_utc(release.approved_at).isoformat(),
+        finalize_count=release.version,
+        check=check,
+        external_check=await external_check_pointer(db, release),
+        warn_no_check=check is None,
+    )
+
+
+async def _of_the_live_draft(db: AsyncSession, session: IRSession) -> _Reading:
+    """The draft as it stands, named after the passage's last release: version 1 when none."""
+    if (
+        session.project_id is None
+        or session.archive_id is not None
+        or await is_the_demo_team(db, session.project_id)
+    ):
+        raise DraftNotApproved(f"Internalization room session {session.id} has no approved draft")
+    language = await _mother_tongue(db, session)
+    last = await latest_release(db, session.project_id, session.pericope)
+    return _Reading(
+        release_id=released_as(last) if last else release_name(language, session.pericope, 1),
+        language=language,
+        finalized_at=None,
+        finalize_count=last.version if last else 0,
+        check=None,
+        external_check=None,
+        warn_no_check=False,
+    )
+
+
+async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+    """The manifest of this session's draft: the approved one, or the live one before approval.
+
+    A draft that stands approved is built from the release it stands under. Any other draft of
+    a live team session is read as it is now, under the passage's last release's id (version 1
+    when none), with an empty finalised time and an empty check, and is ``NotFoundError`` when
+    it holds no take. An archived, demo or team-less session is ``DraftNotApproved``. Both read
+    the session's current parts and the canon at the session's pin. Neither carries a frase's
+    words, a note, a superseded take, nobody who forced it, no order clock and no clock offset:
+    those are the consultant's, in the **Retroverification file**, and the stored **Packet**
+    stays the record.
     """
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
     with reading_the_canon_of(session.canon_pin):
         meaning_map = meaning_map_ref(session.pericope)
         reference = load_map(session.pericope).reference
-    release, takes, clips = await manifest_clips(db, session)
+    release = await approved_draft(db, session)
+    takes = await takes_of(db, session.id)
     parts = current_parts(takes)
-    packet = packet_as_read(release)
-    release_id = released_as(release)
+    if release is not None and stands_on(release, parts):
+        reading = await _of_the_approval(db, session, release)
+    else:
+        reading = await _of_the_live_draft(db, session)
+    clips = [part for part in parts if not is_declared(part)]
+    if reading.finalized_at is None and not parts:
+        raise NotFoundError(f"Internalization room session {session.id} holds no take")
+    release_id = reading.release_id
     keys = part_keys_by_number(parts)
     names = [file_name(release_id, keys[part.ordinal], part) for part in clips]
     links = await asyncio.gather(
@@ -111,18 +182,14 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     warnings = []
     if meaning_map is None:
         warnings.append(f"no vendored meaning-map for {session.pericope} in VENDOR_MANIFEST.json")
-    stored_check = packet.get("check")
-    check = _her_check(stored_check, session) if stored_check else None
-    if check is None:
+    if reading.warn_no_check:
         warnings.append(NO_CHECK_RECORDED)
 
     manifest: dict[str, Any] = {
         "releaseId": release_id,
         "pericopeId": session.pericope,
         "reference": reference,
-        "language": packet["language"]
-        if "language" in packet
-        else await _mother_tongue(db, session),
+        "language": reading.language,
     }
     if session.language:
         manifest["sessionLanguage"] = session.language
@@ -135,8 +202,8 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
             )
             for part, name, link in zip(clips, names, links, strict=True)
         ],
-        "finalizedAt": as_utc(release.approved_at).isoformat(),
-        "finalizeCount": release.version,
+        "finalizedAt": reading.finalized_at,
+        "finalizeCount": reading.finalize_count,
         "sessionIds": await _session_ids(db, session),
         "audioFormat": AUDIO_FORMAT
         if clips and all(is_wav(part.content_type) for part in clips)
@@ -146,8 +213,8 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
         manifest["whole"] = {"filename": whole_filename(release_id), "url": whole_url(session.id)}
     manifest |= {
         "integrity": INTEGRITY,
-        "externalCheck": None,
-        "check": check,
+        "externalCheck": reading.external_check.model_dump() if reading.external_check else None,
+        "check": reading.check,
     }
     if warnings:
         manifest["warnings"] = warnings

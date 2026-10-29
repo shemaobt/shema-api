@@ -26,6 +26,7 @@ from app.db.models.internalization_room import (
     IRSession,
 )
 from app.models.internalization_room import (
+    ExternalCheckPointer,
     ListenerFacts,
     ListenerFactsFrase,
     ListenerFraseView,
@@ -43,6 +44,11 @@ from app.utils.stored_time import as_utc
 #: The house loop's bound (``scene_rehearsals.NUMBERING_TRIES``), not imported from there
 #: because that module hears, and this one may not reach anything that does.
 NUMBERING_TRIES = 50
+
+#: Where the facilitator reads a version's listeners, which the manifest points to.
+EXTERNAL_CHECK_ROUTE = (
+    "/api/internalization-room/facilitator/sessions/{session_id}/external-check/{version}"
+)
 
 
 async def the_check_of_version(
@@ -405,3 +411,33 @@ async def listeners_counted(db: AsyncSession, release: IRRelease) -> int:
         .where(IRExternalCheck.release_id == release.id)
     )
     return int(counted or 0)
+
+
+async def comments_counted(db: AsyncSession, release: IRRelease) -> int:
+    """How many whole-passage and frase comments this release's check holds, not the retelling."""
+    counted = await db.scalar(
+        select(func.count(IRExternalRecording.id))
+        .join(IRExternalCheck, IRExternalCheck.id == IRExternalRecording.check_id)
+        .where(
+            IRExternalCheck.release_id == release.id,
+            IRExternalRecording.kind.in_(
+                (IRExternalRecordingKind.WHOLE, IRExternalRecordingKind.FRASE)
+            ),
+        )
+    )
+    return int(counted or 0)
+
+
+async def external_check_pointer(
+    db: AsyncSession, release: IRRelease
+) -> ExternalCheckPointer | None:
+    """Her ``externalCheck`` for a release: how many listened, how many commented, and the
+    facilitator's read of them; none while the team has not opened the check."""
+    check = await db.scalar(select(IRExternalCheck).where(IRExternalCheck.release_id == release.id))
+    if check is None:
+        return None
+    return ExternalCheckPointer(
+        listeners=await listeners_counted(db, release),
+        comments=await comments_counted(db, release),
+        url=EXTERNAL_CHECK_ROUTE.format(session_id=check.session_id, version=check.version),
+    )

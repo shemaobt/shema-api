@@ -610,6 +610,14 @@ class ListenerFactsFrase(BaseModel):
     comments: int
 
 
+class ExternalCheckPointer(BaseModel):
+    """What the Manifest says of a version's external check: her three keys, in her order."""
+
+    listeners: int
+    comments: int
+    url: str
+
+
 class ListenerFacts(BaseModel):
     """What the team reads back of a listener: facts, never a recording of theirs."""
 
