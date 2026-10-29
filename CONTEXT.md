@@ -50,7 +50,7 @@ A message on a team's stream from the server to the Desk saying that something t
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
 **Attention** (*Atendimento*):
-What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
+What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalização, where it was raised; a finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
 **Reply** (*resposta*):
@@ -62,7 +62,7 @@ Where a team stands in Marcia's flow, as the Desk reads it in her words: the Fam
 _Avoid_: Retradução, Retroverificação as a phase (it is the file), step (the tablet's substate of a station), stage, tab, Etapa
 
 **Moment** (*momento*):
-Where a session's conversation stands in Marcia's flow as the voice last said it: the Familiarização, the Internalização or Articulação of scene n of k, or the Ensaio Final. Read from the lines the Guide spoke, kept per session and per turn with what moved it, served to the Desk and the dossier, and never guessed from the screen (her `momentAtTurnStart`). A session stored before moments were kept has none, and the Desk says so.
+Where a session's conversation stands in Marcia's flow as the voice last said it: the Familiarização, the Internalização or Articulação of scene n of k, or the Ensaio Final. Read from the lines the Guide spoke, kept per session and per turn with what moved it, served to the Desk and the dossier, and never guessed from the screen (her `momentAtTurnStart`). A session has no moment before the Guide's first line, as a Panorama, and when it was kept before the moment was read; the Desk then says so.
 _Avoid_: phase (the facilitator's reading of the whole flow), stage, step, Momento
 
 **Room**:
