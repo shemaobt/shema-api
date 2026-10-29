@@ -332,7 +332,6 @@ async def test_a_session_of_five_turns_reads_as_five_pairs_oldest_first_each_wit
     turns = await _read(client, room)
 
     assert [turn["voice"]["text"] for turn in turns] == [OPENING, *LINES]
-    assert turns[0]["team"] is None
     assert [turn["team"] for turn in turns[1:]] == [
         {
             "language": "pt",
@@ -715,7 +714,6 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
 
     (opening, old) = await _read(client, room)
 
-    assert opening["team"] is None
     assert opening["voice"]["outcome"] == "no_record"
     assert old["team"] == {
         "language": None,

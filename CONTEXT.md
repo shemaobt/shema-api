@@ -411,7 +411,7 @@ The Internalization's lines between the team and the Guide, as the Desk reads th
 _Avoid_: transcript, chat, history
 
 **Turns** (of a session):
-The Conversation read as pairs, oldest first: the team's side (how the take was heard, whether it cut the voice off, and what the Guide received of it) and the voice's side (how containment ended, the attempts, the times, the model, the line voiced and its clip). The opening has no team side; the telling-back round is not part of it.
+The Conversation read as pairs, oldest first: the team's side (how the take was heard, whether it cut the voice off, and what the Guide received of it) and the voice's side (how containment ended, the attempts, the times, the model, the line voiced and its clip). The Opening's team side is the opening **Room note** the Guide received, empty when the session kept none; the telling-back round is not part of it.
 _Avoid_: transcript, timeline, Transcrição ao vivo
 
 **Boundary turn**:

@@ -1591,6 +1591,14 @@ class TurnTeamSide(BaseModel):
     mother_tongue: bool | None
     interrupted_at_s: float | None
     guide_heard: str | None
+    note_kind: Literal["opening"] | None = None
+
+    @model_serializer(mode="wrap")
+    def _a_turn_that_is_no_note_carries_no_mark(self, handler: Any):  # type: ignore[no-untyped-def]
+        served: dict[str, Any] = handler(self)
+        if self.note_kind is None:
+            served.pop("note_kind", None)
+        return served
 
 
 TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
@@ -1658,7 +1666,7 @@ class TurnVoiceSide(BaseModel):
 
 
 class SessionTurn(BaseModel):
-    team: TurnTeamSide | None
+    team: TurnTeamSide
     voice: TurnVoiceSide
 
 

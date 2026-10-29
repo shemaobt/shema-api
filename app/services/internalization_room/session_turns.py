@@ -84,13 +84,14 @@ def is_boundary_turn(outcome: TurnOutcomeCode, text: str, *, opening: bool) -> b
 def turns_of(session: IRSession) -> SessionTurnsResponse:
     """The session's turns, oldest first, as the team's side and the voice's side of each.
 
-    The opening has no team side.
+    The opening's team side is its stored opening note.
     """
+    note = stored_opening_note(session)
     return SessionTurnsResponse(
         session_id=session.id,
         turns=[
             SessionTurn(
-                team=None if opening else _team_side(guide),
+                team=_opening_side(note) if opening else _team_side(guide),
                 voice=_voice_side(guide, session.id, number, opening=opening),
             )
             for number, (guide, opening) in enumerate(_voice_turns(session))
@@ -99,12 +100,11 @@ def turns_of(session: IRSession) -> SessionTurnsResponse:
 
 
 def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
-    kickoff = stored_opening_note(session)
     marked = [
         BoundaryTurn(
             number=number,
             outcome=turn.voice.outcome,
-            team=(turn.team.guide_heard if turn.team else kickoff) or "",
+            team=turn.team.guide_heard or "",
             guide=turn.voice.text,
         )
         for number, turn in enumerate(turns_of(session).turns)
@@ -177,6 +177,18 @@ def team_turn_of(session: IRSession, number: int) -> TeamTurn:
 
 def last_turn_number(session: IRSession) -> int:
     return len(_voice_turns(session)) - 1
+
+
+def _opening_side(note: str) -> TurnTeamSide:
+    return TurnTeamSide(
+        language=None,
+        language_probability=None,
+        take_ms=None,
+        mother_tongue=None,
+        interrupted_at_s=None,
+        guide_heard=note,
+        note_kind="opening",
+    )
 
 
 def _team_side(guide: dict[str, Any]) -> TurnTeamSide:
