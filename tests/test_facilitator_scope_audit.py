@@ -774,3 +774,189 @@ async def test_a_listing_route_leaves_out_the_other_teams_rows(client, db_sessio
     teams = {row["team_id"] for row in listed.json()["teams"]}
     assert a.project.id in teams, "o cenario nao provou nada: o dono nao viu a propria equipe"
     assert b.project.id not in teams, "a lista mostrou a equipe de outro facilitador"
+
+
+# --- ENG-1770: a team that does not exist is nobody's to write on, a platform admin's included
+
+NO_TEAM = "equipe-que-nao-existe"
+TEAM_NOT_FOUND = {"detail": "Team not found", "code": "NOT_FOUND"}
+
+
+class _TheTeamThatDoesNotExist:
+    project = type("Project", (), {"id": NO_TEAM})()
+
+
+async def _a_platform_admin(db: AsyncSession, *, email: str) -> dict[str, str]:
+    from app.services.auth.issue_tokens import issue_tokens
+
+    user = await make_user(db, email=email, is_platform_admin=True)
+    access, _refresh = await issue_tokens(db, user)
+    return {"Authorization": f"Bearer {access}"}
+
+
+def _not_found(what: str, identifier: str) -> dict[str, str]:
+    return {"detail": f"{what} {identifier} not found", "code": "NOT_FOUND"}
+
+
+async def test_a_platform_admin_zerar_on_a_team_that_does_not_exist_answers_404(client, db_session):
+    from sqlalchemy import func, select
+
+    from app.db.models.internalization_room import IRArchive
+
+    admin = await _a_platform_admin(db_session, email="admin-zerar-sem-equipe@example.com")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{NO_TEAM}/passages/P03/archive", headers=admin
+    )
+
+    assert (answer.status_code, answer.json()) == (404, TEAM_NOT_FOUND)
+    assert await db_session.scalar(select(func.count()).select_from(IRArchive)) == 0
+
+
+async def test_a_platform_admin_forcing_a_passage_of_a_team_that_does_not_exist_answers_404(
+    client, db_session
+):
+    from sqlalchemy import func, select
+
+    from app.db.models.internalization_room import IRRelease
+
+    admin = await _a_platform_admin(db_session, email="admin-forca-passagem@example.com")
+    await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "fp")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{NO_TEAM}/passages/P03/release", headers=admin, **FORCE
+    )
+
+    assert (answer.status_code, answer.json()) == (404, TEAM_NOT_FOUND)
+    assert await db_session.scalar(select(func.count()).select_from(IRRelease)) == 0
+
+
+async def test_a_platform_admin_replying_to_a_question_of_a_team_that_does_not_exist_answers_404(
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-responde-pergunta@example.com")
+    question_id = await _a_question_of(db_session, _TheTeamThatDoesNotExist, "rp")
+
+    answer = await client.post(
+        f"{IR}/facilitator/questions/{question_id}/reply", headers=admin, **AUDIO
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Question", question_id),
+    )
+    question = await db_session.get(IRQuestion, question_id)
+    await db_session.refresh(question)
+    assert question.status == IRQuestionStatus.OPEN
+    assert question.reply_audio_key is None
+
+
+async def test_a_platform_admin_resolving_a_question_of_a_team_that_does_not_exist_answers_404(
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-resolve-pergunta@example.com")
+    question_id = await _a_question_of(db_session, _TheTeamThatDoesNotExist, "rs")
+
+    answer = await client.post(f"{IR}/facilitator/questions/{question_id}/resolve", headers=admin)
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Question", question_id),
+    )
+    question = await db_session.get(IRQuestion, question_id)
+    await db_session.refresh(question)
+    assert question.status == IRQuestionStatus.OPEN
+
+
+async def test_a_platform_admin_marking_a_visit_on_a_session_of_a_team_that_does_not_exist_answers_404(  # noqa: E501
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-marca-visita@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "mv")
+
+    answer = await client.post(
+        f"{IR}/facilitator/sessions/{session_id}/attended", headers=admin, **NEVER_HALTED
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Internalization room session", session_id),
+    )
+    session = await db_session.get(IRSession, session_id)
+    await db_session.refresh(session)
+    assert session.attended_at is None
+
+
+async def test_a_platform_admin_undoing_a_visit_on_a_session_of_a_team_that_does_not_exist_answers_404(  # noqa: E501
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-desfaz-visita@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "dv")
+    visited = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    await db_session.execute(
+        update(IRSession).where(IRSession.id == session_id).values(attended_at=visited)
+    )
+    await db_session.commit()
+
+    answer = await client.delete(
+        f"{IR}/facilitator/sessions/{session_id}/attended", headers=admin, **NEVER_HALTED
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Internalization room session", session_id),
+    )
+    session = await db_session.get(IRSession, session_id)
+    await db_session.refresh(session)
+    assert session.attended_at is not None
+
+
+async def test_a_platform_admin_forcing_the_release_of_a_session_of_a_team_that_does_not_exist_answers_404(  # noqa: E501
+    client, db_session
+):
+    from sqlalchemy import func, select
+
+    from app.db.models.internalization_room import IRRelease
+
+    admin = await _a_platform_admin(db_session, email="admin-forca-liberacao@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "fl")
+
+    answer = await client.post(
+        f"{IR}/facilitator/sessions/{session_id}/release", headers=admin, **FORCE
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Internalization room session", session_id),
+    )
+    assert await db_session.scalar(select(func.count()).select_from(IRRelease)) == 0
+
+
+async def test_a_facilitator_zerar_on_a_real_team_not_theirs_answers_as_today(client, db_session):
+    a = await a_facilitator(db_session, email="zerar-a-equipe-alheia-a@example.com")
+    b = await a_facilitator(db_session, email="zerar-a-equipe-alheia-b@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, b, "ze")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{b.project.id}/passages/P03/archive", headers=a.headers
+    )
+
+    assert (answer.status_code, answer.json()) == (404, TEAM_NOT_FOUND)
+    session = await db_session.get(IRSession, session_id)
+    await db_session.refresh(session)
+    assert session.archive_id is None
+
+
+async def test_a_platform_admin_zerar_on_a_real_team_answers_as_today(client, db_session):
+    admin = await _a_platform_admin(db_session, email="admin-zerar-equipe-real@example.com")
+    owner = await a_facilitator(db_session, email="dona-da-equipe-real@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, owner, "zr")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{owner.project.id}/passages/P03/archive", headers=admin
+    )
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["archived"] is True
+    assert [entry["session_id"] for entry in body["archive"]["sessions"]] == [session_id]

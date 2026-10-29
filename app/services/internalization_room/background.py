@@ -21,6 +21,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.sessions import apply_coverage, get_session
@@ -162,9 +163,13 @@ async def transcribe_question(*, question_id: str, audio: bytes) -> None:
     try:
         async with AsyncSessionLocal() as db:
             question = await get_question(db, question_id)
-            spoken = room_language((await get_session(db, question.session_id)).language)
+            session = await get_session(db, question.session_id)
+            spoken = room_language(session.language)
+            team_id = session.project_id
             await db.commit()
             await transcribe_for_the_desk(db, question, audio, language=spoken)
+            if question.transcript is not None:
+                nudge(team_id, "hands")
     except TranscriptionDefect:
         logger.exception("Transcription of question %s broke on our side", question_id)
     except Exception:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple
 
 from app.core.config import get_settings
@@ -20,6 +20,7 @@ from app.models.internalization_room import (
 )
 from app.services.internalization_room.conversation import the_conversation
 from app.services.internalization_room.name_check import stored_opening_note
+from app.services.internalization_room.questions import SignedAudio
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -112,8 +113,8 @@ def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
     return SessionBoundaryTurnsResponse(session_id=session.id, count=len(marked), turns=marked)
 
 
-async def turn_clip_url(session: IRSession, number: int) -> str:
-    """A short-lived signed address for the clip of one voice turn.
+async def turn_listen_address(session: IRSession, number: int) -> SignedAudio:
+    """A short-lived signed address for the clip of one voice turn, and the instant it dies.
 
     The clip the turn stored is played whenever its object is still there, whichever voice
     made it. A turn stored without one, or whose object is gone, is voiced once in the
@@ -132,12 +133,13 @@ async def turn_clip_url(session: IRSession, number: int) -> str:
             entry.get("text", ""), language=session.language
         )
         key = voiced.key
-    return await gcs_utils.generate_signed_download_url(
+    url = await gcs_utils.generate_signed_download_url(
         settings.gcs_platform_bucket,
         key,
         expiry_minutes=LISTEN_MINUTES,
         response_content_type=MIME_TYPE,
     )
+    return SignedAudio(url=url, expires_at=datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES))
 
 
 def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:

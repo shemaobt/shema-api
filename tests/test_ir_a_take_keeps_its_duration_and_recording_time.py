@@ -46,7 +46,7 @@ from tests.room_harness import (
     the_bucket_is_in_memory,
     the_room_speaks,
 )
-from tests.scene_rehearsal_harness import recording
+from tests.scene_rehearsal_harness import recording, the_take_lasts_as_long_as_its_wav
 from tests.sentence_harness import re_record, spoken, take_named
 
 TEN_OH_TWO = "2026-10-20T10:02:00+00:00"
@@ -60,6 +60,7 @@ WAV_FORMAT_OF_THE_TICKET = {
 
 @pytest.fixture(autouse=True)
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_take_lasts_as_long_as_its_wav(monkeypatch)
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
 

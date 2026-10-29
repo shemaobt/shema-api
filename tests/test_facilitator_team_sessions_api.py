@@ -38,6 +38,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     a_language,
+    an_email,
     grant_facilitator_app_role,
     keep_a_take,
     make_project,
@@ -85,7 +86,7 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
     """Someone who facilitates this team **and** holds the room's facilitator role.
 
     Two different things since ENG-438, and both are needed to reach the handler: the app
@@ -93,6 +94,7 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
     refuses everyone else is `test_facilitator_role_gate.py`'s subject, and this route is in
     its table.
     """
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -622,3 +624,16 @@ async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_sessi
         "person_arrived_at",
         "coverage",
     }
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"

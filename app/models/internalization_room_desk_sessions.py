@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.internalization_room import MomentView
+
 
 class DeskSessionState(StrEnum):
     IN_PROGRESS = "in_progress"
@@ -24,7 +26,10 @@ class DeskSession(BaseModel):
     reference: str | None
     language: str
     state: DeskSessionState
+    started_at: datetime
     last_activity_at: datetime
+    scene: str | None
+    moment: MomentView | None
     ended_at: datetime | None
     attended_at: datetime | None
     attended_by: str | None

@@ -49,6 +49,20 @@ def recording(seconds: float, tone: int) -> bytes:
 SCENE = recording(40, 1)
 
 
+def the_take_lasts_as_long_as_its_wav(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The harness gives each take the length of the WAV it was recorded as, not a probe's."""
+    from app.services.platform import audio_duration
+
+    async def measure(audio: bytes) -> int | None:
+        try:
+            with wave.open(io.BytesIO(audio), "rb") as wav:
+                return round(wav.getnframes() * 1000 / wav.getframerate())
+        except (wave.Error, EOFError):
+            return None
+
+    monkeypatch.setattr(audio_duration, "measure_ms", measure)
+
+
 def the_kept_p02_tells_its_appeals_as_one_scene(tree: Path) -> None:
     told = tree / "vendor" / "meaning-map" / "P02-Ruth-1-6-14.md"
     text = told.read_text(encoding="utf-8")
@@ -101,6 +115,7 @@ async def a_room(
         return f"https://storage.example/{key}"
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
+    the_take_lasts_as_long_as_its_wav(monkeypatch)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
     monkeypatch.setattr(takes_service, "generate_signed_download_url", _sign)
     bucket = MemoryStore()
