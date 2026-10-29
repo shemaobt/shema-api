@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -27,7 +28,7 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core import stage_clock
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room import llm
+from app.services.internalization_room import llm, session_turns
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.oral_collector import gcs_utils
@@ -292,8 +293,9 @@ async def _read(client: httpx.AsyncClient, room: Room) -> list[dict[str, Any]]:
 
 async def _play(client: httpx.AsyncClient, room: Room, turn: dict[str, Any]) -> str:
     response = await client.get(turn["voice"]["audio_url"], headers=room.desk)
-    assert response.status_code == 307, response.text[:300]
-    return response.headers["location"].removeprefix("https://signed.test/plataforma/")
+    assert response.status_code == 200, response.text[:300]
+    assert set(response.json()) == {"url", "expires_at"}
+    return response.json()["url"].removeprefix("https://signed.test/plataforma/")
 
 
 async def _what_the_tablet_heard(client: httpx.AsyncClient, room: Room, audio_url: str) -> bytes:
@@ -591,6 +593,60 @@ async def test_playing_a_turn_stored_before_this_change_synthesizes_it_once_in_t
     assert elevenlabs.voices == [get_settings().internalization_room_voice_id]
     assert second == first
     assert first in bucket.objects
+
+
+async def test_playing_a_turn_answers_a_signed_address_of_its_clip_and_the_instant_it_dies_in_the_future_with_an_offset(  # noqa: E501
+    client, db_session, room_app, script, elevenlabs, bucket
+) -> None:
+    room = await _a_room(db_session, room_app)
+    script.drafts = [OPENING, LINES[0]]
+    opened = await _opens(client, room)
+    script.heard = _heard(WORDS[0])
+    await _says(client, room, "uma-vez")
+    heard = await _what_the_tablet_heard(client, room, opened["audio_url"])
+
+    (opening, _turn) = await _read(client, room)
+    response = await client.get(opening["voice"]["audio_url"], headers=room.desk)
+
+    assert response.status_code == 200, response.text[:300]
+    body = response.json()
+    assert set(body) == {"url", "expires_at"}
+    assert bucket.objects[body["url"].removeprefix("https://signed.test/plataforma/")] == heard
+    expires_at = datetime.fromisoformat(body["expires_at"])
+    assert expires_at.tzinfo is not None
+    window = (expires_at - datetime.now(UTC)).total_seconds()
+    assert 0 < window <= session_turns.LISTEN_MINUTES * 60
+
+
+async def test_the_same_turn_played_twice_within_the_window_answers_200_both_times_and_leaves_the_session_unchanged(  # noqa: E501
+    client, db_session, room_app, script, per_request
+) -> None:
+    room = await _a_room(db_session, room_app)
+    script.drafts = [OPENING, LINES[0]]
+    await _opens(client, room)
+    script.heard = _heard(WORDS[0])
+    await _says(client, room, "duas-vezes")
+    before = await _row(per_request, room.session_id)
+    (_opening, turn) = await _read(client, room)
+
+    first = await client.get(turn["voice"]["audio_url"], headers=room.desk)
+    second = await client.get(turn["voice"]["audio_url"], headers=room.desk)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert first.json()["url"] == second.json()["url"]
+    assert await _row(per_request, room.session_id) == before
+
+
+async def test_playing_a_turn_past_the_last_voice_turn_is_not_found(
+    client, db_session, room_app, script, elevenlabs, bucket
+) -> None:
+    room = await _a_room(db_session, room_app)
+    script.drafts = [OPENING]
+    await _opens(client, room)
+
+    response = await client.get(f"{_turns_of(room.session_id)}/1/audio", headers=room.desk)
+
+    assert response.status_code == 404, response.text[:300]
 
 
 async def test_reading_a_live_sessions_turns_and_playing_one_leaves_the_session_unchanged(

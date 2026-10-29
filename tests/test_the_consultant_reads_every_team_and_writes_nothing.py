@@ -273,6 +273,7 @@ def _answer(response: httpx.Response) -> tuple[int, Any]:
     body = response.json()
     if isinstance(body, dict):
         body.pop("generated_at", None)
+        body.pop("expires_at", None)
     return response.status_code, body
 
 
@@ -373,6 +374,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/retro",
         f"{IR}/facilitator/sessions/{session}/re-recorded-sentences",
         f"{IR}/facilitator/sessions/{session}/takes/whole",
+        f"{IR}/facilitator/sessions/{session}/turns/0/audio",
     ]
 
     values = {"session_id": session, "number": 0, "version": 1, "sentence_id": "frase-b"}
@@ -404,6 +406,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         reads[10],
         reads[11],
         reads[12],
+        reads[14],
     ):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
@@ -447,7 +450,10 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         b"a facilitadora respondeu"
     )
     assert take.status_code == 307, take.text[:300]
-    assert turn.status_code == 307, turn.text[:300]
+    assert turn.status_code == 200, turn.text[:300]
+    assert bucket.objects[turn.json()["url"].removeprefix("https://signed.test/plataforma/")] == (
+        b"a voz falou"
+    )
     assert sentence.status_code == 307, sentence.text[:300]
     assert await _row(per_request, IRSession, team.session) == session_before
     assert await _row(per_request, IRQuestion, team.question) == question_before

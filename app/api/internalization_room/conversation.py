@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
 from app.models.internalization_room import (
     ConversationResponse,
+    QuestionAudioResponse,
     SessionBoundaryTurnsResponse,
     SessionCoverageResponse,
     SessionTurnsResponse,
@@ -68,20 +68,17 @@ async def read_the_boundary_turns(
 
 @router.get(
     "/facilitator/sessions/{session_id}/turns/{number}/audio",
-    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    response_class=RedirectResponse,
-    response_model=None,
+    response_model=QuestionAudioResponse,
 )
 async def listen_to_turn(
     session_id: str, number: int, user: ReaderUser, db: AsyncSession = Depends(get_db)
-) -> RedirectResponse:
-    """Redirect to a short-lived signed URL of the turn's clip, as a take's audio door does.
+) -> QuestionAudioResponse:
+    """A short-lived signed address of the turn's clip and when it dies, as the question's door.
 
     The database is let go before the clip is looked up, because a missing clip is voiced on
     the way.
     """
     session = await room.get_session_for_reader(db, user, session_id)
     await db.commit()
-    return RedirectResponse(
-        await turn_clip_url(session, number), status_code=status.HTTP_307_TEMPORARY_REDIRECT
-    )
+    signed = await turn_clip_url(session, number)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())
