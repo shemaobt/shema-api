@@ -14,7 +14,7 @@ session runs the eight checks and writes one verdict (when it ran, and each chec
 pass or fail) in the release row's `release_check` column. It is stored on the row and not in the
 packet, so it sits outside the hash and a version is never minted for a verdict. A release that
 already holds a verdict schedules nothing on a repeated approval: one check per version, and
-re-running it belongs to ENG-1802. A failing or broken check never blocks the release and no read
+a facilitator re-runs it on demand and the new result replaces the old (ENG-1802). A failing or broken check never blocks the release and no read
 the team has serves it; a job that breaks leaves the column null.
 
 Check 2 is her `verifyRelease.ts` items 5 and 6 (18fa7c4): it fails on a frase whose take is not
@@ -29,3 +29,5 @@ joins still exist.
 Rejected: building the manifest in the job (it signs a link per take against the bucket, and a
 bucket outage would lose the whole verdict), and a column per check. Consequence: the column is
 null on every release approved before this deploy.
+
+The result travels in the approval of the retroverificação file as her `verification` field, and never in the manifest.

@@ -194,6 +194,42 @@ async def test_a_passage_worked_over_two_sessions_is_the_file_of_the_latest_name
     assert len(file["frases"]) == 2
 
 
+async def test_the_approval_carries_the_release_check_as_her_verification_field(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    (row,) = await releases_of(db_session, session.id)
+    row.release_check = {"ran_at": "2026-10-29T12:00:00+00:00", "whole": False, "checks": []}
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    answered = await client.get(_passage_file(project.id), headers=desk)
+
+    assert answered.json()["approval"]["verification"] == {
+        "ran_at": "2026-10-29T12:00:00+00:00",
+        "whole": False,
+        "checks": [],
+    }
+
+
+async def test_an_approval_whose_check_has_not_run_has_no_verification_key(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    await _approved_by_the_team(client, session.id, credential)
+    (row,) = await releases_of(db_session, session.id)
+    row.release_check = None
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    answered = await client.get(_passage_file(project.id), headers=desk)
+
+    assert "verification" not in answered.json()["approval"]
+
+
 async def test_a_passage_not_yet_approved_carries_the_first_note_and_the_live_frases(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:

@@ -96,15 +96,19 @@ async def _stored(db: AsyncSession, session_id: str) -> dict[str, bool] | None:
     return None if result is None else {c["name"]: c["passed"] for c in result["checks"]}
 
 
-async def _rehearsed(db: AsyncSession, bucket) -> tuple[str, str]:
-    project, credential = await a_claimed_device(db)
-    session = await ready_session(db, project_id=project.id)
+async def _rehearsed_for(db: AsyncSession, bucket, project_id: str) -> str:
+    session = await ready_session(db, project_id=project_id)
     session_id = session.id
     part = await the_one_part_of(db, session)
     part.sha256 = hashlib.sha256(BYTES).hexdigest()
     await db.commit()
     bucket.objects[part.storage_key] = BYTES
-    return session_id, credential
+    return session_id
+
+
+async def _rehearsed(db: AsyncSession, bucket) -> tuple[str, str]:
+    project, credential = await a_claimed_device(db)
+    return await _rehearsed_for(db, bucket, project.id), credential
 
 
 async def _approved(client, db: AsyncSession, bucket) -> str:
@@ -180,6 +184,59 @@ async def test_a_forced_approval_gets_its_check_like_any_other(
 
     assert forced.status_code == 200, forced.text
     assert await _stored(db_session, session_id) == {**dict.fromkeys(NAMES, True), NAMES[0]: False}
+
+
+def _rerun(session_id: str, version: int = 1) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}/check"
+
+
+async def test_the_facilitator_runs_the_check_again_and_the_new_result_replaces_the_old(
+    client, db_session, room_app, bucket
+):
+    project, credential = await a_claimed_device(db_session)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    session_id = await _rehearsed_for(db_session, bucket, project.id)
+    await checked_heard_and_approved(
+        client, db_session, session_id, headers=team_headers(credential)
+    )
+    before = await _result(db_session, session_id)
+    part = await the_one_part_of(db_session, await _live(db_session, session_id))
+    bucket.objects[part.storage_key] = b"someone else's bytes"
+
+    answered = await client.post(_rerun(session_id), headers=desk)
+
+    after = await _result(db_session, session_id)
+    assert answered.status_code == 200, answered.text
+    assert before["whole"] is True
+    assert after["whole"] is False
+    assert answered.json() == after
+    assert await _stored(db_session, session_id) == {**dict.fromkeys(NAMES, True), NAMES[0]: False}
+
+
+async def test_the_teams_code_is_refused_the_rerun_and_the_result_stands(
+    client, db_session, bucket
+):
+    session_id, credential = await _rehearsed(db_session, bucket)
+    headers = team_headers(credential)
+    await checked_heard_and_approved(client, db_session, session_id, headers=headers)
+    before = await _result(db_session, session_id)
+
+    answered = await client.post(_rerun(session_id), headers=headers)
+
+    assert answered.status_code in (401, 403), answered.text
+    assert await _result(db_session, session_id) == before
+
+
+async def test_a_version_nobody_approved_has_no_check_to_run_again(
+    client, db_session, room_app, bucket
+):
+    project, _credential = await a_claimed_device(db_session)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    session_id = await _rehearsed_for(db_session, bucket, project.id)
+
+    answered = await client.post(_rerun(session_id, 7), headers=desk)
+
+    assert answered.status_code == 404, answered.text
 
 
 async def _a_stretch_without_words(db: AsyncSession, session: IRSession) -> None:
