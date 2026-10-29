@@ -28,9 +28,9 @@ async def list_evaluation_totals(db: AsyncSession, user: User, app_key: str) -> 
     **Not a field of ``RequestOut``**, whose docstring keeps ``rr_evaluations`` out of it so the
     team's progress bar can never carry a score (§5.3): the totals are their own read, behind
     ``view_evaluation``, which the team does not hold. The scope is ``list_requests``' own, so
-    a total never names a request its caller could not list. Three statements whatever the
-    number of requests: the reach, then one select joining the latest snapshot, its evaluation
-    and its scores.
+    a total never names a request its caller could not list. One select whatever the number
+    of requests — the latest snapshot, its evaluation and its scores joined — after the
+    caller's reach.
     """
     newest = (
         select(RRSnapshot.request_id, func.max(RRSnapshot.created_at).label("created_at"))
