@@ -2305,7 +2305,10 @@ question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` an
   person on PostgreSQL (SQLite ignores it).
 - **The Admin's standing is read fresh** on every write — `AdminUser` answers from a
   thirty-second cache per process — and an Admin holding the role in one app only is refused
-  with a sentence that says so.
+  with a sentence that says so. **The same sentence reaches an Admin revoked a moment ago**,
+  so since OBT-665 (29/out/2026 — ours) it says what is missing and, *if it should be an
+  Admin*, how the role comes back; it no longer tells the account to *repair* itself, which
+  read as a broken account to someone revoked on purpose (PME-ACE-089).
 
 **Invitations.** For somebody with no account. The link is always the PME's,
 `{shema app_url}/convite?token=…`, whatever app the role lives in — the form has no sign-in
@@ -2341,7 +2344,7 @@ region half predates OBT-543.
 |---|---|---|
 | no Shemá role at all (a Gestor, a mesa) | 403 · `FORBIDDEN` | `You don't have access to the 'shema' application. Please contact support to request access.` |
 | a Shemá role that is not `admin` | 403 · `FORBIDDEN` | `Role 'admin' is required for this action.` |
-| the Admin holds the role in one app only | 403 · `FORBIDDEN` | `The admin role is not held in '<app>'. Granting the Admin writes it in both apps; an installation admin can grant it again to repair this account.` |
+| the Admin holds the role in one app only, or was revoked while the session is open | 403 · `FORBIDDEN` | `This account does not hold the admin role in '<app>', so it cannot change access. If it should be an Admin, another Admin or an installation admin can grant the role again, which writes it in both apps.` |
 | `equipe` | 422 · `UNPROCESSABLE_VALUE` | `'equipe' is a project membership, added on the project, not a role granted here.` |
 | any other role or app outside the vocabulary | 422 · `UNPROCESSABLE_VALUE` | `'<role>' is not a role granted here for '<app>'.` |
 | a regional role with no region | 422 · `UNPROCESSABLE_VALUE` | `'<role>' is a regional role: grant it with at least one region.` |
@@ -2755,6 +2758,15 @@ byte-identically, and only the Pulse is archivable. Those are DoD lines, not for
 > the seven: the console calls `other` *América Central*, and `other` is also where every country
 > the map does not list and every empty location fall, so a file that cannot be recalled prints
 > no place for it rather than a guess.
+>
+> **The country prints in the file's language — decided in OBT-665 (29/out/2026 — ours, for
+> Karina to validate).** The rest of the file followed `lang` and the country did not: a Pulse
+> asked in Portuguese said *Brazil* (PME-ORA-027). Now a country the map lists — by the export's
+> spelling or a synonym §4.9 lists, the same exact lookup the region makes (`map_spelling`) — is
+> printed as that language names it, from the names OBT-591 decided (`_COPY[…].countries`, held
+> against `THE_25` in `tests/test_shema/test_parity.py`); any other spelling prints as typed, not
+> guessed at. Only the printed file changes: the stored `location`, the wall's `country` and the
+> region are untouched.
 
 > The offline artifact is this project's highest technical risk: an unknown Android phone, no
 > connectivity, and a file round trip through WhatsApp. **Prove it on a real device early.**

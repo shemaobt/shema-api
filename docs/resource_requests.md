@@ -287,6 +287,16 @@ scores and comments still save with nobody marked; and serving `attendees_named`
 recorded after a member's role is revoked. The names of the members themselves are still to
 arrive, and they are the Admin's to grant, not this module's to seed.
 
+**The board's badges are one read** (OBT-665, 29/out/2026 — ours). The Painel drew each card's
+`/30` from one `GET /requests/{id}/evaluation` per card, so every request the mesa had not
+started answered 404 — 41 of them in one opening on the 29/out bench. `GET /evaluation-totals`
+answers `[{request_id, total}]` for every request the caller reaches whose **latest** snapshot
+has an evaluation, the total by `sum_score` exactly as `EvaluationOut` derives it, behind
+`view_evaluation` and with `list_requests`' scope, in one select whatever the number of cards
+(`list_evaluation_totals.py`). A request with no total is *not evaluated yet*. It is its own
+read and not a field of `RequestOut`, whose docstring keeps `rr_evaluations` out of what the
+team reads. Opening one card still reads the whole evaluation in Parte C, 404 included.
+
 **On the wire the signature is read as an e-mail, and the id stays where forensics needs
 it** (4/set/2026). `EvaluationOut` carried `evaluator_id` alone — an opaque uuid the
 frontend may not display (its §11) — so the screen had a signature it could not write down.
