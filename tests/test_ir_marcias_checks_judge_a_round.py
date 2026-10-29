@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from scripts.bt_golden_checks import Told, check_round, told_up_to
+from scripts.bt_golden_checks import Told, check_round, quoted_in, told_up_to
 from scripts.bt_golden_runner import load_script
 from scripts.sync_doctrine import REPO_ROOT
 
@@ -437,6 +437,9 @@ THE_NUANCE_FOUND = {
     "kind": "nuance",
     "note": "a frase diz 'um dia' onde a história diz esta noite",
     "frase": 7,
+    "quote": "tivesse marido um dia",
+    "story": "ela poderia ter marido ainda esta noite",
+    "voiced": "now",
 }
 
 ASKS_FRASE_ONE_WHOLE = (
@@ -470,7 +473,7 @@ NEVER_ASKS_FRASE_SEVEN_AGAIN = THE_ONE_DETAIL.replace(
 def test_the_vendored_espera_script_fails_a_first_round_that_never_asks_for_frase_one() -> None:
     script = load_script(REPO_ROOT / "golden/bt/P02-nuance-espera.json")
     expect = script.rounds[0].expect
-    findings = [THE_REQUEST_ADDED, THE_NUANCE_FOUND]
+    findings = [THE_REQUEST_ADDED, {**THE_NUANCE_FOUND, "voiced": None}]
 
     assert check_round(_round(findings=findings, spoken=NEVER_ASKS_FRASE_ONE_AGAIN), expect) == [
         'the voice does not ask to record frase 1 again WHOLE ("regravem a frase 1 inteira" / '
@@ -486,13 +489,16 @@ def test_the_vendored_espera_script_fails_a_second_round_that_never_asks_for_fra
     assert check_round(
         _round(findings=[THE_NUANCE_FOUND], spoken=NEVER_ASKS_FRASE_SEVEN_AGAIN, conferida=True),
         expect,
+        told_up_to(script, 1),
     ) == [
         'the voice does not ask to record frase 7 again WHOLE ("regravem a frase 7 inteira" / '
         '"essa frase inteira" / "a frase toda")'
     ], "o script P02-nuance-espera esperava a frase 7 inteira na segunda rodada"
     assert (
         check_round(
-            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True), expect
+            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True),
+            expect,
+            told_up_to(script, 1),
         )
         == []
     )
@@ -505,13 +511,16 @@ def test_the_vendored_esta_noite_script_fails_a_round_that_never_asks_for_frase_
     assert check_round(
         _round(findings=[THE_NUANCE_FOUND], spoken=NEVER_ASKS_FRASE_SEVEN_AGAIN, conferida=True),
         expect,
+        told_up_to(script, 0),
     ) == [
         'the voice does not ask to record frase 7 again WHOLE ("regravem a frase 7 inteira" / '
         '"essa frase inteira" / "a frase toda")'
     ], "o script P02-nuance-esta-noite esperava a frase 7 inteira e ninguém conferia"
     assert (
         check_round(
-            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True), expect
+            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True),
+            expect,
+            told_up_to(script, 0),
         )
         == []
     )
@@ -626,3 +635,125 @@ def test_a_clean_round_is_judged_by_stem_noun_root_and_the_line_as_she_judges_it
     told: str, said: str, line: str, fails: list[str]
 ) -> None:
     assert _clean_with(told, said, line) == fails
+
+
+TWO_FRASES = Told(
+    "Brazilian Portuguese",
+    (
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo.",
+        "Ela saiu com as noras pela estrada.",
+    ),
+)
+A_NUANCE = {
+    "kind": "nuance",
+    "note": "«dado pão ao seu povo» — o Senhor visitou o povo e deu pão",
+    "frase": 1,
+    "quote": "dado pão ao seu povo",
+    "story": "o Senhor visitou o povo e deu pão",
+    "voiced": "now",
+}
+THE_NUANCE_VOICE = (
+    "Vocês traduziram bem. Só um detalhe, na frase 1: vocês traduziram dado pão ao seu povo; a "
+    "história conta que o Senhor visitou o povo e deu pão. Se estiver bom assim, vocês podem "
+    "ouvir tudo de novo e aprovar."
+)
+EXPECTS_THE_NUANCE = {
+    "conferida": True,
+    "findings": [{"kind": "nuance", "note": "dado pão"}],
+    "voices_nuance": 1,
+}
+
+
+def _nuance_round(spoken: str = THE_NUANCE_VOICE, **over: Any) -> dict[str, Any]:
+    return _round(**{"findings": [A_NUANCE], "conferida": True, "spoken": spoken, **over})
+
+
+def test_a_nuance_said_the_drafted_way_passes() -> None:
+    assert check_round(_nuance_round(), EXPECTS_THE_NUANCE, TWO_FRASES) == []
+
+
+def test_a_nuance_round_whose_nuance_this_verdict_never_named_fails() -> None:
+    unsaid = {**A_NUANCE, "voiced": None}
+
+    fails = check_round(_nuance_round(findings=[unsaid]), EXPECTS_THE_NUANCE, TWO_FRASES)
+
+    assert fails == [
+        'expected THIS verdict to name a nuance on frase 1 (voiced "now") — got '
+        f"[nuance@1: {A_NUANCE['note']}]"
+    ]
+
+
+def _fails(spoken: str = THE_NUANCE_VOICE, **over: Any) -> list[str]:
+    return check_round(_nuance_round(spoken, **over), EXPECTS_THE_NUANCE, TWO_FRASES)
+
+
+def test_a_nuance_the_voice_does_not_quote_fails() -> None:
+    assert _fails(THE_NUANCE_VOICE.replace("dado pão ao seu povo", "outra coisa")) == [
+        'nuance round: the voice does not quote what the team translated ("dado pão ao seu povo")'
+    ]
+
+
+def test_a_nuance_voice_that_closes_the_approval_or_says_the_inner_word_fails() -> None:
+    spoken = THE_NUANCE_VOICE.replace("ouvir tudo de novo e aprovar", "esperar. É uma nuance")
+
+    assert _fails(spoken) == [
+        'nuance round: the voice does not leave the approval open ("aprovar como rascunho final")',
+        'nuance round: the voice says the inner word "nuance" (it says "um detalhe")',
+    ]
+
+
+def test_a_nuance_voice_that_recites_another_frase_fails_quoting_the_words() -> None:
+    assert _fails(THE_NUANCE_VOICE.replace("Vocês traduziram bem.", "As noras saíram.")) == [
+        "nuance round: the voice names more of the passage than the one detail — it says what "
+        "the team told: noras (only the quote and the story's words for it)"
+    ]
+
+
+def test_a_story_that_recites_another_frase_is_not_the_one_detail_the_voice_may_repeat() -> None:
+    wide = {**A_NUANCE, "story": "o Senhor visitou o povo e as noras"}
+    spoken = THE_NUANCE_VOICE.replace("e deu pão", "e as noras")
+
+    assert _fails(spoken, findings=[wide]) == [
+        "nuance round: the story brings in more than the one detail — words the team told only "
+        "in other frases: noras",
+        "nuance round: the voice names more of the passage than the one detail — it says what "
+        "the team told: noras (only the quote and the story's words for it)",
+    ]
+
+
+def test_a_nuance_voice_that_speaks_of_what_the_story_keeps_quiet_fails() -> None:
+    assert _fails(f"O silêncio fica. {THE_NUANCE_VOICE}") == [
+        'nuance round: the voice speaks of what the story keeps quiet: "silêncio"'
+    ]
+
+
+def test_a_nuance_round_with_no_telling_handed_to_the_check_fails() -> None:
+    assert check_round(_nuance_round(), EXPECTS_THE_NUANCE) == [
+        "nuance round: no telling handed to the check — pass toldUpTo(script, i)"
+    ]
+
+
+def test_the_nuance_must_be_named_on_the_frase_the_script_expects() -> None:
+    assert check_round(_nuance_round(), {**EXPECTS_THE_NUANCE, "voices_nuance": 2}, TWO_FRASES) == [
+        'expected THIS verdict to name a nuance on frase 2 (voiced "now") — got '
+        f"[nuance@1[now]: {A_NUANCE['note']}]"
+    ]
+
+
+def test_the_words_of_her_nuance_pattern_are_free_whatever_the_team_told() -> None:
+    told = Told(
+        "Brazilian Portuguese", (*TWO_FRASES.frases, "Ela regravou a frase, nunca só um pedaço.")
+    )
+    pattern = (
+        "Se está assim no áudio e vocês quiserem mudar, regravem a frase inteira — a frase "
+        "toda, nunca só um pedaço."
+    )
+
+    assert (
+        check_round(_nuance_round(f"{pattern} {THE_NUANCE_VOICE}"), EXPECTS_THE_NUANCE, told) == []
+    )
+
+
+def test_the_team_words_stand_in_the_voice_whole_never_inside_another_word() -> None:
+    assert quoted_in("dado pão", "Tinha DADO pão, ao povo.")
+    assert not quoted_in("pão", "Comeram pãozinho.")
