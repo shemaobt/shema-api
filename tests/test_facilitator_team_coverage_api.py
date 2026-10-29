@@ -38,6 +38,7 @@ from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import ElementKind, element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    an_email,
     grant_facilitator_app_role,
     having_finished_the_passage,
     make_language,
@@ -112,10 +113,11 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 _codes = itertools.count()
 
 
-async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
     """A user who facilitates one team. The language code is counted, not derived from the
     email: two addresses sharing a prefix collide on a unique column and fail the test for a
     reason that has nothing to do with what it asserts."""
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await make_language(db, name=f"Lang {email}", code=f"t{next(_codes):02d}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -699,3 +701,16 @@ async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
     assert body["being:S2:B?"]["label_en"] == ("Someone the text leaves unnamed here"), (
         "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
     )
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"
