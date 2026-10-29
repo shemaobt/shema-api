@@ -291,7 +291,7 @@ arrive, and they are the Admin's to grant, not this module's to seed.
 `/30` from one `GET /requests/{id}/evaluation` per card, so every request the mesa had not
 started answered 404 — 41 of them in one opening on the 29/out bench. `GET /evaluation-totals`
 answers `[{request_id, total}]` for every request the caller reaches whose **latest** snapshot
-has an evaluation, the total by `sum_score` exactly as `EvaluationOut` derives it, behind
+has an evaluation — two snapshots of one instant told apart by id, `LATEST_FIRST`, the order `get_evaluation` and `team_outcome` read by too —, the total by `sum_score` exactly as `EvaluationOut` derives it, behind
 `view_evaluation` and with `list_requests`' scope, in one select whatever the number of cards
 (`list_evaluation_totals.py`). A request with no total is *not evaluated yet*. It is its own
 read and not a field of `RequestOut`, whose docstring keeps `rr_evaluations` out of what the
