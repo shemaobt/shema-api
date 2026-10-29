@@ -30,8 +30,14 @@ from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.hearing_harness import nothing_settles, the_loop_clock_passes, the_transcriber_hears
 from tests.room_harness import the_room_speaks
-from tests.scene_rehearsal_harness import recording, translate
+from tests.scene_rehearsal_harness import recording, the_take_lasts_as_long_as_its_wav, translate
 from tests.turn_harness import the_room_agent_is
+
+
+@pytest.fixture(autouse=True)
+def measured_by_its_wav(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_take_lasts_as_long_as_its_wav(monkeypatch)
+
 
 IR = "/api/internalization-room"
 P = "P01"

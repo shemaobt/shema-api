@@ -63,7 +63,7 @@ from tests.room_harness import (
     the_upload_landed_at,
     upload_a_part,
 )
-from tests.scene_rehearsal_harness import recording
+from tests.scene_rehearsal_harness import recording, the_take_lasts_as_long_as_its_wav
 
 BUCKET = "balde-de-teste"
 RELEASE_V1 = "internalize-terena-p03-v1"
@@ -96,6 +96,7 @@ def saves_as(filename: str) -> str:
 
 @pytest.fixture(autouse=True)
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_take_lasts_as_long_as_its_wav(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho de volta"

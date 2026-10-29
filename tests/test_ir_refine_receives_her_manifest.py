@@ -88,7 +88,7 @@ from tests.room_harness import (
     the_room_speaks,
     upload_a_part,
 )
-from tests.scene_rehearsal_harness import recording
+from tests.scene_rehearsal_harness import recording, the_take_lasts_as_long_as_its_wav
 from tests.sentence_harness import PART, laid_in_and_told_again, rehearsed_in_wav
 from tests.turn_harness import the_room_agent_is
 
@@ -216,6 +216,7 @@ class Speaker:
 
 @pytest.fixture(autouse=True)
 def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_take_lasts_as_long_as_its_wav(monkeypatch)
 
     async def said(*_: Any, **__: Any) -> str:
         return TOLD_WORDS
