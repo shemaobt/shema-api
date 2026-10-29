@@ -229,6 +229,7 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
         "take_ms": None,
         "guide_heard": ANY,
         "recognition_ms": ANY,
+        "earlier_passages": {"P01": "not_worked", "P02": "not_worked", "at": ANY},
     }
 
 
