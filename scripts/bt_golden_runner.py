@@ -43,7 +43,7 @@ from typing import Any
 
 import httpx
 
-from scripts.bt_golden_checks import check_round
+from scripts.bt_golden_checks import BT_CHECKS_PIN, check_round, told_up_to
 from scripts.golden_spend import (
     OVER_BUDGET,
     Call,
@@ -144,7 +144,7 @@ async def play(
         )
         answered.raise_for_status()
         reply = answered.json()
-        checks = check_round(reply, round_.expect)
+        checks = check_round(reply, round_.expect, told_up_to(script, idx))
         played.append(
             Played(
                 idx=idx,
@@ -177,7 +177,12 @@ def _announce(line: Played) -> None:
 
 def transcript_of(script: Script, played: list[Played]) -> str:
     """The rounds as a person reads them, beside one of her own markdown reports."""
-    blocks: list[str] = [f"# Golden bt — {script.name}", ""]
+    blocks: list[str] = [
+        f"# Golden bt — {script.name}",
+        "",
+        f"Checks: her `src/golden/btChecks.ts` at {BT_CHECKS_PIN}",
+        "",
+    ]
     if script.why:
         blocks += [f"> {script.why}", ""]
     for line in played:
@@ -236,6 +241,7 @@ def export(
                 "name": script.name,
                 "pericopeId": script.pericopeId,
                 "language": script.language,
+                "checksPin": BT_CHECKS_PIN,
                 "baseUrl": base_url,
                 "sessionId": session_id,
                 "rounds": [asdict(line) for line in played],

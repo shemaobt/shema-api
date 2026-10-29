@@ -86,11 +86,12 @@ class Speaker:
 
     def __init__(self) -> None:
         self.line = THE_VOICE
+        self.then: list[str] = []
 
     async def __call__(self, *, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
-        return self.line
+        return self.then.pop(0) if self.then else self.line
 
 
 def the_analyst_reads(monkeypatch: pytest.MonkeyPatch) -> Analyst:

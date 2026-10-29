@@ -207,6 +207,8 @@ async def test_the_runner_plays_her_script_verbatim_and_exports_the_checks(seam,
     assert body["rounds"][1]["conferida"] is True
     assert "the voice does not name frase 9" in transcript.read_text(encoding="utf-8")
     assert report.name == "P02-causa-a-mais.2026-09-11T03-00-00.json"
+    assert body["checksPin"] == "18fa7c4"
+    assert "her `src/golden/btChecks.ts` at 18fa7c4" in transcript.read_text(encoding="utf-8")
 
 
 async def test_a_failed_check_exits_one(over_the_seam, tmp_path) -> None:
@@ -218,8 +220,13 @@ async def test_a_failed_check_exits_one(over_the_seam, tmp_path) -> None:
     assert list((tmp_path / "reports").glob("P02-causa-a-mais.*.json"))
 
 
-async def test_a_clean_run_exits_zero(over_the_seam, tmp_path) -> None:
+async def test_a_clean_run_exits_zero(over_the_seam, speaker, tmp_path) -> None:
     script = _her_script(tmp_path, expect=HER_EXPECTATION)
+    speaker.then = [
+        speaker.line,
+        "Vocês fizeram um bom trabalho. No que vocês me traduziram, tem tudo o que a história "
+        "conta — e nada a mais. Ouçam tudo de novo e aprovem.",
+    ]
 
     code = await bt_golden_runner.run(_args(script, tmp_path / "reports"))
 
