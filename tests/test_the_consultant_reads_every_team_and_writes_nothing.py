@@ -273,6 +273,7 @@ def _answer(response: httpx.Response) -> tuple[int, Any]:
     body = response.json()
     if isinstance(body, dict):
         body.pop("generated_at", None)
+        body.pop("exportedAt", None)
     return response.status_code, body
 
 
