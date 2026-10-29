@@ -509,6 +509,15 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owner_expects": 404,
         },
         {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/releases/1/check", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/releases/1/check", {}),
+            "ids": (session_id, absent),
+            #: As the read of the same version: the owner has approved nothing here, so the
+            #: version is not found, where a stranger is told the session does not exist.
+            "owner_expects": 404,
+        },
+        {
             "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/retroverificacao", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/retroverificacao", {}),
