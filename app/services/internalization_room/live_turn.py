@@ -84,7 +84,7 @@ async def run_comprehension_turn(
                 else None
             ),
         )
-    return outcome
+    return replace(outcome, earlier_passages=None if stamp is None else dict(stamp))
 
 
 __all__ = ["current_scene_id", "run_comprehension_turn"]

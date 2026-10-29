@@ -721,6 +721,8 @@ async def append_exchange(
         guide["scene_rehearsal"] = scene_rehearsal.model_dump()
     if outcome is not None and outcome.accepted_ids:
         guide["accepted_ids"] = outcome.accepted_ids
+    if outcome is not None and outcome.earlier_passages is not None:
+        guide["earlier_passages"] = outcome.earlier_passages
     step = (
         None
         if is_panorama(session.pericope)

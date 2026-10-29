@@ -36,6 +36,7 @@ class DeskSession(BaseModel):
     halts_raised: int
     warned_at: datetime | None
     turns: int
+    earlier_passages: dict[str, str] | None
     engaged_elements: int | None
     total_elements: int | None
     kept_rehearsals: int

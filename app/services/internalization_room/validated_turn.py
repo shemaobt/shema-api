@@ -124,6 +124,7 @@ class TurnOutcome:
     #: The rung of the ladder that answered the Guide's last draft; ``None`` when no model did.
     model: str | None = None
     accepted_ids: list[str] = field(default_factory=list)
+    earlier_passages: dict[str, str] | None = None
 
 
 def outcome_tag(outcome: TurnOutcome) -> Outcome:

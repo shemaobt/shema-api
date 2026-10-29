@@ -1656,6 +1656,7 @@ class TurnVoiceSide(BaseModel):
     attempts: int
     trace: list[TurnTraceStep]
     accepted_ids: list[str]
+    earlier_passages: dict[str, str] | None
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None
