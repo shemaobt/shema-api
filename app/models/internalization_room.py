@@ -1594,7 +1594,7 @@ class TurnTeamSide(BaseModel):
     note_kind: Literal["opening"] | None = None
 
     @model_serializer(mode="wrap")
-    def _a_turn_that_is_no_note_carries_no_mark(self, handler: Any) -> dict[str, Any]:
+    def _a_turn_that_is_no_note_carries_no_mark(self, handler: Any):  # type: ignore[no-untyped-def]
         served: dict[str, Any] = handler(self)
         if self.note_kind is None:
             served.pop("note_kind", None)

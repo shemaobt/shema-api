@@ -1,6 +1,7 @@
 """ENG-2016 — the turns route serves the Opening's Room note as the team's side of turn 0.
 
-Every case reads the real turns route, on sessions written by the room's own writer."""
+Every case reads the real turns route, on sessions written by the room's own writer or stored
+in the shape that predates notes."""
 
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
+from app.main import app
 from app.services.internalization_room.sessions import append_exchange
 from app.services.internalization_room.validated_turn import TurnOutcome
 from tests.baker import (
@@ -159,3 +161,9 @@ async def test_the_turns_after_the_opening_carry_no_opening_note_mark(
 
     assert set(turns[1]["team"]) == SIX_KEYS
     assert turns[1]["team"]["guide_heard"] == "Noemi voltou para Belém com Rute"
+
+
+def test_the_api_reference_documents_the_teams_side_with_the_opening_note_mark() -> None:
+    served = app.openapi()["components"]["schemas"]["TurnTeamSide"]["properties"]
+
+    assert set(served) == SIX_KEYS | {"note_kind"}
