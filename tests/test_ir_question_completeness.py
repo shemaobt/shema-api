@@ -28,8 +28,8 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.voice_handles import facilitator_audio_url
 from app.services.platform import audio_duration
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
@@ -101,9 +101,9 @@ async def _raise(db: AsyncSession, store: MemoryStore, **kw):
 
 
 async def a_team_and_its_facilitator(db: AsyncSession):
-    language = await make_language(db, name="Terena", code="tqe")
+    language = await a_language(db, name="Terena")
     team = await make_project(db, language.id, name="Equipe Terena")
-    facilitator = await make_user(db, email="facilitadora@example.com")
+    facilitator = await make_user(db)
     await make_project_user_access(db, team.id, facilitator.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, facilitator.id)
     return team, facilitator
@@ -406,3 +406,12 @@ async def test_a_card_with_nothing_but_audio_still_reaches_the_desk(
         "um cartao sem texto e sem duracao ainda tem de trazer o endereco do audio, "
         "que e a unica coisa que ele tem para oferecer"
     )
+
+
+async def test_a_team_and_its_facilitator_built_twice_gets_two_facilitators_with_two_emails(
+    db_session: AsyncSession,
+) -> None:
+    _, first = await a_team_and_its_facilitator(db_session)
+    _, second = await a_team_and_its_facilitator(db_session)
+
+    assert first.email != second.email
