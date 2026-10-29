@@ -114,7 +114,7 @@ jobs:
             --memory=4Gi \
             --cpu=2 \
             --concurrency=80 \
-            --timeout=3600 \
+            --timeout=300 \
             --no-cpu-throttling \
             --min-instances=1 \
             --update-env-vars="^|^ENV=production|QDRANT_COLLECTION=meaning_map_test|GCS_PLATFORM_BUCKET=tripod-platform|GCS_OC_BUCKET=tripod-image-uploads|EMAIL_PROVIDER=microsoft_graph|AZURE_TENANT_ID=5864d665-2933-42ba-9e2c-7212795b1b1a|AZURE_CLIENT_ID=9b01b5d1-7fed-4f24-a282-5cb72c5b266d|CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com|INTERNALIZATION_ROOM_MOTHER_TONGUE_FLOOR=0.35|INTERNALIZATION_ROOM_MINIMUM_APP_IOS=0|INTERNALIZATION_ROOM_MINIMUM_APP_ANDROID=0" \
