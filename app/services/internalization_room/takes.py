@@ -704,6 +704,11 @@ def set_aside_moment(take: IRTake) -> str | None:
     return None if take.set_aside_at is None else as_utc(take.set_aside_at).isoformat()
 
 
+def superseded_moment(take: IRTake) -> str | None:
+    """When the server stamped this take as no longer live, with its offset, or none."""
+    return None if take.superseded_at is None else as_utc(take.superseded_at).isoformat()
+
+
 def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:
     """Whether a rehearsal take is of the grain a **Grain switch** left behind: never a part."""
     return (
