@@ -8,6 +8,7 @@ from app.db.models.resource_request import (
     RRRequest,
     RRSnapshot,
 )
+from app.services.resource_request._evaluation import LATEST_FIRST
 from app.services.resource_request._membership import member_project_ids
 from app.services.resource_request._scope import reach
 from app.utils.resource_request_totals import sum_score
@@ -23,7 +24,8 @@ async def list_evaluation_totals(db: AsyncSession, user: User, app_key: str) -> 
     snapshot, by ``sum_score``, exactly as :class:`~app.models.resource_request.EvaluationOut`
     derives it. A request with no evaluation of its latest snapshot is simply absent, which is
     the board's *not evaluated yet*; a newer snapshot nobody scored does not fall back to the
-    previous one's total (``team_outcome`` and ``get_evaluation`` read the same way).
+    previous one's total, and two snapshots stamped in the same instant are told apart by id —
+    ``LATEST_FIRST``, the order ``get_evaluation`` and ``team_outcome`` read by too.
 
     **Not a field of ``RequestOut``**, whose docstring keeps ``rr_evaluations`` out of it so the
     team's progress bar can never carry a score (§5.3): the totals are their own read, behind
@@ -32,21 +34,19 @@ async def list_evaluation_totals(db: AsyncSession, user: User, app_key: str) -> 
     of requests — the latest snapshot, its evaluation and its scores joined — after the
     caller's reach.
     """
-    newest = (
-        select(RRSnapshot.request_id, func.max(RRSnapshot.created_at).label("created_at"))
-        .group_by(RRSnapshot.request_id)
-        .subquery()
-    )
+    ranked = select(
+        RRSnapshot.id,
+        RRSnapshot.request_id,
+        func.row_number()
+        .over(partition_by=RRSnapshot.request_id, order_by=LATEST_FIRST)
+        .label("rank"),
+    ).subquery()
     stmt = (
-        select(RRSnapshot.request_id, RREvaluationScore.score)
-        .join(
-            newest,
-            (newest.c.request_id == RRSnapshot.request_id)
-            & (newest.c.created_at == RRSnapshot.created_at),
-        )
-        .join(RREvaluation, RREvaluation.snapshot_id == RRSnapshot.id)
+        select(ranked.c.request_id, RREvaluationScore.score)
+        .where(ranked.c.rank == 1)
+        .join(RREvaluation, RREvaluation.snapshot_id == ranked.c.id)
         .outerjoin(RREvaluationScore, RREvaluationScore.evaluation_id == RREvaluation.id)
-        .join(RRRequest, RRRequest.id == RRSnapshot.request_id)
+        .join(RRRequest, RRRequest.id == ranked.c.request_id)
         .where(RRRequest.cancelled_at.is_(None))
     )
     if not (await reach(db, user, app_key)).every:

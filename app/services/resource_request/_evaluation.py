@@ -77,13 +77,21 @@ class TeamOutcome(NamedTuple):
     team_note: str | None
 
 
+#: Which snapshot is the latest: the newest, and the larger id when two share an instant.
+#: ``created_at`` is the database's clock (``func.now()``), the transaction's on PostgreSQL and
+#: one-second on SQLite, so a tie is reachable; without the id each reader would pick its own
+#: (OBT-665, review of shema-api#985) and the board's badge could name another snapshot than
+#: the evaluation Parte C opens.
+LATEST_FIRST = (RRSnapshot.created_at.desc(), RRSnapshot.id.desc())
+
+
 async def latest_snapshot(db: AsyncSession, request_id: str) -> RRSnapshot | None:
     """The snapshot an evaluation hangs from — the most recent freeze of this request."""
     return (
         await db.execute(
             select(RRSnapshot)
             .where(RRSnapshot.request_id == request_id)
-            .order_by(RRSnapshot.created_at.desc())
+            .order_by(*LATEST_FIRST)
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -170,7 +178,7 @@ async def team_outcome(db: AsyncSession, request_id: str) -> TeamOutcome:
             .select_from(RRSnapshot)
             .outerjoin(RREvaluation, RREvaluation.snapshot_id == RRSnapshot.id)
             .where(RRSnapshot.request_id == request_id)
-            .order_by(RRSnapshot.created_at.desc())
+            .order_by(*LATEST_FIRST)
             .limit(1)
         )
     ).first()

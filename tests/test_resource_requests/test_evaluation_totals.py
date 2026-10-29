@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import event, select
+from sqlalchemy import event, select, text
 
 from app.db.models.resource_request import RRSnapshot
 from tests.resource_request_harness import (
@@ -75,6 +75,36 @@ async def test_a_newer_snapshot_nobody_scored_carries_no_total(db_session, clien
     await db_session.commit()
 
     assert await totals(client, mesa) == {}
+
+
+async def test_two_snapshots_of_one_instant_name_the_same_one_as_the_evaluation_read(
+    db_session, client, rrf_app
+) -> None:
+    """``created_at`` is the database's clock and can tie (one-second on SQLite): the badge and
+    Parte C break it the same way, by id, so they never answer from two snapshots — nor add two
+    evaluations into one total (review of shema-api#985). One twin sorts before the evaluated
+    snapshot and one after, each on a request of its own: snapshots are append-only."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    for twin_id in ("0" * 32, "f" * 32):
+        created = await submitted_request(client, team)
+        await put_evaluation(client, mesa, created["id"])
+        # The twin copies the stamp in SQL, so the tie is the column's own value, not a
+        # Python datetime that the driver could write back in another format.
+        await db_session.execute(
+            text(
+                "INSERT INTO rr_snapshots (id, request_id, document, created_at) "
+                "SELECT :twin, request_id, document, created_at FROM rr_snapshots "
+                "WHERE request_id = :request"
+            ),
+            {"twin": twin_id, "request": created["id"]},
+        )
+        await db_session.commit()
+
+        own = await client.get(f"{REQUESTS}/{created['id']}/evaluation", headers=mesa)
+        listed = (await totals(client, mesa)).get(created["id"])
+
+        assert listed == (own.json()["total"] if own.status_code == 200 else None), twin_id
 
 
 async def test_the_gestor_reads_the_totals_and_the_team_does_not(
