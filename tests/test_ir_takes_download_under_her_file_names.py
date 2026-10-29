@@ -14,7 +14,7 @@ import io
 import uuid
 import wave
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -761,7 +761,7 @@ async def test_one_take_that_is_not_wav_takes_the_whole_out_of_the_list(
     assert listed["whole"] is None
 
 
-async def test_the_whole_redirects_to_an_hour_link_of_the_three_takes_laid_end_to_end(
+async def test_the_whole_answers_an_hour_link_as_json_of_the_three_takes_laid_end_to_end(
     client, db_session, room_app, store
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
@@ -770,8 +770,13 @@ async def test_the_whole_redirects_to_an_hour_link_of_the_three_takes_laid_end_t
 
     answer = await client.get(whole_of(session.id), headers=desk, follow_redirects=False)
 
-    assert answer.status_code == 307
-    link = read_link(answer.headers["location"])
+    assert answer.status_code == 200
+    assert "location" not in answer.headers
+    body = answer.json()
+    assert set(body) == {"url", "expires_at"}
+    remaining = datetime.fromisoformat(body["expires_at"]) - datetime.now(UTC)
+    assert abs(remaining - timedelta(seconds=AN_HOUR)) < timedelta(seconds=30)
+    link = read_link(body["url"])
     assert link.lasts_s == AN_HOUR
     assert link.saves_as == saves_as(f"{RELEASE_V1}-inteira.wav")
     assert pcm_of(store.objects[link.key]) == b"".join(
@@ -788,7 +793,7 @@ async def test_the_whole_asked_twice_is_one_file_and_a_scene_recorded_again_make
 
     async def asked() -> str:
         answer = await client.get(whole_of(session.id), headers=desk, follow_redirects=False)
-        return read_link(answer.headers["location"]).key
+        return read_link(answer.json()["url"]).key
 
     first = await asked()
     stored = dict(store.objects)

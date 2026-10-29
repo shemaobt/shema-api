@@ -1329,6 +1329,18 @@ class WholeDownload(BaseModel):
     duration_ms: int | None
 
 
+class WholePassageLinkResponse(BaseModel):
+    """Where a facilitator's browser fetches the whole passage as one WAV, and for how long.
+
+    Handed back rather than redirected to, as `QuestionAudioResponse` is: the Desk reads the
+    answer with a header-carrying request and cannot follow a cross-origin redirect without
+    proxying the file.
+    """
+
+    url: str
+    expires_at: str
+
+
 class TakeDownloadsResponse(BaseModel):
     """The session's rehearsal takes by file name, live parts and superseded takes apart."""
 
