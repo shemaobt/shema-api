@@ -20,13 +20,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 import pytest
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import back_translation as bt_api
 from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.auth import App
-from app.db.models.internalization_room import IRRelease, IRSession
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake
 from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.back_translation import BackTranslationState
@@ -275,6 +276,61 @@ async def test_a_part_recorded_three_times_stamps_each_earlier_take_with_the_nex
     assert replaced_second["take_id"] == second["take_id"]
     assert second_from <= datetime.fromisoformat(replaced_first["superseded_at"]) <= second_to
     assert third_from <= datetime.fromisoformat(replaced_second["superseded_at"]) <= third_to
+
+
+async def _stamps(db_session: AsyncSession, session_id: str) -> dict[str, datetime | None]:
+    rows = await db_session.execute(
+        select(IRTake.id, IRTake.superseded_at).where(IRTake.session_id == session_id)
+    )
+    return dict(rows.tuples().all())
+
+
+async def test_an_upload_stamps_the_part_it_displaces_with_the_arrival_and_nothing_else(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    first = await send(client, credential, session.id, recording(2, 1))
+    before = the_second_now()
+    second = await send(client, credential, session.id, recording(2, 2))
+    after = the_second_now()
+
+    stamps = await _stamps(db_session, session.id)
+
+    assert before <= stamps[first["take_id"]] <= after
+    assert stamps[second["take_id"]] is None
+
+
+async def test_a_whole_is_stamped_by_the_first_scene_part_and_the_scene_part_is_not(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    whole = await send(client, credential, session.id, recording(2, 1), part=None)
+    scene = await send(client, credential, session.id, recording(2, 2), part=1)
+
+    stamps = await _stamps(db_session, session.id)
+
+    assert stamps[whole["take_id"]] is not None
+    assert stamps[scene["take_id"]] is None
+
+
+async def test_an_upload_gives_no_time_to_a_take_replaced_before_the_stamp_existed(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session, language_name="Terena")
+    session = await a_rehearsal(db_session, project.id)
+    first = await send(client, credential, session.id, recording(2, 1))
+    second = await send(client, credential, session.id, recording(2, 2))
+    await db_session.execute(update(IRTake).values(superseded_at=None))
+    await db_session.commit()
+    third = await send(client, credential, session.id, recording(2, 3))
+
+    stamps = await _stamps(db_session, session.id)
+
+    assert stamps[first["take_id"]] is None
+    assert stamps[second["take_id"]] is not None
+    assert stamps[third["take_id"]] is None
 
 
 async def test_every_link_lasts_an_hour_and_the_list_says_so(client, db_session, room_app):

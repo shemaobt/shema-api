@@ -235,6 +235,7 @@ async def lay_in_a_sentence(
         duration_ms=duration_ms,
     )
     db.add(take)
+    part.superseded_at = now
     state = back_translation_of(session)
     heard_before = not unheard_parts(state, [part], await final_segments(db, session.id))
     old_end = segment.ends_ms

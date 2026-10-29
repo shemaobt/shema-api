@@ -244,6 +244,7 @@ async def store_take(
     sent_duration_ms: int | None = None,
     sent_recorded_at: datetime | None = None,
     past_the_set_aside: bool = False,
+    stamps_what_it_replaces: bool = False,
     the_same: Callable[[str], Awaitable[IRTake | None]] | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
@@ -267,6 +268,10 @@ async def store_take(
 
     `past_the_set_aside` looks past the takes a **Grain switch** set aside: the same bytes kept
     at the grain in force are a new take that stands, sharing the stored object (ADR 0096).
+
+    `stamps_what_it_replaces` stamps, in the insert's own transaction, the parts this take stops
+    being live and the take itself if it arrives as no part, with the server's `arrived` (ADR 0104).
+    A take that stopped being live before is never stamped here.
 
     `the_same` is the caller's question of which take these bytes already are, given their hash;
     unasked, it is their identity in storage. It is asked before the bytes are stored and, for a
@@ -335,6 +340,15 @@ async def store_take(
     try:
         async with db.begin_nested():
             db.add(take)
+            if stamps_what_it_replaces:
+                takes = await takes_of(db, session_id)
+                standing = {
+                    part.id for part in current_parts([one for one in takes if one is not take])
+                }
+                now_live = {part.id for part in current_parts(takes)}
+                for one in takes:
+                    if (one.id in standing or one is take) and one.id not in now_live:
+                        one.superseded_at = arrived
     except IntegrityError:
         winner = await same(checked.sha256)
         if winner is None:

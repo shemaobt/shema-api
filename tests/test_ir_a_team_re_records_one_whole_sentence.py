@@ -69,7 +69,9 @@ async def test_the_new_sentence_takes_the_old_ones_place_and_the_frases_after_it
 
     ids = [first.id, middle.id, last.id, other.id]
 
+    began = datetime.now(UTC)
     laid = await re_record(client, session.id, middle.id, spoken(1.0))
+    ended = datetime.now(UTC)
 
     assert laid.status_code == 200, laid.text
     read = (await client.get(f"{PREFIX}/sessions/{session.id}")).json()
@@ -92,6 +94,11 @@ async def test_the_new_sentence_takes_the_old_ones_place_and_the_frases_after_it
     after = samples_of(store.objects[(await take_named(db_session, new)).storage_key])
     assert after[:RATE] == before[:RATE], "o áudio antes da frase mudava"
     assert after[-RATE:] == before[-RATE:], "o áudio depois da frase mudava"
+    await db_session.refresh(one)
+    assert one.superseded_at is not None, "a parte trocada não leva a marca de quando saiu"
+    assert began <= one.superseded_at <= ended
+    assert (await take_named(db_session, new)).superseded_at is None
+    assert (await take_named(db_session, two.id)).superseded_at is None
 
 
 async def test_a_tablet_of_another_team_lays_nothing_into_this_teams_part(

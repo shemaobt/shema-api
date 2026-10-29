@@ -481,6 +481,12 @@ class IRTake(Base):
     #: When a **Grain switch** set this take aside, null while no switch has. Set once and never
     #: cleared: a switch back does not restore it.
     set_aside_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    #: The server's time this take stopped being live: replaced by a later take of its part, a
+    #: sentence laid into it, or set aside by a **Grain switch**. Null while it is live, and on
+    #: every take stored before the stamp existed: no time is ever derived for those (ADR 0104).
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
 
 
 class IRSceneSaid(enum.StrEnum):

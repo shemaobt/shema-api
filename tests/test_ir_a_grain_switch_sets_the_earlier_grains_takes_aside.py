@@ -16,14 +16,14 @@ from urllib.parse import quote
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
 from app.core.config import get_settings
 from app.db.models.auth import App
-from app.db.models.internalization_room import IRSegment, IRSession
+from app.db.models.internalization_room import IRGrain, IRSegment, IRSession, IRTake
 from app.db.models.project import Project
 from app.services.internalization_room import sessions as sessions_service
 from app.services.internalization_room import takes as takes_service
@@ -41,6 +41,7 @@ from tests.release_harness import (
     a_claimed_device,
     at_the_desk,
     checked_heard_and_approved,
+    ensaio_take,
     ready_session,
     reported_playback,
     session_retro,
@@ -783,3 +784,83 @@ async def test_scenes_joined_again_after_a_switch_back_are_new_takes_that_stand(
     assert {take_id: listing[take_id]["set_aside_at"] for take_id in first} == {
         take_id: stamps[take_id] for take_id in first
     }
+
+
+async def _stamps(db_session: AsyncSession, session_id: str) -> dict[str, datetime | None]:
+    rows = await db_session.execute(
+        select(IRTake.id, IRTake.superseded_at).where(IRTake.session_id == session_id)
+    )
+    return dict(rows.tuples().all())
+
+
+async def test_a_switch_stamps_the_parts_it_sets_aside_and_leaves_a_stamp_already_given(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    replaced = _kept(await upload_a_part(client, session.id, part=1, audio=b"a primeira"))
+    standing = _kept(await upload_a_part(client, session.id, part=1, audio=b"a segunda"))
+    before = datetime.now(UTC)
+    await _switched(client, session.id, "whole")
+    after = datetime.now(UTC)
+
+    stamps = await _stamps(db_session, session.id)
+
+    assert stamps[replaced] is not None and stamps[replaced] <= before
+    assert stamps[standing] is not None and before <= stamps[standing] <= after
+
+
+async def test_a_switch_gives_no_time_to_a_take_replaced_before_the_stamp_existed(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    old = _kept(await upload_a_part(client, session.id, part=1, audio=b"a primeira"))
+    standing = _kept(await upload_a_part(client, session.id, part=1, audio=b"a segunda"))
+    await db_session.execute(update(IRTake).values(superseded_at=None))
+    await db_session.commit()
+    await _switched(client, session.id, "whole")
+
+    stamps = await _stamps(db_session, session.id)
+
+    assert stamps[old] is None
+    assert stamps[standing] is not None
+
+
+async def test_a_take_of_the_grain_left_behind_that_lands_after_the_switch_is_stamped_at_once(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    await _switched(client, session.id, "whole")
+    late = _kept(await upload_a_part(client, session.id, part=1, audio=b"a que chegou tarde"))
+
+    stamp = (await _stamps(db_session, session.id))[late]
+    aside = await db_session.scalar(select(IRTake.set_aside_at).where(IRTake.id == late))
+
+    assert aside is not None
+    assert stamp == aside
+
+
+async def test_a_take_of_the_earlier_grain_committed_while_the_switch_ran_is_set_aside_and_stamped(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    landed = ensaio_take(session.id, ordinal=7, sha256="b" * 64, project_id=session.project_id)
+    committing = db_session.commit
+    first = True
+
+    async def commit_then_let_a_keep_land() -> None:
+        nonlocal first
+        await committing()
+        if first:
+            first = False
+            db_session.add(landed)
+            await committing()
+
+    monkeypatch.setattr(db_session, "commit", commit_then_let_a_keep_land)
+
+    await sessions_service.switch_the_grain(
+        db_session, session, IRGrain.WHOLE, reopens_the_approved_draft=True
+    )
+
+    await db_session.refresh(landed)
+    assert landed.set_aside_at is not None
+    assert landed.superseded_at == landed.set_aside_at

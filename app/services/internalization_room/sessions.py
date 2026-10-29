@@ -1552,7 +1552,8 @@ async def switch_the_grain(
     the stamp ran, and which read the session before the switch committed, stamped nothing.
     """
     await hold_the_session_row(db, session)
-    if grain_in_force(session, current_parts(await takes_of(db, session.id))) is grain:
+    parts = current_parts(await takes_of(db, session.id))
+    if grain_in_force(session, parts) is grain:
         await db.commit()
         return False
     if not reopens_the_approved_draft:
@@ -1567,6 +1568,9 @@ async def switch_the_grain(
         IRTake.set_aside_at.is_(None),
     )
     await db.execute(update(IRTake).where(*unstamped).values(set_aside_at=at))
+    await db.execute(
+        update(IRTake).where(IRTake.id.in_([part.id for part in parts])).values(superseded_at=at)
+    )
     state = back_translation_of(session)
     if state.checks or state.checked or await current_segments(db, session.id):
         await start_the_translation_over(db, session)
@@ -1574,7 +1578,9 @@ async def switch_the_grain(
         await db.commit()
 
     earlier = IRTake.ordinal.is_not(None) if grain is IRGrain.WHOLE else IRTake.ordinal.is_(None)
-    await db.execute(update(IRTake).where(*unstamped, earlier).values(set_aside_at=at))
+    await db.execute(
+        update(IRTake).where(*unstamped, earlier).values(set_aside_at=at, superseded_at=at)
+    )
     await db.commit()
     await db.refresh(session)
     return True
@@ -1595,4 +1601,5 @@ async def set_aside_by_the_grain_in_force(
     await db.refresh(session, ["grain", "grain_switched_at"])
     if of_the_grain_left_behind(session, take.kind, take.ordinal):
         take.set_aside_at = session.grain_switched_at
+        take.superseded_at = session.grain_switched_at
         await db.commit()
