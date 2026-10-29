@@ -729,6 +729,7 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
         "attempts": 0,
         "trace": [],
         "accepted_ids": [],
+        "earlier_passages": None,
         "recognition_ms": None,
         "reply_ms": None,
         "synthesis_ms": None,

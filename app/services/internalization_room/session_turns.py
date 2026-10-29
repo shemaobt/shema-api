@@ -161,6 +161,13 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
     return turns
 
 
+def opening_stamp(session: IRSession) -> dict[str, str] | None:
+    turns = _voice_turns(session)
+    if not turns or not turns[0][1]:
+        return None
+    return turns[0][0].get("earlier_passages")
+
+
 class TeamTurn(NamedTuple):
     words: str
     at: datetime
@@ -222,6 +229,7 @@ def _voice_side(
         ),
         trace=[TurnTraceStep.model_validate(step) for step in guide.get("attempts") or []],
         accepted_ids=guide.get("accepted_ids") or [],
+        earlier_passages=guide.get("earlier_passages"),
         recognition_ms=guide.get("recognition_ms"),
         reply_ms=guide.get("reply_ms"),
         synthesis_ms=guide.get("synthesis_ms"),

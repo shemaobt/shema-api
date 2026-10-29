@@ -36,6 +36,7 @@ from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
 from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.session_end import as_utc, end_of
+from app.services.internalization_room.session_turns import opening_stamp
 from app.services.internalization_room.sessions import is_panorama
 from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
@@ -176,6 +177,7 @@ def _item(
         halts_raised=session.halts_raised,
         warned_at=as_utc(session.warned_at) if session.warned_at is not None else None,
         turns=guide_turns_of(session),
+        earlier_passages=opening_stamp(session),
         engaged_elements=None
         if beads is None
         else sum(1 for bead in beads if bead.status == CoverageStatus.ENGAGED.value),
