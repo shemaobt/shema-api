@@ -282,6 +282,19 @@ async def test_with_no_script_named_the_runner_plays_every_bt_script_on_the_shel
     )
 
 
+async def test_rounds_plays_the_shelf_that_many_times_and_names_each_report_by_script_and_run(
+    over_the_seam, tmp_path
+) -> None:
+    script = _her_script(tmp_path, expect=HER_EXPECTATION)
+    args = _args(script, tmp_path / "reports")
+    args.rounds = 3
+
+    await bt_golden_runner.run(args)
+
+    names = sorted(path.name.split(".")[:2] for path in (tmp_path / "reports").glob("*.json"))
+    assert names == [["P02-causa-a-mais", f"run{k}"] for k in (1, 2, 3)]
+
+
 def test_the_shelf_the_runner_reads_by_default_holds_her_ten_bt_scripts() -> None:
     found = sorted(
         path.stem for path in bt_golden_runner.scripts_to_play(argparse.Namespace(script=None))

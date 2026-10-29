@@ -7,8 +7,10 @@ our key as `GOLDEN_HTTP_TOKEN` and copies the reports that run wrote into `golde
 beside a `JUDGED.<stamp>.md` naming the pin and the backend commit the running backend reports at
 `/api/version`; a backend started without `GIT_SHA` names none, and the round is refused.
 
-Her exit code is the round's: 0 passed, 1 a session failed, 2 her preflight stopped the run,
-3 the backend died mid-script. 4 is ours: refused before anything was played.
+`--rounds N` plays her whole set N times and names each copied report `<name>.run<k>.<stamp>.md`.
+
+Her exit code is the round's, the worst of the rounds: 0 passed, 1 a session failed,
+2 her preflight stopped the run, 3 the backend died mid-script. 4 is ours: refused before anything was played.
 """
 
 from __future__ import annotations
@@ -56,6 +58,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--pin-file", type=Path, default=FREEZE_PIN)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--backend-commit")
+    parser.add_argument("--rounds", type=int, default=1)
     args = parser.parse_args(argv)
 
     where = os.environ.get("TRIPOD_INTERNALIZATION_REPO")
@@ -82,24 +85,25 @@ def main(argv: list[str]) -> int:
         print(f"refused: no backend named its build at {args.base_url} ({error})", file=sys.stderr)
         return REFUSED
 
-    before = _reports(checkout)
-    played = subprocess.run(
-        ["npm", "run", "golden", "--", "--http", args.base_url],
-        cwd=checkout,
-        env={**os.environ, "GOLDEN_HTTP_TOKEN": key},
-    )
-
     out = args.out or ROOT / "golden/reports" / datetime.now(UTC).date().isoformat()
     out.mkdir(parents=True, exist_ok=True)
-    for report in _reports(checkout) - before:
-        shutil.copy(report, out / report.name)
+    code = 0
+    for run in range(1, args.rounds + 1):
+        before = _reports(checkout)
+        played = subprocess.run(
+            ["npm", "run", "golden", "--", "--http", args.base_url],
+            cwd=checkout,
+            env={**os.environ, "GOLDEN_HTTP_TOKEN": key},
+        )
+        code = max(code, played.returncode)
+        for report in _reports(checkout) - before:
+            name, _, stamp = report.name.partition(".")
+            tagged = f"{name}.run{run}.{stamp}" if args.rounds > 1 else report.name
+            shutil.copy(report, out / tagged)
     (out / f"JUDGED.{datetime.now(UTC):%Y%m%dT%H%M%S%f}.md").write_text(
-        f"backend commit: {backend}\n"
-        f"her pin: {pin}\n"
-        f"base: {args.base_url}\n"
-        f"exit: {played.returncode}\n"
+        f"backend commit: {backend}\nher pin: {pin}\nbase: {args.base_url}\nexit: {code}\n"
     )
-    return played.returncode
+    return code
 
 
 if __name__ == "__main__":
