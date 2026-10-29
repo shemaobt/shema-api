@@ -22,6 +22,8 @@ from app.db.models.internalization_room import (
     IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
+    IRSceneFrase,
+    IRSceneRehearsal,
     IRSession,
     IRSessionStatus,
     IRTake,
@@ -128,12 +130,16 @@ def per_request(test_engine) -> async_sessionmaker[AsyncSession]:
 
 
 class Team:
-    def __init__(self, project, session, question, take, device: str) -> None:
+    def __init__(self, project, session, question, take, rehearsal, frase, device: str) -> None:
         self.id = project.id
         self.session = session.id
         self.question = question.id
         self.question_key = question.audio_key
         self.take = take.id
+        self.rehearsal = rehearsal.id
+        self.rehearsal_key = rehearsal.storage_key
+        self.frase = frase.id
+        self.frase_key = frase.storage_key
         self.device = device
 
 
@@ -206,12 +212,38 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
     check = IRExternalCheck(
         release_id=f"r-{tag}", session_id=session.id, version=1, takes=[], frases=[]
     )
-    db.add_all([question, take, check])
+    rehearsal = IRSceneRehearsal(
+        id=f"sr-{tag}",
+        session_id=session.id,
+        project_id=project.id,
+        pericope=P,
+        n=1,
+        device_id=f"t-{tag}",
+        storage_key=f"internalization-room/scene-rehearsals/{tag}.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+    )
+    frase = IRSceneFrase(
+        id=f"sf-{tag}",
+        rehearsal_id=rehearsal.id,
+        session_id=session.id,
+        starts_ms=0,
+        ends_ms=1000,
+        storage_key=f"internalization-room/scene-rehearsals/{tag}-frase.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+        transcript="a frase",
+    )
+    db.add_all([question, take, check, rehearsal, frase])
     await db.commit()
     await bucket.put(question.audio_key, b"a equipe perguntou", "audio/mp4")
     await bucket.put(f"voz/{tag}", b"a voz falou", "audio/mpeg")
     tablet = await a_linked_tablet(db, team_id=project.id)
-    return Team(project, session, question, take, tablet.device_id)
+    return Team(project, session, question, take, rehearsal, frase, tablet.device_id)
 
 
 async def _a_reader(
@@ -376,9 +408,19 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/re-recorded-sentences",
         f"{IR}/facilitator/sessions/{session}/takes/whole",
         f"{IR}/facilitator/sessions/{session}/turns/0/audio",
+        f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}/audio",
+        f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}"
+        f"/frases/{desk['b'].frase}/audio",
     ]
 
-    values = {"session_id": session, "number": 0, "version": 1, "sentence_id": "frase-b"}
+    values = {
+        "session_id": session,
+        "number": 0,
+        "version": 1,
+        "sentence_id": "frase-b",
+        "rehearsal_id": desk["b"].rehearsal,
+        "frase_id": desk["b"].frase,
+    }
     answers = {
         path: (
             await client.get(path.format(**values), headers=desk.readers["consultant"])
@@ -408,6 +450,8 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         reads[11],
         reads[12],
         reads[14],
+        reads[15],
+        reads[16],
     ):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
@@ -432,6 +476,9 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"{IR}/facilitator/takes/{team.take}/audio",
         f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
         f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/audio",
+        f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}/audio",
+        f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}"
+        f"/frases/{team.frase}/audio",
     ]
     mounted = _audio_doors()
     covered = {template_of("GET", url) for url in doors}
@@ -440,7 +487,7 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
 
-    question, by_handle, reply, take, turn, sentence = [
+    question, by_handle, reply, take, turn, sentence, scene, scene_frase = [
         await client.get(url, headers=reader) for url in doors
     ]
 
@@ -456,6 +503,10 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         b"a voz falou"
     )
     assert sentence.status_code == 307, sentence.text[:300]
+    assert scene.status_code == 200, scene.text[:300]
+    assert scene.json()["url"] == f"https://signed.test/plataforma/{team.rehearsal_key}"
+    assert scene_frase.status_code == 200, scene_frase.text[:300]
+    assert scene_frase.json()["url"] == f"https://signed.test/plataforma/{team.frase_key}"
     assert await _row(per_request, IRSession, team.session) == session_before
     assert await _row(per_request, IRQuestion, team.question) == question_before
 
@@ -587,6 +638,15 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", {}),
+        (
+            f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}/audio",
+            {},
+        ),
+        (
+            f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}"
+            f"/frases/{team.frase}/audio",
+            {},
+        ),
     ]
     nudges = f"{DESK}/teams/{team.id}/nudges"
 

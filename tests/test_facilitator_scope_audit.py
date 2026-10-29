@@ -57,6 +57,8 @@ from app.db.models.internalization_room import (
     IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
+    IRSceneFrase,
+    IRSceneRehearsal,
     IRSession,
     IRTake,
     IRTakeKind,
@@ -213,6 +215,42 @@ async def _a_recorded_session_of(db: AsyncSession, owner: Facilitator, tag: str)
     return session.id, take.id
 
 
+async def _a_scene_rehearsal_of(
+    db: AsyncSession, session_id: str, project_id: str, tag: str
+) -> tuple[str, str]:
+    rehearsal = IRSceneRehearsal(
+        id=f"sr-{tag}",
+        session_id=session_id,
+        project_id=project_id,
+        pericope="P03",
+        n=1,
+        device_id=f"t-{tag}",
+        storage_key=f"internalization-room/scene-rehearsals/{tag}.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+    )
+    db.add(rehearsal)
+    await db.flush()
+    frase = IRSceneFrase(
+        id=f"sf-{tag}",
+        rehearsal_id=rehearsal.id,
+        session_id=session_id,
+        starts_ms=0,
+        ends_ms=1000,
+        storage_key=f"internalization-room/scene-rehearsals/{tag}-frase.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+        transcript="a frase",
+    )
+    db.add(frase)
+    await db.commit()
+    return rehearsal.id, frase.id
+
+
 async def _an_opened_check_of(db: AsyncSession, session_id: str) -> None:
     db.add(
         IRExternalCheck(
@@ -263,6 +301,9 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     absent_key = "internalization-room/questions/nao-existe-em-lugar-nenhum.m4a"
     session_id, take_id = await _a_recorded_session_of(db, owner, f"t{tag}")
     await _an_opened_check_of(db, session_id)
+    rehearsal_id, frase_id = await _a_scene_rehearsal_of(
+        db, session_id, owner.project.id, f"r{tag}"
+    )
     # One session per route: the mark and its undo are the same claim written and
     # withdrawn, so sharing a session would make each case depend on the other's order.
     attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
@@ -461,6 +502,32 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/scene-rehearsals", {}),
             "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/scene-rehearsals/{absent}/audio",
+                {},
+            ),
+            "ids": (session_id, rehearsal_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}"
+                f"/frases/{frase_id}/audio",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/scene-rehearsals/{absent}/frases/{absent}"
+                "/audio",
+                {},
+            ),
+            "ids": (session_id, rehearsal_id, frase_id, absent),
         },
         {
             "method": "GET",
