@@ -214,3 +214,33 @@ def test_a_script_added_to_her_checkout_without_a_commit_is_refused(
 
     assert code == her_golden_round.REFUSED
     assert not (her_checkout / ".golden" / "ran").exists()
+
+
+def test_rounds_five_plays_her_set_five_times_and_names_each_report_by_script_and_run(
+    her_checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pin = _git(her_checkout, "rev-parse", "HEAD")
+    pin_file = tmp_path / "FREEZE_PIN"
+    pin_file.write_text(f"repo her/repo\nbranch main\ncommit {pin}\n")
+    out = tmp_path / "reports"
+    counter = tmp_path / "counter"
+    counter.write_text("0")
+    npm = tmp_path / "bin" / "npm"
+    npm.write_text(
+        "#!/bin/sh\nmkdir -p .golden\nn=$(($(cat " + str(counter) + ") + 1))\n"
+        "echo $n > " + str(counter) + '\necho played > ".golden/P01-opening.run-$n.md"\n'
+    )
+
+    code = her_golden_round.main(
+        [
+            *["--base-url", BASE, "--pin-file", str(pin_file), "--out", str(out)],
+            *["--backend-commit", "b4ckend", "--rounds", "5"],
+        ]
+    )
+
+    assert code == 0
+    assert sorted(path.name for path in out.glob("P01-opening.*.md")) == [
+        f"P01-opening.run{k}.run-{k}.md" for k in range(1, 6)
+    ]
+    (judged,) = out.glob("JUDGED.*.md")
+    assert "b4ckend" in judged.read_text()

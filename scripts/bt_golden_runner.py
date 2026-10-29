@@ -21,6 +21,8 @@ before any round is paid for), 0 when her bar was met. Each run costs real
 model calls — hers came to roughly US$ 6-7 for five rounds — so it is never part of the test
 suite.
 
+`--rounds N` plays the whole shelf N times and names each report `<name>.run<k>.<stamp>.json`.
+
 A run over every script on the shelf stops before the next script once what it has spent
 reaches `--budget-usd`, or `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both
 are: the script in flight plays its last round first. It names the scripts it did not start on
@@ -273,11 +275,12 @@ async def run(args: argparse.Namespace) -> int:
     paid: list[Call] = []
     not_started: list[str] = []
     try:
-        for position, script in enumerate(scripts):
+        plan = [(n, script) for n in range(1, getattr(args, "rounds", 1) + 1) for script in scripts]
+        for position, (n, script) in enumerate(plan):
             if budgeted(paid) >= budget:
-                not_started = [later.name for later in scripts[position:]]
+                not_started = [later.name for _, later in plan[position:]]
                 break
-            codes.append(await play_script(script, args, paid))
+            codes.append(await play_script(script, args, paid, n))
     finally:
         by_role, unpriced = priced(paid)
         if by_role or unpriced:
@@ -316,7 +319,9 @@ def scripts_to_play(args: argparse.Namespace) -> list[Path]:
     return [Path(args.script)] if args.script else sorted(BT_DIR.glob("*.json"))
 
 
-async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]) -> int:
+async def play_script(
+    script: Script, args: argparse.Namespace, paid: list[Call], run: int = 1
+) -> int:
     """Play her script through one room and answer with what a CI should do about it.
 
     The catches in this file are the boundary: the room refusing, at the door or in a round,
@@ -348,6 +353,8 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
             calls = _paid(played)
             paid.extend(calls)
             stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+            if getattr(args, "rounds", 1) > 1:
+                stamp = f"run{run}.{stamp}"
             report, transcript = export(
                 script,
                 session_id=session_id,
@@ -380,6 +387,7 @@ def main() -> int:
     parser.add_argument("--script", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--budget-usd", type=float, default=None)
+    parser.add_argument("--rounds", type=int, default=1)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
     return asyncio.run(run(parser.parse_args()))
 
