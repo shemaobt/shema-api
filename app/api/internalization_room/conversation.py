@@ -15,7 +15,7 @@ from app.services.internalization_room.conversation import conversation_of
 from app.services.internalization_room.session_coverage import coverage_of
 from app.services.internalization_room.session_turns import (
     boundary_turns_of,
-    turn_clip_url,
+    turn_listen_address,
     turns_of,
 )
 
@@ -80,5 +80,5 @@ async def listen_to_turn(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     await db.commit()
-    signed = await turn_clip_url(session, number)
+    signed = await turn_listen_address(session, number)
     return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())

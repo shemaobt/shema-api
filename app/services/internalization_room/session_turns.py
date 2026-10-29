@@ -113,7 +113,7 @@ def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
     return SessionBoundaryTurnsResponse(session_id=session.id, count=len(marked), turns=marked)
 
 
-async def turn_clip_url(session: IRSession, number: int) -> SignedAudio:
+async def turn_listen_address(session: IRSession, number: int) -> SignedAudio:
     """A short-lived signed address for the clip of one voice turn, and the instant it dies.
 
     The clip the turn stored is played whenever its object is still there, whichever voice
