@@ -194,7 +194,9 @@ async def test_an_admin_missing_the_form_row_is_refused_before_anything_is_writt
         )
 
     assert res.status_code == 403
-    assert FORM_APP_KEY in res.json()["detail"]
+    detail = res.json()["detail"]
+    assert f"'{FORM_APP_KEY}'" in detail
+    assert "writes it in both apps" in detail
     held = select(UserAppRole.id).where(UserAppRole.user_id == target.id)
     assert (await db_session.execute(held)).all() == []
 
@@ -230,6 +232,41 @@ async def test_a_stale_admin_is_refused_before_anything_is_written(
     assert res.status_code == 403
     held = select(UserAppRole.id).where(UserAppRole.user_id == target.id)
     assert (await db_session.execute(held)).all() == []
+
+
+async def test_a_revoked_admin_is_told_what_it_lacks_not_that_the_account_is_broken(
+    db_session, shema_app, form_app
+) -> None:
+    """The refusal a revoked Admin reads with the session still open (OBT-665, PME-ACE-089).
+    The revocation was somebody's decision, so the sentence names the app and how the role
+    comes back if it should — and no longer tells the account to *repair* itself."""
+    admin, headers = await make_admin(db_session, shema_app, form_app)
+    target = await make_account(db_session, "target@shema.example")
+
+    async with surface_client(db_session) as client:
+        warm = await client.get(PEOPLE, params={"email": target.email}, headers=headers)
+        assert warm.status_code == 200
+        rows = await db_session.execute(select(UserAppRole).where(UserAppRole.user_id == admin.id))
+        for row in rows.scalars():
+            row.revoked_at = datetime.now(UTC)
+        await db_session.commit()
+
+        res = await client.post(
+            GRANTS,
+            json={
+                "userId": target.id,
+                "appKey": APP_KEY,
+                "roleKey": "obtLab",
+                "regionKeys": ["asia"],
+            },
+            headers=headers,
+        )
+
+    assert res.status_code == 403
+    detail = res.json()["detail"]
+    assert f"'{APP_KEY}'" in detail
+    assert "repair" not in detail
+    assert "If it should be an Admin" in detail
 
 
 def test_the_seven_routes_are_pinned_and_each_carries_the_admin_guard() -> None:

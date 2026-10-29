@@ -119,16 +119,23 @@ async def require_admin_in(db: AsyncSession, actor: User, app_keys: Sequence[str
     thirty seconds old in each process, and a write is where an Admin revoked a moment ago
     must already be refused. It is the platform's own predicate
     (``assert_can_manage_roles``), answered as a 403 rather than its 400, because being the
-    wrong person is not a malformed request. The one account it refuses that the route let
-    through is an Admin holding the role in one app only, and the sentence says so.
+    wrong person is not a malformed request.
+
+    The route lets two accounts through that this refuses, and **one sentence has to be true
+    for both** (OBT-665): an Admin holding the role in one app only, and an Admin revoked a
+    moment ago whose session is still open. The sentence used to tell both to *repair this
+    account*, which is advice for the first and reads as a broken account to the second, who
+    was revoked on purpose. So it says what is missing and, conditionally, how the role comes
+    back — granting the Admin writes it in both apps, so a re-grant also repairs the first.
     """
     for app_key in dict.fromkeys(app_keys):
         try:
             await assert_can_manage_roles(db, actor, app_key)
         except RoleError as refused:
             raise AuthorizationError(
-                f"The admin role is not held in '{app_key}'. Granting the Admin writes it in "
-                "both apps; an installation admin can grant it again to repair this account."
+                f"This account does not hold the admin role in '{app_key}', so it cannot "
+                "change access. If it should be an Admin, another Admin or an installation "
+                "admin can grant the role again, which writes it in both apps."
             ) from refused
 
 
