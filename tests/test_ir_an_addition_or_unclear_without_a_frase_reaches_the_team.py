@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -9,9 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room.back_translation import (
     FindingKind,
 )
-from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import final_segments
-from app.services.internalization_room.sessions import get_session
+from tests.release_harness import exported_file
 from tests.room_harness import (
     Room,
     ScriptedAnalyst,
@@ -157,13 +157,13 @@ async def test_the_retroverification_file_lists_what_named_no_readable_frase(
 
     await _finish(client, db_session, session.id)
 
-    file = await retroverification_file(db_session, await get_session(db_session, session.id))
+    file = await exported_file(db_session, session.id)
 
-    assert [finding.kind for finding in file.findings] == [
+    assert [finding["kind"] for finding in file["checks"][-1]["findings"]] == [
         FindingKind.ADDITION.value,
         FindingKind.UNCLEAR.value,
         FindingKind.MISSING.value,
     ], "o arquivo do consultor perdia o que o analista disse sem número de frase"
-    dumped = file.model_dump_json()
+    dumped = json.dumps(file, ensure_ascii=False)
     assert ADDITION_WITH_NO_FRASE in dumped
     assert UNCLEAR_OUT_OF_RANGE in dumped

@@ -36,11 +36,6 @@ from app.services.internalization_room.back_translation import (
     listening_to_the_parts,
 )
 from app.services.internalization_room.forced import was_forced
-from app.services.internalization_room.passage_retroverification import (
-    APPROVED_BEFORE_THE_RECORD,
-    NOT_APPROVED,
-)
-from app.services.internalization_room.retroverification import TAKE_AUDIO_ROUTE
 from app.services.internalization_room.segments import (
     current_segments,
     final_segments,
@@ -59,6 +54,34 @@ from app.services.internalization_room.takes import (
     takes_of,
 )
 from app.utils.stored_time import as_utc
+
+NOT_APPROVED = (
+    "rascunho ainda não aprovado — as frases abaixo são a tradução ao vivo, não uma versão fechada"
+)
+APPROVED_BEFORE_THE_RECORD = (
+    "esta versão foi aprovada antes do registro de aprovação existir — "
+    "sem estado de conferência gravado; as frases abaixo são a tradução ao vivo"
+)
+
+#: Where a facilitator's browser fetches one take, as the file points at it. A path and never
+#: a signed link: a signed URL expires in minutes and this document is meant to outlive it.
+TAKE_AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
+
+
+async def _version(db: AsyncSession, session: IRSession, release: IRRelease | None) -> int:
+    """The draft's release number when one stands, else the passage's latest plus one, else 1.
+
+    The column and never the name (a release before ADR 0048 is named by its row id). The counter
+    is the passage's, in the live draft and in an archive alike, as the download list reads it.
+    """
+    if release is not None:
+        return release.version
+    latest = (
+        await latest_release(db, session.project_id, session.pericope)
+        if session.project_id
+        else None
+    )
+    return latest.version + 1 if latest else 1
 
 
 def _finding(entry: dict[str, Any]) -> RetroApprovalFinding:
@@ -250,15 +273,10 @@ async def retro_export(
         (row for row in (*standing.values(), *retired) if row.transcript),
         key=lambda row: (row.created_at, row.superseded_at is None, row.ordinal, row.id),
     )
-    latest = (
-        None
-        if release or session.project_id is None
-        else await latest_release(db, session.project_id, session.pericope)
-    )
     return RetroExport(
         releaseId=release_id,
         pericopeId=session.pericope,
-        version=release.version if release else (latest.version + 1 if latest else 1),
+        version=await _version(db, session, release),
         finalized=release is not None,
         note=None
         if approval

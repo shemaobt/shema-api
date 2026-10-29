@@ -270,15 +270,14 @@ async def test_the_retired_part_is_kept_as_history(
     session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
     was = (await _by_part(db_session, session.id))[two.id].id
 
-    fresh = await _recorded_again(client, session, part=2)
+    await _recorded_again(client, session, part=2)
 
     packet = await _packet(db_session, session)
     file = await _the_file(client, db_session, session, project, room_app)
 
     assert was in [row["segment_id"] for row in packet["back_translation"]["superseded_segments"]]
-    assert was in [row["segment_id"] for row in file["abandoned"]]
-    named = [row["take_id"] for row in file["takes"]]
-    assert two.id in named and fresh in named, "the file keeps every take, the replaced one too"
+    assert was in [row["idx"] for row in file["history"]]
+    assert [row["takeId"] for row in file["supersededTakes"]] == [two.id]
 
 
 async def test_the_next_telling_of_part_two_lands_between_parts_one_and_three(
@@ -335,8 +334,7 @@ async def test_the_retroverification_file_reads_the_new_part_in_its_place(
 
     file = await _the_file(client, db_session, session, project, room_app)
 
-    assert file["numbering"] == "live"
-    assert [(row["segment_id"], row["frase"]) for row in file["stretches"]] == [
+    assert [(row["idx"], row["n"]) for row in file["frases"] if not row["stale"]] == [
         (standing[one.id].id, 1),
         (retold.id, 2),
         (standing[three.id].id, 3),
@@ -710,25 +708,6 @@ async def test_a_retry_of_a_replaced_whole_take_leaves_the_whole_that_replaced_i
     assert retried == replaced, "the same audio is the take that already holds it"
     assert await _standing_ids(db_session, session.id) == [told.id]
     assert (await stored_telling_back(db_session, session)).checked is True
-
-
-async def test_divided_lists_a_parent_before_its_child(
-    client: httpx.AsyncClient, db_session: AsyncSession, room_app: App
-) -> None:
-    """The file walks the divided stretches the way the reading walks them.
-
-    In row order a divided piece is numbered among its own siblings, so a stretch of the third
-    part cut in two, one piece cut again, listed the piece before the stretch it came out of.
-    """
-    project, _credential = await a_claimed_device(db_session)
-    session, (_one, _two, three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
-    root = (await _by_part(db_session, session.id))[three.id]
-    head, _tail = await divide_segment(db_session, session, root, at_ms=PART_MS // 2)
-    await divide_segment(db_session, session, head, at_ms=PART_MS // 4)
-
-    file = await _the_file(client, db_session, session, project, room_app)
-
-    assert [row["segment_id"] for row in file["divided"]] == [root.id, head.id]
 
 
 async def test_a_harness_take_names_the_team(

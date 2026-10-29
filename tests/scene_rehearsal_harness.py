@@ -59,6 +59,7 @@ def the_kept_p02_tells_its_appeals_as_one_scene(tree: Path) -> None:
 
 @dataclass
 class Room:
+    db: AsyncSession
     client: httpx.AsyncClient
     credential: str
     tablet_b: dict[str, str]
@@ -138,6 +139,7 @@ async def a_room(
         transport=ASGITransport(app=test_app), base_url="http://test", headers=tablet_a.headers
     ) as client:
         yield Room(
+            db=db_session,
             client=client,
             credential=tablet_a.credential,
             tablet_b=tablet_b.headers,

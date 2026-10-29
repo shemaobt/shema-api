@@ -33,6 +33,7 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.project import Project
 from app.models.internalization_room import PlayedTake
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -44,13 +45,16 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     compose_internalization_release,
 )
+from app.services.internalization_room.retro_export import retro_export
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
+    get_session,
     report_playback,
     retire_the_part_recorded_again,
 )
+from app.services.internalization_room.take_downloads import _release_id
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
     a_language,
@@ -577,9 +581,14 @@ def desk_retro(session_id: str) -> str:
 async def session_retro(
     client: httpx.AsyncClient, session_id: str, headers: dict[str, str]
 ) -> httpx.Response:
-    """The session's own file, read out of its passage's file through the old route's redirect."""
-    followed = await client.get(desk_retro(session_id), headers=headers, follow_redirects=True)
-    if followed.status_code != 200:
-        return followed
-    (own,) = [one for one in followed.json()["sessions"] if one["session_id"] == session_id]
-    return httpx.Response(200, json=own)
+    """The passage's file, read through the old session route's redirect."""
+    return await client.get(desk_retro(session_id), headers=headers, follow_redirects=True)
+
+
+async def exported_file(db: AsyncSession, session_id: str) -> dict[str, Any]:
+    """The file of the session's draft as its route serves it, read without the HTTP round trip."""
+    db.expire_all()
+    session = await get_session(db, session_id)
+    release_id = await _release_id(db, session, current_parts(await takes_of(db, session.id)))
+    file = await retro_export(db, session, await approved_draft(db, session), release_id)
+    return file.model_dump(mode="json", by_alias=True)

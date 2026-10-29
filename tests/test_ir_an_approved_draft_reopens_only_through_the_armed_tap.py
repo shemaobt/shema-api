@@ -414,8 +414,8 @@ async def test_a_check_that_comes_back_clean_over_a_forced_v1_is_the_one_check_e
     assert (read["version"], read["forced"]) == (1, True)
     assert (stored["check"]["status"], stored["check"]["forced"]) == ("conferida", True)
     assert stored["check"]["conferida"] is True
-    assert (retro["approved"], retro["checked"]) == (True, True)
-    assert retro["releases"][0]["forced_by"] is not None
+    assert (retro["finalized"], retro["approval"]["conferida"]) == (True, True)
+    assert retro["approval"]["forced"] is True
 
 
 async def test_a_finding_raised_after_the_approval_is_the_standing_versions_check_too(
@@ -444,7 +444,7 @@ async def test_a_finding_raised_after_the_approval_is_the_standing_versions_chec
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
     retro = (await session_retro(client, session.id, desk)).json()
 
-    assert (stored["check"]["conferida"], retro["checked"]) == (False, False)
+    assert (stored["check"]["conferida"], retro["approval"]["conferida"]) == (False, False)
     assert [one["idx"] for one in stored["check"]["findings"]] == [told[0].id]
     assert (await _approval(client, session.id) or {}).get("version") == 1
 
@@ -463,7 +463,7 @@ async def test_the_translation_started_over_after_the_approval_is_the_standing_v
 
     stored = (await client.get(desk_release_at(session.id, 1), headers=desk)).json()
     retro = (await session_retro(client, session.id, desk)).json()
-    assert (stored["check"]["conferida"], retro["checked"]) == (False, False)
+    assert (stored["check"]["conferida"], retro["approval"]["conferida"]) == (False, False)
 
 
 async def test_a_finding_on_a_stretch_told_after_the_approval_leaves_the_versions_check_as_it_was(

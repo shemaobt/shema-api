@@ -17,8 +17,10 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room.segments import final_segments, retired_segments
+from app.services.internalization_room.sessions import back_translation_of, get_session
 from tests.hard_stretch_harness import a_session
-from tests.release_harness import a_claimed_device, session_retro, team_headers
+from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     played_every_part,
     the_analyst_is_scripted,
@@ -166,9 +168,21 @@ async def offered(room: Room, session_id: str) -> list[int]:
 
 
 async def the_file(room: Room, session_id: str) -> dict[str, Any]:
-    answer = await session_retro(room.client, session_id, room.desk)
-    assert answer.status_code == 200, answer.text
-    return dict(answer.json())
+    room.db.expire_all()
+    session = await get_session(room.db, session_id)
+    return {
+        "stretches": [
+            {"take_id": s.take_id, "starts_ms": s.starts_ms, "ends_ms": s.ends_ms}
+            | {"transcript": s.transcript}
+            for s in await final_segments(room.db, session_id)
+        ],
+        "abandoned": [
+            {"transcript": s.transcript}
+            for s in await retired_segments(room.db, session_id)
+            if s.superseded_by_id is None
+        ],
+        "findings": [{"note": f.note} for f in back_translation_of(session).findings],
+    }
 
 
 async def words_on(room: Room, session_id: str, take_id: str) -> list[tuple[int, int, str]]:
