@@ -216,6 +216,7 @@ async def the_part_recorded_again(db: AsyncSession, session: IRSession) -> IRTak
         project_id=session.project_id,
     )
     db.add(fresh)
+    part.superseded_at = fresh.created_at
     await db.commit()
     await retire_the_part_recorded_again(db, session, fresh)
     return fresh

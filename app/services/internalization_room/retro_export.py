@@ -54,6 +54,7 @@ from app.services.internalization_room.take_downloads import (
 )
 from app.services.internalization_room.takes import (
     current_parts,
+    superseded_moment,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -341,6 +342,7 @@ async def retro_export(
                 bytes=take.size_bytes,
                 contentType=take.content_type,
                 recordedAt=as_utc(take.recorded_at).isoformat(),
+                supersededAt=superseded_moment(take),
                 filename=file_name(release_id, keys[take.id], take, superseded=True),
                 url=TAKE_AUDIO_ROUTE.format(take_id=take.id),
             )

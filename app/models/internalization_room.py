@@ -1323,10 +1323,10 @@ class TakeDownload(BaseModel):
 
 
 class SupersededTakeDownload(TakeDownload):
-    """A **Superseded take**, with when the take that replaced it reached the server."""
+    """A **Superseded take**, with the server's time it stopped being live, if stamped."""
 
-    superseded_at: str
-    #: When a grain switch set it aside; its `superseded_at` too when no take replaced it.
+    superseded_at: str | None
+    #: When a grain switch set it aside.
     set_aside_at: str | None = None
 
 

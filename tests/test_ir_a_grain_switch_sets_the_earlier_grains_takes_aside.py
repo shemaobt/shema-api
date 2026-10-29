@@ -606,8 +606,8 @@ async def test_a_switch_back_never_restores_the_earlier_takes(
     listing = _rehearsals(await _listing(client, session.id))
     assert listing[first_whole]["set_aside_at"] == t1, "a volta mexeu na marca da primeira troca"
     replaced = {take["take_id"]: take for take in downloads["superseded_takes"]}[first_whole]
-    assert _moment(replaced["superseded_at"]) == _moment(listing[second_whole]["recorded_at"]), (
-        "a hora em que a inteira foi substituída virou a hora da troca"
+    assert _moment(replaced["superseded_at"]) == _moment(t1), (
+        "a inteira deixou de valer na troca, e a gravação de depois não muda essa hora"
     )
     assert replaced["set_aside_at"] == t1
     t2 = {listing[part]["set_aside_at"] for part in parts}
@@ -875,3 +875,23 @@ async def test_a_take_of_the_earlier_grain_committed_while_the_switch_ran_is_set
     await db_session.refresh(landed)
     assert landed.set_aside_at is not None
     assert landed.superseded_at == landed.set_aside_at
+
+
+async def test_the_list_gives_a_set_aside_take_the_time_it_was_stamped_and_none_when_it_was_not(
+    client: httpx.AsyncClient, db_session: AsyncSession, desk: dict[str, str]
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    old = _kept(await upload_a_part(client, session.id, part=1, audio=b"a primeira"))
+    standing = _kept(await upload_a_part(client, session.id, part=1, audio=b"a segunda"))
+    await db_session.execute(update(IRTake).where(IRTake.id == old).values(superseded_at=None))
+    await db_session.commit()
+    await _switched(client, session.id, "whole")
+
+    listed = {
+        take["take_id"]: take
+        for take in (await _downloads(client, desk, session.id))["superseded_takes"]
+    }
+
+    assert listed[old]["set_aside_at"] is not None
+    assert listed[old]["superseded_at"] is None, "a hora da troca foi lida como a da substituição"
+    assert listed[standing]["superseded_at"] == listed[standing]["set_aside_at"]

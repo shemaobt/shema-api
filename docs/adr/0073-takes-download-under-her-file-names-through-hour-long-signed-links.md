@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded in part by ADR 0104: the time a replaced take stopped being live is its own stamp
 date: 2026-10-20
 ---
 
