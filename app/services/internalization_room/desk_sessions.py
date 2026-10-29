@@ -32,9 +32,12 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
+from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.session_end import as_utc, end_of
+from app.services.internalization_room.sessions import is_panorama
 from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
+from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.project.facilitated_scope import (
     TEAM_NOT_FOUND,
     confined_to,
@@ -152,6 +155,7 @@ def _item(
 ) -> DeskSession:
     end = end_of(session)
     beads = beads_of(session, portrait)
+    panorama = is_panorama(session.pericope)
     return DeskSession(
         session_id=session.id,
         team_id=str(session.project_id),
@@ -160,7 +164,14 @@ def _item(
         reference=reference,
         language=session.language,
         state=_state(session, end.state),
+        started_at=as_utc(session.created_at),
         last_activity_at=as_utc(session.updated_at),
+        scene=None
+        if panorama
+        else current_scene_id(
+            session.coverage_state or {}, session.pericope, session.messages or []
+        ),
+        moment=None if panorama else moment_view(session),
         ended_at=end.ended_at,
         attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
         attended_by=session.attended_by,
