@@ -52,12 +52,14 @@ from typing import Any
 import pytest
 
 from app.db.models.shema_enums import ShemaHealthLevel, ShemaProjectStatus, ShemaRegionKey
+from app.models.shema_prayer import _COPY, PulseLanguage
 from app.utils.shema_derivations import (
     COUNTRY_REGION,
     COUNTRY_SYNONYMS,
     derive,
     get_country,
     get_region,
+    map_spelling,
 )
 
 HERE = Path(__file__).parent
@@ -368,6 +370,26 @@ def test_each_country_resolves_alike_in_portuguese_spanish_and_english(
     """The export's spelling resolves as it did before OBT-591, and the three names with it."""
     assert get_region(export).value == region
     assert {get_region(name).value for name in (pt, es, en)} == {region}
+
+
+@pytest.mark.parametrize(("export", "region", "pt", "es", "en"), THE_25, ids=[r[0] for r in THE_25])
+def test_the_pulse_names_each_country_as_the_decision_does(
+    export: str, region: str, pt: str, es: str, en: str
+) -> None:
+    """The Prayer Pulse prints the country in the language it was asked in (OBT-665), from a table
+    of its own words; this holds those words against OBT-591's names, written by hand above, and
+    each name back through the map, so a Pulse can never print a country the map would place
+    elsewhere."""
+    named = {language: _COPY[language].countries[export] for language in PulseLanguage}
+    assert named == {PulseLanguage.PT_BR: pt, PulseLanguage.EN: en}
+    assert {map_spelling(name) for name in named.values()} == {export}
+
+
+def test_the_pulse_names_the_map_and_nothing_else() -> None:
+    for language in PulseLanguage:
+        assert _COPY[language].countries.keys() == COUNTRY_REGION.keys()
+    assert map_spelling("Terra Aberta") is None
+    assert map_spelling("brasil") is None
 
 
 @pytest.mark.parametrize(("spelling", "region"), SECOND_FORMS)

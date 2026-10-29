@@ -32,6 +32,7 @@ from app.api.resource_requests._deps import (
 from app.models.resource_request import (
     BoardMemberOut,
     EvaluationOut,
+    EvaluationTotalOut,
     EvaluationWriteIn,
     RequestStatusOut,
 )
@@ -51,6 +52,18 @@ async def list_board_members(user: CanViewEvaluation, db: Db) -> list[BoardMembe
     return [
         BoardMemberOut(id=member.id, display_name=member.display_name, email=member.email)
         for member in members
+    ]
+
+
+@router.get("/evaluation-totals")
+async def list_evaluation_totals(user: CanViewEvaluation, db: Db) -> list[EvaluationTotalOut]:
+    """Every evaluated request's /30 in one read, for the Painel's badges (OBT-665).
+
+    Behind ``view_evaluation``, like the evaluation itself: the team never reads a score."""
+    totals = await service.list_evaluation_totals(db, user, APP_KEY)
+    return [
+        EvaluationTotalOut(request_id=request_id, total=total)
+        for request_id, total in sorted(totals.items())
     ]
 
 

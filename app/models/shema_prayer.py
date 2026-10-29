@@ -46,7 +46,7 @@ from pydantic.alias_generators import to_camel
 
 from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_privacy import UNKNOWN_REGION, LeavingShape
-from app.utils.shema_derivations import get_country
+from app.utils.shema_derivations import get_country, map_spelling
 
 #: ``datetime.date`` under a second name, for the field FE-44 calls ``date``.
 Day = date
@@ -137,6 +137,9 @@ class _PulseCopy(NamedTuple):
     #: place, and a file a person reads says it in words instead.
     sensitive_project: str
     regions: dict[ShemaRegionKey, str]
+    #: The 25 countries of the map, keyed on the export's spelling, as this language names
+    #: them — OBT-591's table (``tests/test_shema/test_parity.py``'s ``THE_25``).
+    countries: dict[str, str]
 
 
 _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
@@ -161,6 +164,33 @@ _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
             ShemaRegionKey.OCEANIA: "Pacífico",
             ShemaRegionKey.EUROPE: "Europa",
         },
+        countries={
+            "Brazil": "Brasil",
+            "Peru": "Peru",
+            "Colombia": "Colômbia",
+            "Mexico": "México",
+            "Panama": "Panamá",
+            "United States": "Estados Unidos",
+            "Canada": "Canadá",
+            "Egypt": "Egito",
+            "Mozambique": "Moçambique",
+            "South Africa": "África do Sul",
+            "South Sudan": "Sudão do Sul",
+            "Sudan": "Sudão",
+            "Guinea-Bissau": "Guiné-Bissau",
+            "São Tomé e Príncipe": "São Tomé e Príncipe",
+            "Togo": "Togo",
+            "Uganda": "Uganda",
+            "India": "Índia",
+            "China": "China",
+            "Indonesia": "Indonésia",
+            "East Timor": "Timor-Leste",
+            "Nepal": "Nepal",
+            "Australia": "Austrália",
+            "Papua New Guinea": "Papua-Nova Guiné",
+            "Fiji": "Fiji",
+            "Micronesia": "Micronésia",
+        },
     ),
     PulseLanguage.EN: _PulseCopy(
         title="PRAYER PULSE",
@@ -182,6 +212,33 @@ _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
             ShemaRegionKey.OCEANIA: "Pacific",
             ShemaRegionKey.EUROPE: "Europe",
         },
+        countries={
+            "Brazil": "Brazil",
+            "Peru": "Peru",
+            "Colombia": "Colombia",
+            "Mexico": "Mexico",
+            "Panama": "Panama",
+            "United States": "United States",
+            "Canada": "Canada",
+            "Egypt": "Egypt",
+            "Mozambique": "Mozambique",
+            "South Africa": "South Africa",
+            "South Sudan": "South Sudan",
+            "Sudan": "Sudan",
+            "Guinea-Bissau": "Guinea-Bissau",
+            "São Tomé e Príncipe": "São Tomé and Príncipe",
+            "Togo": "Togo",
+            "Uganda": "Uganda",
+            "India": "India",
+            "China": "China",
+            "Indonesia": "Indonesia",
+            "East Timor": "East Timor",
+            "Nepal": "Nepal",
+            "Australia": "Australia",
+            "Papua New Guinea": "Papua New Guinea",
+            "Fiji": "Fiji",
+            "Micronesia": "Micronesia",
+        },
     ),
 }
 
@@ -197,15 +254,29 @@ def _counted(copy: _PulseCopy, count: int) -> str:
     return copy.one if count == 1 else copy.many.format(count=count)
 
 
+def _printed_country(copy: _PulseCopy, country: str) -> str:
+    """The country in the file's language when the map lists it, else as the team typed it.
+
+    The file used to print the stored spelling, so a Pulse asked in Portuguese said *Brazil*
+    (PME-ORA-027): the rest of the file follows ``lang`` and the country did not. Only the 25
+    countries the map knows are named — by the export's spelling or a listed synonym,
+    :func:`~app.utils.shema_derivations.map_spelling` — and anything else is printed as typed
+    rather than guessed at; the stored ``location`` is never rewritten (OBT-665, ours).
+    """
+    spelling = map_spelling(country)
+    return country if spelling is None else copy.countries[spelling]
+
+
 def render_prayer_pulse(
     entries: Sequence[PrayerRequestEntry], *, day: date, language: PulseLanguage
 ) -> str:
     """The Prayer Pulse as the network reads it — **the format, and the only place it lives.**
 
     The two sentences come first, before any request, so a file cut short by a forward still
-    says them. Each entry is the language and the country, or the region where the country is
-    withheld — nothing where the region is ``other`` — then the request as the team wrote it.
-    No project id: the slug is ``<language>-<place>``. No base, no date per entry: neither helps
+    says them. Each entry is the language and the country — in the file's language when the map
+    lists it (:func:`_printed_country`) — or the region where the country is withheld, and
+    nothing where the region is ``other``; then the request as the team wrote it. No project
+    id: the slug is ``<language>-<place>``. No base, no date per entry: neither helps
     anybody pray, and each is one more thing a forwarded file carries.
     """
     copy = _COPY[language]
@@ -218,7 +289,7 @@ def render_prayer_pulse(
         _counted(copy, len(entries)),
     ]
     for entry in entries:
-        place = entry.country or copy.regions.get(entry.region, "")
+        place = _printed_country(copy, entry.country) or copy.regions.get(entry.region, "")
         unnamed = entry.language_name_withheld and entry.language == entry.region.value
         name = copy.sensitive_project if unnamed else entry.language
         heading = f"• {name} — {place}" if place else f"• {name}"

@@ -367,6 +367,19 @@ def get_region(location: str) -> ShemaRegionKey:
     return COUNTRY_REGION.get(COUNTRY_SYNONYMS.get(country, country), FALLBACK_REGION)
 
 
+def map_spelling(country: str) -> str | None:
+    """The export's spelling of ``country`` when the map lists it, or ``None``.
+
+    The same exact lookup :func:`get_region` makes — the export's spelling, or one of the
+    synonyms listed for it, accents and case as written — so a place the region reads is a
+    place this names, and nothing the map does not list is guessed at. The Prayer Pulse reads
+    it to print the country in the language it was asked for (OBT-665); the stored ``location``
+    is never rewritten.
+    """
+    spelling = COUNTRY_SYNONYMS.get(country, country)
+    return spelling if spelling in COUNTRY_REGION else None
+
+
 def country_key(name: str) -> str:
     """A country's name as the sensitive list compares it: accents, case and spacing aside.
 

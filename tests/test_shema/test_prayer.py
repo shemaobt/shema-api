@@ -656,6 +656,49 @@ async def test_the_pulse_names_no_place_it_cannot_tell(client, db_session, circl
     assert not any("Central" in line or "Lugar Secreto" in line for line in lines)
 
 
+async def test_the_pulse_prints_the_country_in_the_language_it_was_asked_in(
+    client, db_session, circle
+) -> None:
+    """The rest of the file follows ``lang``, and the country did not: a Pulse in Portuguese
+    said *Brazil* (OBT-665, PME-ORA-027). A country the map lists is printed in the file's
+    language whichever of its listed spellings the team typed; one it does not list (*Terra
+    Aberta*) is printed as typed, in both languages, rather than guessed at."""
+    await seed(
+        db_session,
+        "guarani-manaus",
+        text=SHARED,
+        visibility=ShemaPrayerVisibility.REDE,
+        location="Brazil, Manaus",
+        language="Língua Guarani",
+    )
+    await seed(
+        db_session,
+        "tete-mocambique",
+        text=SHARED_NEED,
+        visibility=ShemaPrayerVisibility.REDE,
+        location="Moçambique, Tete",
+        language="Língua Nyungwe",
+    )
+    await seed(
+        db_session,
+        "orvalho-terra",
+        text="Orem pela estrada até a aldeia",
+        visibility=ShemaPrayerVisibility.REDE,
+        location="Terra Aberta",
+        language="Língua Orvalho",
+    )
+
+    portuguese = (await pulse(client, circle)).splitlines()
+    english = (await pulse(client, circle, lang="en")).splitlines()
+
+    assert "• Língua Guarani — Brasil" in portuguese
+    assert "• Língua Nyungwe — Moçambique" in portuguese
+    assert "• Língua Guarani — Brazil" in english
+    assert "• Língua Nyungwe — Mozambique" in english
+    assert "• Língua Orvalho — Terra Aberta" in portuguese
+    assert "• Língua Orvalho — Terra Aberta" in english
+
+
 async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_base(
     client, db_session, shema_app
 ) -> None:
