@@ -10,7 +10,8 @@ beside a `JUDGED.<stamp>.md` naming the pin and the backend commit the running b
 `--rounds N` plays her whole set N times and names each copied report `<name>.run<k>.<stamp>.md`.
 
 Her exit code is the round's, the worst of the rounds: 0 passed, 1 a session failed,
-2 her preflight stopped the run, 3 the backend died mid-script. 4 is ours: refused before anything was played.
+2 her preflight stopped the run, 3 the backend died mid-script. 4 is ours: refused before
+anything was played.
 """
 
 from __future__ import annotations
