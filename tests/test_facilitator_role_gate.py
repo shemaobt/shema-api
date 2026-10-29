@@ -117,6 +117,15 @@ _REQUESTS: dict[tuple[str, str], dict] = {
         "GET",
         "/api/internalization-room/facilitator/sessions/{session_id}/turns/{number}/audio",
     ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
+    ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}"
+        "/frases/{frase_id}/audio",
+    ): {},
     ("GET", "/api/internalization-room/facilitator/sessions"): {},
     ("POST", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
     ("DELETE", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},

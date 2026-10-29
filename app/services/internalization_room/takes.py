@@ -6,7 +6,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Protocol
 
@@ -36,6 +36,7 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
+from app.services.internalization_room.questions import SignedAudio
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
@@ -470,6 +471,15 @@ async def listen_url(
     frase is served the same way.
     """
     return await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+
+
+async def listen_address_of(
+    recording: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
+) -> SignedAudio:
+    """The signed URL and the instant it dies, for a player that cannot follow a redirect."""
+    expires_at = datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES)
+    url = await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+    return SignedAudio(url=url, expires_at=expires_at)
 
 
 async def signed_listen_url(
