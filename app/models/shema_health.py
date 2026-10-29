@@ -91,6 +91,16 @@ RECORD_FIELDS: tuple[str, ...] = (
     "prayer_visibility",
 )
 
+#: The request's two spellings on the wire — camelCase, and the house's snake_case that
+#: ``populate_by_name`` still accepts — which
+#: :meth:`ShemaHealthAssessmentSubmission._a_blank_request_is_no_request` reads.
+_PRAYER_REQUEST: tuple[str, ...] = ("prayer_requests", "prayerRequests")
+
+
+def _says_nothing(value: Any) -> bool:
+    """``None``, or a string of nothing but spaces — the Pulse's empty answer, for one text."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
 
 def compile_notes(dimension_notes: dict[str, str] | None) -> str:
     """The running note, derived from the per-dimension ones — FE-44 §5.2's ``compileNotes``.
@@ -156,9 +166,44 @@ class ShemaHealthAssessmentSubmission(BaseModel):
     #: Sent **only when one was written** (FE-44 §8.2, ``docs/shema.md`` §7.4): an
     #: unconditional ``""`` on every assessment deletes an existing request as a side effect of
     #: an unrelated act, so *not sent* has to be a state this shape can express — which is what
-    #: ``None`` plus ``model_fields_set`` is for.
+    #: ``None`` plus ``model_fields_set`` is for. A request sent with nothing written in it is
+    #: that state too (:meth:`_a_blank_request_is_no_request`, OBT-658).
     prayer_requests: str | None = None
     prayer_visibility: ShemaPrayerVisibility | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _a_blank_request_is_no_request(cls, data: Any) -> Any:
+        """A request with nothing written in it is dropped as if it was not sent (OBT-658).
+
+        The console's wizard trims the box and leaves ``prayerRequests`` out when it is empty, and
+        its step promises that a reading saved so keeps the request already on the record
+        (PME-FRM-071). The server did not hold that promise for a client that sends the key
+        anyway: the E2E run of 29/oct/2026 filed a reading with ``prayerRequests: ""`` and the
+        record's request was replaced with nothing and left the wall — a reading of a team's
+        health erasing a prayer request, the side effect the field's own comment exists to
+        prevent. ``""``, nothing but spaces and ``null`` are one answer here, the Pulse's empty
+        one (``_form_validation._is_empty``), and ``null`` is in it because the column holds no
+        NULL: kept, it reached the commit and answered a 500.
+
+        **Dropped before any field is read**, so *not sent* is the one state everything after
+        reads off ``model_fields_set``: ``append_assessment``'s record-side write and, on a
+        withheld record, ``_redaction``'s refusal (OBT-655), which has no request to refuse. Not
+        refused: a 422 would turn away a reading over the box the wizard itself leaves blank. Not
+        filtered in the service either, which would leave that refusal reading the key.
+
+        **Only the text.** A visibility sent beside it is read as one sent alone, which is the
+        rule it already had — the withdrawal it may state (``_consent.withdrawn_request``,
+        OBT-561, OBT-576) does not move. Emptying a request stays the ficha's, where the text is
+        in view (``_consent.request_written``).
+        """
+        if not isinstance(data, dict):
+            return data
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in _PRAYER_REQUEST or not _says_nothing(value)
+        }
 
     @field_validator("emotional", "relational", "spiritual", "physical", mode="before")
     @classmethod

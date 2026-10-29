@@ -461,6 +461,47 @@ async def test_the_health_wizard_carries_the_rule_too(
     assert await wall(client, circle) == []
 
 
+@pytest.mark.parametrize(
+    "blank",
+    [
+        {"prayerRequests": ""},
+        {"prayerRequests": "  \n "},
+        {"prayerRequests": None},
+        {"prayer_requests": ""},
+    ],
+    ids=["empty", "spaces", "null", "snake-case"],
+)
+async def test_a_health_reading_with_the_request_blank_leaves_it_on_the_record_and_on_the_wall(
+    client, db_session, shema_app, circle, blank
+) -> None:
+    """PME-FRM-071, the E2E run of 29/oct/2026 (OBT-658): the wizard leaves the request out when its
+    box is blank, and a client that sends it blank anyway files the reading and nothing else — the
+    request on the record, its authorization and the wall stay as they were. A request written in
+    the next reading still lands, so the blank is ignored and the field is not."""
+    mentor = await person(db_session, shema_app, "obtLab")
+    project = await seed(
+        db_session, "orvalho-vale", text=SHARED, visibility=ShemaPrayerVisibility.REDE
+    )
+    reading = {"date": "2026-09-10", "emotional": "boa", "questionSetVersion": 1}
+    route = f"{PROJECTS}/{project.id}/health-assessments"
+
+    filed = await client.post(route, json={**reading, **blank}, headers=mentor)
+
+    assert filed.status_code == 201, filed.text
+    body = filed.json()
+    assert len(body["healthHistory"]) == 1
+    assert (body["prayerRequests"], body["prayerVisibility"]) == (SHARED, "rede")
+    assert texts(await wall(client, circle)) == {SHARED}
+
+    written = await client.post(
+        route,
+        json={**reading, "prayerRequests": REWORDED, "prayerVisibility": "rede"},
+        headers=mentor,
+    )
+    assert written.status_code == 201, written.text
+    assert texts(await wall(client, circle)) == {REWORDED}
+
+
 async def test_a_pulse_import_without_a_consent_answer_does_not_inherit_the_last_one(
     client, db_session, circle, coordinator
 ) -> None:
