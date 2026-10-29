@@ -92,6 +92,10 @@ _REQUESTS: dict[tuple[str, str], dict] = {
         "json": {"force": True}
     },
     (
+        "POST",
+        "/api/internalization-room/facilitator/sessions/{session_id}/releases/{version}/check",
+    ): {},
+    (
         "GET",
         "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao",
     ): {},

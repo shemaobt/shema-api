@@ -26,7 +26,7 @@ from app.services.internalization_room.release import (
     release_by_version,
     was_forced,
 )
-from app.services.internalization_room.release_check import check_release
+from app.services.internalization_room.release_check import check_release, rerun_release_check
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
 
@@ -116,6 +116,21 @@ async def facilitator_release_by_version(
     session = await room.get_session_for_reader(db, user, session_id)
     release = await release_by_version(db, session, version)
     return packet_as_read(release)
+
+
+@router.post("/facilitator/sessions/{session_id}/releases/{version}/check")
+async def rerun_internalization_release_check(
+    session_id: str, version: int, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """The check of an approved version, run again: the new result replaces the earlier one.
+
+    Only a facilitator's code runs it, the team's is refused by the role. The result is the
+    row's, never the manifest's: it travels in the approval of the retroverificação file
+    (ADR 0102).
+    """
+    session = await room.get_session_for_facilitator(db, user, session_id)
+    release = await release_by_version(db, session, version)
+    return await rerun_release_check(db, release)
 
 
 @router.post(

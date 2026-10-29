@@ -147,6 +147,13 @@ async def run_release_check(
     }
 
 
+async def rerun_release_check(db: AsyncSession, release: IRRelease) -> dict[str, Any]:
+    result = await run_release_check(db, take_store(), release)
+    release.release_check = result
+    await db.commit()
+    return result
+
+
 async def check_release(release_id: str) -> None:
     try:
         async with AsyncSessionLocal() as db:

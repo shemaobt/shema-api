@@ -681,6 +681,17 @@ async def test_the_manifest_carries_no_frase_words_no_note_and_no_consultant_mat
     assert nuance.note == NUANCE_NOTE, "the control: the nuance's note is in the room's record"
 
 
+async def test_the_manifest_carries_no_release_check_result(client, db_session, room_app):
+    session, desk = await planted_and_forced(client, db_session, room_app)
+    (release,) = (await db_session.execute(select(IRRelease))).scalars().all()
+    release.release_check = {"ran_at": "2026-10-29T12:00:00+00:00", "whole": True, "checks": []}
+    await db_session.commit()
+
+    manifest = await manifest_of(client, desk, session)
+
+    assert {"verification", "release_check", "ran_at", "whole"}.isdisjoint(every_key(manifest))
+
+
 async def test_what_the_manifest_leaves_out_is_in_the_retroverificacao_file(
     client, db_session, room_app
 ):

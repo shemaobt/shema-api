@@ -50,7 +50,7 @@ class RetroApprovalTake(_Hers):
 
 
 class RetroApproval(_Hers):
-    absent_when_none = ("nuances", "takes")
+    absent_when_none = ("nuances", "takes", "verification")
 
     v: int
     at: str
@@ -62,6 +62,7 @@ class RetroApproval(_Hers):
     nuances: list[RetroApprovalFinding] | None = None
     frases: list[RetroApprovalFrase]
     takes: list[RetroApprovalTake] | None = None
+    verification: dict[str, Any] | None = None
 
 
 class RetroFrase(_Hers):

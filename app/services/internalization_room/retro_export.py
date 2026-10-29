@@ -133,6 +133,7 @@ def _approval(release: IRRelease, keys: dict[str, str]) -> RetroApproval | None:
             )
             for one in packet_takes
         ],
+        verification=release.release_check,
     )
 
 
