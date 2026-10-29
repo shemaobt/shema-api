@@ -169,7 +169,6 @@ async def test_the_retroverification_file_lists_each_raw_sentence_under_inserts(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     store: MemoryStore,
-    links_are_signed: None,
 ) -> None:
     session, _, ((frase,), _) = await rehearsed_in_wav(
         db_session, store, [[(0, 2000)], [(0, 2000)]]
@@ -179,7 +178,6 @@ async def test_the_retroverification_file_lists_each_raw_sentence_under_inserts(
     assert laid.status_code == 200, laid.text
 
     after = (await retro_export(db_session, session, None, "internalize-x-v1")).model_dump()
-    (insert,) = (await take_downloads_of(db_session, session)).inserts
 
     assert "splices" not in before | after, "a chave splices não é servida: não guardamos carimbos"
     assert "inserts" not in before, "uma passagem sem frase regravada trazia a chave inserts"
@@ -188,7 +186,10 @@ async def test_the_retroverification_file_lists_each_raw_sentence_under_inserts(
             "spliceId": "sentence-0003",
             "clipKey": "S1",
             "filename": "insert-S1-sentence-0003.wav",
-            "url": insert.url,
+            "url": (
+                f"/api/internalization-room/facilitator/sessions/{session.id}"
+                "/re-recorded-sentences/sentence-0003/audio"
+            ),
         }
     ]
 
