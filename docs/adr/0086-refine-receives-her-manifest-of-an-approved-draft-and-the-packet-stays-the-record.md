@@ -1,5 +1,5 @@
 ---
-status: accepted; amends ADR 0014
+status: accepted; amends ADR 0014; amended 28 Oct 2026 by ENG-1292 (the manifest is served live before approval and points to the external check)
 date: 2026-10-22
 ---
 
@@ -18,12 +18,16 @@ Decided (ENG-1274):
   `sessionLanguage`, `meaningMap`, `grain`, `clips`, `finalizedAt`, `finalizeCount`, `sessionIds`,
   `audioFormat`, `whole` (when one exists; never yet), `integrity`, `externalCheck`, `check`,
   `warnings` (when any), `exportedAt`. Its gate and its scoping do not change.
-- **Only for a draft approved as it stands.** "Approved" is ADR 0071's one answer, and the
-  parts the manifest lists must be the very takes that approval judged, fingerprint for
-  fingerprint: a part recorded again between the two reads makes the draft unapproved, never a
-  clip. Otherwise the read is 409 `DRAFT_NOT_APPROVED`, its own code because there is no version
-  to reload and no blocker to name. A session whose kept canon is gone is never told it is not
-  approved: the read answers `CANON_NOT_KEPT`.
+- **Approved as it stands, the approved manifest; otherwise the live one (ENG-1292).**
+  "Approved" is ADR 0071's one answer, and the parts the manifest lists must be the very takes
+  that approval judged, fingerprint for fingerprint: a part recorded again between the two reads
+  makes the draft unapproved, never read as approved. Any other draft of a live team session is
+  read as it is now under the passage's last release's id (version 1 when none), with
+  `finalizedAt` and `check` null and `finalizeCount` the last version (0 when none), as her
+  route does; it answers 404 when the draft holds no take. An archived, demo or team-less
+  session stays 409 `DRAFT_NOT_APPROVED`, its own code because there is no version to reload and
+  no blocker to name. A session whose kept canon is gone is never told it is not approved: the
+  read answers `CANON_NOT_KEPT`. The file saves as `{releaseId}.json`.
 - **An approval stored in an older shape stays an approval.** Whether a stored release is this
   draft compares only what the stored packet and the composed one both hold, and never the
   counts read off the draft (`open_questions`, which v0.6 swelled with its comprehension's open
@@ -33,7 +37,7 @@ Decided (ENG-1274):
   with no check carries her warning that no check state was recorded. A take changed since
   still un-approves it, as it does any release.
 - **A Zerar retires the approval.** An archived session's draft is not approved, so its manifest
-  is refused until the passage's new session approves (its next version). The archived release
+  is refused (not read live) until the passage's new session approves (its next version). The archived release
   row and its packet stay readable by version.
 - **A panorama is refused before any canon is read**, as before: it has no meaning map to name.
 - **The packet is the record.** It is still composed, hashed and stored on the release row, and
@@ -64,7 +68,12 @@ Decided (ENG-1274):
   and refused at once moves into the test harness; the approval still judges what the composer
   composes.
 - **`integrity` says what is true here**: every fingerprint is the server's, taken from the stored
-  bytes. `externalCheck` is null until the external check reaches it.
+  bytes. `externalCheck` is her pointer `{listeners, comments, url}` once the team opened the
+  check of the approved version, and null before; `comments` counts the whole-passage and frase
+  recordings, never the retelling, and `url` is the facilitator's read of the check (no
+  `checagem-externa.json` file exists here). The whole file, the retroverification file and the
+  external check are facilitator routes that never expire; only take links are signed for an
+  hour.
 
 ## Considered options
 
@@ -72,15 +81,19 @@ Decided (ENG-1274):
   served as the Refine hand-off and gives one reader two routes.
 - Building the clips from the stored packet's `audio.rehearsal_takes`: rejected, because packets
   stored before v0.9 carry no `key`, and the Definition says the clips are the current parts.
-- Serving a manifest with `check: null` for an unapproved draft, as her route does: rejected, the
-  ticket refuses a manifest of a passage nobody approved.
+- Serving a manifest with `check: null` for an unapproved draft, as her route does: rejected when
+  decided, reversed by ENG-1292, which serves it live before approval.
 - Her `integrity` sentence: rejected, it describes a direct-upload path we do not have.
 - Her `_spec/canon/…` `file` path: rejected, it is her repository's path, not ours.
-- 404 for an unapproved draft: rejected, the owner must be told apart from a stranger, who gets 404.
+- 404 for an unapproved draft: rejected, the owner must be told apart from a stranger, who gets
+  404. It stays 404 only for a draft with no take.
 
 ## Consequences
 
-- The Desk's live read of a ready but unapproved packet is gone; no client read it.
+- The Desk's live read of a ready but unapproved packet is gone as the packet, and returns as the
+  live manifest; no client read the earlier 409.
+- After a re-open the live manifest and its clips keep the last release's id, as hers does, while
+  the take-download list names them for the next version (ADR 0081).
 - Refine matches clips by `takeId` and `sha256`, never by file name (ADR 0073), and its intake is
   built against this manifest. A finding's `clipKey` is the take id (ADR 0078), not her scene key.
 - A manifest's links last an hour: read it again for fresh ones.

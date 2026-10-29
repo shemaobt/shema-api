@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Path
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser, ReaderUser
@@ -66,14 +66,16 @@ def approval_of(release: IRRelease) -> ApprovedDraftView:
 
 @router.get("/facilitator/sessions/{session_id}/release")
 async def internalization_release(
-    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: ReaderUser, response: Response, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """The Refine **Manifest** of this session's approved draft (ADR 0086).
+    """The Refine **Manifest** of this session's draft, saved as ``{releaseId}.json`` (ADR 0086).
 
     A facilitator route on purpose: the manifest is the seam between apps, read by the
     person carrying the work into Refine, never by the tablet in front of the team. A draft
-    that is not approved as it stands answers 409 ``DRAFT_NOT_APPROVED``: there is no
-    manifest of a passage nobody approved, and the stored packet is read back by version.
+    that is not approved as it stands is read live under the passage's last release's id, with
+    no finalised time and no check, and answers 404 when it holds no take. An archived, demo
+    or team-less session answers 409 ``DRAFT_NOT_APPROVED``; the stored packet is read back by
+    version.
 
     Gated on ``ReaderUser`` and not on the app-wide gate it arrived with. It was
     written against a ``CurrentUser`` that ENG-438 had already retired — the route is
@@ -89,7 +91,9 @@ async def internalization_release(
     session by id alone handed a facilitator of one team what another team recorded.
     """
     session = await room.get_session_for_reader(db, user, session_id)
-    return await refine_manifest(db, session)
+    manifest = await refine_manifest(db, session)
+    response.headers["content-disposition"] = f'attachment; filename="{manifest["releaseId"]}.json"'
+    return manifest
 
 
 @router.get("/facilitator/sessions/{session_id}/releases/{version}")
