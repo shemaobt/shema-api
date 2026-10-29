@@ -17,24 +17,29 @@ from sqlalchemy import ColumnElement, and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import SessionState
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import CanonNotKept, NotFoundError, ValidationError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.db.models.project import Project
+from app.models.internalization_room import MomentView
 from app.models.internalization_room_desk_sessions import (
     DeskSession,
     DeskSessionsPage,
     DeskSessionState,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import served_maps
 from app.services.internalization_room.conversation import guide_turns_of
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
+from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.session_end import as_utc, end_of
+from app.services.internalization_room.sessions import is_panorama
 from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
+from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.project.facilitated_scope import (
     TEAM_NOT_FOUND,
     confined_to,
@@ -152,6 +157,7 @@ def _item(
 ) -> DeskSession:
     end = end_of(session)
     beads = beads_of(session, portrait)
+    scene, moment = _where_the_room_is(session)
     return DeskSession(
         session_id=session.id,
         team_id=str(session.project_id),
@@ -160,7 +166,10 @@ def _item(
         reference=reference,
         language=session.language,
         state=_state(session, end.state),
+        started_at=as_utc(session.created_at),
         last_activity_at=as_utc(session.updated_at),
+        scene=scene,
+        moment=moment,
         ended_at=end.ended_at,
         attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
         attended_by=session.attended_by,
@@ -175,6 +184,19 @@ def _item(
         has_release=has_release,
         listener_count=None,
     )
+
+
+def _where_the_room_is(session: IRSession) -> tuple[str | None, MomentView | None]:
+    if is_panorama(session.pericope):
+        return None, None
+    try:
+        with reading_the_canon_of(session.canon_pin):
+            scene = current_scene_id(
+                session.coverage_state or {}, session.pericope, session.messages or []
+            )
+            return scene, moment_view(session)
+    except CanonNotKept:
+        return None, None
 
 
 def _state(session: IRSession, state: SessionState) -> DeskSessionState:
