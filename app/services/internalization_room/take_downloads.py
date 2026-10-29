@@ -37,6 +37,7 @@ from app.services.internalization_room.takes import (
     part_positions,
     set_aside_moment,
     signed_url,
+    superseded_moment,
     takes_of,
 )
 from app.services.internalization_room.whole_passage import (
@@ -44,7 +45,6 @@ from app.services.internalization_room.whole_passage import (
     whole_is_offered,
     whole_url,
 )
-from app.utils.stored_time import as_utc
 
 
 async def _release_id(db: AsyncSession, session: IRSession, parts: list[IRTake]) -> str:
@@ -153,25 +153,6 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
     live_ids = {part.id for part in parts}
     rehearsals = [take for take in takes if _with_bytes(take)]
     keys = keys_of_the_takes(takes)
-    replaced_at = {
-        take.id: as_utc(successor.created_at).isoformat()
-        for take, successor in _each_with_its_successor(takes)
-    }
-    numbered_at = sorted(
-        as_utc(take.created_at)
-        for take in takes
-        if take.kind is IRTakeKind.ENSAIO and take.ordinal is not None
-    )
-    for take in rehearsals:
-        if take.id in live_ids or take.id in replaced_at:
-            continue
-        aside = set_aside_moment(take)
-        if aside is not None:
-            replaced_at[take.id] = aside
-        else:
-            later = [at for at in numbered_at if at > as_utc(take.created_at)]
-            replaced_at[take.id] = (later or numbered_at)[0].isoformat()
-
     names = [
         file_name(release_id, keys[take.id], take, superseded=take.id not in live_ids)
         for take in rehearsals
@@ -198,7 +179,7 @@ async def take_downloads_of(db: AsyncSession, session: IRSession) -> TakeDownloa
             superseded.append(
                 SupersededTakeDownload(
                     **entry.model_dump(),
-                    superseded_at=replaced_at[take.id],
+                    superseded_at=superseded_moment(take),
                     set_aside_at=set_aside_moment(take),
                 )
             )
@@ -251,16 +232,3 @@ def _keys_as_they_stood(takes: list[IRTake]) -> dict[str, str]:
                 "whole" if take.ordinal is None else f"S{numbers.index(take.ordinal) + 1}"
             )
     return keys
-
-
-def _each_with_its_successor(takes: list[IRTake]) -> list[tuple[IRTake, IRTake]]:
-    """Every rehearsal take paired with the next one under its number, in `takes_of`'s order."""
-    last: dict[int | None, IRTake] = {}
-    pairs: list[tuple[IRTake, IRTake]] = []
-    for take in takes:
-        if take.kind is not IRTakeKind.ENSAIO:
-            continue
-        if take.ordinal in last:
-            pairs.append((last[take.ordinal], take))
-        last[take.ordinal] = take
-    return pairs

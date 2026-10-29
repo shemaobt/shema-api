@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import back_translation as bt_api
@@ -252,6 +252,24 @@ async def test_the_file_says_a_replaced_parts_recording_time_not_its_upload_time
     file = await exported_file(db_session, session.id)
 
     assert [take["recordedAt"] for take in file["supersededTakes"]] == [TEN_OH_TWO]
+
+
+async def test_the_file_says_when_a_part_was_replaced_and_says_nothing_before_the_stamp(
+    client: httpx.AsyncClient, session: IRSession, db_session: AsyncSession
+) -> None:
+    await kept(client, session.id, recording(3, 3), part=1)
+    before = datetime.now(UTC)
+    await kept(client, session.id, recording(3, 4), part=1)
+    after = datetime.now(UTC)
+
+    (stamped,) = (await exported_file(db_session, session.id))["supersededTakes"]
+    assert before <= datetime.fromisoformat(stamped["supersededAt"]) <= after
+
+    await db_session.execute(update(IRTake).values(superseded_at=None))
+    await db_session.commit()
+
+    (unstamped,) = (await exported_file(db_session, session.id))["supersededTakes"]
+    assert "supersededAt" not in unstamped
 
 
 async def test_every_take_in_the_packet_carries_the_length_of_its_sound(

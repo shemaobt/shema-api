@@ -823,7 +823,7 @@ async def test_heard_by_clip_is_the_share_of_each_part_the_team_heard(db_session
     assert (await _exported(db_session, lone_id))["heardByClip"] == {"whole": 0}
 
 
-async def test_a_replaced_take_is_listed_under_her_name_and_with_no_time_until_the_stamp_exists(
+async def test_a_replaced_take_is_listed_under_her_name_with_the_stamp_it_was_given(
     client, db_session
 ) -> None:
     session, _ = await _approved(client, db_session)
@@ -842,6 +842,8 @@ async def test_a_replaced_take_is_listed_under_her_name_and_with_no_time_until_t
     file = await _exported(db_session, session.id)
 
     (take,) = file["supersededTakes"]
+    await db_session.refresh(old)
+    wanted["supersededAt"] = old.superseded_at.isoformat()
     assert file["version"] == 2
     wanted["filename"] = f"{file['releaseId']}-whole-substituida-{old_id}.m4a"
     assert file["releaseId"].endswith("-v2")
