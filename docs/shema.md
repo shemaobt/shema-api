@@ -1833,9 +1833,9 @@ holds it), and a server that does not read a header ignores it, so neither side 
 or unknown value is Portuguese, the console's fallback, and never a 422. **The words cross as
 data:** the console emits what `getLanguageNameDisplay` prints for each region in each language
 (`npm run emit:sensitive-names`), and `app/utils/shema_sensitive_project_names.json` is that file
-byte for byte, read by `app/utils/shema_printed_names.py`, whose `stands_in_for_a_name` is now the
-one server-side spelling of *a region key standing in for a name* — `LeavingShape.spoken_name` asks
-it too. **The ETEN record does not follow the reader:** it keeps the order of the names its lines
+byte for byte, read by `app/utils/shema_printed_names.py`, whose `stands_in_for_a_name` — *a region
+key standing in for a name* — the order and `LeavingShape.spoken_name` now share; the Pulse's file
+asks its own narrower question of the entry's region. **The ETEN record does not follow the reader:** it keeps the order of the names its lines
 carry, in no language, and only the answer is reordered — the record keeps the data and not the
 form (`ShemaEtenReport`), no digest recorded before this changed, and one that followed the reader
 would be written again whenever a Portuguese and an English reader took turns.
