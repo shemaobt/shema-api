@@ -23,8 +23,8 @@ from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.voice_handles import team_audio_url
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
@@ -118,9 +118,9 @@ async def _a_team_and_its_facilitator(db: AsyncSession):
     reachable only by whoever facilitates it, so a test asking "is it still waiting" has to
     say who is waiting on it.
     """
-    language = await make_language(db, name="Terena", code="tqe")
+    language = await a_language(db, name="Terena")
     team = await make_project(db, language.id, name="Equipe Terena")
-    facilitator = await make_user(db, email="facilitadora@example.com")
+    facilitator = await make_user(db)
     await make_project_user_access(db, team.id, facilitator.id, role=ProjectRole.FACILITATOR)
     return team, facilitator
 
@@ -717,3 +717,12 @@ async def test_a_reply_already_heard_on_the_asking_tablet_stays_heard_for_the_wh
     assert await _listed_on(room_client, team.tablet_a) == [], (
         "a marca de ouvida do tablet que perguntou vale também para ele"
     )
+
+
+async def test_a_team_and_its_facilitator_built_twice_gets_two_facilitators_with_two_emails(
+    db_session: AsyncSession,
+) -> None:
+    _, first = await _a_team_and_its_facilitator(db_session)
+    _, second = await _a_team_and_its_facilitator(db_session)
+
+    assert first.email != second.email

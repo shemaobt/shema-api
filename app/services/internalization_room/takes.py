@@ -6,7 +6,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Protocol
 
@@ -36,6 +36,7 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
+from app.services.internalization_room.questions import SignedAudio
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
@@ -244,6 +245,7 @@ async def store_take(
     sent_duration_ms: int | None = None,
     sent_recorded_at: datetime | None = None,
     past_the_set_aside: bool = False,
+    stamps_what_it_replaces: bool = False,
     the_same: Callable[[str], Awaitable[IRTake | None]] | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
@@ -267,6 +269,10 @@ async def store_take(
 
     `past_the_set_aside` looks past the takes a **Grain switch** set aside: the same bytes kept
     at the grain in force are a new take that stands, sharing the stored object (ADR 0096).
+
+    `stamps_what_it_replaces` stamps, in the insert's own transaction, the parts this take stops
+    being live and the take itself if it arrives as no part, with the server's `arrived` (ADR 0104).
+    A take that stopped being live before is never stamped here.
 
     `the_same` is the caller's question of which take these bytes already are, given their hash;
     unasked, it is their identity in storage. It is asked before the bytes are stored and, for a
@@ -335,6 +341,15 @@ async def store_take(
     try:
         async with db.begin_nested():
             db.add(take)
+            if stamps_what_it_replaces:
+                takes = await takes_of(db, session_id)
+                standing = {
+                    part.id for part in current_parts([one for one in takes if one is not take])
+                }
+                now_live = {part.id for part in current_parts(takes)}
+                for one in takes:
+                    if (one.id in standing or one is take) and one.id not in now_live:
+                        one.superseded_at = arrived
     except IntegrityError:
         winner = await same(checked.sha256)
         if winner is None:
@@ -470,6 +485,15 @@ async def listen_url(
     frase is served the same way.
     """
     return await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+
+
+async def listen_address_of(
+    recording: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
+) -> SignedAudio:
+    """The signed URL and the instant it dies, for a player that cannot follow a redirect."""
+    expires_at = datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES)
+    url = await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+    return SignedAudio(url=url, expires_at=expires_at)
 
 
 async def signed_listen_url(
@@ -688,6 +712,11 @@ async def the_take_this_keep_already_is(
 def set_aside_moment(take: IRTake) -> str | None:
     """When a **Grain switch** set this take aside, with its offset, or none while none has."""
     return None if take.set_aside_at is None else as_utc(take.set_aside_at).isoformat()
+
+
+def superseded_moment(take: IRTake) -> str | None:
+    """When the server stamped this take as no longer live, with its offset, or none."""
+    return None if take.superseded_at is None else as_utc(take.superseded_at).isoformat()
 
 
 def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:

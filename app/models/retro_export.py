@@ -116,6 +116,8 @@ class RetroCheck(_Hers):
 
 
 class RetroSupersededTake(_Hers):
+    absent_when_none = ("supersededAt",)
+
     key: str
     takeId: str
     sha256: str
@@ -123,6 +125,7 @@ class RetroSupersededTake(_Hers):
     bytes: int
     contentType: str
     recordedAt: str
+    supersededAt: str | None = None
     filename: str
     url: str
 

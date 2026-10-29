@@ -7,6 +7,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.db.models.auth import User
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.archives import archive_pericope
@@ -65,7 +66,7 @@ async def a_facilitator_of(db: AsyncSession, *teams, email: str) -> dict[str, st
 
 
 async def an_admin(db: AsyncSession) -> dict[str, str]:
-    user = await make_user(db, email="admin@example.com", is_platform_admin=True)
+    user = await make_user(db, is_platform_admin=True)
     await grant_facilitator_app_role(db, user.id)
     return await auth_header(db, user)
 
@@ -488,7 +489,7 @@ async def test_the_desk_sessions_route_does_not_put_a_panorama_first_after_its_b
 
 
 async def a_consultant(db: AsyncSession) -> dict[str, str]:
-    user = await make_user(db, email="consultora@example.com")
+    user = await make_user(db)
     await grant_room_app_role(db, user.id, "consultant")
     return await auth_header(db, user)
 
@@ -729,3 +730,23 @@ async def test_a_session_never_attended_shows_no_attended_time_and_no_facilitato
 
     assert row["attended_at"] is None
     assert row["attended_by"] is None
+
+
+async def test_an_admin_built_twice_gets_two_users_with_two_emails(
+    db_session: AsyncSession,
+) -> None:
+    await an_admin(db_session)
+    await an_admin(db_session)
+
+    emails = (await db_session.execute(select(User.email))).scalars().all()
+    assert len(emails) == len(set(emails)) == 2
+
+
+async def test_a_consultant_built_twice_gets_two_users_with_two_emails(
+    db_session: AsyncSession,
+) -> None:
+    await a_consultant(db_session)
+    await a_consultant(db_session)
+
+    emails = (await db_session.execute(select(User.email))).scalars().all()
+    assert len(emails) == len(set(emails)) == 2

@@ -110,6 +110,7 @@ MIGRATION_FILES = {
     "test_ir_outside_listeners_migration.py",
     "test_ir_a_grain_switch_migration.py",
     "test_ir_a_rehearsal_laid_in_again_migration.py",
+    "test_ir_a_replaced_take_stamp_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

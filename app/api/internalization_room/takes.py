@@ -254,6 +254,7 @@ async def keep_take(
         sent_duration_ms=duration_ms,
         sent_recorded_at=recorded_at,
         past_the_set_aside=not left_behind,
+        stamps_what_it_replaces=take_kind is IRTakeKind.ENSAIO and not left_behind,
         the_same=partial(
             the_take_this_keep_already_is,
             db,

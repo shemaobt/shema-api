@@ -27,6 +27,7 @@ from app.models.internalization_room import (
     HeldAttemptView,
     PassageScenesResponse,
     PassageSceneView,
+    QuestionAudioResponse,
     ReaderSceneFraseView,
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
@@ -47,6 +48,7 @@ from app.services.internalization_room.takes import (
     AUDIO_MIME,
     LONGEST_TAKE_MS,
     TakeStore,
+    listen_address_of,
     listen_url,
     take_store,
 )
@@ -504,3 +506,38 @@ async def facilitator_scene_rehearsals(
             for rehearsal in rehearsals
         ],
     )
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_scene_rehearsal_at_the_desk(
+    session_id: str, rehearsal_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> QuestionAudioResponse:
+    """A signed address of the scene rehearsal's recording, archived session or not."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    await db.commit()
+    signed = await listen_address_of(rehearsal)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_scene_frase_at_the_desk(
+    session_id: str,
+    rehearsal_id: str,
+    frase_id: str,
+    user: ReaderUser,
+    db: AsyncSession = Depends(get_db),
+) -> QuestionAudioResponse:
+    """A signed address of the frase's own recording, replaced or set aside or not."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    frase = await scenes.frase_in_rehearsal(db, rehearsal, frase_id)
+    await db.commit()
+    signed = await listen_address_of(frase)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())
