@@ -151,6 +151,7 @@ async def file_assessment(
         scope,
         project_id,
         payload,
+        readership=reading,
         user=user,
         app_key=APP_KEY,
         day=_local_day(local_day, utc_today=today),

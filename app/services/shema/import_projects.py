@@ -337,10 +337,11 @@ def _at(record: _Record, refused: Exception) -> None:
 def _require_coordination(readership: Readership, *, user: User) -> None:
     """Refuse an importer who coordinates nothing — see the module docstring for why.
 
-    ``coordinates_anything`` is who imports; the export's withheld count is addressed wider
-    since OBT-571 (``collection_reader`` — the Resource Circle reads the truth too), and the
-    two parted here on purpose: a ``trusted`` read is not the whole record (a prayer request
-    kept in coordination is ``""`` to it), so only coordination writes one back. A caller who
+    ``coordinates_anything`` is who imports, and since OBT-655 who an exported file's withheld
+    count is addressed to again (``file_reader``); the Projetos screen's count is addressed wider
+    since OBT-571 (``collection_reader`` — the Resource Circle reads the truth too), and the two
+    parted on purpose: a ``trusted`` read is not the whole record (a prayer request kept in
+    coordination is ``""`` to it), so only coordination writes one back. A caller who
     coordinates at all coordinates every region it reaches (``_scope.readership``), so the
     records this import can write are records it reads whole. A 403, as the ETEN ledger answers
     its own audience: the caller is being told about their own grant.

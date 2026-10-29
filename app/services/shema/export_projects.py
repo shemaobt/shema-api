@@ -19,9 +19,11 @@ read already uses, and never a payload assembled from rows:
    which answers no — and are read off the row only if it ever answers yes.
 
 **The header is addressed, the rows are not.** How many places were withheld is announced to
-coordination only (GATE-04, 1.3): ``withheld_note`` decides, told who the exporter is — the
-region's coordination if they coordinate anything, as the Projetos screen addresses its own
-notice. The rows stay ``outside`` either way; the exporter's reader reaches the header — and,
+coordination only (GATE-04, 1.3): ``withheld_note`` decides, told who the exporter is —
+``Readership.file_reader``, the coordination if they coordinate anything. Not the Projetos
+screen's addressee since OBT-655: the Resource Circle reads the truth there and is told the count
+there, and its file says nothing of it (the issue's recommendation, for Karina to validate). The
+rows stay ``outside`` either way; the exporter's reader reaches the header — and,
 since OBT-553, one thing in each row: a team's health. A file is a copy of what its exporter reads,
 and an exporter outside ``_health_audience.HEALTH_READERS`` reads no health, so their rows carry
 ``overallHealth: "na"`` (``_health_audience.health_as_read``); the place is still ``outside`` for
@@ -213,7 +215,7 @@ async def export_projects(
     open_needs = await _open_needs(db, ids)
 
     export_id = str(uuid.uuid4())
-    addressee = readership.collection_reader
+    addressee = readership.file_reader
     header = _Header(
         export_id=export_id,
         generated_at=now,

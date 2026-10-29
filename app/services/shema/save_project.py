@@ -53,10 +53,11 @@ OBT-616, through ``_redaction.flag_by_country``, which raises the flag of a plac
 sensitive country on every create and every save — and that file is the column's one reader, so
 ``tests/test_shema/test_privacy_owners.py`` needs no allowlist entry for it. The same goes for
 the reader's refusal: *which* fields a reader may not write is
-``_redaction.unwritable_fields``'s answer, from the names the payload set, and this file only
-raises it. The prayer request has the same two answers from its own owner (BE-09):
-``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a reader outside its
-audience — on a create too, where only the authorization is refused — and
+``_redaction.unwritable_fields``'s answer, from the names the payload set, and
+``_redaction.refuse_unwritable_fields`` is the refusal, which this file only asks for — the same
+one a health reading meets (OBT-655). The prayer request has the same two answers from its own
+owner (BE-09): ``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a
+reader outside its audience — on a create too, where only the authorization is refused — and
 ``_consent.request_written`` withdraws an authorization the new request did not restate —
 except a text the ficha's own ``PATCH`` rewords, where the authorization was in view beside it
 and stays (OBT-597); every caller says which (``authorization_in_view``).
@@ -78,7 +79,6 @@ import uuid
 from datetime import date
 from typing import Any, NamedTuple
 
-from pydantic.alias_generators import to_camel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,6 +115,7 @@ from app.services.shema._redaction import (
     flag_by_country,
     log_reference,
     need_text_as_written,
+    refuse_unwritable_fields,
     story_text_as_written,
     unwritable_fields,
 )
@@ -433,22 +434,8 @@ def _as_the_reader_may_write(
         stories, typed = story_text_as_written(project, payload.story_progress, reader)
         refused = [*refused, STORY_PLACE] if typed else refused
         payload = payload.model_copy(update={"story_progress": stories})
-    if not refused:
-        return payload
-    logger.warning(
-        "shema authorization refused: a field this reader may not write",
-        extra={
-            "shema_operation": "save_project",
-            "shema_user_id": user.id,
-            "shema_reader": reader.value,
-            "shema_refused_fields": refused,
-            **log_reference(project),
-        },
-    )
-    raise AuthorizationError(
-        f"{', '.join(name if '.' in name else to_camel(name) for name in refused)}: "
-        "only coordination writes the place, the sensitive flag and what they withhold"
-    )
+    refuse_unwritable_fields(project, refused, reader, user=user, operation="save_project")
+    return payload
 
 
 async def _bump_version(db: AsyncSession, project: ShemaProject, expected: int) -> int | None:

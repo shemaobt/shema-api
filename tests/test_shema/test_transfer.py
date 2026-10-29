@@ -510,7 +510,7 @@ async def _two_withheld_and_one_clear(db_session) -> None:
     await seed(db_session, "aberto-tres")
 
 
-@pytest.mark.parametrize("role", ["strategist", "coordinator", "circle"])
+@pytest.mark.parametrize("role", ["strategist", "coordinator"])
 async def test_coordination_is_told_how_many_were_withheld(
     client, db_session, shema_app, role
 ) -> None:
@@ -525,11 +525,15 @@ async def test_coordination_is_told_how_many_were_withheld(
     assert meta["withheldNote"] in preamble
 
 
-@pytest.mark.parametrize("role", ["lab"])
+@pytest.mark.parametrize("role", ["lab", "circle"])
 async def test_nobody_else_is_told_anything_was_withheld(
     client, db_session, shema_app, role
 ) -> None:
-    """GATE-04 decided the notice, not the bit: the rows still say they were withheld."""
+    """GATE-04 decided the notice, not the bit: the rows still say they were withheld — and are.
+
+    The Resource Circle is here since OBT-655 (the issue's recommendation, for Karina to
+    validate): it is told the count on the Projetos screen, where it reads the truth, and not in
+    its file, whose sensitive rows leave with the region in place of the place like everybody's."""
     await _two_withheld_and_one_clear(db_session)
     headers = await persona(db_session, shema_app, role)
 
@@ -539,7 +543,9 @@ async def test_nobody_else_is_told_anything_was_withheld(
     assert exported["meta"]["locationsWithheld"] is None
     assert exported["meta"]["withheldNote"] is None
     assert not any("recolhid" in line or "sensíve" in line for line in preamble)
-    assert sum(row["locationWithheld"] for row in exported["projects"]) == 2
+    withheld = [row for row in exported["projects"] if row["locationWithheld"]]
+    assert len(withheld) == 2
+    assert {row["location"] for row in withheld} == {HOME.value}
 
 
 async def test_a_file_with_nothing_withheld_says_nothing_about_withholding(

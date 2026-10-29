@@ -18,15 +18,17 @@ reads. The needs and the assessments join the record after it is built, so the t
 carry is held back by ``_redaction.free_text_as_read`` instead, on the same withheld record for
 the same readers (OBT-556). The prayer request is the same shape of answer from its own owner
 (BE-09): a reader outside ``_consent.PRAYER_AUDIENCE`` gets a request nobody authorized as
-``""``, and ``_consent.request_as_read`` is what decides it. A team's health is the third
-(OBT-553): a reader outside ``_health_audience.HEALTH_READERS`` gets every health field as a
-project nobody has assessed holds it — the projection, the history and the pastoral follow-up —
-and ``_health_audience.health_as_read`` decides it. All are asked in :func:`_record_as_read`,
-the one place this record is reduced for who reads it beyond the place, and applied **before**
-``derive``, so the record's tone and health score cannot say what its fields no longer do. The
-three authorization columns behind every ``authorization`` key are still read by their one
-owner: ``_media_sharing.recorded_decision`` builds the shape and hands it over, and
-``tests/test_shema/test_privacy_owners.py`` is what keeps that true of the next file too.
+``""``, and ``_consent.request_as_read`` is what decides it — on a withheld record the shape has
+already handed it ``""`` to whoever does not read the truth, as it hands the notes (OBT-655). A
+team's health is the third (OBT-553): a reader outside ``_health_audience.HEALTH_READERS`` gets
+every health field as a project nobody has assessed holds it — the projection, the history and
+the pastoral follow-up — and ``_health_audience.health_as_read`` decides it. All are asked in
+:func:`_record_as_read`, the one place this record is reduced for who reads it beyond the
+place, and applied **before** ``derive``, so the record's tone and health score cannot say what
+its fields no longer do. The three authorization columns behind every ``authorization`` key
+are still read by their one owner: ``_media_sharing.recorded_decision`` builds the shape and
+hands it over, and ``tests/test_shema/test_privacy_owners.py`` is what keeps that true of the
+next file too.
 
 **The write path re-reads through here.** FE-44 §9.3 requires the response to carry *the
 recomputed record, including the new progressHistory entry*, because the record screen renders

@@ -347,7 +347,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. **BE-09:** `Readership.withheld_prayer`, whether the caller reads a request nobody authorized — `_consent.py`'s rule, set by `_deps._reading`. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
-| `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question; since BE-14, `never_lowered`, the import's one-way rule on the flag; since OBT-616, `flag_by_country` / `flag_project_by_country`, the list's one-way rule (a listed place raises the flag on every write) and `listed_as_read`, the record's `listedCountries`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
+| `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question — refused by `refuse_unwritable_fields` at the save and, since OBT-655, at a health reading's prayer request; since BE-14, `never_lowered`, the import's one-way rule on the flag; since OBT-616, `flag_by_country` / `flag_project_by_country`, the list's one-way rule (a listed place raises the flag on every write) and `listed_as_read`, the record's `listedCountries`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to — and, since OBT-597, the one door that keeps it over a reworded text (`authorization_in_view`, the ficha's own `PATCH`). OBT-566: `newly_shared_request`, the prayer notice's gate — asked after every write of the record (OBT-566), whether the wall now shows a request it did not show before. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
@@ -1015,6 +1015,28 @@ behaviour on it.
 >   nothing. A rewrite sent without the flag is still its to make, and unshares the need. On a
 >   create it writes the text it types (OBT-528's create exception, for the same reason) and not
 >   `rede` (`authorized_on_create`). `refuse_prayer_decisions` is the one refusal for the three.
+>   **On a project whose place is withheld the request is the team's own sentence — [OBT-655](https://linear.app/shema-obt/issue/OBT-655),
+>   28/oct/2026, Levi, following the issue's recommendation, for Karina to validate** (the
+>   alternative was the OBT Lab reading the whole text, as it did). API-PRIV-002 found the OBT Lab
+>   reading the P-SENS record with everything that names the place reduced and the request whole
+>   — *Orem pela proteção da equipe em Minya* — in a field it could type over. The request is raised
+>   in the assessment, whose notes the OBT Lab already read blank there (OBT-556), and it names a
+>   place as readily. So `shema_privacy.PRAYER_REQUEST_FIELDS` — the text and the recording — join
+>   the free text (§6.4): `""` to every reader who does not read the truth, refused on the record's
+>   `PATCH` by `unwritable_fields` with the base's sentence, and left out of the trail and the 409
+>   they meet. That is the sensitive-country rule composing with this one: `PRAYER_AUDIENCE` did not
+>   move, the Resource Circle (`trusted`) still reads only what the team authorized, and the
+>   coordination and the Admin read what they read before. It holds whatever the team authorized,
+>   because the record holds the team's words and what reaches the wall from a withheld record is
+>   the text the coordination released (§6.12) — that path did not change. **The health wizard is
+>   the same write**: a reading carrying a request onto a withheld record, from a reader who does
+>   not read the truth, is refused with the save's sentence before anything is written
+>   (`_redaction.refuse_unwritable_fields`, now the one refusal of both doors) — the request keeps
+>   no history, unlike the reading's own notes, so filed there it would replace a text its author
+>   cannot see (found in review of shema-api#965); the reading without it is filed, and the
+>   console's wizard does not offer it. **One door stays open on purpose:** the visibility, which
+>   the OBT Lab still states — on a withheld record what `rede` puts on the wall is only ever a
+>   text the coordination released for those words, and `test_prayer_review.py` pins that door.
 > - **The recording travels nowhere yet.** `prayer_requests_audio` takes any string a save writes,
 >   so signing what it holds would let a writer mint a link to any object in `shema-private`; the
 >   wall omits FE-44's optional `audioUrl` and the Pulse is text. An audio-only request reaches
@@ -1281,6 +1303,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556); `objectiveNotes`, `financialNotes`, `needsNotes`, `partnerOrg`, `statusGoal` and `storyProgress[].recordLocation` (OBT-573) | the truth | the truth | `""` | `""` |
+| `prayerRequests`, `prayerRequestsAudio` (OBT-655) | the truth, under the consent rule (§5.6) | the truth, under the consent rule | `""` | — |
 | the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null` | — |
 | `authorization.by` of `mediaPhotos` and `mediaVideos` (OBT-578 — Daniel, 8/oct/2026: on a Pulse-born photo it is the leader's own name, `submittedBy`) | the truth | the truth | `""`; `granted` and `at` kept | — |
 | `coords` | the truth | the truth | the region centroid | the region centroid |
@@ -1298,7 +1321,8 @@ ver tudo, mesmo os projetos em países sensíveis, só não podem editar"*; Dani
 *tudo* includes the **health**, and the **OBT Lab stays redacted**). The Resource Circle reads a
 sensitive project in its own scope exactly as the coordination does — the place, the base, the
 contacts, the reason, the real language name, the free text, the needs' descriptions, the
-history's notes, the count of withheld projects and the `sensitive` facet — and the health on
+history's notes, the count of withheld projects and the `sensitive` facet on the screen (not in
+the file it exports, since OBT-655 — below) — and the health on
 the ficha, the card, the health tab, the filter, the order and the file it exports
 (`_health_audience.HEALTH_READERS`). **And it writes nothing** — Daniel, 7/oct/2026, reading
 Karina's *só não podem editar* whole: no project write on any route, not even the fields the
@@ -1375,6 +1399,7 @@ is compared, logged with `log_reference`:
 | `location`, `location2`, `coords`, `sensitiveCountry`, `sensitivity` | writes | refused on **every** record |
 | the base (`team` / `ywamBase`), `teamContact`, `teamLeaderContact`, `mentorContact` | writes | refused on a **withheld** record; writes on a cleared one |
 | `notes`, `statusComments`, `scopeDetails` (OBT-556) | writes | refused on a **withheld** record; writes on a cleared one |
+| `prayerRequests`, `prayerRequestsAudio` (OBT-655) | writes | refused on a **withheld** record, here and in a health reading; on a cleared one, the prayer audience writes them (§5.6) |
 | a need's `description` (OBT-556) | writes | on a **withheld** record, the `""` it was handed is read as unchanged and any other text is refused; a new need is its author's to describe |
 
 There is no `country` to write: it is the first segment of `location`, so refusing the location
@@ -1493,7 +1518,8 @@ record's text leaving by five doors, and the client decided on 2/out/2026 to clo
 - **The conflict a save meets** (`_audit.changes_since`, told to a `Readership`): the 409 names
   only the fields the reader reads on that record, with who and when from the newest change
   they can see — `null` for both when there is none. A prayer request kept in coordination is
-  left out for a reader outside its audience the same way.
+  left out for a reader outside its audience the same way, and on a withheld record for every
+  reader who does not read the truth (OBT-655, §5.6).
 
 One predicate decides when, `_redaction.reads_the_truth(project, reader)`: coordination, or a
 record whose place is not withheld. The console's `mayWrite` does not know the four yet; until
@@ -1704,8 +1730,17 @@ region key where the place was, an empty base and `locationWithheld: true` **who
 the region's own coordinator included, because a file is what leaves.
 
 **The route takes the caller's reader, and only to address the header.** How many places were
-withheld is a line for coordination (GATE-04, 1.3) — `withheld_note`, told who the exporter is —
-and every other reader, like a file with nothing withheld, gets no line at all. The header also
+withheld is a line for coordination (GATE-04, 1.3) — `withheld_note`, told who the exporter is
+(`Readership.file_reader`) — and every other reader, like a file with nothing withheld, gets no
+line at all. **The Resource Circle's file included — [OBT-655](https://linear.app/shema-obt/issue/OBT-655),
+28/oct/2026, Levi, following the issue's recommendation, for Karina to validate.** Since OBT-571
+the header had been addressed as the Projetos screen's notice is (`collection_reader`), which
+told the Circle *N projetos em países sensíveis saem com local e base recolhidos* (API-PRIV-034).
+The issue asked for it to go because *nothing is withheld from a reader of the truth*; that holds
+of the screen and not of the file — the Circle's rows leave reduced like everybody's, each with
+its `locationWithheld: true`, so the line was true and what the decision removes is the notice.
+The alternative put to her is keeping it, as a notice that the file holds sensitive projects;
+the screen's count, which the Circle keeps, was not in question. The header also
 says what the file holds, when it was made and by whom, over which scope, that it is confidential,
 and which log row it is. `READER_ROUTES` lists the route with that argument, and
 `export_projects.py` calls no `read_by`, which the tree test holds.

@@ -49,7 +49,9 @@ questionnaire, and no author, because nobody knows who filed it.
 for its reason:
 
 1. the record, **inside the caller's scope** — out of scope is refused exactly as absent is;
-2. the audience — a narrower question than who may open the record (``_health_audience.py``);
+2. the audience — a narrower question than who may open the record (``_health_audience.py``) —
+   and, on a record whose place is withheld, the prayer request a reader who does not read the
+   truth carries (OBT-655);
 3. the overall reading **before** anything is written, off the flat fields — which is both
    the notice's *before* and the projection's *is this record actually rated*;
 4. the carried entry, if the record predates the history;
@@ -83,6 +85,14 @@ reading that takes the authorization back erases the request from the archived P
 (``_consent.withdrawn_request``, OBT-561), as a save does, and a reading that puts the request
 on the wall tells the Resource Circle, as a save does too (OBT-566).
 
+**A reading does not carry a request over one its author reads blank** (OBT-655). On a record
+whose place is withheld the OBT Lab reads the request as ``""`` (``shema_privacy``'s
+``PRAYER_REQUEST_FIELDS``), and the request keeps no history — unlike the reading's own notes,
+which land on the reading's row — so a request filed here would replace a text it cannot see.
+``_redaction.refuse_unwritable_fields`` refuses it before anything is written, with the save's own
+sentence, which is the record's ``PATCH`` rule at this door; the console's wizard does not offer
+the request to that reader. Found in review of shema-api#965.
+
 **The pastoral escalation is stored and never derived.** FE-44 §5.9 is explicit that the
 suggestion is made with its reasons and never applied — ``needsPastoralIntervention`` stays
 ``nao`` until a person picks otherwise — so a critical reading does not flip it here. The
@@ -106,8 +116,12 @@ from app.services.shema import _audit
 from app.services.shema._consent import request_written, shared_prayer_text, withdrawn_request
 from app.services.shema._health_audience import PASTORAL_WRITES, require_files_assessments
 from app.services.shema._health_notice import entered_critical, notify_critical
-from app.services.shema._redaction import language_name_for
-from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
+from app.services.shema._redaction import (
+    language_name_for,
+    refuse_unwritable_fields,
+    unwritable_fields,
+)
+from app.services.shema._scope import Readership, RegionScope, refuse_out_of_scope, visible_projects
 from app.services.shema._submission_archive import erase_withdrawn_request
 from app.services.shema._submission_notices import announce_shared_request
 from app.utils.shema_derivations import OverallHealth, overall_of
@@ -250,6 +264,7 @@ async def append_assessment(
     project_id: str,
     payload: ShemaHealthAssessmentSubmission,
     *,
+    readership: Readership,
     user: User,
     app_key: str,
     day: date,
@@ -282,6 +297,14 @@ async def append_assessment(
         )
 
     await require_files_assessments(db, user, app_key)
+    reader = readership.reader_of(project.region_key)
+    refuse_unwritable_fields(
+        project,
+        unwritable_fields(project, payload.model_fields_set & set(RECORD_FIELDS), reader),
+        reader,
+        user=user,
+        operation="append_assessment",
+    )
 
     before = _overall(project)
     snapshot = _audit.snapshot(project)
