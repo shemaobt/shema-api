@@ -23,6 +23,7 @@ from tests.baker import (
 
 URL = "/api/facilitator/sessions"
 ENGAGED = CoverageStatus.ENGAGED.value
+ARTICULATION = {"after": {"at": "articulation", "part": 2, "fenced": False}}
 STARTED = datetime(2026, 10, 28, 14, 0, tzinfo=UTC)
 
 
@@ -115,6 +116,45 @@ async def test_a_session_before_its_first_guide_line_and_a_panorama_carry_no_mom
         db_session, pericope=pericope, project_id=team.id, language="pt"
     )
     session.messages = [{"role": "team", "text": "oi", "opening_note": True}]
+    await db_session.commit()
+
+    row = await the_only_row(client, headers)
+
+    assert (row["moment"], row["scene"]) == (None, None)
+
+
+async def test_a_session_whose_canon_is_gone_is_listed_with_no_scene_and_no_moment_and_the_list_still_answers(  # noqa: E501
+    client, db_session
+):
+    team, headers = await a_facilitated_team(db_session)
+    lost = await a_spoken_session(db_session, team, "P03")
+    lost.messages = [*lost.messages[:-1], {**lost.messages[-1], "moment": ARTICULATION}]
+    lost.canon_pin = "c" * 40
+    unmoved = await a_spoken_session(db_session, team, "P03")
+    unmoved.canon_pin = "d" * 40
+    unmoved.messages = [
+        {**unmoved.messages[0]},
+        {k: v for k, v in unmoved.messages[-1].items() if k != "moment"},
+    ]
+    kept = await a_spoken_session(db_session, team, "P14")
+    await db_session.commit()
+
+    answer = await client.get(URL, headers=headers)
+
+    assert answer.status_code == 200, answer.text
+    rows = {row["session_id"]: row for row in answer.json()["sessions"]}
+    assert (rows[lost.id]["moment"], rows[lost.id]["scene"]) == (None, None)
+    assert (rows[unmoved.id]["moment"], rows[unmoved.id]["scene"]) == (None, None)
+    assert rows[kept.id]["scene"] == "S1"
+
+
+async def test_a_spoken_panorama_carries_no_moment_and_no_scene(client, db_session):
+    team, headers = await a_facilitated_team(db_session)
+    panorama = await a_spoken_session(db_session, team, "OV-Ruth")
+    panorama.messages = [
+        *panorama.messages[:-1],
+        {**panorama.messages[-1], "moment": ARTICULATION},
+    ]
     await db_session.commit()
 
     row = await the_only_row(client, headers)
