@@ -240,6 +240,17 @@ class BoardMemberOut(BaseModel):
     email: str
 
 
+class EvaluationTotalOut(BaseModel):
+    """One evaluated request's /30, for the board's badge — the id and the total, nothing else.
+
+    No decision, comment or score per criterion: the card draws the number and opens Parte C
+    for the rest, which reads the whole evaluation there (OBT-665).
+    """
+
+    request_id: str
+    total: int
+
+
 class EvaluationOut(BaseModel):
     """The mesa's evaluation on the wire — served only behind ``view_evaluation``.
 
