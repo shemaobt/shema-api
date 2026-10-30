@@ -373,11 +373,8 @@ async def _progress(
     findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
     awaiting = await the_sentence_awaiting(db, session)
-    segments = segment_views(
-        stretches,
-        await room.stale_segments(db, session.id, takes) if include_stale else None,
-        takes,
-    )
+    stale = await room.stale_segments(db, session.id, takes) if include_stale else None
+    segments = segment_views(stretches, stale, takes)
     nuance_numbers = {
         one.segment_id: one.frase for one in segments if one.frase is not None and not one.stale
     }
@@ -388,7 +385,9 @@ async def _progress(
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
         findings=finding_views(
-            findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
+            findings,
+            state.analysed_segment_ids,
+            room.passage_numbers(room.told_back(stretches), room.told_back(stale or []), takes),
         ),
         named_nuance=named_nuance_view(state, nuance_numbers),
         superseded_attempts=len(state.superseded),

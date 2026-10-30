@@ -778,3 +778,27 @@ async def test_a_finding_named_by_the_number_the_tablet_draws_lands_on_that_row(
     assert answered.json()["findings"] == [
         {"kind": "unclear", "frase": 3, "segment_id": standing.id}
     ], "o achado na frase 3 não caía em trecho nenhum: a leitura só aceitava posições até 1"
+
+
+async def test_the_session_read_numbers_a_finding_as_it_numbers_the_row_it_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, _again, played = await _part_one_recorded_again_before_part_two_was_told(
+        client, db_session
+    )
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", params={"include_stale": "true"})
+
+    assert read.status_code == 200, read.text
+    rows = {row["segment_id"]: row["frase"] for row in read.json()["back_translation"]["segments"]}
+    assert rows[standing.id] == 3
+    assert read.json()["back_translation"]["findings"] == [
+        {"kind": "unclear", "frase": 3, "segment_id": standing.id}
+    ], "a leitura desenhava a linha como 3 e dizia que o achado estava na frase 1"
