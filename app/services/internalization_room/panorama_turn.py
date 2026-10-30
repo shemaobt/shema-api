@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -13,7 +14,11 @@ from app.services.internalization_room.turn.speech import (
     what_the_guide_is_handed,
 )
 from app.services.internalization_room.turn_instructions import panorama_note
-from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
+from app.services.internalization_room.validated_turn import (
+    CutPoint,
+    TurnOutcome,
+    _voiced_after_validation,
+)
 
 
 async def run_panorama_turn(
@@ -39,7 +44,9 @@ async def run_panorama_turn(
     (`turn.speech.what_the_guide_is_handed`): a short take with no words draws the ladder's
     line, and the mother tongue reaches the Guide as the room's note, apart from the team's
     words. On every turn but the opening the outcome keeps the language, its probability, the
-    mother-tongue decision and the take's length; the cut point is not kept.
+    mother-tongue decision, the take's length and, when the team cut the Guide short to speak,
+    where the cut fell, as a passage turn's does: her route writes the cut into every turn
+    record, the Panorama's included.
     """
     cfg = settings or get_settings()
     handed = what_the_guide_is_handed(
@@ -74,5 +81,12 @@ async def run_panorama_turn(
             )
         )
     if not opening:
-        return stamped_with_what_was_heard(outcome, speech)
+        return replace(
+            stamped_with_what_was_heard(outcome, speech),
+            interrupted=(
+                CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
+                if speech.interrupted
+                else None
+            ),
+        )
     return outcome
