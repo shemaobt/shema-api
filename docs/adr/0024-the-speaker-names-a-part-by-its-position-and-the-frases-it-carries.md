@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ENG-2030: the reading's numbers count the stale stretches, and the address carries the frase number
+status: accepted; amended by ENG-2030: the reading's numbers count the stale stretches
 date: 2026-09-16
 ---
 
@@ -128,6 +128,5 @@ on the numbers being the reading's said `segments_block` numbers the telling-bac
 every reading and the analyst answers a position in that list. The block now labels the reading
 with the passage positions the tablet draws (ADR 0067), the stale stretches of a part recorded
 again counted after its standing ones, and the analyst answers one of those labels, which the
-reading turns back into a position. The address carries that number too: `Addresses.frase_of`
-is what the Speaker is handed, so the part and the frase the voice says come from one object.
-The distinction from the **Frase number** frozen on a **Version** stands.
+finding keeps and the reading resolves to a stretch. The Speaker is handed that number beside the
+part, as before. The distinction from the **Frase number** frozen on a **Version** stands.

@@ -108,7 +108,7 @@ The persistent, addressable object of one told slice of the passage: a slice of 
 _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:
-The numbered position of a stretch in the list the analyst receives in one reading. The prompts label that list with the **Frase number** the tablet draws, which counts the stale stretches the analyst is not shown; the server turns the label the analyst answers back into this position, then into a stretch, and a **Finding** keeps the position beside the stretch it resolved to. The two are not one answer: a **Missing with an address** placed *after* frase N resolves to stretch N+1, so an addition and a missing element are one swap of one frase when they share the number and not when they share the stretch.
+The frase number the analyst names in one reading, the number of the prompts. The list the analyst receives is labelled with the **Frase number** the tablet draws, which counts the stale stretches the analyst is not shown, so the number is the row's and not the stretch's position in that list. The server turns the number back into a stretch through the labels of that reading, and a **Finding** keeps the number it was given beside the stretch it resolved to. The two are not one answer: a **Missing with an address** placed *after* frase N resolves to stretch N+1, so an addition and a missing element are one swap of one frase when they share the number and not when they share the stretch.
 _Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):

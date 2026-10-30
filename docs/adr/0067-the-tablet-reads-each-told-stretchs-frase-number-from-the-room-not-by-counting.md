@@ -78,9 +78,11 @@ stale stretches too.** The ENG-2001 paragraph above left the check's findings an
 the standing stretches. They now number as the tablet draws the row: the analyst's block labels
 each told stretch with her position (`passage_numbers`, which is `frase_numbers` placed by the
 session's takes), the stale stretches themselves stay out of the block, the analyst's reply is
-read back through the same labels, the Speaker is handed the row's number, and `finding_frase`
-reads the finish answer's and the session read's findings off those numbers. A session read that
-does not ask for the stale rows numbers its findings as it numbers its rows, standing only. The
-stored `chunk` is still the position in the reading, so a Swap is paired on it and a stored
-finding is followed through `analysed_segment_ids` as before. The telling answer, the **Packet**
-and the retroverification file still number the standing stretches.
+read back through the same labels, the Speaker is handed the number the finding keeps, and
+`finding_frase` reads the finish answer's and the session read's findings off those numbers. A
+session read that does not ask for the stale rows numbers its findings as it numbers its rows,
+standing only. The stored `chunk` is still the number the analyst gave, now the row's number, so
+a Swap is paired on it as before; the reading records the labels it gave in `analysed_frases`,
+beside `analysed_segment_ids`, and that is how a stored finding is followed to its stretch when
+the rows move (ADR 0018, amended the same day). The telling answer, the **Packet** and the
+retroverification file still number the standing stretches.
