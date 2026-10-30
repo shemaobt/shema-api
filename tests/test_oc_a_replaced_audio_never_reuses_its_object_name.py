@@ -45,7 +45,7 @@ from tests.baker import (
     make_project,
     make_user,
 )
-from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET
+from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET, a_tone
 
 pytest.importorskip("app.inngest")
 
@@ -302,16 +302,6 @@ class _Device:
         name = await self.upload_url(recording_id)
         self.put(name, data)
         return await self.confirm(recording_id, crc32c=_crc32c(data))
-
-
-def _tone(seconds: float) -> bytes:
-    with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / "tone.wav"
-        subprocess.run(
-            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=duration={seconds}", str(out)],
-            check=True,
-        )
-        return out.read_bytes()
 
 
 def _seconds(wav: bytes) -> float:
@@ -1148,7 +1138,7 @@ async def test_the_split_job_of_a_replaced_recording_reads_the_new_audio(
     from app.services.oral_collector import split_service
 
     await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
-    old, new = _tone(4), _tone(2)
+    old, new = a_tone(4), a_tone(2)
     device, rec = await _uploaded(db_session, bucket, client, data=old, format="wav")
     await edge.play(rec.gcs_url or "")
     rec.file_size_bytes = len(new)

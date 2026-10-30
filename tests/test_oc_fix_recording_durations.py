@@ -1,0 +1,463 @@
+"""The one-shot script that gives the hours' recordings the duration measured on their file.
+
+The script runs as Henok runs it, against the suite's database. The bucket is an in-memory
+fake holding real audio made by ffmpeg, so the server's own ffprobe measurement reads it. The
+assertions read the printed report and the rows afterwards.
+"""
+
+from __future__ import annotations
+
+import io
+import os
+import subprocess
+import sys
+import wave
+from collections.abc import Awaitable, Callable
+from pathlib import Path
+from typing import Any
+
+import pytest
+from google.api_core.exceptions import Forbidden, NotFound
+from google.auth.exceptions import RefreshError
+from sqlalchemy import make_url, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.enums import SplittingStatus, UploadStatus
+from app.db.models.oc_genre import OC_Genre, OC_Subcategory
+from app.db.models.oc_recording import OC_Recording
+from app.services.oral_collector import duration_audit, gcs_utils
+from scripts import fix_recording_durations
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_taxonomy,
+    make_project,
+)
+from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET, a_tone
+
+
+class FakeBucket:
+    def __init__(self) -> None:
+        self.objects: dict[tuple[str, str], bytes] = {}
+        self.reads: list[tuple[str, str]] = []
+        self.failing: dict[str, Exception] = {}
+        self.while_reading: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    async def download(self, bucket_name: str, blob_name: str) -> bytes:
+        self.reads.append((bucket_name, blob_name))
+        if blob_name in self.failing:
+            raise self.failing[blob_name]
+        if blob_name in self.while_reading:
+            await self.while_reading[blob_name]()
+        try:
+            return self.objects[(bucket_name, blob_name)]
+        except KeyError:
+            raise NotFound(f"No such object: {bucket_name}/{blob_name}") from None
+
+
+@pytest.fixture()
+def bucket(monkeypatch: pytest.MonkeyPatch) -> FakeBucket:
+    fake = FakeBucket()
+    monkeypatch.setattr(get_settings(), "gcs_oc_bucket", STAGING_BUCKET)
+    monkeypatch.setattr(gcs_utils, "download_gcs_object", fake.download)
+    return fake
+
+
+class Seeder:
+    def __init__(
+        self, db: AsyncSession, bucket: FakeBucket, genre: OC_Genre, sub: OC_Subcategory
+    ) -> None:
+        self.db = db
+        self.bucket = bucket
+        self.genre = genre
+        self.sub = sub
+        self.count = 0
+
+    async def a_project(self, name: str) -> str:
+        self.count += 1
+        language = await make_language(self.db, name=f"Língua {name}", code=f"l{self.count}")
+        project = await make_project(self.db, language.id, name=name)
+        return project.id
+
+    async def a_recording(
+        self,
+        project_id: str,
+        *,
+        stored: float,
+        file_seconds: float | None,
+        upload_status: str = UploadStatus.VERIFIED,
+        splitting_status: str = SplittingStatus.NONE,
+        split_from_id: str | None = None,
+        with_address: bool = True,
+    ) -> OC_Recording:
+        self.count += 1
+        blob = f"{project_id}/recording-{self.count}.wav"
+        recording = await make_oc_recording(
+            self.db,
+            project_id,
+            self.genre.id,
+            self.sub.id,
+            title=f"recording {self.count}",
+            duration_seconds=stored,
+            gcs_url=f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/{blob}"
+            if with_address
+            else None,
+            upload_status=upload_status,
+            splitting_status=splitting_status,
+        )
+        if split_from_id is not None:
+            recording.split_from_id = split_from_id
+            await self.db.commit()
+        if file_seconds is not None:
+            self.bucket.objects[(STAGING_BUCKET, blob)] = a_tone(file_seconds)
+        return recording
+
+
+@pytest.fixture()
+async def seed(db_session: AsyncSession, bucket: FakeBucket) -> Seeder:
+    genre, sub = await make_oc_taxonomy(db_session)
+    return Seeder(db_session, bucket, genre, sub)
+
+
+async def stored_now(db: AsyncSession, recording: OC_Recording) -> float:
+    row = await db.execute(
+        select(OC_Recording.duration_seconds)
+        .where(OC_Recording.id == recording.id)
+        .execution_options(populate_existing=True)
+    )
+    return row.scalar_one()
+
+
+async def a_run(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
+    status = await fix_recording_durations.run(list(argv))
+    out = capsys.readouterr().out
+    assert status == 0, out
+    return out
+
+
+def lines_naming(out: str, *tokens: str) -> list[str]:
+    return [line for line in out.splitlines() if all(token in line for token in tokens)]
+
+
+def the_line_naming(out: str, *tokens: str) -> str:
+    found = lines_naming(out, *tokens)
+    assert len(found) == 1, f"{tokens} are on {len(found)} lines of:\n{out}"
+    return found[0]
+
+
+async def two_divergent_and_one_correct(seed: Seeder) -> dict[str, OC_Recording | str]:
+    first = await seed.a_project("Projeto Um")
+    wrong_in_first = await seed.a_recording(first, stored=1894.0, file_seconds=2)
+    right_in_first = await seed.a_recording(first, stored=72.0, file_seconds=72)
+    second = await seed.a_project("Projeto Dois")
+    wrong_in_second = await seed.a_recording(second, stored=3600.0, file_seconds=1)
+    return {
+        "first": first,
+        "second": second,
+        "wrong_in_first": wrong_in_first,
+        "right_in_first": right_in_first,
+        "wrong_in_second": wrong_in_second,
+    }
+
+
+async def test_a_dry_run_lists_the_two_divergent_recordings_with_stored_and_measured_durations_and_each_projects_hours_before_and_after_and_writes_nothing(  # noqa: E501
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rows = await two_divergent_and_one_correct(seed)
+
+    out = await a_run(capsys)
+
+    wrong_in_first = the_line_naming(out, rows["wrong_in_first"].id)
+    assert rows["first"] in wrong_in_first
+    assert "stored 1894.000 s" in wrong_in_first and "measured 2.000 s" in wrong_in_first
+    wrong_in_second = the_line_naming(out, rows["wrong_in_second"].id)
+    assert rows["second"] in wrong_in_second
+    assert "stored 3600.000 s" in wrong_in_second and "measured 1.000 s" in wrong_in_second
+    assert not lines_naming(out, rows["right_in_first"].id)
+
+    first_hours = the_line_naming(out, "hours", rows["first"])
+    before, after = round((1894 + 72) / 3600, 2), round((2 + 72) / 3600, 2)
+    assert f"before {before:.2f}  after {after:.2f}" in first_hours
+    second_hours = the_line_naming(out, "hours", rows["second"])
+    before, after = round(3600 / 3600, 2), round(1 / 3600, 2)
+    assert f"before {before:.2f}  after {after:.2f}" in second_hours
+    assert the_line_naming(out, "divergent").split()[-1] == "2"
+
+    assert await stored_now(db_session, rows["wrong_in_first"]) == 1894.0
+    assert await stored_now(db_session, rows["wrong_in_second"]) == 3600.0
+
+
+async def test_a_write_run_gives_the_two_divergent_recordings_their_measured_duration_and_leaves_the_correct_one_as_it_was(  # noqa: E501
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rows = await two_divergent_and_one_correct(seed)
+
+    out = await a_run(capsys, "--write")
+
+    assert await stored_now(db_session, rows["wrong_in_first"]) == 2.0
+    assert await stored_now(db_session, rows["wrong_in_second"]) == 1.0
+    assert await stored_now(db_session, rows["right_in_first"]) == 72.0
+    assert the_line_naming(out, "written").split()[-1] == "2"
+
+
+async def test_a_second_write_run_changes_no_row_and_finds_nothing_divergent(
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rows = await two_divergent_and_one_correct(seed)
+    await a_run(capsys, "--write")
+
+    out = await a_run(capsys, "--write")
+
+    for name in ("wrong_in_first", "wrong_in_second", "right_in_first"):
+        assert not lines_naming(out, rows[name].id)
+    assert the_line_naming(out, "divergent").split()[-1] == "0"
+    assert the_line_naming(out, "written").split()[-1] == "0"
+    assert await stored_now(db_session, rows["wrong_in_first"]) == 2.0
+    assert await stored_now(db_session, rows["wrong_in_second"]) == 1.0
+    assert await stored_now(db_session, rows["right_in_first"]) == 72.0
+
+
+async def test_a_recording_whose_file_is_missing_is_listed_as_unreadable_and_left_as_it_is(
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    missing = await seed.a_recording(project, stored=1894.0, file_seconds=None)
+
+    out = await a_run(capsys, "--write")
+
+    assert "unreadable" in the_line_naming(out, missing.id)
+    assert await stored_now(db_session, missing) == 1894.0
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        Forbidden("Access denied"),
+        RefreshError("Reauthentication is needed"),
+        ConnectionError("Connection reset by peer"),
+    ],
+    ids=["bucket refuses", "credentials expire", "connection drops"],
+)
+async def test_a_recording_whose_file_cannot_be_read_from_the_bucket_is_listed_as_unreadable_and_the_run_goes_on(  # noqa: E501
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    failure: Exception,
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    refused = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    seed.bucket.failing[gcs_utils.blob_name_from_url(refused.gcs_url)] = failure
+    wrong = await seed.a_recording(project, stored=3600.0, file_seconds=1)
+
+    out = await a_run(capsys, "--write")
+
+    unreadable = the_line_naming(out, refused.id)
+    assert "unreadable" in unreadable and type(failure).__name__ in unreadable
+    assert await stored_now(db_session, refused) == 1894.0
+    assert await stored_now(db_session, wrong) == 1.0
+
+
+def one_frame_of_audio() -> bytes:
+    out = io.BytesIO()
+    with wave.open(out, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8000)
+        audio.writeframes(b"\0\0")
+    return out.getvalue()
+
+
+async def test_a_recording_whose_file_has_no_audio_length_is_listed_as_unreadable_never_zeroed(
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    empty = await seed.a_recording(project, stored=1894.0, file_seconds=None)
+    seed.bucket.objects[(STAGING_BUCKET, gcs_utils.blob_name_from_url(empty.gcs_url))] = (
+        one_frame_of_audio()
+    )
+
+    out = await a_run(capsys, "--write")
+
+    assert "unreadable" in the_line_naming(out, empty.id)
+    assert await stored_now(db_session, empty) == 1894.0
+
+
+async def test_a_recording_stored_at_120_seconds_whose_file_measures_119_4_is_neither_listed_nor_changed(  # noqa: E501
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    rounding = await seed.a_recording(project, stored=120.0, file_seconds=119.4)
+
+    out = await a_run(capsys, "--write")
+
+    assert not lines_naming(out, rounding.id)
+    assert await stored_now(db_session, rounding) == 120.0
+
+
+async def test_a_recording_archived_after_a_split_and_one_whose_upload_failed_are_neither_measured_nor_listed_and_the_splits_segments_are_measured_on_their_own_files(  # noqa: E501
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    parent = await seed.a_recording(
+        project,
+        stored=1894.0,
+        file_seconds=2,
+        splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+    first_segment = await seed.a_recording(
+        project, stored=1000.0, file_seconds=1, split_from_id=parent.id
+    )
+    second_segment = await seed.a_recording(
+        project, stored=894.0, file_seconds=1, split_from_id=parent.id
+    )
+    failed = await seed.a_recording(
+        project, stored=1894.0, file_seconds=2, upload_status=UploadStatus.UPLOAD_FAILED
+    )
+
+    out = await a_run(capsys, "--write")
+
+    assert not lines_naming(out, parent.id)
+    assert not lines_naming(out, failed.id)
+    read = {blob for _bucket, blob in seed.bucket.reads}
+    assert gcs_utils.blob_name_from_url(parent.gcs_url) not in read
+    assert gcs_utils.blob_name_from_url(failed.gcs_url) not in read
+    assert await stored_now(db_session, parent) == 1894.0
+    assert await stored_now(db_session, failed) == 1894.0
+    assert "1000.0" in the_line_naming(out, first_segment.id)
+    assert "894.0" in the_line_naming(out, second_segment.id)
+    assert await stored_now(db_session, first_segment) == 1.0
+    assert await stored_now(db_session, second_segment) == 1.0
+
+
+async def test_a_counted_recording_with_no_file_address_is_listed_as_unreadable_never_zeroed(
+    seed: Seeder, db_session: AsyncSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    no_address = await seed.a_recording(
+        project, stored=1894.0, file_seconds=None, with_address=False
+    )
+
+    out = await a_run(capsys, "--write")
+
+    assert "unreadable" in the_line_naming(out, no_address.id)
+    assert await stored_now(db_session, no_address) == 1894.0
+
+
+async def test_without_ffprobe_the_script_stops_before_reading_anything_and_says_why(
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    wrong = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    status = await fix_recording_durations.run(["--write"])
+
+    captured = capsys.readouterr()
+    assert status != 0
+    assert "ffprobe" in captured.err
+    assert seed.bucket.reads == []
+    assert await stored_now(db_session, wrong) == 1894.0
+
+
+async def test_the_run_names_the_bucket_it_reads(
+    seed: Seeder, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    await seed.a_recording(project, stored=1894.0, file_seconds=2)
+
+    out = await a_run(capsys)
+
+    assert STAGING_BUCKET in out.splitlines()[0]
+    assert {bucket_name for bucket_name, _blob in seed.bucket.reads} == {STAGING_BUCKET}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"gcs_url": f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/replaced.wav"},
+        {"duration_seconds": 1900.0},
+        {"splitting_status": SplittingStatus.ARCHIVED_AFTER_SPLIT},
+    ],
+    ids=["new file", "new stored duration", "archived after split"],
+)
+async def test_a_divergent_recording_that_changes_during_the_run_is_reported_and_not_overwritten(
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    change: dict[str, Any],
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    changing = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    wrong = await seed.a_recording(project, stored=3600.0, file_seconds=1)
+
+    async def the_app_changes_it() -> None:
+        await db_session.execute(
+            update(OC_Recording).where(OC_Recording.id == changing.id).values(**change)
+        )
+        await db_session.commit()
+
+    seed.bucket.while_reading[gcs_utils.blob_name_from_url(changing.gcs_url)] = the_app_changes_it
+
+    out = await a_run(capsys, "--write")
+
+    assert lines_naming(out, changing.id, "changed during the run, skipped")
+    assert await stored_now(db_session, changing) == change.get("duration_seconds", 1894.0)
+    assert await stored_now(db_session, wrong) == 1.0
+    assert the_line_naming(out, "written").split()[-1] == "1"
+
+
+async def test_a_file_whose_measurement_never_ends_is_listed_as_unreadable_and_its_probe_is_killed(
+    seed: Seeder,
+    db_session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    hanging = await seed.a_recording(project, stored=1894.0, file_seconds=2)
+    pid_file = tmp_path / "probe.pid"
+    probe = tmp_path / "ffprobe"
+    probe.write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 600\n")
+    probe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(duration_audit, "MEASURE_TIMEOUT_SECONDS", 0.5)
+
+    out = await a_run(capsys, "--write")
+
+    assert "timed out" in the_line_naming(out, hanging.id, "unreadable")
+    assert await stored_now(db_session, hanging) == 1894.0
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
+async def test_the_run_names_the_database_it_reads_before_reading_it(
+    seed: Seeder, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = await seed.a_project("Projeto Um")
+    await seed.a_recording(project, stored=1894.0, file_seconds=2)
+
+    out = await a_run(capsys)
+
+    assert make_url(os.environ["DATABASE_URL"]).database in out.splitlines()[1]
+
+
+@pytest.mark.fresh_interpreter
+def test_the_help_says_how_to_run_it_without_a_database_configured(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parent.parent
+
+    shown = subprocess.run(
+        [sys.executable, "-m", "scripts.fix_recording_durations", "--help"],
+        cwd=tmp_path,
+        env={"PATH": os.environ["PATH"], "HOME": os.environ["HOME"], "PYTHONPATH": str(root)},
+        capture_output=True,
+        text=True,
+    )
+
+    assert shown.returncode == 0, shown.stderr
+    assert "gcloud auth application-default login" in shown.stdout
+    assert "GCS_OC_BUCKET=tripod-image-uploads" in shown.stdout
