@@ -363,3 +363,19 @@ async def test_the_record_of_a_panorama_take_after_a_cut_keeps_where_the_cut_fel
     assert record["interrupted"] == {"at_ms": 1200, "of_ms": 5000}, (
         "o registro do Panorama perdia o ponto do corte que o tablet mandou"
     )
+
+
+async def test_a_panorama_take_that_followed_no_cut_has_no_interrupted_key_in_its_record(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_panorama(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9)
+    the_take_lasts(monkeypatch, 12_000)
+
+    await _the_team_sends_a_take(tablet, session)
+
+    record = (await _the_conversation(db_session, session.id))[-1]
+    assert "interrupted" not in record
