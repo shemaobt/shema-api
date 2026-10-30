@@ -398,6 +398,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (owner.project.id, absent),
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/archives", {}),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/archives", {}),
+            "ids": (owner.project.id, absent),
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/release", FORCE),
             "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/release", FORCE),
