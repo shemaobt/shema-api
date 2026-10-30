@@ -37,6 +37,12 @@ class ArchiveView(BaseModel):
     sessions: list[ArchivedSession]
 
 
+class ArchiveList(BaseModel):
+    """A pericope's archives, newest first; empty for a passage never zeroed."""
+
+    archives: list[ArchiveView]
+
+
 class ArchiveResponse(BaseModel):
     """200 in both cases: a pericope with nothing live is not a conflict (ADR 0047)."""
 

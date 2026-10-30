@@ -37,6 +37,7 @@ from app.services.internalization_room.live import live
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
 from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 from app.utils.stored_time import as_utc
 
 _HANGING_OFF_A_SESSION = (
@@ -120,6 +121,22 @@ async def archive_pericope(
     )
     await db.commit()
     return archive
+
+
+async def archives_of(
+    db: AsyncSession, user: User, *, project_id: str, pericope: str
+) -> list[IRArchive]:
+    """The team's archives of this pericope, newest first; equal times fall back to the id so
+    the order is stable. The pericope is matched as written, with no canon check.
+    """
+    if not await reads_project(db, user, project_id):
+        raise NotFoundError(TEAM_NOT_FOUND)
+    archives = await db.scalars(
+        select(IRArchive)
+        .where(IRArchive.project_id == project_id, IRArchive.pericope == pericope)
+        .order_by(IRArchive.archived_at.desc(), IRArchive.id.desc())
+    )
+    return list(archives)
 
 
 async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[ArchivedSession]:
