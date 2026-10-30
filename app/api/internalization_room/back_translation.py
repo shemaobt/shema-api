@@ -405,7 +405,6 @@ async def _finished(
     takes = await takes_of(db, session.id)
     final = await room.final_segments(db, session.id, takes)
     told = room.told_back(final)
-    stale = await room.stale_segments(db, session.id, takes)
     if payload is not None and (
         payload.played_by_take or payload.played_ranges or payload.clip_duration_ms
     ):
@@ -468,6 +467,7 @@ async def _finished(
             refusal=CheckRefusal.NOTHING_TRANSLATED,
         )
 
+    stale = await room.stale_segments(db, session.id, takes)
     stored = state.the_verdict_to_serve(told)
     if stored is not None:
         state = await _without_the_whole_set_aside(db, session, state, takes)
