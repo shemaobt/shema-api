@@ -24,6 +24,7 @@ from app.services.resource_request._evaluation import (
     load_evaluation,
 )
 from app.services.resource_request._notices import Letter, post
+from app.services.resource_request._trail import evaluation_fields, record_evaluation_trail
 from app.services.resource_request._transition import (
     guard_endorsement,
     guard_stage_entry,
@@ -164,6 +165,10 @@ async def save_evaluation(
         guard_endorsement(request, DECISION_STAGE[deciding])
         await guard_stage_entry(db, request, DECISION_STAGE[deciding])
 
+    # The trail's "before": what is stored now, read ahead of every write below. A first save
+    # starts from the empty state, so the first score of a criterion reads None -> n.
+    before_comments = "" if evaluation is None else evaluation.comments
+
     if evaluation is None:
         evaluation = RREvaluation(snapshot_id=snapshot.id)
         db.add(evaluation)
@@ -181,6 +186,7 @@ async def save_evaluation(
             )
         ).scalars()
     }
+    before_scores = {key: row.score for key, row in stored_scores.items()}
     for score in payload.scores:
         stored = stored_scores.pop(score.criterion_key, None)
         if stored is None:
@@ -206,11 +212,28 @@ async def save_evaluation(
             )
         ).scalars()
     }
+    before_attendees = list(stored_attendees)
     for attendee in payload.attendees:
         if stored_attendees.pop(attendee, None) is None:
             db.add(RREvaluationAttendee(evaluation_id=evaluation.id, user_id=attendee))
     for absent in stored_attendees.values():
         await db.delete(absent)
+
+    # The trail rides this transaction (OBT-672): it commits with the edit it describes or not
+    # at all. The decision's own move is the stage event's fact, but the decision is a field of
+    # the evaluation and D7 asks who recorded it, so it is diffed here like the rest.
+    record_evaluation_trail(
+        db,
+        evaluation.id,
+        user.id,
+        evaluation_fields(recorded, before_comments, before_scores, attendees=before_attendees),
+        evaluation_fields(
+            deciding if deciding is not None else recorded,
+            payload.comments,
+            {score.criterion_key: score.score for score in payload.scores},
+            attendees=payload.attendees,
+        ),
+    )
 
     letters: list[Letter] = []
     if deciding is not None:

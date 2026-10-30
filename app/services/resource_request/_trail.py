@@ -44,16 +44,15 @@ instant per save, so the rows of one save read as one event, at microsecond prec
 SQLite's ``CURRENT_TIMESTAMP`` is second-grained, and a trail whose rows tie cannot be
 ordered.
 
-**The avaliação half is delivered ahead of its endpoints.** The evaluation routes are
-BE-06's (OBT-455, backlog) and do not exist in this base, so ``evaluation_fields`` and
-``record_evaluation_trail`` are tested at the service level here and wired to nothing;
-BE-06 threads them through its write path the way ``update_draft`` threads the request
-half. Its key space is the model docstring's: a criterion key for a score, ``decision``
-and ``comments`` for the two fields that are not scores.
+**The avaliação half is written by ``save_evaluation``** (OBT-672): it diffs what is stored
+against the payload and adds the rows in the save's own transaction. Its key space is the
+model docstring's: a criterion key for a score, ``decision`` and ``comments`` for the two
+fields that are not scores, and ``attendees`` for the ata — the ids sorted, as canonical
+JSON, because the ata is a set.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
@@ -116,6 +115,8 @@ def evaluation_fields(
     decision: RRDecision | None,
     comments: str,
     scores: Mapping[str, int | None],
+    *,
+    attendees: Sequence[str] | None = None,
 ) -> dict[str, str | None]:
     """Flatten an evaluation's writable fields into the trail's key space.
 
@@ -124,11 +125,17 @@ def evaluation_fields(
     what keeps the two sides of its diff comparable. A ``None`` score is *not scored*,
     which is not a scored zero, and stays ``None`` — the side D7's own example starts from
     when a criterion is scored for the first time.
+
+    ``attendees`` is the ata, the fourth thing a save writes: one key, the ids sorted and
+    rendered as canonical JSON, because the ata is a set and has no order to claim. ``None``
+    leaves the key out, for a caller that does not carry the ata.
     """
     flat: dict[str, str | None] = {
         "decision": None if decision is None else decision.value,
         "comments": comments,
     }
+    if attendees is not None:
+        flat["attendees"] = _canonical(sorted(attendees))
     for criterion_key, score in scores.items():
         flat[criterion_key] = None if score is None else str(score)
     return flat
@@ -189,7 +196,7 @@ def record_evaluation_trail(
     before: Mapping[str, str | None],
     after: Mapping[str, str | None],
 ) -> list[RREvaluationFieldHistory]:
-    """The avaliação's half of the trail, notas included — BE-06 wires it to endpoints."""
+    """The avaliação's half of the trail, notas included — ``save_evaluation`` writes it."""
     now = datetime.now(UTC)
     rows = [
         RREvaluationFieldHistory(
