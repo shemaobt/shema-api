@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ADR 0096: after a grain switch the parts are only the newest grain's, and a whole recorded after a switch to the whole passage is the one part beside numbered takes
+status: accepted; amended by ENG-2001: a stale stretch carries its frase when the tablet asks for it; amended by ADR 0096: after a grain switch the parts are only the newest grain's, and a whole recorded after a switch to the whole passage is the one part beside numbered takes
 date: 2026-09-16
 ---
 
@@ -145,3 +145,12 @@ over clears every mark.
 Rejected: serving them from `final_segments`, which is the one rule every count reads and would
 have counted them; and a list of their own beside `segments`, which the ticket did not ask for
 and which the tablet would have had to join to the other.
+
+**Amended on 30 October 2026 (ENG-2001): a stale stretch carries its frase.** The ENG-1739
+paragraph above says each stale stretch is served "with no `frase`"; with `include_stale=true` it
+now carries one. Her `buildPassageTelling` numbers every told frase by position over the passage,
+part by part, the standing ones before the stale ones, and the room serves that number on the stale
+stretches of a tablet that asks, so the standing stretches after a part recorded again keep the
+numbers her app gives them. Only a stale stretch with a telling-back is numbered. A tablet that does
+not ask is unchanged, and so are the check, the findings, the **Packet** and the voice, which number
+the standing stretches only (ENG-2030 aligns the voice).
