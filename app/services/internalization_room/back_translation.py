@@ -1196,14 +1196,14 @@ def _for_her_speaker(finding: Finding | Nuance, addresses: Addresses) -> dict[st
         handed: dict[str, Any] = {
             "kind": "nuance",
             "note": finding.note,
-            "frase": finding.chunk,
+            "frase": addresses.frase_of(finding.chunk),
             "quote": finding.quote,
             "story": finding.story,
         }
     else:
         handed = {"kind": finding.kind.value, "note": finding.note}
         if finding.chunk is not None:
-            handed["frase"] = finding.chunk
+            handed["frase"] = addresses.frase_of(finding.chunk)
     part = addresses.part_of(finding.segment_id)
     if part and (isinstance(finding, Nuance) or finding.kind is not FindingKind.MISSING):
         handed["part"] = part

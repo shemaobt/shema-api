@@ -115,13 +115,14 @@ async def check_the_telling_back(
     """
     read_this_round: list[Finding] = []
     language = room_language(session.language)
+    numbers = passage_numbers(told, stretches_told_back(stale), takes)
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
         language,
+        numbers,
     )
-    numbers = passage_numbers(told, stretches_told_back(stale), takes)
     told_back = segments_block(told, addresses, language, numbers)
     if not state.already_analysed(told):
         read = await analyse_telling_back(

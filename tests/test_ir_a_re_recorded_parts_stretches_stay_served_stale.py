@@ -802,3 +802,24 @@ async def test_the_session_read_numbers_a_finding_as_it_numbers_the_row_it_draws
     assert read.json()["back_translation"]["findings"] == [
         {"kind": "unclear", "frase": 3, "segment_id": standing.id}
     ], "a leitura desenhava a linha como 3 e dizia que o achado estava na frase 1"
+
+
+async def test_the_speaker_is_handed_the_number_the_tablet_draws_for_the_finding(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    room = the_room_speaks(monkeypatch)
+    session, _again, played = await _part_one_recorded_again_before_part_two_was_told(
+        client, db_session
+    )
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == 200, answered.text
+    assert '"frase": 3' in room.briefs[-1], (
+        "a voz recebia a posição na leitura, e dizia «frase 1» na linha que a tablet desenha como 3"
+    )
+    assert '"frase": 1' not in room.briefs[-1]
