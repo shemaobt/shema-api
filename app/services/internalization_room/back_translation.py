@@ -846,7 +846,7 @@ _VALID_WHERE = frozenset({"before", "inside", "after"})
 
 
 def _chunk_named(raw: Any, positions: dict[int, int]) -> int | None:
-    """The frase the analyst named, as a position in the reading it was given, or None.
+    """The frase the analyst named, as the label it carries in the reading it was given, or None.
 
     The number kept is the label the analyst named, which is the number on the team's row
     and counts the stale stretches it was never shown; `positions` is the reading's labels
