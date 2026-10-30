@@ -582,6 +582,18 @@ def frase_numbers(
     return {segment.id: number for number, segment in enumerate(told, start=1)}
 
 
+def passage_numbers(
+    told: list[IRSegment], stale: list[IRSegment], takes: list[IRTake]
+) -> dict[str, int]:
+    """The number on every told stretch, standing or stale, as the tablet draws the row.
+
+    `frase_numbers` placed by the session's takes, which is the one call every reader of a
+    passage position makes: the analyst's block, the Speaker, the finding views and the
+    segment views cannot disagree on which part a stale stretch belongs to.
+    """
+    return frase_numbers(told, stale, {take.id: take.ordinal for take in takes})
+
+
 def finding_frase(
     finding: Finding, analysed_segment_ids: list[str] | None, numbers: dict[str, int]
 ) -> int | None:
@@ -595,7 +607,10 @@ def finding_frase(
 
 
 def segments_block(
-    segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
+    segments: list[IRSegment],
+    addresses: Addresses,
+    language_code: str = AUTHORED,
+    numbers: dict[str, int] | None = None,
 ) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
@@ -608,7 +623,8 @@ def segments_block(
     """
     if not segments:
         return _NOTHING_TOLD_BACK_YET[room_language(language_code)]
-    numbers = frase_numbers(segments)
+    if numbers is None:
+        numbers = frase_numbers(segments)
     lines = []
     for segment in segments:
         label = [f"frase {numbers[segment.id]}", addresses.part_of(segment.id)]
@@ -887,6 +903,7 @@ async def analyse_telling_back(
     language_code: str = AUTHORED,
     settings: Settings | None = None,
     session_id: str = "",
+    numbers: dict[str, int] | None = None,
 ) -> BtAnalysis | None:
     """Compare the bridge-language telling-back against the map. Never voiced.
 
@@ -910,7 +927,7 @@ async def analyse_telling_back(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
-        SEGMENTS=segments_block(segments, addresses, language_code),
+        SEGMENTS=segments_block(segments, addresses, language_code, numbers),
     )
     try:
         raw = await room_agent().analyst.call_agent(

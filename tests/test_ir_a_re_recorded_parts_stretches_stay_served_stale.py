@@ -730,3 +730,31 @@ async def test_a_divided_stretch_whose_pieces_were_both_told_again_is_not_served
     assert [
         row for row in await _read_asking_for_stale(client, session.id) if row["stale"]
     ] == [], "o trecho cortado voltou inteiro depois de as suas duas partes serem contadas de novo"
+
+
+async def _part_one_recorded_again_before_part_two_was_told(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> tuple[Any, str, list[str]]:
+    session, (_one, two) = await rehearsed_in_parts_of(db_session, [2, 1])
+    again = await upload_a_part(client, session.id, part=1, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    return session, again.json()["take_id"], [again.json()["take_id"], two.id]
+
+
+async def test_above_a_part_recorded_again_the_analyst_reads_the_frase_number_the_tablet_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, _again, played = await _part_one_recorded_again_before_part_two_was_told(
+        client, db_session
+    )
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == 200, answered.text
+    block = analyst.shown[-1]
+    assert "[frase 3 — a parte 2] a frase 3, contada de volta" in block, (
+        "acima de uma parte regravada a analista lia «frase 1» na linha que a tablet desenha como 3"
+    )
+    assert "a frase 1, contada de volta" not in block
+    assert "a frase 2, contada de volta" not in block

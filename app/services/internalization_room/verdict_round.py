@@ -38,6 +38,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     is_joined,
     nuances_said,
+    passage_numbers,
     said_before,
     segments_block,
     the_finding_that_leads,
@@ -92,6 +93,7 @@ async def check_the_telling_back(
     *,
     state: BackTranslationState,
     told: list[IRSegment],
+    stale: list[IRSegment],
     takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
@@ -119,10 +121,12 @@ async def check_the_telling_back(
         scene_titles(session),
         language,
     )
-    told_back = segments_block(told, addresses, language)
+    numbers = passage_numbers(told, stretches_told_back(stale), takes)
+    told_back = segments_block(told, addresses, language, numbers)
     if not state.already_analysed(told):
         read = await analyse_telling_back(
             segments=told,
+            numbers=numbers,
             scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
