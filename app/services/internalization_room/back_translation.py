@@ -609,9 +609,10 @@ def finding_frase(
     if finding.chunk is None or analysed_segment_ids is None:
         return finding.chunk
     labels = analysed_frases or list(range(1, len(analysed_segment_ids) + 1))
-    if finding.chunk not in labels:
+    at = labels.index(finding.chunk) if finding.chunk in labels else len(analysed_segment_ids)
+    if at >= len(analysed_segment_ids):
         return finding.chunk
-    return numbers.get(analysed_segment_ids[labels.index(finding.chunk)])
+    return numbers.get(analysed_segment_ids[at])
 
 
 def segments_block(
