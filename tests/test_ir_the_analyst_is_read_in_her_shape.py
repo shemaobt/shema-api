@@ -1,11 +1,16 @@
 import json
 
-from app.services.internalization_room.back_translation import FindingKind, _parse_analysis
+from app.services.internalization_room.back_translation import (
+    FindingKind,
+    _parse_analysis,
+    frase_numbers,
+)
 from tests.turn_harness import told_stretches
 
 
 def _read(*findings: dict[str, object]):
-    return _parse_analysis(json.dumps({"findings": list(findings)}), told_stretches())
+    told = told_stretches()
+    return _parse_analysis(json.dumps({"findings": list(findings)}), told, frase_numbers(told))
 
 
 def test_a_finding_naming_her_frase_lands_on_that_stretch() -> None:
