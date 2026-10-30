@@ -200,7 +200,9 @@ async def check_the_telling_back(
     outcome = await speak(current or ([offered] if offered else []))
     if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])
-    elif offered is not None and re.search(rf"frase\s+{offered.chunk}(?!\d)", outcome.speech, re.I):
+    elif offered is not None and re.search(
+        rf"frase\s+{addresses.frase_of(offered.chunk)}(?!\d)", outcome.speech, re.I
+    ):
         offered.voiced = "now"
 
     said = outcome.speech

@@ -488,7 +488,9 @@ async def _finished(
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=stored.used_fail_safe,
             check_at=state.checks[-1].at if state.checks else None,
-            named_nuance=named_nuance_view(state),
+            named_nuance=named_nuance_view(
+                state, room.passage_numbers(told, room.told_back(stale), takes)
+            ),
         )
 
     with stage("db_let_go"):
@@ -533,6 +535,7 @@ async def _finished(
 
     shown = await _without_the_whole_set_aside(db, session, state, takes)
     standing = await room.final_segments(db, session.id)
+    numbers = room.passage_numbers(room.told_back(standing), room.told_back(stale), takes)
     return BackTranslationVerdictResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
@@ -540,13 +543,9 @@ async def _finished(
         checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
-        findings=finding_views(
-            shown.findings,
-            shown.analysed_segment_ids,
-            room.passage_numbers(room.told_back(standing), room.told_back(stale), takes),
-        ),
+        findings=finding_views(shown.findings, shown.analysed_segment_ids, numbers),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
         check_at=state.checks[-1].at if state.checks else None,
-        named_nuance=named_nuance_view(state),
+        named_nuance=named_nuance_view(state, numbers),
     )
