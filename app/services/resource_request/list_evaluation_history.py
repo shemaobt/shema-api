@@ -17,10 +17,16 @@ async def list_evaluation_history(
     scope — anyone who cannot reach the request gets the same 404 the request answers — so
     the gate says *may read an evaluation* and the scope says *this request*.
 
-    **It follows the request, not one snapshot**: a revision is a new snapshot with its own
-    evaluation, and the question D7 asks — *"quem subiu uma nota de 2 para 5"* — is about
-    the request's whole life. A request nobody has evaluated has an empty trail, not a 404:
-    *no changes yet* is an answer, and it is the one a screen can draw.
+    **It answers for one request, and a revision is another request.** ``open_revision``
+    mints a new ``rr_requests`` row whose ``revision_of_id`` points at the evaluated
+    snapshot (BE-04), so the revision's evaluation — and its trail — hang off the new id,
+    and the original keeps its own, frozen with the decision that asked for the revision.
+    Reading both is reading two ids, which is what the console already does to show a
+    revision beside what it revised. (The first cut of this docstring said the trail spanned
+    every snapshot of the request; the review found that a request has one, and the join on
+    ``RRSnapshot.request_id`` below is what makes that true rather than a promise.) A request
+    nobody has evaluated has an empty trail, not a 404: *no changes yet* is an answer, and it
+    is the one a screen can draw.
 
     Ordered by ``changed_at`` then ``field_key``, as the request's trail is: one save stamps
     one instant, so saves order between themselves and a save's rows order deterministically.
