@@ -423,8 +423,11 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
         readings.append(
             {
                 **kwargs,
-                "segments": bt_api.room.segments_block(kwargs["segments"], kwargs["addresses"]),
+                "segments": bt_api.room.segments_block(
+                    kwargs["segments"], kwargs["addresses"], numbers=kwargs["numbers"]
+                ),
                 "addresses": "",
+                "numbers": "",
                 "session_id": "",
             }
         )

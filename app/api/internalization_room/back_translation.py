@@ -543,7 +543,7 @@ async def _finished(
         findings=finding_views(
             shown.findings,
             shown.analysed_segment_ids,
-            room.frase_numbers(room.told_back(standing)),
+            room.passage_numbers(room.told_back(standing), room.told_back(stale), takes),
         ),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,

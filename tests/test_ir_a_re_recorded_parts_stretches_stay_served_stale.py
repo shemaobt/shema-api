@@ -758,3 +758,23 @@ async def test_above_a_part_recorded_again_the_analyst_reads_the_frase_number_th
     )
     assert "a frase 1, contada de volta" not in block
     assert "a frase 2, contada de volta" not in block
+
+
+async def test_a_finding_named_by_the_number_the_tablet_draws_lands_on_that_row(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, _again, played = await _part_one_recorded_again_before_part_two_was_told(
+        client, db_session
+    )
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["findings"] == [
+        {"kind": "unclear", "frase": 3, "segment_id": standing.id}
+    ], "o achado na frase 3 não caía em trecho nenhum: a leitura só aceitava posições até 1"

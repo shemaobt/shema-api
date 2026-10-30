@@ -614,9 +614,10 @@ def segments_block(
 ) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
-    Numbered from one over the list it is given, so the number is a position in *this* call
-    and never an identifier the analyst has to keep. `_segment_pointed_at` reads it back the
-    same way.
+    Numbered by `numbers`, the passage positions the tablet draws, or from one over the list
+    it is given when none are handed in; either way the number is a label of *this* call and
+    never an identifier the analyst has to keep. `_chunk_named` reads it back through the
+    same numbers.
 
     `language_code` only governs the empty-telling-back placeholder: the segments themselves
     are the team's own words, verbatim, in whatever language they spoke.
@@ -688,7 +689,9 @@ def _session_of(segments: list[IRSegment]) -> str:
     return segments[0].session_id if segments else "?"
 
 
-def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
+def _parse_analysis(
+    raw: str, segments: list[IRSegment], numbers: dict[str, int]
+) -> BtAnalysis | None:
     """The analyst's reply read atomically, or None when it cannot be trusted at all.
 
     None and an empty findings list must stay apart all the way up: empty is "read it,
@@ -719,6 +722,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         _refused("findings is not a list", raw, session)
         return None
 
+    positions = {numbers[segment.id]: at for at, segment in enumerate(segments, start=1)}
     reported = parsed["findings"]
     considered = [
         one for one in reported if not _is_the_retired_evidence_kind(one) and not _is_a_nuance(one)
@@ -741,10 +745,11 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
         frase = entry.get("frase", entry.get("chunk"))
-        chunk = _chunk_named(frase, segments)
+        chunk = _chunk_named(frase, positions)
         lands_on = _segment_pointed_at(
             frase,
             segments,
+            positions,
             kind=kind,
             where=entry.get("where", "after" if "frase" in entry else None),
             raw_reply=raw,
@@ -764,7 +769,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         )
 
     _dropped(reported, raw, f"session {session}")
-    nuances = [_a_nuance(one, segments) for one in reported if _is_a_nuance(one)]
+    nuances = [_a_nuance(one, segments, positions) for one in reported if _is_a_nuance(one)]
     return BtAnalysis(findings=findings, nuances=[one for one in nuances if one is not None])
 
 
@@ -777,8 +782,10 @@ def _stands_in(quote: str, transcript: str | None) -> bool:
     return bool(words) and f" {words} " in f" {_words_of(transcript or '')} "
 
 
-def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None:
-    chunk = _chunk_named(entry.get("frase"), segments)
+def _a_nuance(
+    entry: dict[str, Any], segments: list[IRSegment], positions: dict[int, int]
+) -> Nuance | None:
+    chunk = _chunk_named(entry.get("frase"), positions)
     quote = str(entry.get("quote", "")).strip()
     story = str(entry.get("story", "")).strip()
     if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
@@ -828,8 +835,12 @@ def _log_accepted_reading(
 _VALID_WHERE = frozenset({"before", "inside", "after"})
 
 
-def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
+def _chunk_named(raw: Any, positions: dict[int, int]) -> int | None:
     """The frase the analyst named, as a position in the reading it was given, or None.
+
+    `positions` is the reading's labels back to its positions: the analyst names the number
+    on the team's row, which counts the stale stretches it was never shown, and every reader
+    of the reply indexes the list it was given.
 
     The validation `_segment_pointed_at` makes before it resolves an address, asked on its
     own because the two answers are not the same one: a missing element placed after frase N
@@ -843,15 +854,16 @@ def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
     if isinstance(raw, bool) or not isinstance(raw, int | str):
         return None
     try:
-        position = int(raw)
+        named = int(raw)
     except ValueError:
         return None
-    return position if 1 <= position <= len(segments) else None
+    return positions.get(named)
 
 
 def _segment_pointed_at(
     raw: Any,
     segments: list[IRSegment],
+    positions: dict[int, int],
     *,
     kind: FindingKind,
     where: Any = None,
@@ -879,7 +891,7 @@ def _segment_pointed_at(
     `where` is read only when `kind` is `missing`: every other kind is a statement about the
     chunk itself, so a `where` alongside one is ignored without comment.
     """
-    position = _chunk_named(raw, segments)
+    position = _chunk_named(raw, positions)
     if position is None:
         return None
 
@@ -921,6 +933,8 @@ async def analyse_telling_back(
     something the parser refused returns None — the parser has already logged the reply
     and why — and that is not an outage, whatever the old single None used to say.
     """
+    if numbers is None:
+        numbers = frase_numbers(segments)
     cfg = settings or get_settings()
     system = render(
         analyst_prompt,
@@ -942,7 +956,7 @@ async def analyse_telling_back(
     except Exception as failure:
         logger.exception("BT analysis failed for %s", pericope_num)
         raise UpstreamServiceError("a análise da tradução não pôde ser feita agora") from failure
-    analysis = _parse_analysis(raw, segments)
+    analysis = _parse_analysis(raw, segments, numbers)
     if analysis is not None:
         _log_accepted_reading(
             session_id=session_id, reading="analysis", raw=raw, findings=analysis.findings
