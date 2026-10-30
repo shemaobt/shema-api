@@ -72,17 +72,13 @@ def finding_views(
 
 
 def named_nuance_view(
-    state: room.BackTranslationState, numbers: dict[str, int] | None = None
+    state: room.BackTranslationState, numbers: dict[str, int]
 ) -> FindingView | None:
     named = next(
         (one for one in (state.checks[-1].nuances if state.checks else []) if one.voiced == "now"),
         None,
     )
-    if named is None:
-        return None
-    if numbers is None:
-        return FindingView(kind="nuance", frase=named.chunk, segment_id=named.segment_id)
-    if named.segment_id not in numbers:
+    if named is None or named.segment_id not in numbers:
         return None
     return FindingView(kind="nuance", frase=numbers[named.segment_id], segment_id=named.segment_id)
 
