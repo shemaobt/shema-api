@@ -94,10 +94,11 @@ async def _units(
     nothing, but a client that patched its own list from a two-element answer would be keeping
     a second copy of a rule that lives in `final_segments`.
     """
+    takes = await takes_of(db, session_id)
     return segment_views(
-        await room.final_segments(db, session_id),
-        await room.stale_segments(db, session_id) if include_stale else None,
-        await takes_of(db, session_id) if include_stale else None,
+        await room.final_segments(db, session_id, takes),
+        await room.stale_segments(db, session_id, takes) if include_stale else None,
+        takes,
     )
 
 

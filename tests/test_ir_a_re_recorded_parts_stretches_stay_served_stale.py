@@ -12,12 +12,17 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room.segments import _units
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRSegment
-from app.services.internalization_room.back_translation import Finding, FindingKind
+from app.services.internalization_room.back_translation import (
+    Finding,
+    FindingKind,
+    frase_numbers,
+)
 from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import current_segments, divide_segment
 from app.services.internalization_room.sessions import (
@@ -456,6 +461,39 @@ async def test_the_stale_frases_of_a_part_recorded_again_never_repeat_a_standing
         (True, 4),
         (True, 5),
     ], "uma frase velha chegava sem número ou repetia o de uma que está de pé"
+
+
+def test_a_stale_frase_of_a_take_with_no_number_reads_before_the_standing_ones_of_part_zero() -> (
+    None
+):
+    whole = IRSegment(id="whole", take_id="take-whole")
+    zero = IRSegment(id="zero", take_id="take-zero")
+
+    numbers = frase_numbers([zero], [whole], {"take-whole": None, "take-zero": 0})
+
+    assert numbers == {"whole": 1, "zero": 2}, (
+        "um take sem número e a parte 0 ficavam na mesma posição, e a de pé passava à frente"
+    )
+
+
+async def test_asking_for_the_stale_ones_reads_the_takes_of_the_session_once(
+    db_session: AsyncSession, test_engine
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 2)
+    said: list[str] = []
+
+    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        said.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
+    try:
+        await _units(db_session, session.id, include_stale=True)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
+
+    assert len([one for one in said if "FROM ir_takes" in one]) == 1, (
+        "a leitura que a tablet refaz a lista lia os takes da sessão duas vezes"
+    )
 
 
 async def test_the_check_neither_reads_nor_waits_on_a_stale_stretch(

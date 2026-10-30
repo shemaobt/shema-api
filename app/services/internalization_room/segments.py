@@ -613,10 +613,12 @@ async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     return list(result.scalars().all())
 
 
-async def stale_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
+async def stale_segments(
+    db: AsyncSession, session_id: str, takes: list[IRTake] | None = None
+) -> list[IRSegment]:
     """The stretches of a part recorded again that nobody has told again, in reading order."""
     rows = await _in_reading_order(db, session_id, IRSegment.stale.is_(True))
-    set_aside = await set_aside_segment_ids(db, session_id)
+    set_aside = await set_aside_segment_ids(db, session_id, takes)
     cut = set(
         (
             await db.execute(

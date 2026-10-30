@@ -377,7 +377,7 @@ async def _progress(
         scope=state.scope,
         segments=segment_views(
             stretches,
-            await room.stale_segments(db, session.id) if include_stale else None,
+            await room.stale_segments(db, session.id, takes) if include_stale else None,
             takes,
         ),
         checked=state.checked,

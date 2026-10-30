@@ -573,10 +573,12 @@ def frase_numbers(
     """
     if stale:
         parts = part_of or {}
-        told = sorted(
-            [*told, *stale],
-            key=lambda segment: (parts.get(segment.take_id) or 0, segment in stale),
-        )
+
+        def place(segment: IRSegment) -> tuple[int, bool]:
+            ordinal = parts.get(segment.take_id)
+            return (-1 if ordinal is None else ordinal, segment in stale)
+
+        told = sorted([*told, *stale], key=place)
     return {segment.id: number for number, segment in enumerate(told, start=1)}
 
 
