@@ -98,7 +98,6 @@ def _reported(current: list[Finding], state: BackTranslationState) -> list[Round
             voiced=one.voiced,
         )
         for one in (state.checks[-1].nuances if state.checks else [])
-        if one.voiced != "before"
     ]
 
 
