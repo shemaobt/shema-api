@@ -75,9 +75,17 @@ class Addresses:
     words: AddressWords = _WORDS[AUTHORED]
     on_wav: frozenset[str] = frozenset()
     every_part_wav: bool = False
+    #: The number the team's row carries, by position in the reading: the stale stretches the
+    #: analyst was never shown still count, so the number the voice says is the row's and not
+    #: the position. Empty, a reading says its positions, which is every reading with nothing
+    #: stale.
+    frases: tuple[int, ...] = ()
 
     def part_of(self, segment_id: str | None) -> str:
         return self.by_stretch.get(segment_id or "", "")
+
+    def frase_of(self, position: int) -> int:
+        return self.frases[position - 1] if self.frases else position
 
     def repair_of(self, segment_id: str | None) -> str:
         """Her `repairOf`: a stretch of a current WAV part can be recorded again as a sentence.
@@ -112,6 +120,7 @@ def addresses_for(
     parts: list[IRTake],
     titles: list[str],
     language_code: str,
+    numbers: dict[str, int] | None = None,
 ) -> Addresses:
     """Each told stretch's part, named as the team will hear it, by the stretch's own address.
 
@@ -153,4 +162,5 @@ def addresses_for(
         words=words,
         on_wav=frozenset(stretch.id for stretch in told if stretch.take_id in wav_parts),
         every_part_wav=bool(parts) and len(wav_parts) == len(parts),
+        frases=tuple(numbers[stretch.id] for stretch in told) if numbers else (),
     )

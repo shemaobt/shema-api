@@ -47,6 +47,7 @@ async def test_a_session_with_nothing_told_back_has_the_validator_read_its_own_l
         session,
         state=back_translation_of(session),
         told=[],
+        stale=[],
         takes=[],
         settings=settings(),
     )
@@ -69,6 +70,7 @@ async def test_the_telling_back_the_session_keeps_is_the_note_in_its_own_languag
         session,
         state=back_translation_of(session),
         told=[],
+        stale=[],
         takes=[],
         settings=settings(),
     )

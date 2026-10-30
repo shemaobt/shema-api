@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ENG-2001: a stale stretch carries its frase when the tablet asks for it; amended by ADR 0096: after a grain switch the parts are only the newest grain's, and a whole recorded after a switch to the whole passage is the one part beside numbered takes
+status: accepted; amended by ENG-2001: a stale stretch carries its frase when the tablet asks for it; amended by ENG-2030: the check and the voice count the stale stretches when they number a frase; amended by ADR 0096: after a grain switch the parts are only the newest grain's, and a whole recorded after a switch to the whole passage is the one part beside numbered takes
 date: 2026-09-16
 ---
 
@@ -154,3 +154,10 @@ stretches of a tablet that asks, so the standing stretches after a part recorded
 numbers her app gives them. Only a stale stretch with a telling-back is numbered. A tablet that does
 not ask is unchanged, and so are the check, the findings, the **Packet** and the voice, which number
 the standing stretches only (ENG-2030 aligns the voice).
+
+**Amended on 30 October 2026 (ENG-2030): the check and the voice count the stale stretches when
+they number a frase.** The ENG-2001 paragraph above kept the check, the findings and the voice on
+the standing stretches. The check still reads the standing stretches and nothing else, but it
+numbers them as the tablet draws the rows, with the stale stretches of each part counted after the
+standing ones, so the voice's «frase N» and the finding's `frase` name the row the team sees
+(ADR 0067, amended the same day). The **Packet** and the retroverification file are unchanged.

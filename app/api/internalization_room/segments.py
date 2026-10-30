@@ -63,10 +63,8 @@ def segment_views(
     stale: list[IRSegment] | None = None,
     takes: list[IRTake] | None = None,
 ) -> list[SegmentView]:
-    numbers = room.frase_numbers(
-        room.told_back(stretches),
-        room.told_back(stale or []),
-        {take.id: take.ordinal for take in takes or []},
+    numbers = room.passage_numbers(
+        room.told_back(stretches), room.told_back(stale or []), takes or []
     )
     asked = stale is not None
     return [

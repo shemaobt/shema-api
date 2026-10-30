@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order
+status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order; amended by ENG-2030: the check, the voice and the finding views number by her order too
 date: 2026-10-19
 ---
 
@@ -72,3 +72,15 @@ every told stretch, standing or stale, numbered over the passage part by part, t
 before the stale ones of the same part, so a stale stretch carries a number that no standing stretch
 repeats. Without `include_stale` nothing changes. The check's findings, the telling answer, the
 **Packet** and the voice keep numbering the standing stretches (ENG-2030 aligns them).
+
+**Amended on 30 October 2026 (ENG-2030): the check, the voice and the finding views count the
+stale stretches too.** The ENG-2001 paragraph above left the check's findings and the voice on
+the standing stretches. They now number as the tablet draws the row: the analyst's block labels
+each told stretch with her position (`passage_numbers`, which is `frase_numbers` placed by the
+session's takes), the stale stretches themselves stay out of the block, the analyst's reply is
+read back through the same labels, the Speaker is handed the row's number, and `finding_frase`
+reads the finish answer's and the session read's findings off those numbers. A session read that
+does not ask for the stale rows numbers its findings as it numbers its rows, standing only. The
+stored `chunk` is still the position in the reading, so a Swap is paired on it and a stored
+finding is followed through `analysed_segment_ids` as before. The telling answer, the **Packet**
+and the retroverification file still number the standing stretches.

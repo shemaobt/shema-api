@@ -38,6 +38,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     is_joined,
     nuances_said,
+    passage_numbers,
     said_before,
     segments_block,
     the_finding_that_leads,
@@ -92,6 +93,7 @@ async def check_the_telling_back(
     *,
     state: BackTranslationState,
     told: list[IRSegment],
+    stale: list[IRSegment],
     takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
@@ -113,16 +115,19 @@ async def check_the_telling_back(
     """
     read_this_round: list[Finding] = []
     language = room_language(session.language)
+    numbers = passage_numbers(told, stretches_told_back(stale), takes)
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
         language,
+        numbers,
     )
-    told_back = segments_block(told, addresses, language)
+    told_back = segments_block(told, addresses, language, numbers)
     if not state.already_analysed(told):
         read = await analyse_telling_back(
             segments=told,
+            numbers=numbers,
             scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
@@ -195,7 +200,9 @@ async def check_the_telling_back(
     outcome = await speak(current or ([offered] if offered else []))
     if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])
-    elif offered is not None and re.search(rf"frase\s+{offered.chunk}(?!\d)", outcome.speech, re.I):
+    elif offered is not None and re.search(
+        rf"frase\s+{addresses.frase_of(offered.chunk)}(?!\d)", outcome.speech, re.I
+    ):
         offered.voiced = "now"
 
     said = outcome.speech

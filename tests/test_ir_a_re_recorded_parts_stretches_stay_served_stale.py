@@ -58,7 +58,8 @@ from tests.room_harness import (
     the_transcriber_says,
     upload_a_part,
 )
-from tests.sentence_harness import rehearsed_in_wav, spoken
+from tests.sentence_harness import Speaker, names_the_nuance_on, rehearsed_in_wav, spoken
+from tests.turn_harness import the_room_agent_is
 
 NEW_AUDIO = b"a equipe gravou esta parte outra vez"
 RETELLING = b"a equipe contou a parte regravada"
@@ -730,3 +731,144 @@ async def test_a_divided_stretch_whose_pieces_were_both_told_again_is_not_served
     assert [
         row for row in await _read_asking_for_stale(client, session.id) if row["stale"]
     ] == [], "o trecho cortado voltou inteiro depois de as suas duas partes serem contadas de novo"
+
+
+async def _part_one_recorded_again_before_part_two_was_told(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> tuple[Any, list[str]]:
+    session, (_one, two) = await rehearsed_in_parts_of(db_session, [2, 1])
+    again = await upload_a_part(client, session.id, part=1, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    return session, [again.json()["take_id"], two.id]
+
+
+async def test_above_a_part_recorded_again_the_analyst_reads_the_frase_number_the_tablet_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, played = await _part_one_recorded_again_before_part_two_was_told(client, db_session)
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == 200, answered.text
+    block = analyst.shown[-1]
+    assert "[frase 3 — a parte 2] a frase 3, contada de volta" in block, (
+        "acima de uma parte regravada a analista lia «frase 1» na linha que a tablet desenha como 3"
+    )
+    assert "a frase 1, contada de volta" not in block
+    assert "a frase 2, contada de volta" not in block
+
+
+async def test_a_finding_named_by_the_number_the_tablet_draws_lands_on_that_row(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, played = await _part_one_recorded_again_before_part_two_was_told(client, db_session)
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["findings"] == [
+        {"kind": "unclear", "frase": 3, "segment_id": standing.id}
+    ], "o achado na frase 3 não caía em trecho nenhum: a leitura só aceitava posições até 1"
+
+
+async def test_the_session_read_numbers_a_finding_as_it_numbers_the_row_it_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, played = await _part_one_recorded_again_before_part_two_was_told(client, db_session)
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", params={"include_stale": "true"})
+
+    assert read.status_code == 200, read.text
+    rows = {row["segment_id"]: row["frase"] for row in read.json()["back_translation"]["segments"]}
+    assert rows[standing.id] == 3
+    assert read.json()["back_translation"]["findings"] == [
+        {"kind": "unclear", "frase": 3, "segment_id": standing.id}
+    ], "a leitura desenhava a linha como 3 e dizia que o achado estava na frase 1"
+
+
+async def test_the_speaker_is_handed_the_number_the_tablet_draws_for_the_finding(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    room = the_room_speaks(monkeypatch)
+    session, played = await _part_one_recorded_again_before_part_two_was_told(client, db_session)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == 200, answered.text
+    assert '"frase": 3' in room.briefs[-1], (
+        "a voz recebia a posição na leitura, e dizia «frase 1» na linha que a tablet desenha como 3"
+    )
+    assert '"frase": 1' not in room.briefs[-1]
+
+
+async def test_a_nuance_above_a_part_recorded_again_is_voiced_under_the_number_the_tablet_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    speaker = Speaker()
+    speaker.line = names_the_nuance_on(3)
+    the_room_agent_is(monkeypatch, turn=speaker)
+    session, played = await _part_one_recorded_again_before_part_two_was_told(client, db_session)
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {
+            "findings": [
+                {
+                    "kind": "nuance",
+                    "frase": 3,
+                    "quote": "contada de volta",
+                    "story": "a história conta de outro jeito",
+                }
+            ]
+        }
+    ]
+
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    again = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert answered.status_code == again.status_code == 200, (answered.text, again.text)
+    named = {"kind": "nuance", "frase": 3, "segment_id": standing.id}
+    assert answered.json()["named_nuance"] == named, (
+        "a nuance dita na frase 3 não contava como dita: a sala procurava «frase 1» na fala"
+    )
+    assert again.json()["named_nuance"] == named, (
+        "o veredito guardado dizia a nuance na frase 1, a linha que a tablet desenha como 3"
+    )
+
+
+async def test_a_stored_verdict_served_again_keeps_the_number_the_tablet_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, played = await _part_one_recorded_again_before_part_two_was_told(client, db_session)
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    first = await press_terminei(client, session.id, report=played_every_part(played))
+    assert first.status_code == 200, first.text
+
+    again = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert again.status_code == 200, again.text
+    assert len(analyst.shown) == 1
+    assert again.json()["findings"] == [
+        {"kind": "unclear", "frase": 3, "segment_id": standing.id}
+    ], "o veredito guardado voltava com o achado na frase 1, a linha que a tablet desenha como 3"

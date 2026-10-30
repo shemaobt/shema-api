@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2030: `chunk` is the position in the reading, and the number the analyst gave is read back through the reading's labels
 date: 2026-09-11
 ---
 
@@ -46,3 +46,11 @@ passage approved before this deploy whose session still has a standing finding n
 matches the release that approved it, and the packet reads `release_id` and `version` null
 until the team approves again. A bump would have said the same thing to every consumer at
 once, for every session, approved or not.
+
+**Amended on 30 October 2026 (ENG-2030): `chunk` is the position in the reading.** The sentence
+above says a finding keeps `chunk`, the number the analyst gave. The analyst is now shown the
+numbers the tablet draws, which count the stale stretches it never sees, and its reply is read
+back to a position in the reading before anything keeps it (ADR 0067). What a finding keeps is
+that position; the number the voice says is derived from it on every read. Everything decided
+here on the pairing of a Swap and on a missing element after the last frase holds on the
+position as it held on the number.
