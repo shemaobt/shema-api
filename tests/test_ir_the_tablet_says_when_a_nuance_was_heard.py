@@ -398,6 +398,24 @@ async def test_the_session_read_numbers_the_nuance_as_it_numbers_the_stretches(
     )
 
 
+async def test_the_session_read_carries_no_nuance_the_tablet_already_played_to_its_end(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    first = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await _heard(client, session.id, first.json()["check_at"])
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    assert read.json()["back_translation"]["named_nuance"] is None, (
+        "uma nuance já ouvida até o fim voltava na reentrada como marca nova"
+    )
+
+
 async def test_the_session_read_with_no_check_carries_no_nuance(
     client, db_session: AsyncSession
 ) -> None:

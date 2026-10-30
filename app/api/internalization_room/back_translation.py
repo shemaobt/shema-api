@@ -78,7 +78,7 @@ def named_nuance_view(
         (one for one in (state.checks[-1].nuances if state.checks else []) if one.voiced == "now"),
         None,
     )
-    if named is None:
+    if named is None or state.its_named_nuance_was_heard:
         return None
     if numbers is None:
         return FindingView(kind="nuance", frase=named.chunk, segment_id=named.segment_id)
