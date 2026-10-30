@@ -11,7 +11,7 @@ from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.passage_turn import run_turn
-from app.services.internalization_room.validated_turn import TurnOutcome
+from app.services.internalization_room.validated_turn import CutPoint, TurnOutcome
 
 
 def mother_tongue_note(language_code: str, take_ms: float | None) -> str:
@@ -123,13 +123,19 @@ def a_miss(language_code: str) -> TurnOutcome:
 
 
 def stamped_with_what_was_heard(outcome: TurnOutcome, speech: HeardSpeech) -> TurnOutcome:
-    """The outcome keeping the language, its probability, the mother-tongue decision, the length."""
+    """The outcome keeping the language, its probability, the mother-tongue decision, the length
+    and, when the team cut the Guide short to speak, where the cut fell."""
     return replace(
         outcome,
         language=speech.language_code,
         language_probability=speech.language_probability,
         mother_tongue=speech.mother_tongue,
         take_ms=speech.take_ms,
+        interrupted=(
+            CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
+            if speech.interrupted
+            else None
+        ),
     )
 
 

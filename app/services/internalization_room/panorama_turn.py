@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -14,11 +13,7 @@ from app.services.internalization_room.turn.speech import (
     what_the_guide_is_handed,
 )
 from app.services.internalization_room.turn_instructions import panorama_note
-from app.services.internalization_room.validated_turn import (
-    CutPoint,
-    TurnOutcome,
-    _voiced_after_validation,
-)
+from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
 async def run_panorama_turn(
@@ -81,12 +76,5 @@ async def run_panorama_turn(
             )
         )
     if not opening:
-        return replace(
-            stamped_with_what_was_heard(outcome, speech),
-            interrupted=(
-                CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
-                if speech.interrupted
-                else None
-            ),
-        )
+        return stamped_with_what_was_heard(outcome, speech)
     return outcome
