@@ -562,7 +562,21 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
-def frase_numbers(told: list[IRSegment]) -> dict[str, int]:
+def frase_numbers(
+    told: list[IRSegment],
+    stale: list[IRSegment] | None = None,
+    part_of: dict[str, int | None] | None = None,
+) -> dict[str, int]:
+    """Her `buildPassageTelling` order: part by part, the standing frases before the stale ones.
+
+    `part_of` is each take's number, which is what places a stale frase among the parts.
+    """
+    if stale:
+        parts = part_of or {}
+        told = sorted(
+            [*told, *stale],
+            key=lambda segment: (parts.get(segment.take_id) or 0, segment in stale),
+        )
     return {segment.id: number for number, segment in enumerate(told, start=1)}
 
 

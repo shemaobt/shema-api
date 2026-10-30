@@ -423,7 +423,7 @@ async def test_a_sentence_laid_in_without_asking_answers_the_list_it_always_did(
     )
 
 
-async def test_a_stale_stretch_takes_no_frase_number_and_the_standing_ones_keep_theirs(
+async def test_a_stale_stretch_is_numbered_in_its_place_and_the_standing_ones_after_it(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _parts = await rehearsed_in_parts(db_session, 3)
@@ -434,9 +434,28 @@ async def test_a_stale_stretch_takes_no_frase_number_and_the_standing_ones_keep_
 
     assert [(row["stale"], row["frase"]) for row in asked] == [
         (False, 1),
-        (False, 2),
-        (True, None),
-    ], "a parte regravada tomava um número da voz, ou desnumerava as frases que contam"
+        (False, 3),
+        (True, 2),
+    ], "a parte regravada ficava sem número, ou as frases depois dela perdiam o seu"
+
+
+async def test_the_stale_frases_of_a_part_recorded_again_never_repeat_a_standing_number(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts_of(db_session, [1, 4, 1])
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    asked = await _read_asking_for_stale(client, session.id)
+
+    assert [(row["stale"], row["frase"]) for row in asked] == [
+        (False, 1),
+        (False, 6),
+        (True, 2),
+        (True, 3),
+        (True, 4),
+        (True, 5),
+    ], "uma frase velha chegava sem número ou repetia o de uma que está de pé"
 
 
 async def test_the_check_neither_reads_nor_waits_on_a_stale_stretch(

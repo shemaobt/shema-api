@@ -18,7 +18,7 @@ from app.api.internalization_room._deps import (
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
-from app.db.models.internalization_room import IRSegment, IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.models.internalization_room import (
     DivideSegmentRequest,
     SegmentsResponse,
@@ -50,6 +50,7 @@ from app.services.internalization_room.takes import (
     rehearsal_take_of,
     store_take,
     take_store,
+    takes_of,
 )
 
 router = APIRouter()
@@ -58,9 +59,15 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
 def segment_views(
-    stretches: list[IRSegment], stale: list[IRSegment] | None = None
+    stretches: list[IRSegment],
+    stale: list[IRSegment] | None = None,
+    takes: list[IRTake] | None = None,
 ) -> list[SegmentView]:
-    numbers = room.frase_numbers(room.told_back(stretches))
+    numbers = room.frase_numbers(
+        room.told_back(stretches),
+        room.told_back(stale or []),
+        {take.id: take.ordinal for take in takes or []},
+    )
     asked = stale is not None
     return [
         SegmentView(
@@ -90,6 +97,7 @@ async def _units(
     return segment_views(
         await room.final_segments(db, session_id),
         await room.stale_segments(db, session_id) if include_stale else None,
+        await takes_of(db, session_id) if include_stale else None,
     )
 
 

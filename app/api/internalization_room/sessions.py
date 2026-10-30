@@ -376,7 +376,9 @@ async def _progress(
     return BackTranslationProgress(
         scope=state.scope,
         segments=segment_views(
-            stretches, await room.stale_segments(db, session.id) if include_stale else None
+            stretches,
+            await room.stale_segments(db, session.id) if include_stale else None,
+            takes,
         ),
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
