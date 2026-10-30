@@ -168,6 +168,7 @@ async def save_evaluation(
     # The trail's "before": what is stored now, read ahead of every write below. A first save
     # starts from the empty state, so the first score of a criterion reads None -> n.
     before_comments = "" if evaluation is None else evaluation.comments
+    before_team_note = None if evaluation is None else evaluation.team_note
 
     if evaluation is None:
         evaluation = RREvaluation(snapshot_id=snapshot.id)
@@ -226,12 +227,19 @@ async def save_evaluation(
         db,
         evaluation.id,
         user.id,
-        evaluation_fields(recorded, before_comments, before_scores, attendees=before_attendees),
+        evaluation_fields(
+            recorded,
+            before_comments,
+            before_scores,
+            attendees=before_attendees,
+            team_note=before_team_note,
+        ),
         evaluation_fields(
             deciding if deciding is not None else recorded,
             payload.comments,
             {score.criterion_key: score.score for score in payload.scores},
             attendees=payload.attendees,
+            team_note=payload.team_note,
         ),
     )
 

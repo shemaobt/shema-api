@@ -430,7 +430,7 @@ names this PR in its own text for the same reason.
 
 | Column | Why it is that and not something else |
 |---|---|
-| `field_key` | A string, not a column name. A request's fields live in **three** homes — six promoted columns on the spine, the 45 answers inside `rr_request_sections.content`, the 26 rows of `rr_budget_lines` — and one key space reaches all three where a design keyed on the catalogue reaches only the first. On the evaluation it is a criterion key, or `decision` / `comments` / `attendees` (the ata: the ids sorted, as canonical JSON, because the ata is a set). |
+| `field_key` | A string, not a column name. A request's fields live in **three** homes — six promoted columns on the spine, the 45 answers inside `rr_request_sections.content`, the 26 rows of `rr_budget_lines` — and one key space reaches all three where a design keyed on the catalogue reaches only the first. On the evaluation it is a criterion key, or `decision` / `comments` / `team_note` (the mesa's message to the team, rewritten on every save — the edit D7 audits) / `attendees` (the ata: the ids sorted, as canonical JSON, because the ata is a set). |
 | `old_value`, `new_value` | Nullable text. **Both sides**, because D7's own example is *quem subiu uma nota de 2 para 5*; nullable because a field that had no value has no old side; text because the three homes hold strings, decimals, dates and integers, and a trail that records only some of them is not a trail. |
 | `changed_by` | `NOT NULL`, restricting on delete — the ledger's rule. A record of who changed something is worth nothing if the who can be forgotten, and D1 is what gives it a subject. |
 | `changed_at` | Server-defaulted, like every other stamp here. |
@@ -450,9 +450,11 @@ first time reads `None` → `n`, which is not a scored zero — and a save that 
 no row. The decision is diffed like any other field: the save that records it writes
 `decision` `None` → `approved`. The read is `GET /api/resource-requests/requests/{id}/evaluation/history`,
 **behind `view_evaluation`** (mesa and Gestor; the team never reads a score, so it never reads who
-changed one), scoped by `get_request` like the evaluation itself. It spans every snapshot of the
-request, oldest change first, and a request nobody has evaluated answers `[]`, not 404. The
-request's own trail stays at `/history` behind `edit_requests`.
+changed one), scoped by `get_request` like the evaluation itself. It answers for **one request**,
+oldest change first: a revision is another `rr_requests` row (`revision_of_id`, BE-04) with an
+evaluation and a trail of its own, and the original keeps its trail frozen with the decision that
+asked for the revision — reading both is reading two ids. A request nobody has evaluated answers
+`[]`, not 404. The request's own trail stays at `/history` behind `edit_requests`.
 
 **One column deliberately not added here.** D6 says recording a decision moves the card, and
 `rr_board_transitions` cannot today distinguish a move that came from a decision from a mesa
