@@ -861,3 +861,26 @@ async def test_a_nuance_above_a_part_recorded_again_is_voiced_under_the_number_t
     assert again.json()["named_nuance"] == named, (
         "o veredito guardado dizia a nuance na frase 1, a linha que a tablet desenha como 3"
     )
+
+
+async def test_a_stored_verdict_served_again_keeps_the_number_the_tablet_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, _again, played = await _part_one_recorded_again_before_part_two_was_told(
+        client, db_session
+    )
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    first = await press_terminei(client, session.id, report=played_every_part(played))
+    assert first.status_code == 200, first.text
+
+    again = await press_terminei(client, session.id, report=played_every_part(played))
+
+    assert again.status_code == 200, again.text
+    assert len(analyst.shown) == 1
+    assert again.json()["findings"] == [
+        {"kind": "unclear", "frase": 3, "segment_id": standing.id}
+    ], "o veredito guardado voltava com o achado na frase 1, a linha que a tablet desenha como 3"

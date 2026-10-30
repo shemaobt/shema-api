@@ -475,6 +475,7 @@ async def _finished(
         with stage("db_let_go"):
             await db.commit()
         clip = await room.the_stored_verdicts_clip(session, stored)
+        numbers = room.passage_numbers(told, room.told_back(stale), takes)
         return BackTranslationVerdictResponse(
             session_id=session.id,
             audio_url=clip_url(clip) if clip else "",
@@ -482,15 +483,11 @@ async def _finished(
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
-            findings=finding_views(
-                state.findings, state.analysed_segment_ids, room.frase_numbers(told)
-            ),
+            findings=finding_views(state.findings, state.analysed_segment_ids, numbers),
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=stored.used_fail_safe,
             check_at=state.checks[-1].at if state.checks else None,
-            named_nuance=named_nuance_view(
-                state, room.passage_numbers(told, room.told_back(stale), takes)
-            ),
+            named_nuance=named_nuance_view(state, numbers),
         )
 
     with stage("db_let_go"):
