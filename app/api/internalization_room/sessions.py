@@ -378,6 +378,9 @@ async def _progress(
         await room.stale_segments(db, session.id, takes) if include_stale else None,
         takes,
     )
+    nuance_numbers = {
+        one.segment_id: one.frase for one in segments if one.frase is not None and not one.stale
+    }
     return BackTranslationProgress(
         scope=state.scope,
         segments=segments,
@@ -387,9 +390,7 @@ async def _progress(
         findings=finding_views(
             findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
         ),
-        named_nuance=named_nuance_view(
-            state, {one.segment_id: one.frase for one in segments if one.frase is not None}
-        ),
+        named_nuance=named_nuance_view(state, nuance_numbers),
         superseded_attempts=len(state.superseded),
         bring_back=await parts_to_bring_back(db, session, current_parts(takes), stretches),
         awaiting_segment_id=awaiting.segment_id if awaiting else None,

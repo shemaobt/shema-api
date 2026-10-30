@@ -354,8 +354,9 @@ async def test_the_session_read_after_a_check_that_named_a_nuance_carries_it_as_
     )
 
 
+@pytest.mark.parametrize("with_stale", [False, True])
 async def test_the_session_read_drops_a_nuance_whose_part_was_recorded_again(
-    client, analyst, speaker, db_session: AsyncSession
+    client, analyst, speaker, db_session: AsyncSession, with_stale: bool
 ) -> None:
     session, parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [{"findings": [ON_FRASE_2]}]
@@ -364,7 +365,9 @@ async def test_the_session_read_drops_a_nuance_whose_part_was_recorded_again(
     fresh = await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
     await tell_back_about(db_session, session, fresh, transcript="parte 1 contada de volta")
 
-    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+    read = await client.get(
+        f"{PREFIX}/sessions/{session.id}", params={"include_stale": str(with_stale).lower()}
+    )
 
     assert read.json()["back_translation"]["named_nuance"] is None, (
         "a leitura apontava a nuance para um trecho aposentado"
