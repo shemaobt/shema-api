@@ -295,6 +295,12 @@ class BackTranslationState(BaseModel):
     #: have been served the verdict of the one it replaced. `None` is never read at all, which
     #: an empty list is not.
     analysed_segment_ids: list[str] | None = None
+    #: The frase number each of those stretches was labelled with in that reading, in the
+    #: same order. A finding keeps the label the analyst named, and the label counts the stale
+    #: stretches of the passage, so it is not the stretch's position in the list: this is how
+    #: the number is followed to its stretch once the rows move. `None` on a reading written
+    #: before the field existed, where every label was its position.
+    analysed_frases: list[int] | None = None
     #: What the room said when it last reached a verdict, so a press that decides nothing new
     #: can hand back the same answer without voicing it again. `None` until a verdict has been
     #: spoken *and* stored, which is what separates "already judged" from a press that reached
@@ -595,15 +601,17 @@ def passage_numbers(
 
 
 def finding_frase(
-    finding: Finding, analysed_segment_ids: list[str] | None, numbers: dict[str, int]
+    finding: Finding,
+    analysed_segment_ids: list[str] | None,
+    analysed_frases: list[int] | None,
+    numbers: dict[str, int],
 ) -> int | None:
-    if (
-        finding.chunk is None
-        or analysed_segment_ids is None
-        or finding.chunk > len(analysed_segment_ids)
-    ):
+    if finding.chunk is None or analysed_segment_ids is None:
         return finding.chunk
-    return numbers.get(analysed_segment_ids[finding.chunk - 1])
+    labels = analysed_frases or list(range(1, len(analysed_segment_ids) + 1))
+    if finding.chunk not in labels:
+        return finding.chunk
+    return numbers.get(analysed_segment_ids[labels.index(finding.chunk)])
 
 
 def segments_block(
@@ -788,9 +796,11 @@ def _a_nuance(
     chunk = _chunk_named(entry.get("frase"), positions)
     quote = str(entry.get("quote", "")).strip()
     story = str(entry.get("story", "")).strip()
-    if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
+    if chunk is None or not story:
         return None
-    segment = segments[chunk - 1]
+    segment = segments[positions[chunk] - 1]
+    if not _stands_in(quote, segment.transcript):
+        return None
     return Nuance(
         note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",
         chunk=chunk,
@@ -838,9 +848,10 @@ _VALID_WHERE = frozenset({"before", "inside", "after"})
 def _chunk_named(raw: Any, positions: dict[int, int]) -> int | None:
     """The frase the analyst named, as a position in the reading it was given, or None.
 
-    `positions` is the reading's labels back to its positions: the analyst names the number
-    on the team's row, which counts the stale stretches it was never shown, and every reader
-    of the reply indexes the list it was given.
+    The number kept is the label the analyst named, which is the number on the team's row
+    and counts the stale stretches it was never shown; `positions` is the reading's labels
+    back to its positions, and only a reader that indexes the list it was given goes through
+    it. A label that is not in this reading names nothing.
 
     The validation `_segment_pointed_at` makes before it resolves an address, asked on its
     own because the two answers are not the same one: a missing element placed after frase N
@@ -857,7 +868,7 @@ def _chunk_named(raw: Any, positions: dict[int, int]) -> int | None:
         named = int(raw)
     except ValueError:
         return None
-    return positions.get(named)
+    return named if named in positions else None
 
 
 def _segment_pointed_at(
@@ -891,9 +902,10 @@ def _segment_pointed_at(
     `where` is read only when `kind` is `missing`: every other kind is a statement about the
     chunk itself, so a `where` alongside one is ignored without comment.
     """
-    position = _chunk_named(raw, positions)
-    if position is None:
+    named = _chunk_named(raw, positions)
+    if named is None:
         return None
+    position = positions[named]
 
     if kind is FindingKind.MISSING and where is not None:
         if not isinstance(where, str) or where not in _VALID_WHERE:
@@ -1196,14 +1208,14 @@ def _for_her_speaker(finding: Finding | Nuance, addresses: Addresses) -> dict[st
         handed: dict[str, Any] = {
             "kind": "nuance",
             "note": finding.note,
-            "frase": addresses.frase_of(finding.chunk),
+            "frase": finding.chunk,
             "quote": finding.quote,
             "story": finding.story,
         }
     else:
         handed = {"kind": finding.kind.value, "note": finding.note}
         if finding.chunk is not None:
-            handed["frase"] = addresses.frase_of(finding.chunk)
+            handed["frase"] = finding.chunk
     part = addresses.part_of(finding.segment_id)
     if part and (isinstance(finding, Nuance) or finding.kind is not FindingKind.MISSING):
         handed["part"] = part

@@ -25,7 +25,11 @@ from app.services.internalization_room.back_translation import (
     frase_numbers,
 )
 from app.services.internalization_room.hard_stretches import note_a_hard_stretch
-from app.services.internalization_room.segments import current_segments, divide_segment
+from app.services.internalization_room.segments import (
+    capture_segment,
+    current_segments,
+    divide_segment,
+)
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     back_translation_of,
@@ -872,3 +876,43 @@ async def test_a_stored_verdict_served_again_keeps_the_number_the_tablet_draws(
     assert again.json()["findings"] == [
         {"kind": "unclear", "frase": 3, "segment_id": standing.id}
     ], "o veredito guardado voltava com o achado na frase 1, a linha que a tablet desenha como 3"
+
+
+async def test_a_finding_keeps_the_row_number_it_named_and_follows_its_stretch_when_rows_move(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, (_one, two) = await rehearsed_in_parts_of(db_session, [1, 1])
+    again = await upload_a_part(client, session.id, part=1, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    (standing,) = await current_segments(db_session, session.id)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 2 ficou confusa", "frase": 2}]}
+    ]
+    answered = await press_terminei(
+        client, session.id, report=played_every_part([again.json()["take_id"], two.id])
+    )
+    assert answered.status_code == 200, answered.text
+    assert back_translation_of(await get_session(db_session, session.id)).findings[0].chunk == 2, (
+        "o achado guardava a posição na leitura, e não o número da linha que a analista deu"
+    )
+
+    for slice_at in (0, 1):
+        await capture_segment(
+            db_session,
+            session,
+            take_id=again.json()["take_id"],
+            starts_ms=slice_at * 1000,
+            ends_ms=(slice_at + 1) * 1000,
+            bridge_take_id=f"retro-de-novo-{slice_at}",
+            transcript=f"a parte 1 contada de novo, pedaço {slice_at}",
+        )
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", params={"include_stale": "true"})
+
+    assert read.status_code == 200, read.text
+    rows = {row["segment_id"]: row["frase"] for row in read.json()["back_translation"]["segments"]}
+    assert rows[standing.id] == 4
+    assert read.json()["back_translation"]["findings"] == [
+        {"kind": "unclear", "frase": 4, "segment_id": standing.id}
+    ], "o achado ficou no número 2 enquanto a linha dele passou a ser a 4"

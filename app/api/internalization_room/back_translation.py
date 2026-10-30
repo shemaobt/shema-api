@@ -59,12 +59,14 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
 def finding_views(
-    findings: list[Finding], analysed_segment_ids: list[str] | None, numbers: dict[str, int]
+    findings: list[Finding], state: room.BackTranslationState, numbers: dict[str, int]
 ) -> list[FindingView]:
     return [
         FindingView(
             kind=one.kind.value,
-            frase=room.finding_frase(one, analysed_segment_ids, numbers),
+            frase=room.finding_frase(
+                one, state.analysed_segment_ids, state.analysed_frases, numbers
+            ),
             segment_id=one.segment_id,
         )
         for one in findings
@@ -479,7 +481,7 @@ async def _finished(
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
-            findings=finding_views(state.findings, state.analysed_segment_ids, numbers),
+            findings=finding_views(state.findings, state, numbers),
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=stored.used_fail_safe,
             check_at=state.checks[-1].at if state.checks else None,
@@ -536,7 +538,7 @@ async def _finished(
         checked=verdict.checked and state.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
-        findings=finding_views(shown.findings, shown.analysed_segment_ids, numbers),
+        findings=finding_views(shown.findings, shown, numbers),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
         check_at=state.checks[-1].at if state.checks else None,

@@ -386,7 +386,7 @@ async def _progress(
         finding_kind=finding.kind.value if finding else None,
         findings=finding_views(
             findings,
-            state.analysed_segment_ids,
+            state,
             room.passage_numbers(room.told_back(stretches), room.told_back(stale or []), takes),
         ),
         named_nuance=named_nuance_view(state, nuance_numbers),

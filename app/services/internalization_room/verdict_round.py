@@ -121,7 +121,6 @@ async def check_the_telling_back(
         current_parts(takes),
         scene_titles(session),
         language,
-        numbers,
     )
     told_back = segments_block(told, addresses, language, numbers)
     if not state.already_analysed(told):
@@ -165,6 +164,7 @@ async def check_the_telling_back(
         state.nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.analysed_frases = [numbers[segment.id] for segment in told]
 
     state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
 
@@ -200,9 +200,7 @@ async def check_the_telling_back(
     outcome = await speak(current or ([offered] if offered else []))
     if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])
-    elif offered is not None and re.search(
-        rf"frase\s+{addresses.frase_of(offered.chunk)}(?!\d)", outcome.speech, re.I
-    ):
+    elif offered is not None and re.search(rf"frase\s+{offered.chunk}(?!\d)", outcome.speech, re.I):
         offered.voiced = "now"
 
     said = outcome.speech
@@ -286,6 +284,7 @@ async def save_the_spoken_verdict(
             read.checked_at = stored.checked_at
             read.verdict = stored.verdict
             read.analysed_segment_ids = stored.analysed_segment_ids
+            read.analysed_frases = stored.analysed_frases
 
     state.verdict = VoicedVerdict(
         clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe

@@ -80,7 +80,12 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
         findings=[
             SessionRetroFinding(
                 kind=_her_kind(finding),
-                frase=finding_frase(finding, telling_back.analysed_segment_ids, numbers),
+                frase=finding_frase(
+                    finding,
+                    telling_back.analysed_segment_ids,
+                    telling_back.analysed_frases,
+                    numbers,
+                ),
             )
             for finding in telling_back.findings
         ],

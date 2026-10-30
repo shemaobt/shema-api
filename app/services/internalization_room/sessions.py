@@ -1518,6 +1518,7 @@ async def start_the_translation_over(db: AsyncSession, session: IRSession) -> No
         standing.checked_at = None
         standing.verdict = None
         standing.analysed_segment_ids = None
+        standing.analysed_frases = None
 
     state = back_translation_of(session)
     state.superseded = [*state.superseded, SupersededAttempt()]
