@@ -50,6 +50,7 @@ from app.db.models.resource_request import (
     RRCurrency,
     RRDecision,
     RREvaluation,
+    RREvaluationFieldHistory,
     RREvaluationScore,
     RRMovementKind,
     RRRequest,
@@ -725,6 +726,32 @@ class FieldChangeOut(BaseModel):
             new_value=row.new_value,
             changed_by=row.changed_by,
             changed_by_link_id=row.changed_by_link_id,
+            changed_at=row.changed_at,
+        )
+
+
+class EvaluationFieldChangeOut(BaseModel):
+    """One row of the avaliação's trail: who changed which field of it, from what, to what.
+
+    ``field_key`` is a criterion key for a score, or ``decision``, ``comments`` and
+    ``attendees``. Values are strings as the evaluation's wire shows them; ``None`` against
+    ``""`` keeps the same distinction the request's trail keeps. The author is always a
+    person: the mesa has an account, so there is no ``changed_by_link_id`` here (OBT-672).
+    """
+
+    field_key: str
+    old_value: str | None
+    new_value: str | None
+    changed_by: str
+    changed_at: datetime
+
+    @classmethod
+    def of(cls, row: RREvaluationFieldHistory) -> Self:
+        return cls(
+            field_key=row.field_key,
+            old_value=row.old_value,
+            new_value=row.new_value,
+            changed_by=row.changed_by,
             changed_at=row.changed_at,
         )
 
