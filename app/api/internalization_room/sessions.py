@@ -16,7 +16,7 @@ from app.api.internalization_room._deps import (
     include_stale_dep,
     linked_tablet_dep,
 )
-from app.api.internalization_room.back_translation import finding_views
+from app.api.internalization_room.back_translation import finding_views, named_nuance_view
 from app.api.internalization_room.release import approval_of
 from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
@@ -386,6 +386,7 @@ async def _progress(
         findings=finding_views(
             findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
         ),
+        named_nuance=named_nuance_view(state),
         superseded_attempts=len(state.superseded),
         bring_back=await parts_to_bring_back(db, session, current_parts(takes), stretches),
         awaiting_segment_id=awaiting.segment_id if awaiting else None,
