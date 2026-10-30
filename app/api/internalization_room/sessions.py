@@ -16,7 +16,7 @@ from app.api.internalization_room._deps import (
     include_stale_dep,
     linked_tablet_dep,
 )
-from app.api.internalization_room.back_translation import finding_views
+from app.api.internalization_room.back_translation import finding_views, named_nuance_view
 from app.api.internalization_room.release import approval_of
 from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
@@ -373,19 +373,24 @@ async def _progress(
     findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
     awaiting = await the_sentence_awaiting(db, session)
+    segments = segment_views(
+        stretches,
+        await room.stale_segments(db, session.id, takes) if include_stale else None,
+        takes,
+    )
+    nuance_numbers = {
+        one.segment_id: one.frase for one in segments if one.frase is not None and not one.stale
+    }
     return BackTranslationProgress(
         scope=state.scope,
-        segments=segment_views(
-            stretches,
-            await room.stale_segments(db, session.id, takes) if include_stale else None,
-            takes,
-        ),
+        segments=segments,
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
         findings=finding_views(
             findings, state.analysed_segment_ids, room.frase_numbers(room.told_back(stretches))
         ),
+        named_nuance=named_nuance_view(state, nuance_numbers),
         superseded_attempts=len(state.superseded),
         bring_back=await parts_to_bring_back(db, session, current_parts(takes), stretches),
         awaiting_segment_id=awaiting.segment_id if awaiting else None,

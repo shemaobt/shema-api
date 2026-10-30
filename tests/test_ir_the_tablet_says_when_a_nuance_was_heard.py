@@ -331,6 +331,86 @@ async def test_a_verdict_that_named_no_nuance_names_none_to_the_tablet(
     )
 
 
+async def test_the_session_read_after_a_check_that_named_a_nuance_carries_it_as_the_verdict_did(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    frase_2 = (await final_segments(db_session, session.id))[1]
+    assert read.json()["back_translation"]["named_nuance"] == {
+        "kind": "nuance",
+        "frase": 2,
+        "segment_id": frase_2.id,
+    }, "a releitura da sessão perdia a nuance que o veredito nomeou e a linha voltava sem cor"
+    assert read.json()["back_translation"]["named_nuance"] == pressed.json()["named_nuance"], (
+        "a leitura da sessão e o veredito descreviam a nuance de jeitos diferentes"
+    )
+
+
+@pytest.mark.parametrize("with_stale", [False, True])
+async def test_the_session_read_drops_a_nuance_whose_part_was_recorded_again(
+    client, analyst, speaker, db_session: AsyncSession, with_stale: bool
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    fresh = await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
+    await tell_back_about(db_session, session, fresh, transcript="parte 1 contada de volta")
+
+    read = await client.get(
+        f"{PREFIX}/sessions/{session.id}", params={"include_stale": str(with_stale).lower()}
+    )
+
+    assert read.json()["back_translation"]["named_nuance"] is None, (
+        "a leitura apontava a nuance para um trecho aposentado"
+    )
+
+
+@pytest.mark.parametrize("with_stale", [False, True])
+async def test_the_session_read_numbers_the_nuance_as_it_numbers_the_stretches(
+    client, analyst, speaker, db_session: AsyncSession, with_stale: bool
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await record_the_part_again(db_session, session, parts[0], sha256="e" * 64)
+
+    read = (
+        await client.get(
+            f"{PREFIX}/sessions/{session.id}", params={"include_stale": str(with_stale).lower()}
+        )
+    ).json()["back_translation"]
+
+    named = read["named_nuance"]
+    assert named is not None, "a nuance de um trecho que ainda conta sumia da leitura"
+    numbered = {one["segment_id"]: one for one in read["segments"]}
+    assert numbered[named["segment_id"]]["frase"] == named["frase"], (
+        "a nuance trazia a frase do veredito e marcava outra linha que a leitura"
+    )
+
+
+async def test_the_session_read_with_no_check_carries_no_nuance(
+    client, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    assert read.status_code == 200, read.text
+    assert read.json()["back_translation"]["named_nuance"] is None, (
+        "uma sessão sem veredito inventava uma nuance"
+    )
+
+
 async def test_the_consultants_file_says_which_nuances_the_voice_already_said(
     client, analyst, speaker, db_session: AsyncSession
 ) -> None:

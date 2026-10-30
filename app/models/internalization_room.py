@@ -502,6 +502,7 @@ class BackTranslationProgress(BaseModel):
     finding_segment_id: str | None = None
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
+    named_nuance: FindingView | None = None
     superseded_attempts: int = 0
     bring_back: list[int] = Field(
         default_factory=list,
