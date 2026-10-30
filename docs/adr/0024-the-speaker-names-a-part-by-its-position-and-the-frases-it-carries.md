@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2030: the reading's numbers count the stale stretches, and the address carries the frase number
 date: 2026-09-16
 ---
 
@@ -122,3 +122,12 @@ wording repeating two frase numbers in one turn, and no test of this slice reach
 tellings as raw transcripts and no numbered list, so *frase N* is an address that reader cannot
 look up. It travels anyway, because it is the finding's own text and removing it there would
 make one finding read two ways to two readers of the same stretch.
+
+**Amended on 30 October 2026 (ENG-2030): the reading's numbers are the tablet's.** The paragraph
+on the numbers being the reading's said `segments_block` numbers the telling-back from one on
+every reading and the analyst answers a position in that list. The block now labels the reading
+with the passage positions the tablet draws (ADR 0067), the stale stretches of a part recorded
+again counted after its standing ones, and the analyst answers one of those labels, which the
+reading turns back into a position. The address carries that number too: `Addresses.frase_of`
+is what the Speaker is handed, so the part and the frase the voice says come from one object.
+The distinction from the **Frase number** frozen on a **Version** stands.
