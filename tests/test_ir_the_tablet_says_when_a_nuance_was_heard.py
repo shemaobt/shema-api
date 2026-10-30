@@ -354,6 +354,44 @@ async def test_the_session_read_after_a_check_that_named_a_nuance_carries_it_as_
     )
 
 
+async def test_the_session_read_drops_a_nuance_whose_part_was_recorded_again(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    fresh = await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
+    await tell_back_about(db_session, session, fresh, transcript="parte 1 contada de volta")
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    standing = {one.id for one in await final_segments(db_session, session.id)}
+    named = read.json()["back_translation"]["named_nuance"]
+    assert named is None or named["segment_id"] in standing, (
+        "a leitura apontava a nuance para um trecho aposentado"
+    )
+
+
+async def test_the_session_read_numbers_the_nuance_as_it_numbers_the_stretches(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await record_the_part_again(db_session, session, parts[0], sha256="e" * 64)
+
+    read = (await client.get(f"{PREFIX}/sessions/{session.id}")).json()["back_translation"]
+
+    named = read["named_nuance"]
+    assert named is not None, "a nuance de um trecho que ainda conta sumia da leitura"
+    numbered = {one["segment_id"]: one for one in read["segments"]}
+    assert numbered[named["segment_id"]]["frase"] == named["frase"], (
+        "a nuance trazia a frase do veredito e marcava outra linha que a leitura"
+    )
+
+
 async def test_the_session_read_with_no_check_carries_no_nuance(
     client, db_session: AsyncSession
 ) -> None:
