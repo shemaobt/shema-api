@@ -255,9 +255,9 @@ class Room:
         self.team = team
 
 
-async def _a_room(db: AsyncSession, room_app) -> Room:
+async def _a_room(db: AsyncSession, room_app, pericope: str = P) -> Room:
     project, credential = await a_claimed_device(db)
-    session = await create_session(db, language="pt", pericope=P, project_id=project.id)
+    session = await create_session(db, language="pt", pericope=pericope, project_id=project.id)
     desk, _facilitator = await at_the_desk(db, room_app, project)
     return Room(session.id, credential, desk, project.id)
 
@@ -383,6 +383,29 @@ async def test_a_turn_where_the_team_cut_the_voice_off_at_4_s_reads_as_interrupt
     assert cut["team"]["guide_heard"].startswith("[A equipe interrompeu")
     assert cut["team"]["guide_heard"] != WORDS[0]
     assert cut["team"]["guide_heard"].endswith(WORDS[0])
+
+
+async def test_a_panorama_turn_where_the_team_cut_the_voice_off_at_1200_ms_reads_as_interrupted_at_1_2_seconds(  # noqa: E501
+    client, db_session, room_app, script
+) -> None:
+    room = await _a_room(db_session, room_app, pericope="OV-Ruth")
+    script.drafts = [OPENING, LINES[0]]
+    await _opens(client, room)
+    script.heard = _heard(WORDS[0])
+    await _says(
+        client,
+        room,
+        "cortou",
+        interrupted="1",
+        interrupted_at_ms="1200",
+        interrupted_of_ms="5000",
+    )
+
+    (_opening, cut) = await _read(client, room)
+
+    assert cut["team"]["interrupted_at_s"] == 1.2, (
+        "a Mesa lia um turno do Panorama cortado pela equipe como um turno que ninguém cortou"
+    )
 
 
 async def test_a_mother_tongue_take_reads_as_mother_tongue_with_the_note_instead_of_words(

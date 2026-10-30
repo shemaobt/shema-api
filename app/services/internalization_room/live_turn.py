@@ -30,7 +30,6 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back, stamped_with_what_was_heard
-from app.services.internalization_room.validated_turn import CutPoint
 
 
 async def run_comprehension_turn(
@@ -76,14 +75,7 @@ async def run_comprehension_turn(
     if stamp is not session.earlier_passages:
         session.earlier_passages = stamp
     if not opening:
-        outcome = replace(
-            stamped_with_what_was_heard(outcome, speech),
-            interrupted=(
-                CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
-                if speech.interrupted
-                else None
-            ),
-        )
+        outcome = stamped_with_what_was_heard(outcome, speech)
     return replace(outcome, earlier_passages=None if stamp is None else dict(stamp))
 
 

@@ -39,7 +39,9 @@ async def run_panorama_turn(
     (`turn.speech.what_the_guide_is_handed`): a short take with no words draws the ladder's
     line, and the mother tongue reaches the Guide as the room's note, apart from the team's
     words. On every turn but the opening the outcome keeps the language, its probability, the
-    mother-tongue decision and the take's length; the cut point is not kept.
+    mother-tongue decision, the take's length and, when the team cut the Guide short to speak,
+    where the cut fell, as a passage turn's does: her route writes the cut into every turn
+    record, the Panorama's included.
     """
     cfg = settings or get_settings()
     handed = what_the_guide_is_handed(
