@@ -116,6 +116,93 @@ async def test_a_changed_comment_and_a_changed_ata_are_in_the_trail(
     assert (comment["old_value"], comment["new_value"]) == ("avaliado", "revisado")
 
 
+async def test_rewording_the_note_to_the_team_after_the_decision_leaves_a_trace(
+    db_session, client, rrf_app
+) -> None:
+    """Found in review: ``team_note`` is the one text of the evaluation that leaves the mesa,
+    and the save rewrites it on every call — a mesa could reword what it told a team after
+    deciding without a trace. ``None`` (no note) is a real value, distinct from ``""``."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await decidable(db_session, client, team)
+    decided = await put_evaluation(
+        client, mesa, created["id"], scores=scored(3), decision="revise", team_note="detalhe"
+    )
+    assert decided.status_code == 200, decided.text
+
+    # The decision travels again: a save without it reads as undoing the decision (409).
+    reworded = await put_evaluation(
+        client,
+        mesa,
+        created["id"],
+        scores=scored(3),
+        decision="revise",
+        team_note="detalhe o orçamento",
+    )
+    assert reworded.status_code == 200, reworded.text
+
+    rows = [
+        row for row in await history(client, mesa, created["id"]) if row["field_key"] == "team_note"
+    ]
+    assert [(row["old_value"], row["new_value"]) for row in rows] == [
+        (None, "detalhe"),
+        ("detalhe", "detalhe o orçamento"),
+    ]
+    assert rows[-1]["changed_by"] == user_id(mesa)
+
+
+def test_a_score_row_that_goes_away_reads_as_a_removal_not_a_delete_plus_insert() -> None:
+    """The save deletes the score rows a sheet no longer names (the leftover) — a path the
+    wire cannot drive, because ``EvaluationWriteIn`` refuses a sheet missing a criterion
+    (422 *missing criterion*); it is reached when a type's criteria set moves under a
+    recorded evaluation. The trail's reading of it is pinned here where it lives: the key
+    goes ``n → None`` once, and nothing else moves."""
+    from app.services.resource_request._trail import evaluation_fields, field_changes
+
+    before = evaluation_fields(None, "", dict.fromkeys(CRITERIA, 4), attendees=[], team_note=None)
+    after = evaluation_fields(
+        None, "", dict.fromkeys(CRITERIA[1:], 4), attendees=[], team_note=None
+    )
+
+    assert [(c.field_key, c.old_value, c.new_value) for c in field_changes(before, after)] == [
+        (CRITERIA[0], "4", None)
+    ]
+
+
+async def test_a_revision_is_another_request_with_a_trail_of_its_own(
+    db_session, client, rrf_app
+) -> None:
+    """The review asked for the trail across a revision, and the honest answer is two ids:
+    ``open_revision`` mints a new request (``revision_of_id`` → the evaluated snapshot), the
+    revision's evaluation leaves rows under the new id, and the original's trail stays frozen
+    with the decision that asked for it."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await decidable(db_session, client, team)
+    decided = await put_evaluation(
+        client, mesa, created["id"], scores=scored(2), decision="revise", team_note="refaça"
+    )
+    assert decided.status_code == 200, decided.text
+    original = await history(client, mesa, created["id"])
+
+    opened = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=team)
+    assert opened.status_code == 201, opened.text
+    revision_id = opened.json()["id"]
+    assert revision_id != created["id"]
+    resubmitted = await client.post(f"{REQUESTS}/{revision_id}/submit", headers=team)
+    assert resubmitted.status_code == 200, resubmitted.text
+    rescored = await put_evaluation(client, mesa, revision_id, scores=scored(2, first=5))
+    assert rescored.status_code == 200, rescored.text
+
+    revised = await history(client, mesa, revision_id)
+    first = [row for row in revised if row["field_key"] == CRITERIA[0]]
+    assert [(row["old_value"], row["new_value"]) for row in first] == [(None, "5")]
+    assert all(row["changed_by"] == user_id(mesa) for row in revised)
+    assert await history(client, mesa, created["id"]) == original
+    decided_row = next(row for row in original if row["field_key"] == "decision")
+    assert decided_row["new_value"] == "revise"
+
+
 async def test_a_save_that_changes_nothing_adds_no_rows(db_session, client, rrf_app) -> None:
     """The mesa re-sending the same sheet is not an edit, and must not read as one."""
     team = await as_team(db_session, rrf_app)
