@@ -10,7 +10,7 @@ same 404 for everyone else. The guard is ``CanEditRequests`` like every other
 request-lifecycle route, because the trail carries only request fields, which every
 holder of that capability may already read in their current values. The avaliação's
 trail is not served here: it carries scores and a decision — ``view_evaluation``
-content — and its surface arrives with BE-06's evaluation endpoints.
+content — and is served by ``evaluations.py`` behind that capability (OBT-672).
 """
 
 from fastapi import APIRouter
