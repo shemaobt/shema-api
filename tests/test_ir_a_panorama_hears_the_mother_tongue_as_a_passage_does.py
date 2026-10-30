@@ -379,3 +379,25 @@ async def test_a_panorama_take_that_followed_no_cut_has_no_interrupted_key_in_it
 
     record = (await _the_conversation(db_session, session.id))[-1]
     assert "interrupted" not in record
+
+
+async def test_the_record_of_a_panorama_cut_followed_by_nothing_heard_still_keeps_where_the_cut_fell(  # noqa: E501
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_panorama(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 3_000)
+
+    reply = await _the_team_sends_a_take(
+        tablet, session, interrupted="1", interrupted_at_ms="1200", interrupted_of_ms="5000"
+    )
+
+    assert reply["fixed_line"] == D0
+    assert guide.guide_inputs == []
+    record = (await _the_conversation(db_session, session.id))[-1]
+    assert record["interrupted"] == {"at_ms": 1200, "of_ms": 5000}, (
+        "o corte seguido de nada ouvido ouvia a D0 e o registro perdia onde o corte caiu"
+    )
