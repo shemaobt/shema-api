@@ -16,6 +16,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room.segments import _units
+from app.api.internalization_room.sessions import _progress
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import (
@@ -494,6 +495,33 @@ async def test_asking_for_the_stale_ones_reads_the_takes_of_the_session_once(
     assert len([one for one in said if "FROM ir_takes" in one]) == 1, (
         "a leitura que a tablet refaz a lista lia os takes da sessão duas vezes"
     )
+
+
+async def _takes_reads_of(test_engine, read: Any) -> int:
+    said: list[str] = []
+
+    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        said.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
+    try:
+        await read()
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
+    return len([one for one in said if "FROM ir_takes" in one])
+
+
+async def test_the_progress_asking_for_the_stale_ones_reads_no_more_takes_than_without(
+    db_session: AsyncSession, test_engine
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 2)
+
+    plain = await _takes_reads_of(test_engine, lambda: _progress(db_session, session))
+    asking = await _takes_reads_of(
+        test_engine, lambda: _progress(db_session, session, include_stale=True)
+    )
+
+    assert asking == plain, "a sessão que pede as regravadas lia os takes uma vez a mais"
 
 
 async def test_the_check_neither_reads_nor_waits_on_a_stale_stretch(
