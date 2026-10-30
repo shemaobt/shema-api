@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -212,8 +214,8 @@ async def test_the_voices_block_and_the_views_number_their_stretches_with_one_fu
     the_room_speaks(monkeypatch)
     original = back_translation.frase_numbers
 
-    def ten_further(told: list) -> dict[str, int]:
-        return {segment_id: number + 10 for segment_id, number in original(told).items()}
+    def ten_further(*segments: Any) -> dict[str, int]:
+        return {segment_id: number + 10 for segment_id, number in original(*segments).items()}
 
     monkeypatch.setattr(back_translation, "frase_numbers", ten_further)
     monkeypatch.setattr(room_package, "frase_numbers", ten_further)

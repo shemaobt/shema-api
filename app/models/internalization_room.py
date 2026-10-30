@@ -359,7 +359,9 @@ class SegmentView(BaseModel):
             "The number the voice speaks for this stretch: its 1-based position among the told "
             "stretches, in the voice's order. Null on a piece nobody has told yet, which takes "
             "no number. A stretch told again keeps its number, and numbering starts over when "
-            "the translation is started over."
+            "the translation is started over. Asked with `include_stale=true`, the stale "
+            "stretches are numbered too, in her order: part by part, the standing stretches "
+            "before the stale ones of the same part, and no number repeats."
         ),
     )
     stale: bool | None = Field(

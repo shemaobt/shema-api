@@ -12,12 +12,18 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room.segments import _units
+from app.api.internalization_room.sessions import _progress
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRSegment
-from app.services.internalization_room.back_translation import Finding, FindingKind
+from app.services.internalization_room.back_translation import (
+    Finding,
+    FindingKind,
+    frase_numbers,
+)
 from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import current_segments, divide_segment
 from app.services.internalization_room.sessions import (
@@ -423,7 +429,7 @@ async def test_a_sentence_laid_in_without_asking_answers_the_list_it_always_did(
     )
 
 
-async def test_a_stale_stretch_takes_no_frase_number_and_the_standing_ones_keep_theirs(
+async def test_a_stale_stretch_is_numbered_in_its_place_and_the_standing_ones_after_it(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session, _parts = await rehearsed_in_parts(db_session, 3)
@@ -434,9 +440,88 @@ async def test_a_stale_stretch_takes_no_frase_number_and_the_standing_ones_keep_
 
     assert [(row["stale"], row["frase"]) for row in asked] == [
         (False, 1),
-        (False, 2),
-        (True, None),
-    ], "a parte regravada tomava um número da voz, ou desnumerava as frases que contam"
+        (False, 3),
+        (True, 2),
+    ], "a parte regravada ficava sem número, ou as frases depois dela perdiam o seu"
+
+
+async def test_the_stale_frases_of_a_part_recorded_again_never_repeat_a_standing_number(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts_of(db_session, [1, 4, 1])
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+
+    asked = await _read_asking_for_stale(client, session.id)
+
+    assert [(row["stale"], row["frase"]) for row in asked] == [
+        (False, 1),
+        (False, 6),
+        (True, 2),
+        (True, 3),
+        (True, 4),
+        (True, 5),
+    ], "uma frase velha chegava sem número ou repetia o de uma que está de pé"
+
+
+def test_a_stale_frase_of_a_take_with_no_number_reads_before_the_standing_ones_of_part_zero() -> (
+    None
+):
+    whole = IRSegment(id="whole", take_id="take-whole")
+    zero = IRSegment(id="zero", take_id="take-zero")
+
+    numbers = frase_numbers([zero], [whole], {"take-whole": None, "take-zero": 0})
+
+    assert numbers == {"whole": 1, "zero": 2}, (
+        "um take sem número e a parte 0 ficavam na mesma posição, e a de pé passava à frente"
+    )
+
+
+async def test_asking_for_the_stale_ones_reads_the_takes_of_the_session_once(
+    db_session: AsyncSession, test_engine
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 2)
+    said: list[str] = []
+
+    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        said.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
+    try:
+        await _units(db_session, session.id, include_stale=True)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
+
+    assert len([one for one in said if "FROM ir_takes" in one]) == 1, (
+        "a leitura que a tablet refaz a lista lia os takes da sessão duas vezes"
+    )
+
+
+async def _takes_reads_of(test_engine, read: Any) -> int:
+    said: list[str] = []
+
+    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        said.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
+    try:
+        await read()
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
+    return len([one for one in said if "FROM ir_takes" in one])
+
+
+async def test_the_progress_asking_for_the_stale_ones_reads_no_more_takes_than_without(
+    db_session: AsyncSession, test_engine
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 2)
+
+    plain = await _takes_reads_of(test_engine, lambda: _progress(db_session, session))
+    asking = await _takes_reads_of(
+        test_engine, lambda: _progress(db_session, session, include_stale=True)
+    )
+
+    assert asking == plain, "a sessão que pede as regravadas lia os takes uma vez a mais"
 
 
 async def test_the_check_neither_reads_nor_waits_on_a_stale_stretch(
