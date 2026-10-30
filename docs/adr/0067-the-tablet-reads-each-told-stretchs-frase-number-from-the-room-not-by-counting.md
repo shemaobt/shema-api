@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order
 date: 2026-10-19
 ---
 
@@ -64,3 +64,11 @@ and the number is not one the voice speaks, so there was no reading of it worth 
 The field is gone from the answer and from the API reference. The tablet reads
 `json['chunks'] as int? ?? 0`, so an answer without it and a replayed answer that still has it
 (the room replays a stored answer byte for byte for a day) are both read.
+
+**Amended on 30 October 2026 (ENG-2001): the number counts the stale stretches when the tablet
+asks for them.** The first decision above says `frase` is the position among `told_back(final_segments)`
+in the voice's order. On a read with `include_stale=true` (ADR 0023) it is her position instead:
+every told stretch, standing or stale, numbered over the passage part by part, the standing ones
+before the stale ones of the same part, so a stale stretch carries a number that no standing stretch
+repeats. Without `include_stale` nothing changes. The check's findings, the telling answer, the
+**Packet** and the voice keep numbering the standing stretches (ENG-2030 aligns them).
