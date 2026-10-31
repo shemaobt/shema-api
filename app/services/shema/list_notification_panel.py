@@ -20,14 +20,15 @@ off the project, here, through each one's owner, so a notice reads the way its p
 today and not the way it read when it was written:
 
 * the language's name as every recipient may read it — the public name of a withheld project,
-  ``""`` while none is registered (:func:`_language_name`);
+  ``""`` while none is registered — spoken off the notice's leaving shape (:func:`_facts`);
 * the region key, to every recipient;
 * the project's id and, on an urgent need, its place — **only to a reader who reaches the
   project now**, inside the caller's scope or one of its live members, the collection's own rule
   through ``within_scope`` and ``live_membership_ids``. The place is a
   :class:`~app.models.shema_notification.ShemaNoticePlace` built with no reader, so it leaves as
   ``outside`` — a withheld project's place is its region even for the coordination, because a
-  notice is an output path (``docs/shema.md`` §6.4).
+  notice is an output path (``docs/shema.md`` §6.4) — and since OBT-666 it carries the name as it
+  leaves, beside the ``languageNameWithheld`` that describes it.
 
 A project notice written before OBT-559 has no facts and answers its kind and nothing else: its
 prose was written once, for whoever read it then, and an urgent need's named the place
@@ -77,14 +78,12 @@ from app.models.shema_notification import (
     ShemaNotificationEntry,
     ShemaProjectNoticeFacts,
 )
-from app.models.shema_privacy import ShemaReader
 from app.models.shema_projects import ShemaProjectCard, ShemaProjectQuery
 from app.services.notifications import get_shema_app_id, list_notifications
 from app.services.shema._health_audience import reads_assessments
 from app.services.shema._health_notice import EVENT_TYPE as HEALTH_EVENT_TYPE
 from app.services.shema._needs import URGENT_NEED_EVENT
 from app.services.shema._prayer_review import REVIEW_EVENT
-from app.services.shema._redaction import language_name_for
 from app.services.shema._request_notices import REQUEST_ARRIVAL_EVENT, REQUEST_DECISION_EVENT
 from app.services.shema._scope import (
     NO_COORDINATION,
@@ -131,17 +130,6 @@ def _is_urgent(kind: NotificationKind) -> bool:
     return kind in _URGENT_KINDS
 
 
-def _language_name(project: ShemaProject) -> str:
-    """The language's name as every recipient of a notice may read it.
-
-    A notice is not a shape, and every recipient reads it as somebody outside coordination: a
-    project whose place is withheld may carry it in its name too (OBT-560), so it answers the
-    name coordination registered for the other readers, and ``""`` while none is — the console
-    then says *a project*. ``_redaction.language_name_for`` is the rule's owner.
-    """
-    return language_name_for(project, ShemaReader.OTHER, fallback="")
-
-
 def _stale_id(card: ShemaProjectCard) -> str:
     """``stale:{projectId}:{lastProgressDate}`` — FE-44 §5.8's stable-derivation rule."""
     marker = card.derived.last_progress_update if card.derived else None
@@ -162,12 +150,12 @@ async def _stale_cards(
 
 
 def _stale_language_name(card: ShemaProjectCard) -> str:
-    """:func:`_language_name`'s answer, read off the card instead of a second read of the row.
+    """The delivered notices' name (:func:`_facts`), read off the card instead of a second read.
 
     The card is a leaving shape ``browse_projects`` built for a reader outside coordination, so
     its name is already the one that reader may read (OBT-560) — the public name of a withheld
     project, or its region key while none is registered — and ``spoken_name`` turns the region
-    key into ``""`` (OBT-562), as :func:`_language_name`'s fallback does.
+    key into ``""`` (OBT-562), as it does on the delivered notices' own leaving shape.
     """
     return card.spoken_name("")
 
@@ -247,15 +235,24 @@ async def _reached(
 def _facts(
     kind: NotificationKind, detail: ShemaProjectNotice, project: ShemaProject, *, reaches: bool
 ) -> ShemaProjectNoticeFacts:
-    """What a delivered project notice says, with who and where read off the project now."""
+    """What a delivered project notice says, with who and where read off the project now.
+
+    **Both off one leaving shape** (OBT-666), built with no reader because a notice is an output
+    path: the name the sentence speaks is that shape's ``spoken_name("")`` — the public name of a
+    withheld project, or ``""`` (*a project*) where the shape carries the region key — and the
+    place an urgent need answers to a reader who reaches the project is the shape itself, its name
+    beside the ``languageNameWithheld`` that describes it. One reading of the row, so the two
+    names cannot disagree; ``_stale_language_name`` asks the card the same question.
+    """
+    leaving = ShemaNoticePlace.model_validate(project)
     return ShemaProjectNoticeFacts(
-        language_name=_language_name(project),
+        language_name=leaving.spoken_name(""),
         assessed_on=detail.assessed_on,
         need_count=detail.need_count,
         need_categories=list(detail.need_categories or []),
         need_totals=[ShemaNoticeTotal.model_validate(total) for total in detail.need_totals or []],
         submitted_by=detail.submitted_by,
-        place=ShemaNoticePlace.model_validate(project) if reaches and kind == "need" else None,
+        place=leaving if reaches and kind == "need" else None,
     )
 
 
