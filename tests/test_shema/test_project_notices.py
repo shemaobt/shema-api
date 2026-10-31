@@ -391,7 +391,6 @@ async def test_the_place_goes_only_to_a_reader_who_reaches_the_project(
     assert gone["facts"]["place"] is None
     assert gone["region"] == "africa"
     assert "Norlandia" not in json.dumps(gone)
-    # No place, so no mark: the sentence's name is all this reader is handed.
     assert "languageNameWithheld" not in json.dumps(gone)
 
 
