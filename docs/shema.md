@@ -1728,11 +1728,19 @@ had since left the region, and about a project flagged since. Now the four proje
 facts beside the row, in `shema_project_notices`, and none of them is a name or a place; the panel
 answers the five project kinds (stale included) with an empty `title` and `body` and reads off the
 project, at read time: the language's name as every recipient may read it (`""` for a withheld
-project — `language_name_for(project, ShemaReader.OTHER, fallback="")` once OBT-560 lands), the
-region key, and — on an urgent need, and only for a reader who reaches the project now, by the
-rule above — its place, as `ShemaNoticePlace`, a leaving shape built with no reader: `outside`,
-so a withheld project's place is its region even for the coordination. A row written before
-OBT-559 has no facts and answers its kind and nothing it said.
+project with no public name), the region key, and — on an urgent need, and only for a reader who
+reaches the project now, by the rule above — its place, as `ShemaNoticePlace`, a leaving shape
+built with no reader: `outside`, so a withheld project's place is its region even for the
+coordination. A row written before OBT-559 has no facts and answers its kind and nothing it said.
+**The place carries the name too, so the mark has a name to describe** (OBT-666, API-PRIV-043 of
+the E2E pass of 29/oct). The boundary turns `languageNameWithheld` on only for a shape that
+declares a name, and the place declared none: it answered `false` beside a sentence whose name was
+`""`. Now `ShemaNoticePlace` declares `language_name`, so it leaves with the public name — or the
+region key while none is registered — and `languageNameWithheld: true`, as every other leaving
+shape does; and the sentence's name is that same shape spoken (`spoken_name("")`), so the two
+cannot disagree. The sentence keeps `""` rather than the key because the PME's bell words
+`languageName or "a project"`. A reader the place is not given to is handed no mark either
+(`tests/test_shema/test_project_notices.py`).
 
 #### What BE-14 built — the export and the import
 
