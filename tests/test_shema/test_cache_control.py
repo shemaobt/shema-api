@@ -34,7 +34,7 @@ from fastapi.routing import APIRoute
 from httpx import ASGITransport
 from sqlalchemy import select
 
-from app.api.shema._deps import NO_STORE
+from app.api.shema._deps import APP_KEY, NO_STORE
 from app.db.models.shema_enums import ShemaMediaKind, ShemaRegionKey
 from app.db.models.shema_form import ShemaSubmission
 from app.db.models.shema_media import ShemaMediaItem
@@ -100,7 +100,8 @@ async def urls(
 
     Everything a path parameter names is made through the real routes or the module's services,
     as the files that own them make it: a project, an intake link and an answer through it, a
-    person in the prayer network and the exit link a send would carry to them.
+    person in the prayer network and the exit link a send would carry to them, and an invitation
+    the Admin sent.
     """
     admin = await make_user(db_session, email="cache@shema.test", is_platform_admin=True)
     headers = await auth_header(db_session, admin)
@@ -162,6 +163,19 @@ async def urls(
     person = await make_intercessor(server, headers, contact="pessoa@example.test", listed=True)
     exit_token = await issue_exit_link(db_session, person["id"])
 
+    invited = await server.post(
+        f"{PREFIX}/access/invites",
+        json={
+            "email": "cache-invite@shema.example",
+            "appKey": APP_KEY,
+            "roleKey": "obtLab",
+            "regionKeys": [ShemaRegionKey.ASIA.value],
+        },
+        headers=headers,
+    )
+    assert invited.status_code == 201, invited.text
+    invite_token = invited.json()["inviteUrl"].split("token=")[1]
+
     concrete = {
         f"{PREFIX}/projects/{{project_id}}": f"{PREFIX}/projects/{project_id}",
         f"{PREFIX}/projects/{{project_id}}/members": f"{PREFIX}/projects/{project_id}/members",
@@ -188,6 +202,7 @@ async def urls(
         f"{PREFIX}/eten/report": f"{PREFIX}/eten/report?year={datetime.now(UTC).year}",
         f"{PREFIX}/export/projects": f"{PREFIX}/export/projects?format=json",
         f"{PREFIX}/access/people": f"{PREFIX}/access/people?email={admin.email}",
+        f"{PREFIX}/access/invites/{{token}}": f"{PREFIX}/access/invites/{invite_token}",
     }
     return concrete, headers
 

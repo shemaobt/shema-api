@@ -34,7 +34,7 @@ from tests.shema_admin_harness import (
     make_admin,
     surface_client,
 )
-from tests.shema_harness import reaches
+from tests.shema_harness import ACCEPTANCE, INVITATION, reaches
 from tests.test_shema.conftest import auth_header, grant
 
 #: The surface, pinned: a route added under ``/access`` is an edit to this set, and every one
@@ -50,6 +50,12 @@ ADMIN_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", CHANGES),
     }
 )
+
+#: The invitation's two doors, under ``/access/invites`` since OBT-683 and the invitee's rather
+#: than the Admin's: the lookup is anonymous and the acceptance takes any signed-in account
+#: (``app/api/shema/invitation.py``). Pinned beside the seven, so a route under ``/access`` is
+#: still an edit to one of the two sets.
+INVITEE_ROUTES: frozenset[tuple[str, str]] = frozenset({("GET", INVITATION), ("POST", ACCEPTANCE)})
 
 
 async def _calls(client, headers, target_id: str, target_email: str):
@@ -271,7 +277,8 @@ async def test_a_revoked_admin_is_told_what_it_lacks_not_that_the_account_is_bro
 
 def test_the_seven_routes_are_pinned_and_each_carries_the_admin_guard() -> None:
     """Read off the application the server builds. Pinned, so this cannot pass on an empty
-    set, and so an eighth route under ``/access`` is an edit somebody has to justify."""
+    set, and so another route under ``/access`` is an edit somebody has to justify. The
+    invitee's two doors share the prefix and not the guard: an invitee holds no role yet."""
     admin_check = get_args(AdminUser)[1].dependency
     app = create_app()
     mounted = {
@@ -281,8 +288,8 @@ def test_the_seven_routes_are_pinned_and_each_carries_the_admin_guard() -> None:
         for method in route.methods or ()
     }
 
-    assert set(mounted) == ADMIN_ROUTES
-    unguarded = [key for key, route in mounted.items() if not reaches(route.dependant, admin_check)]
+    assert set(mounted) == ADMIN_ROUTES | INVITEE_ROUTES
+    unguarded = [key for key in ADMIN_ROUTES if not reaches(mounted[key].dependant, admin_check)]
     assert unguarded == []
 
 

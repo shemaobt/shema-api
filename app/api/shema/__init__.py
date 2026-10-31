@@ -17,11 +17,14 @@ twice.
 ``require_app_access(APP_KEY)`` once, so a route added by a later issue is refused for an
 account with no Shemá grant **whether or not its author wired a guard**. A route added
 straight to ``router`` is the only way past that, and it is exactly what BE-12's two
-unauthenticated intake routes needed (``docs/shema.md`` §6.6, FE-44 §9.0), and then the
-intercessor's exit link (OBT-531) — which is why each hole is a named, deliberate line in a
-diff instead of a dependency somebody has to notice is missing.
-``tests/test_shema/test_access.py`` reads the built application's route table and fails on
-any ``/api/shema`` route that does not carry the guard and is not in its allowlist.
+unauthenticated intake routes needed (``docs/shema.md`` §6.6, FE-44 §9.0), then the
+intercessor's exit link (OBT-531), and then the invitation's two doors (OBT-683) — the lookup
+anonymous, the acceptance for any signed-in account, since accepting is how an account comes to
+hold a role here — which is why each hole is a named, deliberate line in a diff instead of a
+dependency somebody has to notice is missing. ``tests/test_shema/test_access.py`` reads the
+built application's route table and fails on any ``/api/shema`` route that does not carry the
+guard and is not in its allowlist, and on one that admits an account holding nothing and is not
+in ``SIGNED_IN_ROUTES``.
 
 **The PME's door is the other deliberate exception, and it is narrower rather than wider**
 (OBT-523, ``docs/shema.md`` §6.8). ``GET /api/shema/session`` is the console's sign-in read,
@@ -45,7 +48,7 @@ reads the built application's route table for a route that is not one.
 
 **No answer of this module is kept by a cache, and that is a property of this file too**
 (OBT-555). ``router`` carries ``NO_STORE`` (``_deps.py``), and ``authenticated``, ``door`` and the
-two holes are all included into it, so every route the module mounts — today's and the next
+three holes are all included into it, so every route the module mounts — today's and the next
 issue's — answers ``Cache-Control: private, no-store``: every read here is built for its reader, and
 the link routes answer whoever holds the link. The dependency writes the header on the response
 FastAPI builds from a returned model; a ``GET`` whose handler returns a ``Response`` of its own
@@ -73,6 +76,7 @@ from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
 from app.api.shema.intercessor_exit import router as exit_router
 from app.api.shema.intercessors import router as intercessors_router
+from app.api.shema.invitation import router as invitation_router
 from app.api.shema.media import router as media_router
 from app.api.shema.meetings import router as meetings_router
 from app.api.shema.members import door_router as members_door_router
@@ -88,7 +92,7 @@ from app.api.shema.session import router as session_router
 from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
 
-#: The module's outer router. Its one dependency is the cache rule, not a guard: the two holes
+#: The module's outer router. Its one dependency is the cache rule, not a guard: the three holes
 #: below are included straight into it and answer anybody holding a link.
 router = ShemaRouter(dependencies=[NO_STORE])
 
@@ -130,6 +134,15 @@ router.include_router(intake_router)
 #: guard and the guard is a service function (``leave_intercessor.py``); the ``GET`` changes
 #: nothing and the ``POST`` erases. Listed in ``UNAUTHENTICATED_PATHS`` beside the intake's.
 router.include_router(exit_router)
+
+#: **The module's third deliberate hole** (OBT-683). ``GET /api/shema/access/invites/{token}``
+#: carries no ``Authorization`` requirement and ``POST …/accept`` asks for a signed-in account and
+#: no role: somebody the Admin invites holds nothing until they accept, and the PME's ``/convite``
+#: page calls the two before and after signing them up. The token is the guard, and the guard is
+#: the form's service (``describe_invite``, ``accept_invite``), which the form's own two routes
+#: still call until they leave. The lookup is in ``UNAUTHENTICATED_PATHS``, the acceptance in
+#: ``test_access.py``'s ``SIGNED_IN_ROUTES``.
+router.include_router(invitation_router)
 
 #: The PME's door: the session read, for any account holding a role of the session's
 #: vocabulary in either app (OBT-523), the member's two reads (OBT-524), and the notification

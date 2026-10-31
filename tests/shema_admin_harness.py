@@ -4,8 +4,9 @@
 the surface, and ``test_pending_projects.py`` signs the same Admin in to confirm what an
 approval filed. Not in ``tests/test_shema/conftest.py`` on purpose: that file is every Shemá
 test's, and several branches edit it at once. The client here mounts what those tests need and
-the shared one does not: the form's invitation routes, where an invite is accepted, and
-``/api/roles``, the raw tool the surface closes for the two apps.
+the shared one does not: ``/api/roles``, the raw tool the surface closes for the two apps. An
+invite is accepted on the module's own door since OBT-683 (``f"{INVITES}/{token}/accept"``), so
+the form's invitation routes are no longer mounted here.
 
 Builders and constants only. ``surface_client`` is a context manager a case opens, not a
 fixture, so nothing here has to travel as one.
@@ -37,7 +38,6 @@ REVOKE = f"{ACCESS}/grants/revoke"
 INVITES = f"{ACCESS}/invites"
 WITHDRAW = f"{ACCESS}/invites/revoke"
 CHANGES = f"{ACCESS}/changes"
-FORM_INVITES = "/api/resource-requests/access/invites"
 
 PME_URL = "https://pme.shema.example"
 FORM_URL = "https://form.shema.example"
@@ -45,13 +45,12 @@ FORM_URL = "https://form.shema.example"
 
 @asynccontextmanager
 async def surface_client(db_session) -> AsyncIterator[httpx.AsyncClient]:
-    """The module's real router, auth, ``/api/roles`` and the form's invitation routes."""
+    """The module's real router, auth and ``/api/roles``."""
     from fastapi import FastAPI
     from slowapi import _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
 
     from app.api.auth import router as auth_router
-    from app.api.resource_requests.access import router as form_access_router
     from app.api.roles import router as roles_router
     from app.api.shema import router as module_router
     from app.core.database import get_db
@@ -64,7 +63,6 @@ async def surface_client(db_session) -> AsyncIterator[httpx.AsyncClient]:
     app.include_router(module_router, prefix=PREFIX)
     app.include_router(auth_router, prefix="/api/auth")
     app.include_router(roles_router, prefix="/api/roles")
-    app.include_router(form_access_router, prefix="/api/resource-requests/access")
     register_exception_handlers(app)
 
     async def _get_db():
