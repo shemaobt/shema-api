@@ -295,7 +295,9 @@ should be asked why.
 > invite carries (`apply_invited_scope`). Both directions import by **submodule path**, the only
 > spelling that binds a function whichever package loads first —
 > `tests/test_app_boots.py::test_the_grant_packages_import_in_either_order` walks both orders.
-> OBT-549 moves the form's half into this module rather than deleting it (§6.10).
+> OBT-683 (30/oct/2026) moved the two doors that read and accept an invitation into this module,
+> with their contract; the services behind them stay in the form's package, and the form's own two
+> routes answer until the PR that removes them (§6.10).
 
 Two shared-by-accident surfaces are worth naming because they are one import away:
 `app/services/notifications/` (§4.6 — call it as it is, do not change its signature) and
@@ -341,6 +343,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_request_notices.py` | **OBT-541, built** | The resource-request form's arrival and decision, rung in the PME's bell: who is told (the starter; the Admin off the `shema` grant and the Gestor off the form's), with the registered name and the stage and nothing else, and the `shema_request_notices` detail each row carries. |
 | `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
 | `app/api/shema/access.py` | **OBT-543, built** | The Admin's seven routes under `/access` — §6.10. |
+| `app/api/shema/invitation.py` | **OBT-683, built** | The module's **third** unauthenticated seam: `GET /access/invites/{token}` (anonymous) and `POST /access/invites/{token}/accept` (any signed-in account), the invitation's two doors, moved from the form's prefix with the same contract and the same services. §6.10. |
 | `app/services/shema/_grant_rules.py` | **OBT-543, built** | The one owner of what the Admin's surface grants and how: the vocabulary (built from `_scope.py`), `admin` in both apps, regions with a regional role and with no other, and the fresh check of the Admin's own standing. |
 | `app/services/shema/{find_account,grant_role,revoke_grant,send_invite,withdraw_invite,list_invites,list_grant_changes,apply_invited_scope}.py` | **OBT-543, built** | One operation each. **Flat, against the issue's `access/**`**: every structural scan of this package (`test_layering.py`, `test_privacy_owners.py`, `test_people_privacy.py`, `test_scope.py`, `test_needs.py`) reads `*.py` without recursing, and a sub-package would sit outside all of them. |
 | `app/models/shema_grant.py`, `app/db/models/shema_grant.py` | **OBT-543, built** | The surface's wire shapes; and `shema_scope_changes`, the append-only trail of every region scope change. |
@@ -431,7 +434,7 @@ nothing in column 3 imports `fastapi`.
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
-| **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
+| **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape, and the invitation's two doors (OBT-683) the third — whose acceptance asks for a signed-in account and no role. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
 | **Caching** | Declared once: the outer `router` in `__init__.py` carries `NO_STORE` (`_deps.py`), so every answer the module builds says `Cache-Control: private, no-store` — every read is built for its reader, and the link routes answer whoever holds the link (OBT-555). A `GET` whose handler returns a `Response` of its own (the export, the Pulse, the exit link's 204) writes `PER_READER_CACHE_CONTROL` itself, because FastAPI does not merge the injected response's headers into it; `tests/test_shema/test_cache_control.py` calls every `GET` and reads the header off the wire. Not reached: the error envelopes of `app/core/exceptions.py`, shared by every app and not a reader's record, and the five answers a write builds itself — the record's 409 (on the `PATCH`, on the import of projects and on the Pulse's two imports, OBT-627), the record's 400 that names its field (on the `PATCH` and the `POST`, OBT-601), the import's 400, and the `POST`s of the intake (202) and of the exit link (204), the last two with no `Authorization` — which no cache stores, since none carries explicit freshness. | Nothing. |
 
 ---
@@ -1969,7 +1972,10 @@ the payload beside it withholds.
 
 `GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` were the first routes in
 this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor's exit link
-(OBT-531, §6.4) is the second pair and follows the same three rules:
+(OBT-531, §6.4) is the second pair and follows the same three rules below. The invitation's
+two doors (OBT-683, §6.10) are the third: the token is their guard too, read by a service, and
+stored hashed — but what it grants is the role it names, once, and the acceptance asks for a
+signed-in account besides the token:
 
 - **The token is the whole guard**, so the guard is a **service function**
   (`verify_intake_token`) and not a router condition — the rule then holds for any future
@@ -2282,10 +2288,12 @@ screen in the PME (OBT-546) instead of the form's `/access`. This is that screen
 routes under `/api/shema/access`, all behind `AdminUser`, composing what existed —
 `assign_role`, `revoke_role`, `set_region_scope` and the form's invite module — rather than a
 second copy of any of it. `app/services/shema/_grant_rules.py` owns every rule below that is a
-question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` answer *who*.
+question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` answer *who*. Since
+OBT-683 the invitee's two doors share the prefix and not the guard (the last two rows below).
 
-**The routes.** Request and response keys are camelCase; the form's own routes, which the PME's
-`/convite` page also calls, stay snake_case and are quoted as they are.
+**The routes.** Request and response keys are camelCase, except on the invitation's two doors
+(the last two rows), which kept the snake_case they answered under the form's prefix when
+OBT-683 moved them here: the path changed and the contract did not.
 
 | Route | Body / query | Answers |
 |---|---|---|
@@ -2296,8 +2304,8 @@ question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` an
 | `POST /access/invites/revoke` | `{inviteId}` | the invite, `status: "revoked"`; repeating is a no-op |
 | `GET /access/invites` | — | the two apps' invites nobody accepted, newest first, at most 200 |
 | `GET /access/changes` | — | `[{action: granted\|revoked, at, appKey, roleKey\|null, regionKey\|null, userId, userEmail, userName, actorId, actorEmail, actorName}]`, newest first, at most 200 |
-| `GET /api/resource-requests/access/invites/{token}` | anonymous | `{status, email, app_name, role_key, role_label, account_exists, region_keys}` |
-| `POST /api/resource-requests/access/invites/{token}/accept` | signed in, same e-mail | `{user_id, role_key, granted_at, granted_by, revoked_at, revoked_by}` |
+| `GET /access/invites/{token}` | anonymous | `{status, email, app_name, role_key, role_label, account_exists, region_keys}` |
+| `POST /access/invites/{token}/accept` | signed in, same e-mail, no role needed | `{user_id, role_key, granted_at, granted_by, revoked_at, revoked_by}` |
 
 **The rules.**
 
@@ -2339,10 +2347,15 @@ the commit that grants the role and spends the invite, with the inviter as their
 not rewrite a newer decision (409), and the Admin grants directly. A direct grant or revocation
 closes pending invites for the same thing.
 
-**Acceptance stays on the form's routes** for now — they are generic by token — so no new
-public route enters this module. **OBT-549 must move, not delete**, before those routes answer
-404: the lookup and the acceptance, `accept_invite`, `describe_invite`, `invite_store` and
-`_rules.assert_role_compatible`.
+**Acceptance is this module's since OBT-683** (30/oct/2026): `GET /access/invites/{token}` and
+`POST …/accept` (`app/api/shema/invitation.py`), the module's third deliberate hole (§6.6) — the
+lookup anonymous, the acceptance open to any signed-in account, because an invitee holds nothing
+until it lands. They call the form's services, `describe_invite` and `accept_invite`, which stay
+beside `invite_store` and `_rules.assert_role_compatible` in `app/services/resource_request_access/`
+(§2.6), so moving the path moved nothing else and both prefixes answer one invitation alike.
+**The form's two routes still answer**, for the stretch between this server and the PME that
+calls the new ones: they leave in a PR of their own, after the PME's, in the merge order the
+form's owner agrees, and nothing in this module has to change when they do.
 
 **The history.** Roles come from `user_app_roles` through the auth spine
 (`list_grant_history`): a grant carries `granted_by`/`granted_at` and a revocation
@@ -2378,8 +2391,8 @@ region half predates OBT-543.
 | accepting would change an existing regional scope | 409 · `CONFLICT` | `This account already has a region scope, and accepting this invitation would change it. The Admin grants the role directly instead.` |
 | a malformed body — an unknown region key, a bad e-mail, an unknown field | 422, no `code` | FastAPI's field errors |
 
-Accepting keeps the form's own refusals: revoked, used and expired are 409, another e-mail is
-403.
+Accepting keeps the refusals it had under the form's prefix: revoked, used and expired are 409,
+another e-mail is 403, no sign-in is 401.
 
 **`/api/roles`.** `/assign` and `/revoke` answer 403 `Roles of '<app>' are granted and revoked
 through /api/shema/access.` for the two apps to anyone but an installation admin. `/check` did

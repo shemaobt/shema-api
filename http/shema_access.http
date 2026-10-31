@@ -1,12 +1,13 @@
 # Shemá — the Admin's access surface (OBT-543 · docs/shema.md, "The Admin grants")
 #
-# Every route needs the `admin` role of the shema app ("Admin da plataforma"). Granting the
-# Admin writes it in both apps, so an installation admin bootstraps the first one here:
-# POST /access/grants with roleKey "admin". The routes, the shapes and every refusal sentence
+# Every route but the last two needs the `admin` role of the shema app ("Admin da plataforma");
+# the last two are the invitee's (OBT-683). Granting the Admin writes it in both apps, so an
+# installation admin bootstraps the first one here: POST /access/grants with roleKey "admin". The routes, the shapes and every refusal sentence
 # are in docs/shema.md §6.10. Set @accessToken after logging in as an Admin.
 
 @baseUrl = http://localhost:8000
 @accessToken = paste-an-admin-access-token
+@inviteeAccessToken = paste-the-invitee-access-token
 
 ### One account by exact e-mail — roles per app, stored regions, what they reach
 GET {{baseUrl}}/api/shema/access/people?email=someone@example.org
@@ -55,9 +56,9 @@ Content-Type: application/json
 GET {{baseUrl}}/api/shema/access/changes
 Authorization: Bearer {{accessToken}}
 
-### What the invitation gives — anonymous, the form's route until OBT-549 moves it
-GET {{baseUrl}}/api/resource-requests/access/invites/TOKEN
+### What the invitation gives — anonymous
+GET {{baseUrl}}/api/shema/access/invites/TOKEN
 
-### Accept it, signed in with the invited address
-POST {{baseUrl}}/api/resource-requests/access/invites/TOKEN/accept
+### Accept it, signed in with the invited address — no role needed
+POST {{baseUrl}}/api/shema/access/invites/TOKEN/accept
 Authorization: Bearer {{inviteeAccessToken}}
