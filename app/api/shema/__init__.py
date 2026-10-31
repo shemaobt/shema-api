@@ -48,7 +48,7 @@ reads the built application's route table for a route that is not one.
 
 **No answer of this module is kept by a cache, and that is a property of this file too**
 (OBT-555). ``router`` carries ``NO_STORE`` (``_deps.py``), and ``authenticated``, ``door`` and the
-two holes are all included into it, so every route the module mounts — today's and the next
+three holes are all included into it, so every route the module mounts — today's and the next
 issue's — answers ``Cache-Control: private, no-store``: every read here is built for its reader, and
 the link routes answer whoever holds the link. The dependency writes the header on the response
 FastAPI builds from a returned model; a ``GET`` whose handler returns a ``Response`` of its own
@@ -92,7 +92,7 @@ from app.api.shema.session import router as session_router
 from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
 
-#: The module's outer router. Its one dependency is the cache rule, not a guard: the two holes
+#: The module's outer router. Its one dependency is the cache rule, not a guard: the three holes
 #: below are included straight into it and answer anybody holding a link.
 router = ShemaRouter(dependencies=[NO_STORE])
 

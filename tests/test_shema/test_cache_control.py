@@ -163,7 +163,6 @@ async def urls(
     person = await make_intercessor(server, headers, contact="pessoa@example.test", listed=True)
     exit_token = await issue_exit_link(db_session, person["id"])
 
-    # The invitation the PME's /convite reads, sent through the Admin's own route (OBT-683).
     invited = await server.post(
         f"{PREFIX}/access/invites",
         json={
