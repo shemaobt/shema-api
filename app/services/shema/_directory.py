@@ -397,8 +397,6 @@ async def listable_ids(db: AsyncSession) -> list[str]:
     return list((await db.execute(stmt)).scalars())
 
 
-# --- a member found by their contact (OBT-681) ---------------------------------------------
-
 #: The one answer to a contact no member is reached at — unknown, or a row that never had the
 #: ``network`` consent. It never repeats the contact: the caller already has it, and a log or a
 #: proxy that keeps the body should not.
