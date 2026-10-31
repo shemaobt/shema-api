@@ -19,7 +19,7 @@ That is why the whole small lifecycle lives here rather than only the reads. Spl
 the guarded reads here, the writes next door — would have given the glob two files to allow,
 and a rule with an exception list is the rule the next exception joins.
 
-**Four rules this file is the whole of.**
+**Five rules this file is the whole of.**
 
 *Consent is per context and absence is refusal.* A row exists only while the consent stands
 (``app/db/models/shema_consent.py`` carries the argument), so every question here is *is there
