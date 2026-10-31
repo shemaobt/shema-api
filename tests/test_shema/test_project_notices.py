@@ -11,7 +11,10 @@ the real panel:
 * an urgent need's place goes only to a reader who reaches the project **now**, and leaves as
   ``outside``: a withheld project reads its region even for the coordination;
 * a notice written before this change answers its kind and nothing it said;
-* a withheld project's name is not answered, even on a notice written before it was flagged.
+* a withheld project's name is not answered, even on a notice written before it was flagged;
+* an urgent need's place carries the name as it leaves — the public name, or the region key while
+  none is registered — beside the ``languageNameWithheld`` that describes it, and no mark travels
+  without the name it describes (OBT-666, API-PRIV-043).
 
 The place and the name below are fictional, by the module's rule for test data.
 """
@@ -22,6 +25,7 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 
 from app.api.shema._deps import APP_KEY
@@ -58,16 +62,26 @@ TODAY = datetime.now(UTC).date()
 #: Where the project is, and a name that says it too — neither may reach a reader who may not.
 SECRET_PLACE = "Norlandia Confidencial, Vila Sigilosa"
 SECRET_NAME = "Língua da Norlandia Confidencial"
+#: The name coordination registered for the other readers of a withheld project (OBT-560).
+PUBLIC_NAME = "Língua Velada"
 
 PROJECT_KINDS = {"health", "need", "field", "prayer", "stale"}
 
 
-async def _project(db_session, project_id: str, *, sensitive: bool = False, name: str = "Kuikuro"):
+async def _project(
+    db_session,
+    project_id: str,
+    *,
+    sensitive: bool = False,
+    name: str = "Kuikuro",
+    public: str | None = None,
+):
     project = await make_shema_project(
         db_session, project_id=project_id, region_key=AFRICA, language_name=name
     )
     project.location = SECRET_PLACE
     project.sensitive_country = sensitive
+    project.public_language_name = public
     await db_session.commit()
     return project
 
@@ -364,10 +378,10 @@ async def test_the_place_goes_only_to_a_reader_who_reaches_the_project(
 
     [still] = await _panel(db_session, lab)
     assert still["projectId"] == project.id
-    # ``languageNameWithheld`` rides on every leaving shape since OBT-560; a place has no name.
     assert still["facts"]["place"] == {
         "location": SECRET_PLACE,
         "locationWithheld": False,
+        "languageName": "Kuikuro",
         "languageNameWithheld": False,
     }
 
@@ -377,6 +391,8 @@ async def test_the_place_goes_only_to_a_reader_who_reaches_the_project(
     assert gone["facts"]["place"] is None
     assert gone["region"] == "africa"
     assert "Norlandia" not in json.dumps(gone)
+    # No place, so no mark: the sentence's name is all this reader is handed.
+    assert "languageNameWithheld" not in json.dumps(gone)
 
 
 async def test_a_sensitive_project_s_notice_reads_the_region_even_for_coordination(
@@ -384,8 +400,11 @@ async def test_a_sensitive_project_s_notice_reads_the_region_even_for_coordinati
 ) -> None:
     """A notice is an output path (``docs/shema.md`` §6.4): it is built for ``outside`` whoever
     reads it, so the coordinator in scope — who reads the truth on the record — reads the region
-    here. Through the route, because the response model validates the place a second time."""
-    project = await _project(db_session, "a1b2c3d4-0000-4000-8000-000000000005", sensitive=True)
+    here, and the region key in place of the name. Through the route, because the wire is what the
+    bell reads."""
+    project = await _project(
+        db_session, "a1b2c3d4-0000-4000-8000-000000000005", sensitive=True, name=SECRET_NAME
+    )
     coordinator = await _coordinator(db_session, shema_app)
     await _urgent(db_session, project, ("100.00", "BRL"))
 
@@ -397,9 +416,84 @@ async def test_a_sensitive_project_s_notice_reads_the_region_even_for_coordinati
     assert entry["facts"]["place"] == {
         "location": "africa",
         "locationWithheld": True,
-        "languageNameWithheld": False,
+        "languageName": "africa",
+        "languageNameWithheld": True,
     }
+    assert entry["facts"]["languageName"] == ""
     assert "Norlandia" not in res.text and "Sigilosa" not in res.text
+
+
+@pytest.mark.parametrize(
+    ("public", "carried"),
+    [(None, "africa"), (PUBLIC_NAME, PUBLIC_NAME)],
+    ids=["no-public-name", "public-name"],
+)
+async def test_a_sensitive_urgent_notice_marks_the_name_it_carries_as_not_the_language_s_own(
+    db_session, client, shema_app, public, carried
+) -> None:
+    """**OBT-666 (API-PRIV-043).** The OBT Lab reads a sensitive project's urgent need: the place
+    carries the name coordination registered — or the region key while none is — and says it is not
+    the language's own, as every other leaving shape does. The sentence's name is untouched: the
+    public name, or ``""``, which the bell words as *a project*. Neither the real name nor the place
+    is anywhere in the body."""
+    project = await _project(
+        db_session,
+        f"a1b2c3d4-0000-4000-8000-00000000001{0 if public is None else 1}",
+        sensitive=True,
+        name=SECRET_NAME,
+        public=public,
+    )
+    lab = await _coordinator(db_session, shema_app, email="lab@notices.test", role="obtLab")
+    await _urgent(db_session, project, ("1500.00", "USD"), categories=["security"])
+
+    res = await client.get(PANEL, headers=await auth_header(db_session, lab))
+    assert res.status_code == 200, res.text
+    [entry] = res.json()
+
+    assert entry["kind"] == "need"
+    assert entry["facts"]["place"] == {
+        "location": "africa",
+        "locationWithheld": True,
+        "languageName": carried,
+        "languageNameWithheld": True,
+    }
+    assert entry["facts"]["languageName"] == (public or "")
+    assert "Norlandia" not in res.text and "Sigilosa" not in res.text
+
+
+def _marked(node: object) -> list[dict]:
+    """Every object in a payload that carries ``languageNameWithheld``, however deep."""
+    if isinstance(node, list):
+        return [found for item in node for found in _marked(item)]
+    if not isinstance(node, dict):
+        return []
+    here = [node] if "languageNameWithheld" in node else []
+    return here + [found for value in node.values() for found in _marked(value)]
+
+
+async def test_the_mark_never_travels_without_the_name_it_describes(
+    db_session, client, shema_app
+) -> None:
+    """The catalog's rule for the bell, over the whole panel: a ``languageNameWithheld`` sits beside
+    the ``languageName`` it describes, and a ``true`` one never beside an empty name (OBT-666). A
+    sensitive project with no public name raises a need, turns critical and sends a Pulse."""
+    project = await _project(
+        db_session, "a1b2c3d4-0000-4000-8000-000000000012", sensitive=True, name=SECRET_NAME
+    )
+    coordinator = await _coordinator(db_session, shema_app)
+    await _critical(db_session, project, date(2026, 9, 11))
+    await _urgent(db_session, project, ("100.00", "BRL"))
+    await _pulse(db_session, project, prayer=False)
+
+    res = await client.get(PANEL, headers=await auth_header(db_session, coordinator))
+    assert res.status_code == 200, res.text
+    marked = _marked(res.json())
+
+    assert marked, "the urgent need's place carries the mark"
+    for found in marked:
+        assert "languageName" in found, found
+        if found["languageNameWithheld"]:
+            assert found["languageName"], found
 
 
 async def test_a_sensitive_project_s_notice_never_names_its_language(db_session, shema_app) -> None:
