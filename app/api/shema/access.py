@@ -13,13 +13,18 @@ module names them; every rule the surface applies — the vocabulary, the mirror
 regions with a regional role, the self-grant — is ``app/services/shema/_grant_rules.py``'s.
 ``docs/shema.md`` (*The Admin grants*) is the contract the PME's screen reads: the routes, the
 shapes and every refusal sentence with its status.
+
+**Three of the seven take the caller's reader** (``Reading``, OBT-679): the lookup, the grant and
+the revocation answer the account's projects, named by their language, and a name can name a
+sensitive place — so the service builds them for the reader, as the pending projects are built.
+The reader shapes the payload and admits nobody; ``AdminUser`` is still the guard.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from app.api.shema._deps import APP_KEY, FORM_APP_KEY, AdminUser, Db
+from app.api.shema._deps import APP_KEY, FORM_APP_KEY, AdminUser, Db, Reading
 from app.models.shema_grant import (
     AccountGrants,
     GrantChange,
@@ -49,22 +54,27 @@ APPS = GrantApps(shema=APP_KEY, form=FORM_APP_KEY)
 
 @router.get("/access/people", response_model=AccountGrants)
 async def read_account(
-    actor: AdminUser, db: Db, email: str = Query(..., min_length=1)
+    actor: AdminUser, reading: Reading, db: Db, email: str = Query(..., min_length=1)
 ) -> AccountGrants:
-    """One account by exact e-mail: its roles in both apps, its regions, what they reach."""
-    return await find_account(db, APPS, email=email)
+    """One account by exact e-mail: its roles in both apps, its regions, what they reach, and
+    the projects it is a live member of."""
+    return await find_account(db, APPS, email=email, readership=reading)
 
 
 @router.post("/access/grants", response_model=AccountGrants)
-async def create_grant(payload: RoleGrantRequest, actor: AdminUser, db: Db) -> AccountGrants:
+async def create_grant(
+    payload: RoleGrantRequest, actor: AdminUser, reading: Reading, db: Db
+) -> AccountGrants:
     """Grant a role — with its regions when it is regional — and answer the account."""
-    return await grant_role(db, APPS, payload=payload, actor=actor)
+    return await grant_role(db, APPS, payload=payload, actor=actor, readership=reading)
 
 
 @router.post("/access/grants/revoke", response_model=AccountGrants)
-async def remove_grant(payload: RoleRevokeRequest, actor: AdminUser, db: Db) -> AccountGrants:
+async def remove_grant(
+    payload: RoleRevokeRequest, actor: AdminUser, reading: Reading, db: Db
+) -> AccountGrants:
     """Revoke a role and answer the account."""
-    return await revoke_grant(db, APPS, payload=payload, actor=actor)
+    return await revoke_grant(db, APPS, payload=payload, actor=actor, readership=reading)
 
 
 @router.post("/access/invites", response_model=SentInvite, status_code=201)

@@ -22,8 +22,9 @@ The three nets, and what each one catches that the others do not:
    on write.
 4. **The reader nets** (OBT-528). The truth of a sensitive place is coordination's, so the
    routes that take the caller's reader are a list (:data:`READER_ROUTES`) and the services that
-   build a shape for it are two files — an export that reached for the session's reader would be
-   a route that carries the truth out of the system, and it is red here until somebody lists it.
+   build a shape for it are a list of files too (:data:`SESSION_READS`) — an export that reached
+   for the session's reader would be a route that carries the truth out of the system, and it is
+   red here until somebody lists it.
 
 **Why AST and not a substring search.** The precedent in this directory
 (``test_the_app_key_is_named_once_in_the_module``) greps for a quoted literal, which works
@@ -200,14 +201,22 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         # reads a sensitive project's request and its language's name as the coordination does.
         ("GET", f"{PREFIX}/prayer/review"),
         ("POST", f"{PREFIX}/projects/{{project_id}}/prayer/release"),
+        # OBT-679: the Admin's lookup, grant and revocation answer the account's projects, named
+        # by their language, which can name the place; built for the reader, and no place.
+        ("GET", f"{PREFIX}/access/people"),
+        ("POST", f"{PREFIX}/access/grants"),
+        ("POST", f"{PREFIX}/access/grants/revoke"),
     }
 )
 
 #: The services that build a shape for the session's reader: the Projetos screen's cards, the
-#: record, and — OBT-547 — the Admin's list of pending projects, a console read of the place the
-#: team typed that the Admin confirms or corrects. Every other leaving shape in the module is built
-#: with no reader, which is ``outside``.
-SESSION_READS = frozenset({"browse_projects.py", "read_record.py", "list_pending_projects.py"})
+#: record, — OBT-547 — the Admin's list of pending projects, a console read of the place the
+#: team typed that the Admin confirms or corrects, and — OBT-679 — the projects an account is a
+#: live member of, on the Admin's lookup, named as the Admin reads them. Every other leaving shape
+#: in the module is built with no reader, which is ``outside``.
+SESSION_READS = frozenset(
+    {"browse_projects.py", "read_record.py", "list_pending_projects.py", "find_account.py"}
+)
 
 #: Routes under ``/api/shema`` whose subject is a **person**, not a project, so the project
 #: vocabulary above misreads their fields — BE-13's two directories.
@@ -473,9 +482,9 @@ def test_only_the_console_reads_build_a_shape_for_the_sessions_reader() -> None:
     """*Outside is what the export, the ETEN report, the Pulse and the leader's link already use
     — não muda*, as a property of the tree.
 
-    A shape built with no reader is ``outside``. The two files that build one for the session
-    are the cards and the record; a third — a notice, a file, a report — that reached for a
-    reader would be the one path out of the system carrying the truth.
+    A shape built with no reader is ``outside``. The files that build one for the session are
+    the console's reads in :data:`SESSION_READS`; another — a notice, a file, a report — that
+    reached for a reader would be the one path out of the system carrying the truth.
     """
     builders = sorted(
         source.name
