@@ -40,7 +40,7 @@ from app.services.shema import (
 )
 from tests.baker import make_user
 from tests.resource_request_harness import REQUESTS, draft, endorse, give_fund, put_evaluation
-from tests.shema_admin_harness import FORM_INVITES, INVITES, give_urls, make_admin
+from tests.shema_admin_harness import INVITES, give_urls, make_admin
 from tests.shema_harness import list_countries
 from tests.test_shema.conftest import (
     PREFIX,
@@ -69,14 +69,13 @@ def reject_path(project_id: str) -> str:
 
 @asynccontextmanager
 async def pending_client(db_session) -> AsyncIterator[httpx.AsyncClient]:
-    """The PME's module, the form's module and its invitation routes, and auth — one app."""
+    """The PME's module, the form's module and auth — one app."""
     from fastapi import FastAPI
     from slowapi import _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
 
     from app.api.auth import router as auth_router
     from app.api.resource_requests import router as form_router
-    from app.api.resource_requests.access import router as form_access_router
     from app.api.shema import router as module_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
@@ -87,7 +86,6 @@ async def pending_client(db_session) -> AsyncIterator[httpx.AsyncClient]:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.include_router(module_router, prefix=PREFIX)
     app.include_router(form_router, prefix="/api/resource-requests")
-    app.include_router(form_access_router, prefix="/api/resource-requests/access")
     app.include_router(auth_router, prefix="/api/auth")
     register_exception_handlers(app)
 
@@ -884,13 +882,13 @@ async def test_accepting_a_project_invite_puts_the_person_on_the_team(
         )
         token = confirmed.json()["invited"][0]["inviteUrl"].split("token=")[1]
         listed = await client.get(INVITES, headers=filing.admin_headers)
-        described = await client.get(f"{FORM_INVITES}/{token}")
+        described = await client.get(f"{INVITES}/{token}")
         signed = await client.post(
             "/api/auth/signup",
             json={"email": HOLDER, "password": "a-long-password", "display_name": "Joana"},
         )
         joiner = {"Authorization": f"Bearer {signed.json()['tokens']['access_token']}"}
-        accepted = await client.post(f"{FORM_INVITES}/{token}/accept", headers=joiner)
+        accepted = await client.post(f"{INVITES}/{token}/accept", headers=joiner)
         session = await client.get(SESSION, headers=joiner)
         mine = await client.get(f"{PREFIX}/me/projects", headers=joiner)
 
