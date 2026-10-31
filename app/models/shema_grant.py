@@ -10,6 +10,14 @@ import (``tests/test_app_boots.py``), and a second spelling of it here is the dr
 owner exists to prevent. Region keys *are* typed — ``ShemaRegionKey`` is a frozen vocabulary
 of seven the console already holds — so an unknown one is FastAPI's 422 before any service
 runs.
+
+**The account's projects leave through the boundary** (OBT-679). :class:`AccountProject` names a
+project by its language, and a sensitive project's name can name the place (OBT-560), so it is a
+:class:`~app.models.shema_privacy.LeavingShape` the service builds for the caller's reader — the
+Admin reads it as the coordination, by ``COORDINATION_EVERYWHERE``, and removing ``admin`` from
+that tuple would make this list read the public name too, with no edit here. It carries the id and
+the name and nothing else of the project: what the card prints, and the key
+``DELETE /projects/{id}/members/{userId}`` takes.
 """
 
 from datetime import datetime
@@ -19,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.db.models.shema_enums import ShemaRegionKey
 from app.models.resource_request_access import InviteStatus
+from app.models.shema_privacy import LeavingShape
 
 _REQUEST = ConfigDict(populate_by_name=True, extra="forbid")
 _RESPONSE = ConfigDict(populate_by_name=True)
@@ -43,12 +52,19 @@ class RegionGrant(BaseModel):
     granted_at: datetime = Field(alias="grantedAt")
 
 
+class AccountProject(LeavingShape):
+    """A project the account is a live member of, named as the reader reads it."""
+
+    id: str
+    language_name: str = Field(alias="languageName")
+
+
 class AccountGrants(BaseModel):
     """One account as the Admin sees it — what the lookup, a grant and a revocation answer.
 
     ``regions`` are the stored rows the Admin edits; ``regionScope`` is what they reach, by
     the session's own rule (``null`` = every region). The two differ for rows left under no
-    regional role, which reach nothing.
+    regional role, which reach nothing. ``projects`` are the account's live memberships.
     """
 
     model_config = _RESPONSE
@@ -60,6 +76,7 @@ class AccountGrants(BaseModel):
     apps: list[AppRoles]
     regions: list[RegionGrant]
     region_scope: list[str] | None = Field(default=None, alias="regionScope")
+    projects: list[AccountProject]
 
 
 class RoleGrantRequest(BaseModel):

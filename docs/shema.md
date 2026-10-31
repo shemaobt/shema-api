@@ -1685,8 +1685,9 @@ and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
 today and BE-06's record read as the one line expected in it — BE-06 wrote it, and OBT-528
 emptied it again when the record joined the boundary. And a vocabulary check, so the list of
 guarded fields and the list of replacements cannot drift apart. OBT-528 added a fourth: the
-routes that take the caller's reader (`READER_ROUTES`) and the two services that build a shape
-for it.
+routes that take the caller's reader (`READER_ROUTES`) and the services that build a shape for
+it (`SESSION_READS`: the cards and the record, the Admin's pending projects since OBT-547, and
+the account's projects on the Admin's lookup since OBT-679).
 
 **And the bytes, because a predicate that ends in a public URL decides nothing.** §4.6's
 verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
@@ -2289,7 +2290,7 @@ question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` an
 
 | Route | Body / query | Answers |
 |---|---|---|
-| `GET /access/people?email=` | exact e-mail, case aside | `AccountGrants` — `{userId, email, displayName, isActive, apps: [{appKey, roles[]}], regions: [{regionKey, grantedBy, grantedAt}], regionScope}` |
+| `GET /access/people?email=` | exact e-mail, case aside | `AccountGrants` — `{userId, email, displayName, isActive, apps: [{appKey, roles[]}], regions: [{regionKey, grantedBy, grantedAt}], regionScope, projects: [{id, languageName, locationWithheld, languageNameWithheld}]}` |
 | `POST /access/grants` | `{userId, appKey, roleKey, regionKeys?}` | `AccountGrants`, as the account now stands |
 | `POST /access/grants/revoke` | `{userId, appKey, roleKey}` | `AccountGrants` |
 | `POST /access/invites` | `{email, appKey, roleKey, regionKeys?}` | 201 `{id, email, appKey, roleKey, regionKeys, status, createdAt, expiresAt, createdBy, inviteUrl, emailSent}` — the link once |
@@ -2321,6 +2322,16 @@ question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` an
   each app, the close of any invite still pending for the same e-mail, app and role, and the
   regions. The account written to is locked `FOR UPDATE`, which serializes two acts on one
   person on PostgreSQL (SQLite ignores it).
+- **The account carries its projects** (OBT-679, 30/out/2026 — ours): `projects` are the projects
+  the account is a live member of — `_scope.member_projects`, so a stay that ended, somebody
+  else's membership and a project nobody confirmed are absent — each its id and the language's
+  name, and nothing else of the project: what the card prints, and the key
+  `DELETE /projects/{id}/members/{userId}` (§6.9) takes to take the person off. The name is
+  built for the caller's reader (`AccountProject` is a `LeavingShape`, the three routes that
+  answer `AccountGrants` take `Reading`), and the Admin reads as the coordination everywhere
+  (§6.4), so it reads every name as it is; nothing in the lookup decides that. Ordered by that
+  name, then the id. The grant and the revocation answer it too: the screen redraws from one
+  reply. An empty list is a person on no team.
 - **The Admin's standing is read fresh** on every write — `AdminUser` answers from a
   thirty-second cache per process — and an Admin holding the role in one app only is refused
   with a sentence that says so. **The same sentence reaches an Admin revoked a moment ago**,
@@ -2389,7 +2400,6 @@ reveals nothing `/api/auth/my-roles` does not.
 
 **Residuals, named.** Until OBT-549, the Gestor still concedes through the form's door, and an
 installation admin can still invite `admin` there — that acceptance writes the form's row only.
-The account lookup does not list project memberships, which are OBT-524's table.
 
 ### 6.11 Seam I — the project the mesa's approval files, and the Admin's conference — **Decided; OBT-547**
 
