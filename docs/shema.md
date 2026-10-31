@@ -2355,7 +2355,8 @@ beside `invite_store` and `_rules.assert_role_compatible` in `app/services/resou
 (§2.6), so moving the path moved nothing else and both prefixes answer one invitation alike.
 **The form's two routes still answer**, for the stretch between this server and the PME that
 calls the new ones: they leave in a PR of their own, after the PME's, in the merge order the
-form's owner agrees, and nothing in this module has to change when they do.
+form's owner agrees, and the only thing of this module that leaves with them is the case that
+holds the two prefixes alike (`test_both_prefixes_answer_one_invitation_alike_until_the_form_s_leave`).
 
 **The history.** Roles come from `user_app_roles` through the auth spine
 (`list_grant_history`): a grant carries `granted_by`/`granted_at` and a revocation
