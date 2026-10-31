@@ -82,6 +82,14 @@ Content-Type: application/json
 
 {"basis": "asked on the call of 3 March, said yes to the internal list"}
 
+### The same consent for somebody already in the network the list does not show (OBT-681)
+### Found by the contact they were asked through: 201 recorded, 200 already listed, 404, 409
+POST {{baseUrl}}/api/shema/prayer/intercessors/consents/directory
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"contact": "+55 11 98765-4321", "basis": "said yes on WhatsApp, 30 October"}
+
 ### Consent to appearing in something that leaves the organisation
 PUT {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID/consents/partner-export
 Authorization: Bearer {{accessToken}}

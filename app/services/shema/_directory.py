@@ -47,10 +47,17 @@ Leaving is :func:`_erase`, the same statement removal is, and every link that do
 anything is refused with **one** sentence, whatever the reason — a forwarded link must not tell
 whoever holds it whether the person is still in the network.
 
-The two string rules — what an e-mail is, what a phone is, how much of either a hint keeps —
-are in ``app/utils/shema_contacts.py`` and re-exported here, because ``app/models/`` needs the
-first to refuse a payload and may not import ``app/services/``. **Reading a contact off a row
-is the guarded act**; deciding whether a string looks like a phone number is not.
+*A member nobody can see is found by their contact, never by a list* (OBT-681). Somebody who
+withheld ``directory`` is on no screen, so the console never holds their id; when they later agree
+to be listed, whoever adds people to the network types the contact they were asked through, and
+:func:`member_reached_at` answers the one member it reaches — an id, which the caller turns into a
+recorded consent before anything about the person is shown.
+
+The string rules — what an e-mail is, what a phone is, how much of either a hint keeps, when two
+spellings are one contact — are in ``app/utils/shema_contacts.py`` and re-exported here, because
+``app/models/`` needs the first to refuse a payload and may not import ``app/services/``.
+**Reading a contact off a row is the guarded act**; deciding whether a string looks like a phone
+number is not.
 
 **Reconciliation with BE-04, which runs beside this issue on the same base.** That issue builds
 ``_redaction.py`` as the sensitive-country owner for projects. The two do not overlap in code —
@@ -78,7 +85,7 @@ from typing import Any, Final, NamedTuple
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, NotFoundError
+from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_exit_link import ShemaIntercessorExitLink
@@ -87,11 +94,12 @@ from app.models.shema_intercessor import Consent, IntercessorEntry
 from app.services.common import tokens
 from app.services.shema import _trail
 from app.services.shema._scope import ADMIN_ROLE, COORDINATOR_ROLE, RESOURCE_CIRCLE_ROLE
-from app.utils.shema_contacts import contact_channel, contact_hint
+from app.utils.shema_contacts import contact_channel, contact_hint, contact_key
 from app.utils.stored_time import as_utc
 
 __all__ = [
     "DEAD_EXIT_LINK",
+    "NOBODY_AT_CONTACT",
     "REVIEW_AFTER",
     "LeavingPerson",
     "check_exit_link",
@@ -110,6 +118,7 @@ __all__ = [
     "leaving_person",
     "listable_ids",
     "mark_reviewed",
+    "member_reached_at",
     "people_lacking",
     "record_consent",
     "record_where_missing",
@@ -386,6 +395,59 @@ async def listable_ids(db: AsyncSession) -> list[str]:
         .order_by(ShemaIntercessor.country, ShemaIntercessor.name, ShemaIntercessor.id)
     )
     return list((await db.execute(stmt)).scalars())
+
+
+# --- a member found by their contact (OBT-681) ---------------------------------------------
+
+#: The one answer to a contact no member is reached at — unknown, or a row that never had the
+#: ``network`` consent. It never repeats the contact: the caller already has it, and a log or a
+#: proxy that keeps the body should not.
+NOBODY_AT_CONTACT: Final = "Nobody in the network is reached at this contact."
+
+#: Two members at one contact: the consent belongs to one of them, and which one is not guessed.
+SHARED_CONTACT: Final = (
+    "More than one person in the network is reached at this contact, so there is no telling "
+    "which of them consented; nothing was recorded."
+)
+
+
+async def member_reached_at(db: AsyncSession, contact: str) -> str:
+    """The id of the one member of the network reached at ``contact``, or the refusal.
+
+    **A member, not a row**: the people holding ``network`` (:func:`_in_the_network`). A row
+    imported with no consent at all reads exactly like an unknown contact, because listing it
+    would put on a screen somebody who never agreed even to be reached — :func:`listable_ids`
+    lists any ``directory`` row, so the floor has to be asked here. Listed or not is the
+    caller's question: somebody already in the directory is found too, so asking twice is
+    answered rather than refused.
+
+    **Same contact** is :func:`~app.utils.shema_contacts.contact_key`'s: an e-mail in any case,
+    a phone by its digits. The statement narrows — an e-mail by ``lower``, a phone by a
+    ``LIKE`` of its digits in order with anything between them, which no true match can fail
+    — and the key decides among what is left, because neither database spells *only the
+    digits of a column* the same way. So only rows that already look like the contact asked
+    for reach this process, and only an id leaves it.
+
+    Two members at one contact are a :class:`~app.core.exceptions.ConflictError` naming
+    neither: a family's shared phone is ordinary in the field, and listing both would list
+    somebody who did not consent.
+    """
+    key = contact_key(contact)
+    if key is None:
+        raise NotFoundError(NOBODY_AT_CONTACT)
+    stored = func.lower(func.trim(ShemaIntercessor.contact))
+    narrowed = stored == key if "@" in key else stored.like("%" + "%".join(key) + "%")
+    rows = await db.execute(
+        select(ShemaIntercessor.id, ShemaIntercessor.contact).where(
+            ShemaIntercessor.id.in_(_in_the_network()), narrowed
+        )
+    )
+    found: list[str] = [person_id for person_id, held in rows.all() if contact_key(held) == key]
+    if not found:
+        raise NotFoundError(NOBODY_AT_CONTACT)
+    if len(found) > 1:
+        raise ConflictError(SHARED_CONTACT)
+    return found[0]
 
 
 # --- what leaves this file -----------------------------------------------------------
