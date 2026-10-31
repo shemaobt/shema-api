@@ -17,11 +17,12 @@ of its own. ``region`` is the coarse key (``south-america``, ``asia``, …) ever
 already answers in the clear (``docs/shema.md`` §6.1), not a location, a country or a base — the
 same distinction FE-44's own ``AppNotification.region`` draws. The project notices' sentence is
 the console's since OBT-559: the entry answers :class:`ShemaProjectNoticeFacts` — what happened,
-and the language's name as ``_redaction.language_name_for`` lets every recipient read it — and
-the platform's English ``title`` and ``body`` stay in the table for the readers that are not the
-bell. The one place in those facts is an urgent need's, and it lives in
-:class:`ShemaNoticePlace`, a leaving shape the panel builds with no reader — ``outside``, because
-a notice is an output path (§6.4) — and only for a reader who reaches the project. A request
+and the language's name as every recipient may read it — and the platform's English ``title`` and
+``body`` stay in the table for the readers that are not the bell. The one place in those facts is
+an urgent need's, and it lives in :class:`ShemaNoticePlace`, a leaving shape the panel builds with
+no reader — ``outside``, because a notice is an output path (§6.4) — and only for a reader who
+reaches the project. Since OBT-666 the place carries the name too, beside the mark that says
+whether it is the language's own, and the facts' name is that same shape spoken. A request
 notice's ``project_id`` and a project notice's are answered on the same condition, which is
 §6.1's rule: whoever a project is out of scope for does not learn where it is.
 
@@ -77,17 +78,31 @@ _INWARD = ConfigDict(
 
 
 class ShemaNoticePlace(LeavingShape):
-    """Where an urgent need's project is — as it leaves, for a reader who reaches it (OBT-559).
+    """Where an urgent need's project is and what it is called — as both leave (OBT-559, OBT-666).
 
-    Validated straight off the ``ShemaProject`` row, so the boundary reads the flag and the region
-    itself and the panel never names the place: a cleared project's place is its place, and a
-    withheld one's is its region key, beside ``locationWithheld``. Built with no reader, so it is
-    ``outside`` even for the coordination — the notice is what leaves, not the record.
+    Validated straight off the ``ShemaProject`` row, so the boundary reads the flag, the region and
+    the names itself and the panel never names the place: a cleared project's place and name are its
+    own, and a withheld one's are its region key and the name coordination registered — or the
+    region key again while none is — beside ``locationWithheld`` and ``languageNameWithheld``. Built
+    with no reader, so it is ``outside`` even for the coordination — the notice is what leaves, not
+    the record.
+
+    **The name is declared so the mark has a name to describe** (OBT-666). ``languageNameWithheld``
+    rides on every leaving shape, and the boundary turns it on only for a shape that declares a name
+    (``_withhold_name``): a place with none answered ``false`` beside a sentence whose name was
+    ``""`` — a mark saying *this is the language's own name* about a name it did not carry. So the
+    place carries the name in the field form every other leaving shape uses, with the mark beside
+    it, and the panel speaks the same shape for :attr:`ShemaProjectNoticeFacts.language_name`. Not
+    the alternatives: the sentence's name turned into the region key would be printed raw by the
+    bell, which words ``languageName or "a project"``; and a mark beside ``""`` is either ``true``
+    with no name or the defect itself. The place still goes only to a reader who reaches the
+    project, and with it the mark — a reader it is not given to reads the sentence and no mark.
     """
 
     model_config = _OUTWARD
 
     location: str = ""
+    language_name: str = ""
 
 
 class ShemaNoticeTotal(BaseModel):
@@ -102,13 +117,16 @@ class ShemaNoticeTotal(BaseModel):
 class ShemaProjectNoticeFacts(BaseModel):
     """What a project notice says, for the console to word in the reader's language (OBT-559).
 
-    ``language_name`` is the name every recipient may read — ``""`` when the project is withheld
-    and has no public name registered (OBT-560), which the console reads as *a project*. The rest
+    ``language_name`` is the name every recipient may read, for a sentence — ``""`` when the project
+    is withheld and has no public name registered (OBT-560), which the console reads as *a project*.
+    It is :class:`ShemaNoticePlace` spoken (``spoken_name("")``, OBT-562), so it is the name the
+    place carries beside its mark wherever that name is a name (OBT-666). The rest
     is each kind's own: ``assessed_on`` the health notice's day; ``need_count``,
     ``need_categories`` and ``need_totals`` the urgent needs of one save; ``submitted_by`` the
     Pulse's signer; ``days_since_update`` how long a quiet project has been quiet (``None`` when
     it never reported). ``place`` is the urgent need's, answered only to a reader who reaches the
-    project; everybody else words the sentence with the entry's ``region``.
+    project, with the name as it leaves and ``languageNameWithheld`` beside it; everybody else words
+    the sentence with the entry's ``region``.
     """
 
     model_config = _OUTWARD
