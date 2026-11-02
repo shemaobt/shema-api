@@ -15,8 +15,8 @@ from sqlalchemy import (
     case,
     cast,
     delete,
+    func,
     literal,
-    not_,
     or_,
     select,
     update,
@@ -1047,34 +1047,43 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     warning that visit ended stays ended: once the stamps go the visit can no longer be
     undone, so what it ended is final.
 
-    **An ask on a room that is already halted and unattended is a repeat and writes nothing**
-    (ENG-2121): a tablet retries, or re-sends the halt it remembers on relaunch, and the
-    repeat would otherwise restamp ``updated_at`` (which orders the team's rooms and names its
-    Current book), count another halt and clear the visit. A first ask, or one after somebody
-    attended, raises the halt in any room.
+    **An ask on a room that is already halted and unattended is a repeat** (ENG-2121): it still
+    counts, so a return that read the earlier halt leaves this one standing (ADR 0045), but it
+    leaves ``updated_at`` where it was. That column orders the team's rooms and names its Current
+    book, and a tablet that retries, or re-sends the halt it remembers on relaunch, is not the
+    team's work. A first ask, or one after somebody attended, raises the halt in any room.
     """
     repeat = and_(IRSession.status == IRSessionStatus.NEEDS_PERSON, IRSession.attended_at.is_(None))
     halted = await db.execute(
         update(IRSession)
-        .where(IRSession.id == session.id, IRSession.ended_at.is_(None), not_(repeat))
+        .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
         .values(
             status=IRSessionStatus.NEEDS_PERSON,
             halts_raised=IRSession.halts_raised + 1,
             warned_at=case((IRSession.attended_at.is_not(None), None), else_=IRSession.warned_at),
             attended_at=None,
             attended_by=None,
+            halt_kind=HaltKind.BLOCKING.value,
+            person_arrived_at=None,
+            updated_at=case((repeat, IRSession.updated_at), else_=func.now()),
         )
         .execution_options(synchronize_session=False)
     )
     if halted.rowcount == 0:
-        await db.refresh(session)
-        if session.ended_at is not None:
-            raise PassageClosed("The passage is closed and no longer asks for a person.")
-        return session
-    _a_new_ask(session, kind=HaltKind.BLOCKING)
+        raise PassageClosed("The passage is closed and no longer asks for a person.")
     if await is_the_demo_team(db, session.project_id):
         await db.flush()
-        await db.refresh(session, ["status", "halts_raised", "warned_at", "attended_at"])
+        await db.refresh(
+            session,
+            [
+                "status",
+                "halts_raised",
+                "warned_at",
+                "attended_at",
+                "halt_kind",
+                "person_arrived_at",
+            ],
+        )
         return await attend(
             db, session, by=None, halts_raised=session.halts_raised, warned_at=session.warned_at
         )

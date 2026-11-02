@@ -126,7 +126,7 @@ async def _touched_long_ago(db: AsyncSession, session) -> datetime:
     return moment
 
 
-async def test_asking_again_with_nobody_attending_writes_nothing(
+async def test_asking_again_with_nobody_attending_counts_but_holds_updated_at(
     db_session: AsyncSession, halted
 ) -> None:
     moment = await _touched_long_ago(db_session, halted)
@@ -135,9 +135,8 @@ async def test_asking_again_with_nobody_attending_writes_nothing(
     await service.mark_needs_person(db_session, halted)
 
     assert halted.status is IRSessionStatus.NEEDS_PERSON
-    assert halted.updated_at == moment, "a repetição envelheceu ou rejuvenesceu a sala"
-    assert halted.halts_raised == raised
-    assert halted.attended_at is None
+    assert halted.updated_at == moment, "a repetição mexeu na ordem das salas do time"
+    assert halted.halts_raised == raised + 1, "a repetição ainda conta, ADR 0045"
 
 
 async def test_a_first_ask_on_a_reopened_older_room_raises_the_halt_and_moves_updated_at(

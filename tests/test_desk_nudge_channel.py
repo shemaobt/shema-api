@@ -517,15 +517,9 @@ async def test_a_refused_visit_writes_nothing_and_nudges_nothing(
     desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:
     session_id = await a_session(db_session, team)
-    asking = f"{IR}/sessions/{session_id}/needs-person"
-    first = await client.post(asking, headers=team.tablet)
-    assert first.status_code == 200, first.text
-    visit = await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", params={"halt": 1}, headers=team.desk
-    )
-    assert visit.status_code == 200, visit.text
-    again = await client.post(asking, headers=team.tablet)
-    assert again.status_code == 200, again.text
+    for _ in range(2):
+        halted = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=team.tablet)
+        assert halted.status_code == 200, halted.text
     before = await queued_row(client, team, session_id)
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
