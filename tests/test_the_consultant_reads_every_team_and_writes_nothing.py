@@ -411,6 +411,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}/audio",
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}"
         f"/frases/{desk['b'].frase}/audio",
+        f"{IR}/facilitator/sessions/{session}/grain-switches",
     ]
 
     values = {
@@ -452,6 +453,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         reads[14],
         reads[15],
         reads[16],
+        reads[17],
     ):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
@@ -623,6 +625,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/grain-switches", {}),
         (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes/downloads", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes/whole", {}),

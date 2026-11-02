@@ -8,6 +8,7 @@ session with it.
 
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
@@ -19,8 +20,12 @@ from app.core.database import get_db
 from app.core.exceptions import NotAllWav, ValidationError
 from app.db.models.internalization_room import IRGrain, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import (
+    GrainSwitchesResponse,
     GrainSwitchRequest,
+    GrainSwitchView,
     MotherTongueTakesResponse,
+    ReaderTakeResponse,
+    ReaderTakesResponse,
     SentRecordingTime,
     TakeDownloadsResponse,
     TakeResponse,
@@ -45,12 +50,14 @@ from app.services.internalization_room.takes import (
     TakeStore,
     current_parts,
     grain_in_force,
+    grain_switches,
     listen_url,
     of_the_grain_left_behind,
     refuse_a_join_over_a_moved_part,
     set_aside_moment,
     signed_url,
     store_take,
+    superseded_moment,
     take_for_reader,
     take_in_session,
     take_store,
@@ -86,14 +93,17 @@ def _view(take: IRTake) -> TakeResponse:
     )
 
 
-async def _listing(db: AsyncSession, session: IRSession) -> TakesResponse:
+async def _takes_and_grain(
+    db: AsyncSession, session: IRSession
+) -> tuple[list[IRTake], Literal["whole", "scene"] | None]:
     takes = await takes_of(db, session.id)
     grain = grain_in_force(session, current_parts(takes))
-    return TakesResponse(
-        session_id=session.id,
-        takes=[_view(take) for take in takes],
-        grain=None if grain is None else grain.value,
-    )
+    return takes, None if grain is None else grain.value
+
+
+async def _listing(db: AsyncSession, session: IRSession) -> TakesResponse:
+    takes, grain = await _takes_and_grain(db, session)
+    return TakesResponse(session_id=session.id, takes=[_view(take) for take in takes], grain=grain)
 
 
 def _kind(raw: str) -> IRTakeKind:
@@ -361,17 +371,58 @@ async def room_listens_to_take(
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
-@router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
+@router.get("/facilitator/sessions/{session_id}/takes", response_model=ReaderTakesResponse)
 async def facilitator_takes(
     session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
-) -> TakesResponse:
+) -> ReaderTakesResponse:
     """What a session recorded, for the person who will listen to it.
 
     A facilitator signs in; the team never does. So this carries no device credential — the
-    two audiences never share a route.
+    two audiences never share a route. Each take also says when the server accepted it, when it
+    stopped being live, and the **Clock offset** of the tablet that joined it, which the team's
+    own listing never carries.
     """
     session = await room.get_session_for_reader(db, user, session_id)
-    return await _listing(db, session)
+    takes, grain = await _takes_and_grain(db, session)
+    return ReaderTakesResponse(
+        session_id=session.id, takes=[_reader_view(take) for take in takes], grain=grain
+    )
+
+
+def _reader_view(take: IRTake) -> ReaderTakeResponse:
+    return ReaderTakeResponse(
+        **_view(take).model_dump(),
+        created_at=as_utc(take.created_at).isoformat(),
+        superseded_at=superseded_moment(take),
+        device_clock_offset_ms=take.device_clock_offset_ms,
+    )
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/grain-switches", response_model=GrainSwitchesResponse
+)
+async def read_the_grain_switches(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> GrainSwitchesResponse:
+    """The session's grain switches, newest first, derived from the takes each one set aside.
+
+    One entry per moment a switch stamped the session's rehearsal takes aside, with the grain it
+    left, the grain it took and those takes. A switch that set nothing aside, because nothing was
+    recorded before it, leaves no entry. The session's grain in force is the takes listing's
+    `grain`. An archived session is read too (ADR 0052).
+    """
+    session = await room.get_session_for_reader(db, user, session_id)
+    return GrainSwitchesResponse(
+        switches=[
+            GrainSwitchView(
+                at=switch.at.isoformat(),
+                from_=switch.left.value,
+                to=switch.took.value,
+                take_ids=list(switch.take_ids),
+            )
+            for switch in grain_switches(await takes_of(db, session.id))
+        ]
+    )
 
 
 @router.get(
