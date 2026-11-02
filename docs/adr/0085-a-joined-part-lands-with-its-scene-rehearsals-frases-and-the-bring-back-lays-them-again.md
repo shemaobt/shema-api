@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2081: a part a sentence was re-recorded in answers its own code
 date: 2026-10-23
 ---
 
@@ -32,11 +32,6 @@ Decided (ENG-1405):
   findings and nuances on the abandoned stretches as recording a part again does, and undoes
   the check as any capture does. A part whose frases already stand answers as it is. Anything else
   answers 409 `NOTHING_TO_BRING_BACK` with nothing written, and a number with no part 404.
-  Amended (ENG-2081): a part joined from a rehearsal of this session whose bytes are no longer
-  the rehearsal's, because a sentence was re-recorded in it since the join, answers 409
-  `PART_NO_LONGER_ITS_REHEARSAL` instead, as her `src/draft/join.ts` answers `spliced`; the
-  tablet says to try again for it and keeps «este ensaio não pode entrar» for
-  `NOTHING_TO_BRING_BACK`. The code is additive: nothing else changes.
 - **The telling is a `retro` take row naming the frase's stored object**: the same key,
   fingerprint, checksum, size, type and verification; its Recording time is the frase's arrival;
   one row per frase in the session. The lay is database writes only, in one transaction.
@@ -64,3 +59,12 @@ recording of the same number is not locked against either: the retire of the han
 stretch the uncommitted lay wrote. Its outcome rests on ENG-1760's order (ADR 0090): the part is
 the take recorded last, and a stretch counts only on the take that is the part now, so the laid
 stretches on a join the hand take outranks read as history.
+
+**Amended on 2 November 2026 (ENG-2081): a part a sentence was re-recorded in answers its own
+code.** A part joined from a rehearsal of this session whose bytes are no longer the
+rehearsal's answers 409 `PART_NO_LONGER_ITS_REHEARSAL` at the Bring-back, where it answered
+`NOTHING_TO_BRING_BACK`, as her `src/draft/join.ts` answers `spliced`: the tablet says to try
+again for it and keeps «este ensaio não pode entrar» for `NOTHING_TO_BRING_BACK`. Nothing is
+written and the rest of the rule stands. A part the text seam declares with a rehearsal never had
+the rehearsal's bytes and answers the same code; only the golden runner declares one, and it
+never sends a Bring-back.
