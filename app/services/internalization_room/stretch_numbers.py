@@ -28,14 +28,14 @@ async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int
         .order_by(IRRelease.version.desc())
         .limit(1)
     )
-    frozen = {
+    numbers = {
         entry["segment_id"]: entry["frase"]
         for entry in ((latest.packet if latest else {}).get("back_translation") or {}).get(
             "segments", []
         )
         if entry.get("segment_id") and entry.get("frase") is not None
     }
-    if not frozen:
+    if not numbers:
         stale = told_back(await stale_segments(db, session.id, takes))
-        frozen = passage_numbers(told_back(stretches), stale, takes)
-    return {row.id: frozen[row.id] for row in stretches if row.id in frozen}
+        numbers = passage_numbers(told_back(stretches), stale, takes)
+    return {row.id: numbers[row.id] for row in stretches if row.id in numbers}
