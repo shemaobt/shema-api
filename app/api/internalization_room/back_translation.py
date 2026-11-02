@@ -193,8 +193,10 @@ async def add_chunk(
             state=state,
         )
     nudge_stretches(session.project_id, warned=warned)
-    standing = await room.final_segments(db, session.id)
-    numbers = room.frase_numbers(room.told_back(standing))
+    takes = await takes_of(db, session.id)
+    standing = await room.final_segments(db, session.id, takes)
+    stale = await room.stale_segments(db, session.id, takes)
+    numbers = room.passage_numbers(room.told_back(standing), room.told_back(stale), takes)
     return BackTranslationChunkResponse(
         session_id=session.id,
         segment_id=captured.id,
