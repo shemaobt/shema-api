@@ -540,6 +540,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         told,
         session,
         keys=keys,
+        numbers=frases,
         heard_complete=not unheard,
         version=None,
         forced=False,

@@ -921,18 +921,18 @@ async def test_a_finding_keeps_the_row_number_it_named_and_follows_its_stretch_w
 
 async def _part_two_recorded_again_under_part_three(
     client: httpx.AsyncClient, db_session: AsyncSession
-) -> tuple[Any, str]:
-    session, (_one, _two, three) = await rehearsed_in_parts(db_session, 3)
+) -> tuple[Any, str, list[str]]:
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3)
     standing = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
     again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
     assert again.status_code == 200, again.text
-    return session, standing[three.id]
+    return session, standing[three.id], [one.id, again.json()["take_id"], three.id]
 
 
 async def test_the_packet_numbers_a_stretch_above_a_part_recorded_again_as_the_tablet_draws_it(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session, third = await _part_two_recorded_again_under_part_three(client, db_session)
+    session, third, _played = await _part_two_recorded_again_under_part_three(client, db_session)
 
     packet, _blockers = await compose_internalization_release(
         db_session, await get_session(db_session, session.id)
@@ -941,4 +941,26 @@ async def test_the_packet_numbers_a_stretch_above_a_part_recorded_again_as_the_t
     frozen = {one["segment_id"]: one["frase"] for one in packet["back_translation"]["segments"]}
     assert frozen[third] == 3, (
         "o pacote congelava a frase da parte 3 como 2, a linha que a tablet desenha como 3"
+    )
+
+
+async def test_the_check_block_names_a_finding_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, third, played = await _part_two_recorded_again_under_part_three(client, db_session)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+
+    packet, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
+
+    (finding,) = packet["check"]["findings"]
+    assert finding["idx"] == third
+    assert (finding["frase"], finding["index"]) == (3, 3), (
+        "o bloco de conferência dizia frase 2 para o achado que a voz e a tablet chamam de 3"
     )
