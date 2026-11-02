@@ -720,6 +720,37 @@ def superseded_moment(take: IRTake) -> str | None:
     return None if take.superseded_at is None else as_utc(take.superseded_at).isoformat()
 
 
+@dataclass(frozen=True)
+class GrainSwitch:
+    """A **Grain switch** as the takes it set aside tell it."""
+
+    at: datetime
+    left: IRGrain
+    took: IRGrain
+    take_ids: tuple[str, ...]
+
+
+def grain_switches(takes: list[IRTake]) -> list[GrainSwitch]:
+    """The session's switches that set something aside, newest first, read off their stamps.
+
+    A switch stamps every rehearsal take the session held with its time, and a late take of the
+    grain left behind carries the latest switch's time, so each distinct `set_aside_at` is one
+    switch (ADR 0096). It left scene if any take it set aside has a number, which is the grain
+    in force before it: a whole kept beside scene parts is no part. Else it left the whole.
+    Handed `takes_of`'s order, each switch lists its takes in it.
+    """
+    stamped: dict[datetime, list[IRTake]] = {}
+    for take in takes:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is not None:
+            stamped.setdefault(as_utc(take.set_aside_at), []).append(take)
+    switches = []
+    for at, group in sorted(stamped.items(), reverse=True):
+        by_scene = any(take.ordinal is not None for take in group)
+        left, took = (IRGrain.SCENE, IRGrain.WHOLE) if by_scene else (IRGrain.WHOLE, IRGrain.SCENE)
+        switches.append(GrainSwitch(at, left, took, tuple(take.id for take in group)))
+    return switches
+
+
 def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:
     """Whether a rehearsal take is of the grain a **Grain switch** left behind: never a part."""
     return (

@@ -1281,6 +1281,40 @@ class TakesResponse(BaseModel):
     grain: Literal["whole", "scene"] | None = None
 
 
+class ReaderTakeResponse(TakeResponse):
+    #: When the server accepted the take, with its offset.
+    created_at: str
+    #: When the server stamped the take as no longer live; null while live, and on a take stored
+    #: before the stamp existed (ADR 0104).
+    superseded_at: str | None = None
+    #: The **Clock offset** of the tablet that joined this part, null under five minutes and on
+    #: any take that is not a joined part. The team never sees it.
+    device_clock_offset_ms: int | None = None
+
+
+class ReaderTakesResponse(BaseModel):
+    session_id: str
+    takes: list[ReaderTakeResponse]
+    #: As `TakesResponse.grain`.
+    grain: Literal["whole", "scene"] | None = None
+
+
+class GrainSwitchView(BaseModel):
+    #: The switch's time, as the takes listing gives the `set_aside_at` of the takes it set aside.
+    at: str
+    #: The grain the switch left: scene if any take it set aside has a number, else whole.
+    from_: Literal["whole", "scene"] = Field(serialization_alias="from")
+    #: The other grain. The grain in force is the takes listing's `grain`, never this.
+    to: Literal["whole", "scene"]
+    #: The takes the switch set aside, in the takes listing's order.
+    take_ids: list[str]
+
+
+class GrainSwitchesResponse(BaseModel):
+    #: Newest first.
+    switches: list[GrainSwitchView]
+
+
 class MotherTongueTake(BaseModel):
     """One recording of the session in the mother tongue, as the consultant's record lists it."""
 

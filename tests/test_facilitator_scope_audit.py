@@ -467,6 +467,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/grain-switches", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/grain-switches", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/mother-tongue-takes", {}),
             "ids": (session_id, absent),

@@ -70,6 +70,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     },
     ("POST", "/api/internalization-room/facilitator/questions/{question_id}/resolve"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/grain-switches"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/mother-tongue-takes"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes/downloads"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes/whole"): {},
