@@ -66,6 +66,9 @@ ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
 #: A change that would re-open an approved draft, sent without the team's armed tap (ADR 0081).
 ERROR_CODE_DRAFT_APPROVED: Final = "DRAFT_APPROVED"
 ERROR_CODE_NOTHING_TO_BRING_BACK: Final = "NOTHING_TO_BRING_BACK"
+#: A Bring-back over a part whose bytes are no longer its rehearsal's (ADR 0085). Its own code
+#: because the tablet says to try again for it, and «este ensaio não pode entrar» for the rest.
+ERROR_CODE_PART_NO_LONGER_ITS_REHEARSAL: Final = "PART_NO_LONGER_ITS_REHEARSAL"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
@@ -241,7 +244,12 @@ class DraftApproved(ConflictError):
 
 class NothingToBringBack(ConflictError):
     """A Bring-back over a part whose rehearsal's frases cannot be laid on it: not joined, joined
-    from another session, a sentence re-recorded in it, or no frase to bring."""
+    from another session, or no frase to bring."""
+
+
+class PartNoLongerItsRehearsal(ConflictError):
+    """A Bring-back over a part joined from a rehearsal of this session whose bytes are no longer
+    that rehearsal's: a sentence was re-recorded in it since the join."""
 
 
 class CanonNotKept(ConflictError):
@@ -654,6 +662,15 @@ async def handle_nothing_to_bring_back(_request: Request, exc: NothingToBringBac
     )
 
 
+async def handle_part_no_longer_its_rehearsal(
+    _request: Request, exc: PartNoLongerItsRehearsal
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_PART_NO_LONGER_ITS_REHEARSAL),
+    )
+
+
 async def handle_canon_not_kept(_request: Request, exc: CanonNotKept) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -966,6 +983,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
     app.add_exception_handler(DraftApproved, handle_draft_approved)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToBringBack, handle_nothing_to_bring_back)  # type: ignore[arg-type]
+    app.add_exception_handler(PartNoLongerItsRehearsal, handle_part_no_longer_its_rehearsal)  # type: ignore[arg-type]
     app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]

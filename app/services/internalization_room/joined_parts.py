@@ -32,7 +32,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, NothingToBringBack
+from app.core.exceptions import NotFoundError, NothingToBringBack, PartNoLongerItsRehearsal
 from app.db.models.internalization_room import (
     IRSceneFrase,
     IRSceneRehearsal,
@@ -83,15 +83,22 @@ async def _current_frases(db: AsyncSession, rehearsal: IRSceneRehearsal) -> list
     return _layable((await frases_of(db, await restarts_of(db, [rehearsal.id])))[rehearsal.id])
 
 
-async def _own_rehearsal(
+async def _rehearsal_of(
     db: AsyncSession, session: IRSession, part: IRTake
 ) -> IRSceneRehearsal | None:
-    """The part's rehearsal when it is of this session and the part is its own bytes."""
     rehearsal = await db.scalar(
         select(IRSceneRehearsal).where(
             IRSceneRehearsal.id == part.origin, IRSceneRehearsal.session_id == session.id
         )
     )
+    return rehearsal
+
+
+async def _own_rehearsal(
+    db: AsyncSession, session: IRSession, part: IRTake
+) -> IRSceneRehearsal | None:
+    """The part's rehearsal when it is of this session and the part is its own bytes."""
+    rehearsal = await _rehearsal_of(db, session, part)
     return rehearsal if _its_own(rehearsal, part) else None
 
 
@@ -231,8 +238,9 @@ async def bring_back_the_rehearsals_frases(
 ) -> None:
     """Abandon what stands on part `number` and lay its rehearsal's frases there again.
 
-    Refused, with nothing written, for a part not joined, joined from another session, a part a
-    sentence was re-recorded in, or a rehearsal with no frase. A part whose frases already stand
+    Refused, with nothing written, for a part not joined, joined from another session or a
+    rehearsal with no frase, and refused with its own code for a part a sentence was re-recorded
+    in. A part whose frases already stand
     is left as it is, so a second tap lands once.
     """
     part = next(
@@ -242,7 +250,12 @@ async def bring_back_the_rehearsals_frases(
     locked = None if part is None else await _lock(db, session, part)
     if locked is None:
         raise NotFoundError(f"Session {session.id} has no part {number}")
-    rehearsal = None if locked.origin is None else await _own_rehearsal(db, session, locked)
+    kept = None if locked.origin is None else await _rehearsal_of(db, session, locked)
+    if kept is not None and not _its_own(kept, locked):
+        raise PartNoLongerItsRehearsal(
+            f"Part {number} is no longer its scene rehearsal's recording"
+        )
+    rehearsal = kept
     frases = [] if rehearsal is None else await _current_frases(db, rehearsal)
     if rehearsal is None or not frases:
         raise NothingToBringBack(f"Part {number} has no scene rehearsal's frases to bring back")
