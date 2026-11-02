@@ -118,55 +118,53 @@ async def test_the_session_says_where_the_telling_back_stopped(
     assert told.scope == "P01"
 
 
-async def _entered_a_while_ago(db: AsyncSession, project_id: str, hours: int):
-    session = await service.create_session(db, pericope="P01", project_id=project_id)
-    moment = datetime.now(UTC) - timedelta(hours=hours)
-    await db.execute(
-        update(IRSession)
-        .where(IRSession.id == session.id)
-        .values(messages=[{"role": "team", "content": "oi"}], updated_at=moment)
-    )
+async def _touched_long_ago(db: AsyncSession, session) -> datetime:
+    moment = datetime.now(UTC) - timedelta(hours=2)
+    await db.execute(update(IRSession).where(IRSession.id == session.id).values(updated_at=moment))
     await db.commit()
     await db.refresh(session)
-    return session
+    return moment
 
 
-async def test_a_needs_person_on_an_old_room_leaves_its_updated_at_where_it_was(
+async def test_asking_again_with_nobody_attending_writes_nothing(
+    db_session: AsyncSession, halted
+) -> None:
+    moment = await _touched_long_ago(db_session, halted)
+    raised = halted.halts_raised
+
+    await service.mark_needs_person(db_session, halted)
+
+    assert halted.status is IRSessionStatus.NEEDS_PERSON
+    assert halted.updated_at == moment, "a repetição envelheceu ou rejuvenesceu a sala"
+    assert halted.halts_raised == raised
+    assert halted.attended_at is None
+
+
+async def test_a_first_ask_on_a_reopened_older_room_raises_the_halt_and_moves_updated_at(
     db_session: AsyncSession,
 ) -> None:
-    old = await _entered_a_while_ago(db_session, "team-a", hours=2)
-    await _entered_a_while_ago(db_session, "team-a", hours=1)
-    before = old.updated_at
+    older = await service.create_session(db_session, pericope="P01", project_id="team-a")
+    await service.create_session(db_session, pericope="P02", project_id="team-a")
+    moment = await _touched_long_ago(db_session, older)
 
-    await service.mark_needs_person(db_session, old)
+    await service.mark_needs_person(db_session, older)
 
-    assert old.status is IRSessionStatus.NEEDS_PERSON
-    assert old.updated_at == before, "um quarto antigo não vira o mais recente por pedir uma pessoa"
+    assert older.status is IRSessionStatus.NEEDS_PERSON
+    assert older.halts_raised == 1
+    assert older.updated_at > moment
 
 
-async def test_a_needs_person_on_the_current_room_moves_its_updated_at(
-    db_session: AsyncSession,
+async def test_an_ask_after_somebody_attended_raises_a_new_halt(
+    db_session: AsyncSession, halted
 ) -> None:
-    await _entered_a_while_ago(db_session, "team-b", hours=2)
-    current = await _entered_a_while_ago(db_session, "team-b", hours=1)
-    before = current.updated_at
-
-    await service.mark_needs_person(db_session, current)
-
-    assert current.updated_at > before
-
-
-async def test_a_first_needs_person_on_a_room_nobody_entered_moves_its_updated_at(
-    db_session: AsyncSession,
-) -> None:
-    await _entered_a_while_ago(db_session, "team-c", hours=2)
-    fresh = await service.create_session(db_session, pericope="P02", project_id="team-c")
-    before = datetime.now(UTC) - timedelta(hours=1)
-    await db_session.execute(
-        update(IRSession).where(IRSession.id == fresh.id).values(updated_at=before)
+    await service.attend(
+        db_session, halted, by=None, halts_raised=halted.halts_raised, warned_at=None
     )
-    await db_session.commit()
+    assert halted.attended_at is not None
+    moment = await _touched_long_ago(db_session, halted)
 
-    await service.mark_needs_person(db_session, fresh)
+    await service.mark_needs_person(db_session, halted)
 
-    assert fresh.updated_at > before
+    assert halted.halts_raised == 2
+    assert halted.attended_at is None
+    assert halted.updated_at > moment
