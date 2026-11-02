@@ -597,3 +597,41 @@ async def test_a_tablet_of_another_team_cannot_bring_this_teams_frases_back(
     assert (await the_session(room, session_id))["segments"] == [], (
         "um tablet de outra equipe trazia de volta as frases desta"
     )
+
+
+async def test_a_joined_part_takes_the_session_row_before_its_own_row(
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    execute, commit = AsyncSession.execute, AsyncSession.commit
+
+    async def noting_execute(self: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(statement, "_for_update_arg", None) is not None:
+            events.extend(
+                f"lock {name}"
+                for name in ("ir_sessions", "ir_takes")
+                if any(getattr(one, "name", None) == name for one in statement.get_final_froms())
+            )
+        return await execute(self, statement, *args, **kwargs)
+
+    async def noting_commit(self: AsyncSession) -> None:
+        events.append("commit")
+        await commit(self)
+
+    session_id = await a_session(db_session, language="pt")
+    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
+    await sent(db_session, rehearsal_id)
+    monkeypatch.setattr(AsyncSession, "execute", noting_execute)
+    monkeypatch.setattr(AsyncSession, "commit", noting_commit)
+    await joined(room, session_id, rehearsal_id, scene)
+    await restart_the_translation(room, session_id)
+    assert (await bring_back(room, session_id)).status_code == 200
+
+    held = False
+    took_a_part = 0
+    for event in events:
+        held = {"lock ir_sessions": True, "commit": False}.get(event, held)
+        if event == "lock ir_takes":
+            took_a_part += 1
+            assert held, "a linha da parte era travada antes da linha da sessão"
+    assert took_a_part >= 2
