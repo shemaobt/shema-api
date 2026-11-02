@@ -6,8 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRRelease, IRSession
-from app.services.internalization_room.back_translation import frase_numbers
-from app.services.internalization_room.segments import final_segments, told_back
+from app.services.internalization_room.back_translation import passage_numbers
+from app.services.internalization_room.segments import final_segments, stale_segments, told_back
+from app.services.internalization_room.takes import takes_of
 
 
 async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int]:
@@ -19,7 +20,8 @@ async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int
     the number was frozen) answers the live reading instead, and so does a session with no
     version. A stretch with nothing said on it has no number in either.
     """
-    stretches = await final_segments(db, session.id)
+    takes = await takes_of(db, session.id)
+    stretches = await final_segments(db, session.id, takes)
     latest = await db.scalar(
         select(IRRelease)
         .where(IRRelease.session_id == session.id)
@@ -33,5 +35,7 @@ async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int
         )
         if entry.get("segment_id") and entry.get("frase") is not None
     }
-    numbers = frozen or frase_numbers(told_back(stretches))
-    return {row.id: numbers[row.id] for row in stretches if row.id in numbers}
+    if not frozen:
+        stale = told_back(await stale_segments(db, session.id, takes))
+        frozen = passage_numbers(told_back(stretches), stale, takes)
+    return {row.id: frozen[row.id] for row in stretches if row.id in frozen}

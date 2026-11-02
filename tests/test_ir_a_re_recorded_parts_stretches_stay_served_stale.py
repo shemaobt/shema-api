@@ -31,6 +31,7 @@ from app.services.internalization_room.segments import (
     current_segments,
     divide_segment,
 )
+from app.services.internalization_room.session_retro import retro_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     back_translation_of,
@@ -963,4 +964,25 @@ async def test_the_check_block_names_a_finding_above_a_part_recorded_again_as_th
     assert finding["idx"] == third
     assert (finding["frase"], finding["index"]) == (3, 3), (
         "o bloco de conferência dizia frase 2 para o achado que a voz e a tablet chamam de 3"
+    )
+
+
+async def test_the_retro_read_numbers_a_stretch_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, third, played = await _part_two_recorded_again_under_part_three(client, db_session)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+
+    retro = await retro_of(db_session, await get_session(db_session, session.id))
+
+    assert {one.segment_id: one.frase for one in retro.frases}[third] == 3, (
+        "o retro dizia frase 2 para a parte 3, a linha que a tablet desenha como 3"
+    )
+    assert [one.frase for one in retro.findings] == [3], (
+        "o achado da parte 3 chegava ao retro como frase 2"
     )
