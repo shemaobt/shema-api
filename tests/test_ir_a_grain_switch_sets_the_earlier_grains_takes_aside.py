@@ -10,6 +10,7 @@ Her switch is `src/draft/grainSwitch.ts` at 18fa7c4; the wire values are hers (`
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
@@ -61,6 +62,10 @@ from tests.room_harness import (
     the_bucket_is_in_memory,
     the_room_speaks,
     upload_a_part,
+)
+from tests.session_row_lock_harness import (
+    SessionRowLock,
+    the_session_row_locks_as_postgres_does,
 )
 
 HEADERS = {"X-Room-Device": TABLET}
@@ -895,3 +900,75 @@ async def test_the_list_gives_a_set_aside_take_the_time_it_was_stamped_and_none_
     assert listed[old]["set_aside_at"] is not None
     assert listed[old]["superseded_at"] is None, "a hora da troca foi lida como a da substituição"
     assert listed[standing]["superseded_at"] == listed[standing]["set_aside_at"]
+
+
+async def _uploaded_together(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    store: MemoryStore,
+    rival_factory: async_sessionmaker[AsyncSession],
+    session_id: str,
+    *,
+    parts: tuple[int, int],
+) -> tuple[list[str], SessionRowLock]:
+    lock = the_session_row_locks_as_postgres_does(monkeypatch)
+    lock.notes_the_calls(monkeypatch, takes_service, "takes_of")
+    both_stored = asyncio.Barrier(2)
+    put = store.put
+
+    async def put_when_both_are_here(key: str, data: bytes, content_type: str) -> Any:
+        stored = await put(key, data, content_type)
+        await asyncio.wait_for(both_stored.wait(), timeout=10)
+        return stored
+
+    monkeypatch.setattr(store, "put", put_when_both_are_here)
+    async with room_client(db_session, monkeypatch, per_request=rival_factory) as racing:
+        sent = await asyncio.gather(
+            *(
+                upload_a_part(racing, session_id, part=part, audio=f"gravação {n}".encode())
+                for n, part in enumerate(parts)
+            )
+        )
+    return [_kept(answer) for answer in sent], lock
+
+
+async def test_two_uploads_of_one_part_together_leave_one_live_and_the_other_stamped(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    store: MemoryStore,
+    rival_factory: async_sessionmaker[AsyncSession],
+    client: httpx.AsyncClient,
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+    first = _kept(await upload_a_part(client, session.id, part=1, audio=b"a primeira"))
+
+    landed, lock = await _uploaded_together(
+        db_session, monkeypatch, store, rival_factory, session.id, parts=(1, 1)
+    )
+
+    stamps = await _stamps(db_session, session.id)
+    assert stamps[first] is not None
+    assert sorted(stamps[take] is None for take in landed) == [False, True], (
+        "duas gravações da mesma parte juntas deixaram duas vivas, ou uma sem a marca"
+    )
+    assert lock.calls
+    assert [held for _, held in lock.calls] == [True] * len(lock.calls), (
+        "a gravação leu as partes para carimbar sem a linha da sessão presa"
+    )
+
+
+async def test_two_uploads_of_different_parts_together_both_stay_live(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    store: MemoryStore,
+    rival_factory: async_sessionmaker[AsyncSession],
+    client: httpx.AsyncClient,
+) -> None:
+    session, _ = await rehearsed_in_parts(db_session, 0)
+
+    landed, _ = await _uploaded_together(
+        db_session, monkeypatch, store, rival_factory, session.id, parts=(1, 2)
+    )
+
+    stamps = await _stamps(db_session, session.id)
+    assert [stamps[take] for take in landed] == [None, None]
