@@ -23,6 +23,7 @@ from tests.room_harness import (
     the_bucket_is_in_memory,
     the_room_speaks,
     the_transcriber_says,
+    upload_a_part,
 )
 
 
@@ -156,6 +157,31 @@ async def test_the_telling_answer_numbers_a_stretch_told_between_two_others_as_t
     read = await _segments_of_the_read(client, session.id)
     assert [one.get("frase") for one in read] == [1, 2, 3]
     assert next(one["frase"] for one in read if one["take_id"] == parts[1].id) == 2
+
+
+async def test_the_telling_answer_numbers_a_stretch_told_above_a_re_recorded_part_as_the_read_does(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    the_transcriber_says(monkeypatch, ["a terceira parte, contada de volta"])
+    session, parts = await rehearsed_in_parts_of(db_session, [1, 1, 0])
+    again = await upload_a_part(
+        client, session.id, part=2, audio=b"a segunda parte, gravada outra vez"
+    )
+    assert again.status_code == 200, again.text
+
+    told = await _tell(client, session.id, parts[2].id, starts_ms=0, ends_ms=1000)
+
+    assert told.status_code == 200, told.text
+    assert told.json().get("frase") == 3, (
+        "a resposta da frase recém-contada pulava a parte regravada, que a leitura da sessão conta"
+    )
+    read = await client.get(f"{PREFIX}/sessions/{session.id}", params={"include_stale": "true"})
+    assert read.status_code == 200, read.text
+    numbered = {
+        one["segment_id"]: one["frase"] for one in read.json()["back_translation"]["segments"]
+    }
+    assert numbered[told.json()["segment_id"]] == 3
 
 
 async def test_a_stretch_told_again_through_the_telling_answer_keeps_its_number(
