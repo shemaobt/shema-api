@@ -15,6 +15,7 @@ from sqlalchemy import (
     case,
     cast,
     delete,
+    func,
     literal,
     or_,
     select,
@@ -1045,7 +1046,16 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     the same statement so a visit that landed after ``session`` was read is cleared too. A
     warning that visit ended stays ended: once the stamps go the visit can no longer be
     undone, so what it ended is final.
+
+    **An ask on a room that is already halted and unattended is a repeat** (ENG-2121): it still
+    counts, so a return that read the earlier halt leaves this one standing (ADR 0045), but it
+    leaves ``updated_at`` where it was. That column orders the team's rooms and names its Current
+    book, and a tablet that retries, or re-sends the halt it remembers on relaunch, is not the
+    team's work, and it keeps ``person_arrived_at``: the arrival belongs to the halt it answers
+    and only a new halt clears it. A first ask, or one after somebody attended, raises the halt
+    in any room.
     """
+    repeat = and_(IRSession.status == IRSessionStatus.NEEDS_PERSON, IRSession.attended_at.is_(None))
     halted = await db.execute(
         update(IRSession)
         .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
@@ -1055,15 +1065,27 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
             warned_at=case((IRSession.attended_at.is_not(None), None), else_=IRSession.warned_at),
             attended_at=None,
             attended_by=None,
+            halt_kind=HaltKind.BLOCKING.value,
+            person_arrived_at=case((repeat, IRSession.person_arrived_at), else_=None),
+            updated_at=case((repeat, IRSession.updated_at), else_=func.now()),
         )
         .execution_options(synchronize_session=False)
     )
     if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
-    _a_new_ask(session, kind=HaltKind.BLOCKING)
     if await is_the_demo_team(db, session.project_id):
         await db.flush()
-        await db.refresh(session, ["status", "halts_raised", "warned_at", "attended_at"])
+        await db.refresh(
+            session,
+            [
+                "status",
+                "halts_raised",
+                "warned_at",
+                "attended_at",
+                "halt_kind",
+                "person_arrived_at",
+            ],
+        )
         return await attend(
             db, session, by=None, halts_raised=session.halts_raised, warned_at=session.warned_at
         )
@@ -1095,10 +1117,12 @@ async def raise_a_warning(
 
 
 def _a_new_ask(session: IRSession, *, kind: HaltKind) -> None:
-    """What every halt writes, whichever its kind.
+    """What a warning writes on the row after its update: the kind and a fresh wait.
 
     The kind is written on every halt and cleared by none — see ``halt.last``. The visit is
-    cleared by each kind's own update, in ``mark_needs_person`` and ``raise_a_warning``.
+    cleared by the update itself. ``mark_needs_person`` writes the same two columns inside its
+    own update, because a repetition keeps who arrived and holds ``updated_at``, and a flush
+    behind the update would move it.
     """
     session.halt_kind = kind.value
     session.person_arrived_at = None

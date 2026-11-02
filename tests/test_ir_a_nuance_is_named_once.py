@@ -313,7 +313,7 @@ async def test_the_round_reports_an_unsaid_nuance_beside_a_blocking_finding(
     ], "o roteiro dourado nunca via a nuance que esperava, calada ao lado do acréscimo"
 
 
-async def test_the_round_reports_the_nuance_it_named_and_never_one_said_before(
+async def test_the_round_reports_the_nuance_it_named_and_the_one_said_before(
     client, analyst, speaker
 ) -> None:
     analyst.readings = [{"findings": [ON_FRASE_3]}, {"findings": [ON_FRASE_3]}]
@@ -323,7 +323,10 @@ async def test_the_round_reports_the_nuance_it_named_and_never_one_said_before(
     second = await _a_round(client, [FRASE_1_AGAIN], session_id=first["sessionId"])
 
     assert _reported(first) == [("nuance", 3, "«à noite» — foi naquela mesma noite")]
-    assert _reported(second) == [], "a nuance já dita voltava na lista da rodada seguinte"
+    [kept] = second["findings"]
+    assert (kept["kind"], kept["frase"], kept["voiced"]) == ("nuance", 3, "before"), (
+        "a nuance dita numa rodada anterior sumia da lista da rodada seguinte"
+    )
 
 
 async def test_a_round_with_nothing_new_after_a_heard_nuance_is_a_new_round_on_the_same_reading(
@@ -337,9 +340,10 @@ async def test_a_round_with_nothing_new_after_a_heard_nuance_is_a_new_round_on_t
     again = await _a_round(client, [], session_id=first["sessionId"])
 
     assert analyst.read == 1, "uma rodada sem nada novo pedia outra leitura ao Analista"
-    assert (again["spoken"], again["conferida"], again["findings"]) == (CLEAN, True, []), (
+    assert (again["spoken"], again["conferida"]) == (CLEAN, True), (
         "o roteiro dela apertava terminei de novo e a costura recusava a rodada"
     )
+    assert [(one["kind"], one["voiced"]) for one in again["findings"]] == [("nuance", "before")]
     kept = await _the_kept_rounds(db_session, first["sessionId"])
     assert [[one.voiced for one in check.nuances] for check in kept] == [["now"], ["before"]]
 

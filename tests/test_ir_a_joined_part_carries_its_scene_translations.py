@@ -17,8 +17,10 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room.golden_rehearsal import keep_a_golden_rehearsal
 from app.services.internalization_room.segments import final_segments, retired_segments
 from app.services.internalization_room.sessions import back_translation_of, get_session
+from app.services.internalization_room.takes import declare_rehearsal_parts
 from tests.hard_stretch_harness import a_session
 from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
@@ -438,8 +440,49 @@ async def test_a_part_a_sentence_was_re_recorded_in_is_never_offered_and_the_doo
 
     assert await offered(room, session_id) == []
     assert refused.status_code == 409, refused.text
-    assert refused.json()["code"] == "NOTHING_TO_BRING_BACK"
+    assert refused.json()["code"] == "PART_NO_LONGER_ITS_REHEARSAL"
     assert (await the_session(room, session_id))["segments"] == before
+
+
+async def test_a_part_with_no_origin_is_refused_as_nothing_to_bring_back(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session, language="pt")
+    await recorded_as_itself(room, session_id, recording(3, 5))
+
+    refused = await bring_back(room, session_id)
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "NOTHING_TO_BRING_BACK"
+
+
+async def test_a_part_whose_rehearsal_has_no_frase_is_refused_as_nothing_to_bring_back(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session, language="pt")
+    scene = recording(SCENE_MS / 1000, 3)
+    rehearsal_id = await recorded(room, session_id, scene)
+    await sent(db_session, rehearsal_id)
+    await joined(room, session_id, rehearsal_id, scene)
+
+    refused = await bring_back(room, session_id)
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "NOTHING_TO_BRING_BACK"
+
+
+async def test_a_part_the_text_seam_declared_with_a_rehearsal_never_had_its_bytes_and_answers_the_re_recorded_code(  # noqa: E501
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session, language="pt")
+    session = await get_session(db_session, session_id)
+    rehearsal = await keep_a_golden_rehearsal(db_session, session, scene="cena", pieces=[])
+    await declare_rehearsal_parts(db_session, session, ["cena"], None, {"cena": rehearsal.id})
+
+    refused = await bring_back(room, session_id, part=0)
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "PART_NO_LONGER_ITS_REHEARSAL"
 
 
 async def test_a_part_joined_from_the_other_language_sessions_rehearsal_is_not_laid_nor_offered(
@@ -597,3 +640,41 @@ async def test_a_tablet_of_another_team_cannot_bring_this_teams_frases_back(
     assert (await the_session(room, session_id))["segments"] == [], (
         "um tablet de outra equipe trazia de volta as frases desta"
     )
+
+
+async def test_a_joined_part_takes_the_session_row_before_its_own_row(
+    room: Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    execute, commit = AsyncSession.execute, AsyncSession.commit
+
+    async def noting_execute(self: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(statement, "_for_update_arg", None) is not None:
+            events.extend(
+                f"lock {name}"
+                for name in ("ir_sessions", "ir_takes")
+                if any(getattr(one, "name", None) == name for one in statement.get_final_froms())
+            )
+        return await execute(self, statement, *args, **kwargs)
+
+    async def noting_commit(self: AsyncSession) -> None:
+        events.append("commit")
+        await commit(self)
+
+    session_id = await a_session(db_session, language="pt")
+    rehearsal_id, scene = await a_translated_rehearsal(room, session_id)
+    await sent(db_session, rehearsal_id)
+    monkeypatch.setattr(AsyncSession, "execute", noting_execute)
+    monkeypatch.setattr(AsyncSession, "commit", noting_commit)
+    await joined(room, session_id, rehearsal_id, scene)
+    await restart_the_translation(room, session_id)
+    assert (await bring_back(room, session_id)).status_code == 200
+
+    held = False
+    took_a_part = 0
+    for event in events:
+        held = {"lock ir_sessions": True, "commit": False}.get(event, held)
+        if event == "lock ir_takes":
+            took_a_part += 1
+            assert held, "a linha da parte era travada antes da linha da sessão"
+    assert took_a_part >= 2
