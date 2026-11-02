@@ -56,6 +56,7 @@ THE_APPROVAL_SERVICE = "app/services/internalization_room/release.py"
 THE_GRAIN_SWITCH = "app/services/internalization_room/sessions.py"
 #: A joined keep takes the row after its bytes are stored, to ask again and write its row.
 THE_JOINED_KEEP = "app/services/internalization_room/takes.py"
+THE_JOINED_PARTS = "app/services/internalization_room/joined_parts.py"
 THREE_FRASES = [[(0, 1000), (1000, 2000), (2000, 3000)]]
 THE_BUCKET = ("get", "put", "stat")
 
@@ -352,6 +353,6 @@ def test_the_session_row_held_through_the_helper_is_held_only_by_doors_that_hold
         and node.func.id == "hold_the_session_row"
     )
 
-    assert holding == sorted([THE_APPROVAL_SERVICE, THE_EXTERNAL_CHECK_OPEN, THE_GRAIN_SWITCH]), (
-        "a linha da sessão era segurada por um chamador novo, que ninguém conferiu contra o bucket"
-    )
+    assert holding == sorted(
+        [THE_APPROVAL_SERVICE, THE_EXTERNAL_CHECK_OPEN, THE_GRAIN_SWITCH, THE_JOINED_PARTS]
+    ), "a linha da sessão era segurada por um chamador novo, que ninguém conferiu contra o bucket"

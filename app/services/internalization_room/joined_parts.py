@@ -57,7 +57,11 @@ from app.services.internalization_room.segments import (
     final_segments,
     stop_waiting_on_the_segments_of,
 )
-from app.services.internalization_room.sessions import back_translation_of, save_back_translation
+from app.services.internalization_room.sessions import (
+    back_translation_of,
+    hold_the_session_row,
+    save_back_translation,
+)
 from app.services.internalization_room.takes import current_parts, takes_of
 
 
@@ -108,7 +112,8 @@ async def _ever_told(db: AsyncSession, part: IRTake) -> bool:
 
 
 async def _lock(db: AsyncSession, session: IRSession, part: IRTake) -> IRTake | None:
-    """Hold the part's row, and answer it only if it is still the session's part."""
+    """Hold the session's row, then the part's, and answer the part if it is still current."""
+    await hold_the_session_row(db, session)
     await db.execute(
         select(IRTake)
         .where(IRTake.id == part.id)
