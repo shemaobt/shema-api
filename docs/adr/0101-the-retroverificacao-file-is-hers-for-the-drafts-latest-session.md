@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ENG-2133: a stale frase of a draft not approved is numbered in its place among the told ones, as the tablet draws it, and only a told stretch is a frase
+status: accepted; amended by ENG-2133: a stale frase of a draft not approved is numbered in its place among the told ones, as the tablet draws it, and only a told stretch is a frase; amended by ENG-2139: a check's finding keeps the frase stored on it
 date: 2026-10-28
 ---
 
@@ -56,3 +56,16 @@ ones of a part before its stale ones — and lists them in that order, `stale` m
 The check addresses read the same list. Only a told stretch is a frase: a stale piece nobody told
 is no longer an empty, numbered line, as her file has no frase without a telling. An approved
 frase keeps its number and place as before.
+
+**Amended on 2 November 2026 (ENG-2139): a check's finding keeps the frase the check ran with.**
+The amendment above had the check addresses of `checks[]` read the same live list as the frases,
+so a finding moved with the list: a part told again after the check, or a stale row retired,
+renumbered the stretch and the file named a frase the check never said. Her `retroExport.ts`
+writes each check's findings as the stored object (`{...f}`), so `checks[]` now carry the `frase`
+stored on the finding and on the nuance, the number the analyst named when the check ran, whatever
+the list looks like at export: under an approved version too, where the version's frozen list
+numbers `approval.findings` and no longer `checks[]`. A missing element placed after the last frase
+carries the frase it was placed after, as hers does, where it carried none for landing on no
+stretch; a finding stored with no number, a row written before the field, carries none rather than
+the stretch's live number. The frases list still numbers through `passage_numbers`, and `idx` and
+`clipKey` still name the stretch.
