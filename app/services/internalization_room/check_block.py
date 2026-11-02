@@ -180,6 +180,16 @@ async def _its_own_stretches(db: AsyncSession, release: IRRelease) -> list[IRSeg
     return [rows[one] for one in ids if one in rows]
 
 
+def _its_own_numbers(release: IRRelease, own: list[IRSegment]) -> dict[str, int]:
+    """The frase each frozen stretch carries in the version, else its position among them."""
+    frozen = {
+        one["segment_id"]: one["frase"]
+        for one in (release.packet.get("back_translation") or {}).get("segments", [])
+        if one.get("frase") is not None
+    }
+    return frozen or frase_numbers(own)
+
+
 async def keep_the_check_on_the_standing_release(
     db: AsyncSession, session: IRSession, state: BackTranslationState
 ) -> None:
@@ -224,7 +234,7 @@ async def keep_the_check_on_the_standing_release(
         own,
         session,
         keys=part_keys(parts),
-        numbers=frase_numbers(own),
+        numbers=_its_own_numbers(release, own),
         heard_complete=not unheard_parts(telling_back, parts, own),
         version=release.version,
         forced=forced,
