@@ -71,8 +71,11 @@ from tests.room_harness import (
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    the_analyst_is_scripted,
     the_analyst_reads,
+    the_bucket_is_in_memory,
     the_room_speaks,
+    upload_a_part,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -651,3 +654,43 @@ async def test_the_stored_block_names_its_own_version_and_the_live_one_none(
     assert live["version"] == 2, "o conteúdo vivo é o da versão 2, e o pacote diz isso"
     assert live["check"]["version"] is None
     assert live["check"]["forced"] is False
+
+
+async def test_a_later_write_keeps_the_versions_own_frase_on_the_standing_check_block(
+    client, db_session: AsyncSession, room_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    the_room_speaks(monkeypatch)
+    analyst = the_analyst_is_scripted(monkeypatch)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    again = await upload_a_part(
+        client, session.id, part=2, audio=b"a equipe gravou a parte 2 outra vez"
+    )
+    assert again.status_code == 200, again.text
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(
+        client,
+        session.id,
+        report=played_every_part([one.id, again.json()["take_id"], three.id]),
+    )
+    assert answered.status_code == 200, answered.text
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text
+    fresh = await get_session(db_session, session.id)
+
+    await reported_playback(db_session, fresh, await stored_telling_back(db_session, fresh))
+
+    (row,) = await releases_of(db_session, session.id)
+    await db_session.refresh(row)
+    (finding,) = row.packet["check"]["findings"]
+    frozen = {one["segment_id"]: one["frase"] for one in row.packet["back_translation"]["segments"]}
+    assert frozen[finding["idx"]] == 3
+    assert finding["frase"] == 3, (
+        "a escrita seguinte recontava o bloco da versão pelas posições, e o achado da frase 3 "
+        "virava 2 ao lado de uma lista congelada que diz 3"
+    )

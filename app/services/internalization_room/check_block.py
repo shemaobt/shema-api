@@ -72,6 +72,7 @@ def check_block(
     session: IRSession,
     *,
     keys: dict[str, str],
+    numbers: dict[str, int],
     heard_complete: bool,
     version: int | None,
     forced: bool,
@@ -86,7 +87,7 @@ def check_block(
     ``heardComplete`` is handed in rather than asked again: the composer asks the listening
     once and both the refusal and this read the one answer, so they cannot disagree about it.
 
-    A finding's ``frase`` is its stretch's position in ``told`` — the enumeration this packet
+    A finding's ``frase`` is the number ``numbers`` gives its stretch — the one this packet
     freezes into ``segments`` and the analyst was numbered off — and never ``chunk``, the
     number the analyst gave: a missing element placed after frase N resolves to the stretch
     after it (ADR 0007), so the two differ by one exactly where it matters. A finding pointing
@@ -112,7 +113,7 @@ def check_block(
     address; why it is open is the consultant's material and travels in the retroverification
     file.
     """
-    frase_of = frase_numbers(told)
+    frase_of = numbers
     take_of = {stretch.id: stretch.take_id for stretch in told}
 
     def addressed(kind: str, segment_id: str | None) -> dict[str, Any]:
@@ -179,6 +180,16 @@ async def _its_own_stretches(db: AsyncSession, release: IRRelease) -> list[IRSeg
     return [rows[one] for one in ids if one in rows]
 
 
+def _its_own_numbers(release: IRRelease, own: list[IRSegment]) -> dict[str, int]:
+    """The frase each frozen stretch carries in the version, else its position among them."""
+    frozen = {
+        one["segment_id"]: one["frase"]
+        for one in (release.packet.get("back_translation") or {}).get("segments", [])
+        if one.get("frase") is not None
+    }
+    return frozen or frase_numbers(own)
+
+
 async def keep_the_check_on_the_standing_release(
     db: AsyncSession, session: IRSession, state: BackTranslationState
 ) -> None:
@@ -223,6 +234,7 @@ async def keep_the_check_on_the_standing_release(
         own,
         session,
         keys=part_keys(parts),
+        numbers=_its_own_numbers(release, own),
         heard_complete=not unheard_parts(telling_back, parts, own),
         version=release.version,
         forced=forced,

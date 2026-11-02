@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import segments as segments_api
+from app.services.internalization_room.re_recorded_sentences import re_recorded_sentences_of
 from app.services.internalization_room.sentences import AwaitingSentence, the_sentence_awaiting
 from app.services.internalization_room.sessions import get_session
 from tests.hard_stretch_harness import MemoryStore
@@ -206,3 +207,43 @@ async def test_terminei_right_after_a_lay_in_is_refused_with_her_line_and_reads_
     )
     assert named.json()["audio_url"], "o nome N5 é servido por posição, como P2 na parte não ouvida"
     assert analyst.readings == 0, "o analista lia a passagem com a frase regravada sem tradução"
+
+
+async def test_a_frase_awaiting_above_a_part_recorded_again_is_named_by_the_number_the_tablet_draws(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, ((first,), (_middle,), (last,)) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000)], [(0, 1000)], [(0, 1000)]]
+    )
+    again = await upload_a_part(client, session.id, part=2, audio=wav(seconds(1.0, 1234)))
+    assert again.status_code == 200, again.text
+
+    laid = await re_record(client, session.id, last.id, spoken(1.0), sentence_id="sentence-0003")
+    other = await re_record(client, session.id, first.id, spoken(1.0), sentence_id="sentence-0004")
+
+    assert laid.status_code == 200, laid.text
+    awaiting = await the_sentence_awaiting(db_session, await get_session(db_session, session.id))
+    assert awaiting is not None
+    assert awaiting.frase == 3, (
+        "a frase que espera era a 2 na fala, enquanto a tablet desenha a linha dela como 3"
+    )
+    assert other.status_code == 409, other.text
+    assert other.json()["frases"] == [3], "a recusa nomeava a frase 2, uma linha que não espera"
+
+
+async def test_the_record_of_re_recorded_sentences_names_the_awaiting_frase_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore
+) -> None:
+    session, _, (_, _, (last,)) = await rehearsed_in_wav(
+        db_session, store, [[(0, 1000)], [(0, 1000)], [(0, 1000)]]
+    )
+    again = await upload_a_part(client, session.id, part=2, audio=wav(seconds(1.0, 1234)))
+    assert again.status_code == 200, again.text
+    laid = await re_record(client, session.id, last.id, spoken(1.0))
+    assert laid.status_code == 200, laid.text
+
+    record = await re_recorded_sentences_of(db_session, await get_session(db_session, session.id))
+
+    assert [one.awaiting_frase for one in record.sentences] == [3], (
+        "a mesa lia a frase que espera como 2, a linha que a tablet desenha como 3"
+    )

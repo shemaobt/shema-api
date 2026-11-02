@@ -32,9 +32,9 @@ from app.models.retro_export import (
 from app.services.internalization_room.approved_draft import latest_release
 from app.services.internalization_room.back_translation import (
     JOINED_WITHIN_MS,
-    frase_numbers,
     joined_spans,
     listening_to_the_parts,
+    passage_numbers,
 )
 from app.services.internalization_room.forced import was_forced
 from app.services.internalization_room.segments import (
@@ -240,25 +240,24 @@ async def retro_export(
             None,
         )
 
-    numbers = frase_numbers(told_back(leaves))
-    told = [row for row in leaves if row.id in numbers]
+    numbers = passage_numbers(told_back(leaves), told_back(waiting), takes)
     if approval:
         frases = []
         for one in approval.frases:
             place = (one.clipKey, one.coversFrom, one.coversTo)
             frases.append(_frase(one.n, one.idx, _live(one.idx, place), place))
     else:
-        counted = [(numbers[row.id], row, False) for row in told]
-        waiting_on = [(len(told) + k, row, True) for k, row in enumerate(waiting, 1)]
         frases = [
             _frase(
-                n,
+                numbers[row.id],
                 row.id,
                 row,
                 (keys.get(row.take_id, ""), row.starts_ms / 1000, row.ends_ms / 1000),
-                stale=stale,
+                stale=row.stale,
             )
-            for n, row, stale in counted + waiting_on
+            for row in sorted(
+                (*told_back(leaves), *told_back(waiting)), key=lambda row: numbers[row.id]
+            )
         ]
     telling_back = back_translation_of(session)
     rows = {row.id: row for row in (*standing.values(), *retired)}

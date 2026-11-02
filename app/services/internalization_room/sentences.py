@@ -26,10 +26,15 @@ from app.services.internalization_room.approved_draft import refuse_to_reopen_th
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     LaidInSentence,
-    frase_numbers,
+    passage_numbers,
     unheard_parts,
 )
-from app.services.internalization_room.segments import current_segments, final_segments, told_back
+from app.services.internalization_room.segments import (
+    current_segments,
+    final_segments,
+    stale_segments,
+    told_back,
+)
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from app.services.internalization_room.takes import (
     TakeStore,
@@ -37,6 +42,7 @@ from app.services.internalization_room.takes import (
     storage_key,
     store_recording,
     take_by_id,
+    takes_of,
 )
 from app.services.internalization_room.wav import Spliced, pcm16, splice_sentence, trim_silence
 from app.services.platform.audio_duration import measure_ms_bounded
@@ -291,8 +297,10 @@ async def the_sentence_awaiting(db: AsyncSession, session: IRSession) -> Awaitin
     laid = back_translation_of(session).sentences
     if not laid:
         return None
-    told = told_back(await final_segments(db, session.id))
-    numbers = frase_numbers(told)
+    takes = await takes_of(db, session.id)
+    told = told_back(await final_segments(db, session.id, takes))
+    stale = told_back(await stale_segments(db, session.id, takes))
+    numbers = passage_numbers(told, stale, takes)
     on_take = {frase.id: frase.take_id for frase in told}
     for entry in reversed(laid):
         if on_take.get(entry.segment_id) == entry.take_id:

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2133: a stale frase of a draft not approved is numbered in its place among the told ones, as the tablet draws it, and only a told stretch is a frase
 date: 2026-10-28
 ---
 
@@ -45,3 +45,14 @@ Consequences:
   listening, nuances) is served by no route now; the Desk never read the file.
 - An archive zeroed before a later release reads the later number as its version, and its name
   carries the zerada stamp, not a number.
+
+**Amended on 2 November 2026 (ENG-2133): a stale frase of a draft not approved keeps its place.**
+The fourth bullet above hung the stale frases after the told ones, numbered on from the last, so
+above a part recorded again the file said frase 2 for the row the tablet draws, the voice says and
+the check names as 3, and the old stretch came last. Her `retroExport.ts` writes the live
+`st.frases` whole, in `buildPassageTelling`'s order, so the file now numbers through
+`passage_numbers` — standing and stale told stretches placed by the session's takes, the standing
+ones of a part before its stale ones — and lists them in that order, `stale` marking the old ones.
+The check addresses read the same list. Only a told stretch is a frase: a stale piece nobody told
+is no longer an empty, numbered line, as her file has no frase without a telling. An approved
+frase keeps its number and place as before.

@@ -25,11 +25,13 @@ from app.services.internalization_room.back_translation import (
     frase_numbers,
 )
 from app.services.internalization_room.hard_stretches import note_a_hard_stretch
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import (
     capture_segment,
     current_segments,
     divide_segment,
 )
+from app.services.internalization_room.session_retro import retro_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     back_translation_of,
@@ -44,6 +46,7 @@ from tests.release_harness import (
     TABLET,
     a_claimed_device,
     at_the_desk,
+    exported_file,
     session_retro,
     team_headers,
 )
@@ -916,3 +919,86 @@ async def test_a_finding_keeps_the_row_number_it_named_and_follows_its_stretch_w
     assert read.json()["back_translation"]["findings"] == [
         {"kind": "unclear", "frase": 4, "segment_id": standing.id}
     ], "o achado ficou no número 2 enquanto a linha dele passou a ser a 4"
+
+
+async def _part_two_recorded_again_under_part_three(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> tuple[Any, str, list[str]]:
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3)
+    standing = {row.take_id: row.id for row in await current_segments(db_session, session.id)}
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    return session, standing[three.id], [one.id, again.json()["take_id"], three.id]
+
+
+async def test_the_packet_numbers_a_stretch_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, third, _played = await _part_two_recorded_again_under_part_three(client, db_session)
+
+    packet, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
+
+    frozen = {one["segment_id"]: one["frase"] for one in packet["back_translation"]["segments"]}
+    assert frozen[third] == 3, (
+        "o pacote congelava a frase da parte 3 como 2, a linha que a tablet desenha como 3"
+    )
+
+
+async def test_the_check_block_names_a_finding_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, third, played = await _part_two_recorded_again_under_part_three(client, db_session)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+
+    packet, _blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
+
+    (finding,) = packet["check"]["findings"]
+    assert finding["idx"] == third
+    assert (finding["frase"], finding["index"]) == (3, 3), (
+        "o bloco de conferência dizia frase 2 para o achado que a voz e a tablet chamam de 3"
+    )
+
+
+async def test_the_retro_read_numbers_a_stretch_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, third, played = await _part_two_recorded_again_under_part_three(client, db_session)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+
+    retro = await retro_of(db_session, await get_session(db_session, session.id))
+
+    assert {one.segment_id: one.frase for one in retro.frases}[third] == 3, (
+        "o retro dizia frase 2 para a parte 3, a linha que a tablet desenha como 3"
+    )
+    assert [one.frase for one in retro.findings] == [3], (
+        "o achado da parte 3 chegava ao retro como frase 2"
+    )
+
+
+async def test_the_file_numbers_a_stretch_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, third, _played = await _part_two_recorded_again_under_part_three(client, db_session)
+
+    frases = (await exported_file(db_session, session.id))["frases"]
+
+    assert [(one["n"], one["clipKey"], one["stale"]) for one in frases] == [
+        (1, "S1", False),
+        (2, "S2", True),
+        (3, "S3", False),
+    ], "o arquivo dizia frase 2 para a parte 3 e punha a linha velha da parte 2 no fim, como 3"
+    assert next(one["idx"] for one in frases if one["n"] == 3) == third
