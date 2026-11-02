@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order; amended by ENG-2030: the check, the voice and the finding views number by her order too
+status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order; amended by ENG-2030: the check, the voice and the finding views number by her order too; amended by ENG-2133: the awaiting line, the Packet, the check block, the retro and the retroverification file number by her order too
 date: 2026-10-19
 ---
 
@@ -86,3 +86,17 @@ a Swap is paired on it as before; the reading records the labels it gave in `ana
 beside `analysed_segment_ids`, and that is how a stored finding is followed to its stretch when
 the rows move (ADR 0018, amended the same day). The telling answer, the **Packet** and the
 retroverification file still number the standing stretches.
+
+**Amended on 2 November 2026 (ENG-2133): the Packet, the check block, the retro, the
+retroverification file and the awaiting line count the stale stretches too.** The ENG-2030
+paragraph left them on the standing stretches, so above a part recorded again and not told again
+they said frase 2 for the row the tablet draws, the voice says and the check names as 3. Each now
+numbers through `passage_numbers`: the sentence awaiting's «Frase N awaits its translation», the
+**Packet**'s `back_translation.segments[].frase` (the standing stretches only, so a version can
+carry 1 and 3 with no 2, as her approval freezes the non-stale frases with their `n`), the check
+block's `frase` and `index` (handed the numbers by its caller: the packet's own on the live block,
+the version's frozen list on the standing version's rewrite), the retro and the Desk's
+re-recorded-sentences record through `stretch_numbers`' live computation, and the
+retroverification file (ADR 0101, amended the same day). A version's frozen numbers still win
+wherever they stand. The telling answer alone still numbers the standing stretches, as the
+session read without `include_stale` does.
