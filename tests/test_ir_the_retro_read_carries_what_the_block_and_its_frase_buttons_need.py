@@ -827,3 +827,21 @@ async def test_a_stale_frase_is_on_a_take_the_desks_takes_listing_shows_as_no_lo
     assert take["superseded_at"] is not None, (
         "a frase velha apontava uma gravação que a lista da mesa dava como viva"
     )
+
+
+async def test_each_re_recorded_sentence_names_the_take_it_was_laid_into(
+    client: httpx.AsyncClient, db_session: AsyncSession, store: MemoryStore, room_app: App
+) -> None:
+    session, (_, part_two), (_, (_, middle, _)) = await rehearsed_in_wav(
+        db_session, store, SCENE_TWO
+    )
+    desk = await _the_desk(db_session, room_app)
+    laid = await re_record(client, session.id, middle.id, spoken(8.6), sentence_id="sentence-0001")
+    assert laid.status_code == 200, laid.text
+    (where,) = [one for one in laid.json()["segments"] if one["segment_id"] == middle.id]
+
+    (sentence,) = await _the_sentences(client, session.id, desk)
+
+    assert sentence["take_id"] == where["take_id"] != part_two.id, (
+        "o registro não dizia em que gravação a frase regravada foi posta"
+    )

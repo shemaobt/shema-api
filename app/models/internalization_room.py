@@ -475,6 +475,7 @@ class ReRecordedSentence(BaseModel):
     replaced_ends_ms: int | None
     ends_ms: int
     previous_take_id: str
+    take_id: str = Field(description="The take the sentence was laid into.")
     in_use: bool
     awaiting_frase: int | None
 

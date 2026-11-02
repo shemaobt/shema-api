@@ -72,6 +72,7 @@ async def re_recorded_sentences_of(
                 replaced_ends_ms=laid.replaced_ends_ms,
                 ends_ms=laid.ends_ms,
                 previous_take_id=laid.previous_take_id,
+                take_id=laid.take_id,
                 in_use=laid.take_id in in_use,
                 awaiting_frase=numbers.get(laid.segment_id) if laid.sentence_id == waits else None,
             )
