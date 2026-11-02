@@ -6,11 +6,13 @@ later, read the still-latched status and halted the room again — for the rest 
 session, every thirty seconds, while the person stood there.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRHardStretch, IRSessionStatus
+from app.db.models.internalization_room import IRHardStretch, IRSession, IRSessionStatus
 from app.services.internalization_room import sessions as service
 from tests.room_harness import record_the_part_again, rehearsed_in_parts, stretch_on
 
@@ -114,3 +116,56 @@ async def test_the_session_says_where_the_telling_back_stopped(
         "cada trecho nomeia o arquivo de onde saiu, e não só onde parou de tocar"
     )
     assert told.scope == "P01"
+
+
+async def _touched_long_ago(db: AsyncSession, session) -> datetime:
+    moment = datetime.now(UTC) - timedelta(hours=2)
+    await db.execute(update(IRSession).where(IRSession.id == session.id).values(updated_at=moment))
+    await db.commit()
+    await db.refresh(session)
+    return moment
+
+
+async def test_asking_again_with_nobody_attending_counts_but_holds_updated_at(
+    db_session: AsyncSession, halted
+) -> None:
+    moment = await _touched_long_ago(db_session, halted)
+    raised = halted.halts_raised
+    arrived = await service.person_arrived(db_session, halted)
+
+    await service.mark_needs_person(db_session, halted)
+
+    assert halted.status is IRSessionStatus.NEEDS_PERSON
+    assert halted.updated_at == moment, "a repetição mexeu na ordem das salas do time"
+    assert halted.halts_raised == raised + 1, "a repetição ainda conta, ADR 0045"
+    assert halted.person_arrived_at == arrived, "quem chegou é da parada, e a repetição é a mesma"
+
+
+async def test_a_first_ask_on_a_reopened_older_room_raises_the_halt_and_moves_updated_at(
+    db_session: AsyncSession,
+) -> None:
+    older = await service.create_session(db_session, pericope="P01", project_id="team-a")
+    await service.create_session(db_session, pericope="P02", project_id="team-a")
+    moment = await _touched_long_ago(db_session, older)
+
+    await service.mark_needs_person(db_session, older)
+
+    assert older.status is IRSessionStatus.NEEDS_PERSON
+    assert older.halts_raised == 1
+    assert older.updated_at > moment
+
+
+async def test_an_ask_after_somebody_attended_raises_a_new_halt(
+    db_session: AsyncSession, halted
+) -> None:
+    await service.attend(
+        db_session, halted, by=None, halts_raised=halted.halts_raised, warned_at=None
+    )
+    assert halted.attended_at is not None
+    moment = await _touched_long_ago(db_session, halted)
+
+    await service.mark_needs_person(db_session, halted)
+
+    assert halted.halts_raised == 2
+    assert halted.attended_at is None
+    assert halted.updated_at > moment
