@@ -276,8 +276,9 @@ async def store_take(
 
     `the_same` is the caller's question of which take these bytes already are, given their hash;
     unasked, it is their identity in storage. It is asked before the bytes are stored and, for a
-    joined part, again under the session's row before the row is written, so two tablets joining
-    at once never both write one (ADR 0095).
+    joined part or a take that stamps, again under the session's row before the row is written,
+    so two tablets joining at once never both write one (ADR 0095), and two uploads of one part
+    are accepted one after the other, each stamping the part it replaced.
     """
     same = the_same or partial(
         _the_same_take,
@@ -303,7 +304,7 @@ async def store_take(
     stored = await store_recording(
         audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
-    if origin is not None:
+    if origin is not None or stamps_what_it_replaces:
         await db.execute(select(IRSession.id).where(IRSession.id == session_id).with_for_update())
         already = await same(checked.sha256)
         if already is not None:
