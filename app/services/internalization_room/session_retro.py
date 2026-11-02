@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRRelease, IRSession
+from app.db.models.internalization_room import IRRelease, IRSegment, IRSession
 from app.models.internalization_room import (
     RetroKind,
     SessionRetroCheck,
@@ -25,10 +25,17 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.check_block import check_status, standing_state
 from app.services.internalization_room.forced import was_forced
-from app.services.internalization_room.segments import final_segments, told_back
+from app.services.internalization_room.re_recorded_sentences import the_awaited_sentence
+from app.services.internalization_room.segments import (
+    final_segments,
+    retired_segments,
+    stale_segments,
+    told_back,
+)
 from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.stretch_numbers import stretch_numbers
-from app.services.internalization_room.takes import current_parts, part_keys, takes_of
+from app.services.internalization_room.take_downloads import keys_of_the_takes
+from app.services.internalization_room.takes import current_parts, takes_of
 
 
 def _her_kind(finding: Finding) -> RetroKind:
@@ -60,10 +67,39 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
     forced_at = approved.forced_at if approved is not None and forced else None
     numbers = await stretch_numbers(db, session)
     stretches = await final_segments(db, session.id, takes)
+    stale = await stale_segments(db, session.id, takes)
+    retired = await retired_segments(db, session.id)
     told = told_back(stretches)
     said = nuances_said(telling_back.checks)
     parts = current_parts(takes)
-    keys = part_keys(parts)
+    keys = keys_of_the_takes(takes)
+    take_of = {row.id: row.take_id for row in (*stretches, *stale, *retired)}
+    retold = {row.superseded_by_id for row in retired if row.superseded_by_id and row.transcript}
+    awaited = await the_awaited_sentence(db, session)
+
+    def _part_of(segment_id: str | None) -> str | None:
+        take_id = take_of.get(segment_id) if segment_id else None
+        return keys.get(take_id) if take_id else None
+
+    def _frase(stretch: IRSegment, transcript: str, *, is_stale: bool) -> SessionRetroFrase:
+        number = numbers.get(stretch.id)
+        return SessionRetroFrase(
+            frase=number,
+            segment_id=stretch.id,
+            take_id=stretch.take_id,
+            scene=keys.get(stretch.take_id),
+            starts_ms=stretch.starts_ms,
+            ends_ms=stretch.ends_ms,
+            pass_number=stretch.pass_number,
+            transcript=transcript,
+            stale=is_stale,
+            bridge_take_id=stretch.bridge_take_id,
+            awaiting_sentence_id=(
+                awaited.sentence_id if awaited and awaited.segment_id == stretch.id else None
+            ),
+            supersedes=number if stretch.id in retold else None,
+        )
+
     own = await db.scalar(
         select(IRRelease)
         .where(IRRelease.session_id == session.id)
@@ -86,28 +122,30 @@ async def retro_of(db: AsyncSession, session: IRSession) -> SessionRetroResponse
                     telling_back.analysed_frases,
                     numbers,
                 ),
+                scene=_part_of(finding.segment_id),
             )
             for finding in telling_back.findings
         ],
         nuances=[
             SessionRetroNuance(
-                frase=numbers.get(nuance.segment_id), said=said_before(nuance, said, told)
+                frase=numbers.get(nuance.segment_id),
+                said=said_before(nuance, said, told),
+                scene=keys.get(nuance.take_id),
             )
             for nuance in telling_back.nuances
         ],
+        release_check=approved.release_check if approved else None,
         frases=[
-            SessionRetroFrase(
-                frase=numbers.get(stretch.id),
-                segment_id=stretch.id,
-                take_id=stretch.take_id,
-                scene=keys.get(stretch.take_id),
-                starts_ms=stretch.starts_ms,
-                ends_ms=stretch.ends_ms,
-                pass_number=stretch.pass_number,
-                transcript=stretch.transcript,
-            )
-            for stretch in stretches
-            if stretch.transcript is not None
+            *(
+                _frase(row, row.transcript, is_stale=False)
+                for row in stretches
+                if row.transcript is not None
+            ),
+            *(
+                _frase(row, row.transcript, is_stale=True)
+                for row in stale
+                if row.transcript is not None
+            ),
         ],
         reopened=_reopened(own) if own is not None and not stands_on(own, parts) else None,
         checks=[

@@ -24,6 +24,7 @@ from app.models.internalization_room import (
     GrainSwitchRequest,
     GrainSwitchView,
     MotherTongueTakesResponse,
+    QuestionAudioResponse,
     ReaderTakeResponse,
     ReaderTakesResponse,
     SentRecordingTime,
@@ -51,6 +52,7 @@ from app.services.internalization_room.takes import (
     current_parts,
     grain_in_force,
     grain_switches,
+    listen_address_of,
     listen_url,
     of_the_grain_left_behind,
     refuse_a_join_over_a_moved_part,
@@ -504,3 +506,14 @@ async def listen_to_take(
     take = await take_for_reader(db, user, take_id)
     await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/facilitator/takes/{take_id}/address", response_model=QuestionAudioResponse)
+async def listen_to_take_at_its_address(
+    take_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> QuestionAudioResponse:
+    """A signed address of any take, live or not, for a player that cannot follow a redirect."""
+    take = await take_for_reader(db, user, take_id)
+    await db.commit()
+    signed = await listen_address_of(take)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())

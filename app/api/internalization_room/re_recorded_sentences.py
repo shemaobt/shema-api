@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.models.internalization_room import SessionReRecordedSentences
+from app.models.internalization_room import QuestionAudioResponse, SessionReRecordedSentences
 from app.services import internalization_room as room
 from app.services.internalization_room.re_recorded_sentences import (
+    re_recorded_sentence_address,
     re_recorded_sentence_url,
     re_recorded_sentences_of,
 )
@@ -38,3 +39,17 @@ async def listen_to_the_re_recorded_sentence(
     url = await re_recorded_sentence_url(session, sentence_id)
     await db.commit()
     return RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/re-recorded-sentences/{sentence_id}/address",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_the_re_recorded_sentence_at_its_address(
+    session_id: str, sentence_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> QuestionAudioResponse:
+    """A signed address of the sentence as the team recorded it, archived session or not."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    await db.commit()
+    signed = await re_recorded_sentence_address(session, sentence_id)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())

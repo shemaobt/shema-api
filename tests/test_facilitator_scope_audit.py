@@ -652,6 +652,25 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: The owner's session holds a rehearsal take, so the force passes every other
             #: blocker and mints the release (ADR 0075). A stranger is still 404.
         },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/takes/{take_id}/address", {}),
+            "absent": (f"{IR}/facilitator/takes/{absent}/address", {}),
+            "ids": (take_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/re-recorded-sentences/frase-1/address",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/re-recorded-sentences/frase-1/address",
+                {},
+            ),
+            "ids": (session_id, absent),
+            "owner_expects": 404,
+        },
     ]
 
 

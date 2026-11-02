@@ -303,6 +303,7 @@ async def test_nowhere_in_the_record_of_a_re_recorded_sentence_is_a_word_of_eith
         "replaced_ends_ms",
         "ends_ms",
         "previous_take_id",
+        "take_id",
         "in_use",
         "awaiting_frase",
     }, "uma frase regravada ganhou um campo que não é áudio nem fato do processo"
