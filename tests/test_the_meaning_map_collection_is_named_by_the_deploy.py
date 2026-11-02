@@ -80,7 +80,10 @@ def test_production_logs_are_json(
 
     line = json.loads(_log_line(capsys))
 
-    assert line == {"event": "hello"}
+    assert line["event"] == "hello"
+    assert line["level"] == "info"
+    assert line["logger"] == "probe"
+    assert "timestamp" in line
 
 
 @pytest.mark.usefixtures("root_handlers")

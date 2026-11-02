@@ -34,7 +34,7 @@ The group of translators that owns the work. In the schema the column is called 
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
 
 **Desk**:
-The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
+The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and a passage's retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
 **Consultant**:
@@ -205,7 +205,7 @@ that one file.
 _Avoid_: range, offset, position, Endereço
 
 **Frase number** (`frase`):
-The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam); the number itself is `index` in the **Check block**'s findings and nuances. A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English). The tablet reads it from the room and never counts: `frase` on every stretch of the session read and of the answers of a cut, a replacement and a restart, and on the telling answer for the stretch just told, is its position among the told stretches now, null on a piece nobody has told (ADR 0067). A **Finding** keeps the number the voice spoke, and the session read and the check's answer serve it as the stretch it named is numbered now, null once that stretch is no longer told (ENG-1681).
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam); the number itself is `index` in the **Check block**'s findings and nuances. A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English). The tablet reads it from the room and never counts: `frase` on every stretch of the session read and of the answers of a cut, a replacement and a restart, and on the telling answer for the stretch just told, is its position among the told stretches now, null on a piece nobody has told (ADR 0067). A **Finding** keeps the number the voice spoke, and the session read and the check's answer serve it as the stretch it named is numbered now, null once that stretch is no longer told (ENG-1681). A tablet that asks for the stale rows (`include_stale`) gets every told frase numbered by her positional rule, part by part, the standing frases before the stale ones of that part, numbers never repeating (ENG-2001); the findings keep the standing numbering until ENG-2030 aligns the voice.
 _Avoid_: ordinal (per sibling group, never per passage), position, index (in prose; `index` is only the **Check block**'s wire key), n (her listener number), Número da frase
 
 **Divided stretch** (`parent_id`, `ordinal`):
@@ -469,7 +469,7 @@ One recording an **Outside listener** made, stored in the bucket the moment it a
 _Avoid_: clip (her word), take (a take is the team's), comment (a comment is one kind), note, feedback
 
 **Retroverification file** (`retroverificacao`):
-The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
+The facilitator's and the consultant's record of everything the check learned about a passage, one file per passage named after its release identifier, across every session of it: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
 
 ### Process lines
