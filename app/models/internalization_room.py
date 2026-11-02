@@ -1786,14 +1786,25 @@ class SessionCoverageResponse(BaseModel):
 RetroKind = Literal["missing", "addition", "silence", "unclear"]
 
 
+_PART_KEY = (
+    "The **Part key** of the part it lands on, `whole` or `S<n>` as the frases carry it; null "
+    "when unknown."
+)
+
+
 class SessionRetroFinding(BaseModel):
     kind: RetroKind
     frase: int | None
+    scene: str | None = Field(
+        description=_PART_KEY + " A finding with no frase still names its part when its stretch "
+        "is known; a missing element placed after everything the team told names none."
+    )
 
 
 class SessionRetroNuance(BaseModel):
     frase: int | None
     said: bool
+    scene: str | None = Field(description=_PART_KEY)
 
 
 class SessionRetroFrase(BaseModel):
@@ -1805,6 +1816,36 @@ class SessionRetroFrase(BaseModel):
     ends_ms: int
     pass_number: int
     transcript: str
+    stale: bool = Field(
+        description=(
+            "True for a told stretch of a part the team recorded again and did not tell again. "
+            "Stale frases are listed after the standing ones, numbered as the team's tablet "
+            "draws them unless a version froze their numbers (ADR 0067); its `take_id` is the "
+            "take the part had before."
+        )
+    )
+    bridge_take_id: str | None = Field(
+        description=(
+            "The take of the team's Portuguese telling of this frase, played at "
+            "`/facilitator/takes/{take_id}/address`; null when the frase was told without a "
+            "spoken telling."
+        )
+    )
+    awaiting_sentence_id: str | None = Field(
+        description=(
+            "On the frase awaiting its translation, the re-recorded sentence it awaits, as the "
+            "re-recorded sentences record names it: played at "
+            "`/re-recorded-sentences/{sentence_id}/address`. Null on every other frase, and on "
+            "all of them once the frase is told again."
+        )
+    )
+    supersedes: int | None = Field(
+        description=(
+            "On a retelling, the number of the frase it tells again, which is its own `frase`: "
+            "a retelling reads where the stretch it replaced did. Null on a first telling, and "
+            "wherever `frase` is null."
+        )
+    )
 
 
 class SessionRetroReopenedFrase(BaseModel):
@@ -1843,7 +1884,14 @@ class SessionRetroResponse(BaseModel):
     heard_complete: bool
     findings: list[SessionRetroFinding]
     nuances: list[SessionRetroNuance]
-    release_check: None = None
+    release_check: dict[str, Any] | None = Field(
+        description=(
+            "The release check of the version `version` names, as stored: "
+            "`{ran_at, whole, checks: [{name, passed, notes?}]}`, `notes` present only when it "
+            "has entries. A passed check that carries notes reads as an «aviso» (ADR 0102). Null "
+            "with no approved version, on a reopened read, and while no check has landed."
+        )
+    )
     frases: list[SessionRetroFrase]
     reopened: SessionRetroReopened | None
     checks: list[SessionRetroCheck]

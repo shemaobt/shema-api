@@ -12,7 +12,7 @@ from app.services.internalization_room.takes import takes_of
 
 
 async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int]:
-    """Each stretch standing, by id, with the frase the latest version of this session froze.
+    """Each told stretch, standing or stale, by id, with the frase the latest version froze.
 
     Read out of the stored packet rather than recomputed from the rows, which is the whole point
     of freezing it: every reading renumbers, and a comment filed against frase 3 has to go on
@@ -22,6 +22,7 @@ async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int
     """
     takes = await takes_of(db, session.id)
     stretches = await final_segments(db, session.id, takes)
+    stale = told_back(await stale_segments(db, session.id, takes))
     latest = await db.scalar(
         select(IRRelease)
         .where(IRRelease.session_id == session.id)
@@ -36,6 +37,5 @@ async def stretch_numbers(db: AsyncSession, session: IRSession) -> dict[str, int
         if entry.get("segment_id") and entry.get("frase") is not None
     }
     if not numbers:
-        stale = told_back(await stale_segments(db, session.id, takes))
         numbers = passage_numbers(told_back(stretches), stale, takes)
-    return {row.id: numbers[row.id] for row in stretches if row.id in numbers}
+    return {row.id: numbers[row.id] for row in (*stretches, *stale) if row.id in numbers}

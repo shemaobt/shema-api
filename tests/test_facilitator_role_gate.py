@@ -143,6 +143,11 @@ _REQUESTS: dict[tuple[str, str], dict] = {
         "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}/release",
     ): {"json": {"force": True}},
     ("GET", "/api/internalization-room/facilitator/canon-pins"): {},
+    ("GET", "/api/internalization-room/facilitator/takes/{take_id}/address"): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/re-recorded-sentences/{sentence_id}/address",
+    ): {},
 }
 
 _STREAMS = {("GET", "/api/facilitator/teams/{team_id}/nudges")}

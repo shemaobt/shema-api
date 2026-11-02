@@ -492,8 +492,16 @@ async def listen_address_of(
     recording: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
 ) -> SignedAudio:
     """The signed URL and the instant it dies, for a player that cannot follow a redirect."""
+    return await signed_listen_address(
+        recording.storage_key, recording.content_type, settings=settings
+    )
+
+
+async def signed_listen_address(
+    storage_key: str, content_type: str, *, settings: Settings | None = None
+) -> SignedAudio:
     expires_at = datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES)
-    url = await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+    url = await signed_listen_url(storage_key, content_type, settings=settings)
     return SignedAudio(url=url, expires_at=expires_at)
 
 

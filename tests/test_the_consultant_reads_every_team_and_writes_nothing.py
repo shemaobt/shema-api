@@ -412,6 +412,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}"
         f"/frases/{desk['b'].frase}/audio",
         f"{IR}/facilitator/sessions/{session}/grain-switches",
+        f"{IR}/facilitator/sessions/{session}/re-recorded-sentences/frase-b/address",
     ]
 
     values = {
@@ -651,6 +652,8 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
             f"/frases/{team.frase}/audio",
             {},
         ),
+        (f"{IR}/facilitator/takes/{team.take}/address", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/address", {}),
     ]
     nudges = f"{DESK}/teams/{team.id}/nudges"
 

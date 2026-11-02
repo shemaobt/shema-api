@@ -69,5 +69,11 @@ async def read_the_passages_retroverification_file(
 async def read_the_retro(
     session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> SessionRetroResponse:
+    """The record's «Retroverificação» block of a session, archived or not.
+
+    The frases list the told standing stretches in reading order, then the told stale ones of a
+    part recorded again, numbered as the team's list draws them, or as the latest version froze
+    them (ADR 0067). Nothing the analyst wrote is served.
+    """
     session = await room.get_session_for_reader(db, user, session_id)
     return await retro_of(db, session)
