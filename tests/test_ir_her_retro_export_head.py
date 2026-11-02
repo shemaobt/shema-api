@@ -786,8 +786,8 @@ async def test_every_check_is_listed_with_its_findings_notes_and_the_voice(db_se
     )  # fmt: skip
     assert first["findings"] == [
         {"kind": "addition", "note": "NOTA-1", "frase": 1, "idx": stretch_id, "clipKey": "whole"},
-        {"kind": "missing", "note": "FALTOU-NO-FIM"},
-    ]
+        {"kind": "missing", "note": "FALTOU-NO-FIM", "frase": 2},
+    ], "o que faltou depois da última frase saía sem número, por não cair em trecho nenhum"
     (nuance,) = second["findings"]
     assert list(nuance) == ["kind", "note", "frase", "idx", "clipKey", "quote", "story", "voiced"]
     assert (nuance["kind"], nuance["note"], nuance["quote"], nuance["voiced"]) == (

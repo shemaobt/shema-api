@@ -8,6 +8,7 @@ standing stretches and nothing else — and serves them on top, only when the ta
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -20,6 +21,7 @@ from app.api.internalization_room.sessions import _progress
 from app.db.models.auth import App
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import (
+    CheckRound,
     Finding,
     FindingKind,
     frase_numbers,
@@ -46,6 +48,7 @@ from tests.release_harness import (
     TABLET,
     a_claimed_device,
     at_the_desk,
+    desk_release,
     exported_file,
     session_retro,
     team_headers,
@@ -1002,3 +1005,140 @@ async def test_the_file_numbers_a_stretch_above_a_part_recorded_again_as_the_tab
         (3, "S3", False),
     ], "o arquivo dizia frase 2 para a parte 3 e punha a linha velha da parte 2 no fim, como 3"
     assert next(one["idx"] for one in frases if one["n"] == 3) == third
+
+
+async def test_the_files_check_keeps_the_frase_it_named_when_a_retelling_moves_the_live_number(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, third, played = await _part_two_recorded_again_under_part_three(client, db_session)
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+    await capture_segment(
+        db_session,
+        session,
+        take_id=played[1],
+        starts_ms=0,
+        ends_ms=1000,
+        bridge_take_id="retro-de-novo",
+        transcript="a parte 2 contada de novo",
+    )
+
+    file = await exported_file(db_session, session.id)
+
+    assert {one["idx"]: one["n"] for one in file["frases"]}[third] == 4
+    (check,) = file["checks"]
+    assert [(one["idx"], one["frase"]) for one in check["findings"]] == [(third, 3)], (
+        "o arquivo renumerava o achado pela lista viva: dizia frase 4 para o que a conferência "
+        "chamou de 3"
+    )
+
+
+async def test_the_files_check_keeps_the_frase_a_nuance_named_when_a_retelling_moves_the_number(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    session, third, played = await _part_two_recorded_again_under_part_three(client, db_session)
+    analyst.readings = [
+        {
+            "findings": [
+                {
+                    "kind": "nuance",
+                    "frase": 3,
+                    "quote": "contada de volta",
+                    "story": "a história conta de outro jeito",
+                }
+            ]
+        }
+    ]
+    answered = await press_terminei(client, session.id, report=played_every_part(played))
+    assert answered.status_code == 200, answered.text
+    await capture_segment(
+        db_session,
+        session,
+        take_id=played[1],
+        starts_ms=0,
+        ends_ms=1000,
+        bridge_take_id="retro-de-novo",
+        transcript="a parte 2 contada de novo",
+    )
+
+    (check,) = (await exported_file(db_session, session.id))["checks"]
+
+    assert [(one["kind"], one["idx"], one["frase"]) for one in check["findings"]] == [
+        ("nuance", third, 3)
+    ], "a nuance da conferência saía no arquivo como frase 4, a linha que a lista viva diz agora"
+
+
+async def test_a_finding_stored_without_a_frase_carries_none_in_the_file_not_the_live_number(
+    db_session: AsyncSession,
+) -> None:
+    session, (one, _two, _three) = await rehearsed_in_parts(db_session, 3)
+    told = {row.take_id: row.id for row in await current_segments(db_session, session.id)}[one.id]
+    fresh = await get_session(db_session, session.id)
+    state = back_translation_of(fresh)
+    state.checks = [
+        CheckRound(
+            at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
+            findings=[
+                Finding(kind=FindingKind.UNCLEAR, note="nao deu para ouvir", segment_id=told)
+            ],
+            spoken="não deu para ouvir",
+            outcome="corrected",
+            conferida=False,
+        )
+    ]
+    await save_back_translation(db_session, fresh, state)
+
+    (check,) = (await exported_file(db_session, session.id))["checks"]
+
+    assert check["findings"] == [
+        {"kind": "unclear", "note": "nao deu para ouvir", "idx": told, "clipKey": "S1"}
+    ], "um achado gravado sem número, de antes do campo existir, saía com o número vivo do trecho"
+
+
+async def test_under_a_forced_version_the_files_check_keeps_the_frase_it_named_not_the_frozen_one(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    room_app: App,
+) -> None:
+    analyst = the_analyst_is_scripted(monkeypatch)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    third = {row.take_id: row.id for row in await current_segments(db_session, session.id)}[
+        three.id
+    ]
+    again = await upload_a_part(client, session.id, part=2, audio=NEW_AUDIO)
+    assert again.status_code == 200, again.text
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    played = played_every_part([one.id, again.json()["take_id"], three.id])
+    answered = await press_terminei(client, session.id, report=played)
+    assert answered.status_code == 200, answered.text
+    await capture_segment(
+        db_session,
+        session,
+        take_id=again.json()["take_id"],
+        starts_ms=0,
+        ends_ms=1000,
+        bridge_take_id="retro-de-novo",
+        transcript="a parte 2 contada de novo",
+    )
+    desk, _user = await at_the_desk(db_session, room_app, project)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text
+
+    file = await exported_file(db_session, session.id)
+
+    assert {one["idx"]: one["n"] for one in file["approval"]["frases"]}[third] == 4
+    (check,) = file["checks"]
+    assert [(one["idx"], one["frase"]) for one in check["findings"]] == [(third, 3)], (
+        "sob uma versão o arquivo numerava o achado pela lista congelada: frase 4 para o que a "
+        "conferência chamou de 3"
+    )
