@@ -250,6 +250,7 @@ async def test_the_analyst_reads_a_telling_back_on_a_row_stored_in_spanish_in_th
         session,
         state=back_translation_of(session),
         told=told_stretches(),
+        stale=[],
         takes=[],
         settings=settings(),
     )
@@ -272,6 +273,7 @@ async def test_the_verdict_on_a_row_stored_in_spanish_is_judged_in_the_rooms_lan
         session,
         state=back_translation_of(session),
         told=[],
+        stale=[],
         takes=[],
         settings=settings(),
     )
@@ -328,6 +330,7 @@ async def test_the_note_a_verdict_keeps_on_a_row_stored_in_spanish_is_in_the_roo
         session,
         state=back_translation_of(session),
         told=[],
+        stale=[],
         takes=[],
         settings=settings(),
     )

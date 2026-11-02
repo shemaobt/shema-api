@@ -38,6 +38,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     is_joined,
     nuances_said,
+    passage_numbers,
     said_before,
     segments_block,
     the_finding_that_leads,
@@ -92,6 +93,7 @@ async def check_the_telling_back(
     *,
     state: BackTranslationState,
     told: list[IRSegment],
+    stale: list[IRSegment],
     takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
@@ -113,16 +115,18 @@ async def check_the_telling_back(
     """
     read_this_round: list[Finding] = []
     language = room_language(session.language)
+    numbers = passage_numbers(told, stretches_told_back(stale), takes)
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
         language,
     )
-    told_back = segments_block(told, addresses, language)
+    told_back = segments_block(told, addresses, language, numbers)
     if not state.already_analysed(told):
         read = await analyse_telling_back(
             segments=told,
+            numbers=numbers,
             scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
@@ -160,6 +164,7 @@ async def check_the_telling_back(
         state.nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.analysed_frases = [numbers[segment.id] for segment in told]
 
     state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
 
@@ -279,6 +284,7 @@ async def save_the_spoken_verdict(
             read.checked_at = stored.checked_at
             read.verdict = stored.verdict
             read.analysed_segment_ids = stored.analysed_segment_ids
+            read.analysed_frases = stored.analysed_frases
 
     state.verdict = VoicedVerdict(
         clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
