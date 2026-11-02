@@ -18,6 +18,7 @@ from sqlalchemy import (
     literal,
     or_,
     select,
+    tuple_,
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -69,7 +70,7 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
-from app.services.internalization_room.entered import latest_entered_first
+from app.services.internalization_room.entered import entered, latest_entered_first
 from app.services.internalization_room.fail_safe import FailSafe
 from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import floor, normalize, room_language
@@ -1045,29 +1046,69 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     the same statement so a visit that landed after ``session`` was read is cleared too. A
     warning that visit ended stays ended: once the stamps go the visit can no longer be
     undone, so what it ended is final.
+
+    **A halt re-delivered on an old room leaves its ``updated_at`` where it was** (ENG-2121):
+    that column orders the team's rooms and names its Current book, and a tablet asking again
+    on a room another has overtaken is not the team's work.
     """
+    stays = (
+        {"updated_at": IRSession.updated_at} if await _another_room_is_ahead_of(db, session) else {}
+    )
     halted = await db.execute(
         update(IRSession)
         .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
         .values(
+            **stays,
             status=IRSessionStatus.NEEDS_PERSON,
             halts_raised=IRSession.halts_raised + 1,
             warned_at=case((IRSession.attended_at.is_not(None), None), else_=IRSession.warned_at),
             attended_at=None,
             attended_by=None,
+            halt_kind=HaltKind.BLOCKING.value,
+            person_arrived_at=None,
         )
         .execution_options(synchronize_session=False)
     )
     if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
-    _a_new_ask(session, kind=HaltKind.BLOCKING)
     if await is_the_demo_team(db, session.project_id):
         await db.flush()
-        await db.refresh(session, ["status", "halts_raised", "warned_at", "attended_at"])
+        await db.refresh(
+            session,
+            [
+                "status",
+                "halts_raised",
+                "warned_at",
+                "attended_at",
+                "halt_kind",
+                "person_arrived_at",
+            ],
+        )
         return await attend(
             db, session, by=None, halts_raised=session.halts_raised, warned_at=session.warned_at
         )
     return await _written(db, session, commit=True)
+
+
+async def _another_room_is_ahead_of(db: AsyncSession, session: IRSession) -> bool:
+    """Whether a room the team entered ranks above ``session`` once it, too, is entered.
+
+    The halt is what enters ``session``, so it is ranked as entered: a first ask on the room
+    the team just opened is its current room, not an old one.
+    """
+    ahead = await db.scalar(
+        select(IRSession.id)
+        .where(
+            IRSession.project_id == session.project_id,
+            IRSession.id != session.id,
+            live(),
+            entered(),
+            tuple_(IRSession.updated_at, IRSession.created_at, IRSession.id)
+            > tuple_(session.updated_at, session.created_at, session.id),
+        )
+        .limit(1)
+    )
+    return ahead is not None
 
 
 async def raise_a_warning(

@@ -6,11 +6,13 @@ later, read the still-latched status and halted the room again — for the rest 
 session, every thirty seconds, while the person stood there.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRHardStretch, IRSessionStatus
+from app.db.models.internalization_room import IRHardStretch, IRSession, IRSessionStatus
 from app.services.internalization_room import sessions as service
 from tests.room_harness import record_the_part_again, rehearsed_in_parts, stretch_on
 
@@ -114,3 +116,57 @@ async def test_the_session_says_where_the_telling_back_stopped(
         "cada trecho nomeia o arquivo de onde saiu, e não só onde parou de tocar"
     )
     assert told.scope == "P01"
+
+
+async def _entered_a_while_ago(db: AsyncSession, project_id: str, hours: int):
+    session = await service.create_session(db, pericope="P01", project_id=project_id)
+    moment = datetime.now(UTC) - timedelta(hours=hours)
+    await db.execute(
+        update(IRSession)
+        .where(IRSession.id == session.id)
+        .values(messages=[{"role": "team", "content": "oi"}], updated_at=moment)
+    )
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+async def test_a_needs_person_on_an_old_room_leaves_its_updated_at_where_it_was(
+    db_session: AsyncSession,
+) -> None:
+    old = await _entered_a_while_ago(db_session, "team-a", hours=2)
+    await _entered_a_while_ago(db_session, "team-a", hours=1)
+    before = old.updated_at
+
+    await service.mark_needs_person(db_session, old)
+
+    assert old.status is IRSessionStatus.NEEDS_PERSON
+    assert old.updated_at == before, "um quarto antigo não vira o mais recente por pedir uma pessoa"
+
+
+async def test_a_needs_person_on_the_current_room_moves_its_updated_at(
+    db_session: AsyncSession,
+) -> None:
+    await _entered_a_while_ago(db_session, "team-b", hours=2)
+    current = await _entered_a_while_ago(db_session, "team-b", hours=1)
+    before = current.updated_at
+
+    await service.mark_needs_person(db_session, current)
+
+    assert current.updated_at > before
+
+
+async def test_a_first_needs_person_on_a_room_nobody_entered_moves_its_updated_at(
+    db_session: AsyncSession,
+) -> None:
+    await _entered_a_while_ago(db_session, "team-c", hours=2)
+    fresh = await service.create_session(db_session, pericope="P02", project_id="team-c")
+    before = datetime.now(UTC) - timedelta(hours=1)
+    await db_session.execute(
+        update(IRSession).where(IRSession.id == fresh.id).values(updated_at=before)
+    )
+    await db_session.commit()
+
+    await service.mark_needs_person(db_session, fresh)
+
+    assert fresh.updated_at > before
