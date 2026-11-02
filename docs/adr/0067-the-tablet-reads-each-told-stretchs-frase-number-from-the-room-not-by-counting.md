@@ -1,5 +1,5 @@
 ---
-status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order; amended by ENG-2030: the check, the voice and the finding views number by her order too; amended by ENG-2133: the awaiting line, the Packet, the check block, the retro and the retroverification file number by her order too
+status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order; amended by ENG-2030: the check, the voice and the finding views number by her order too; amended by ENG-2133: the awaiting line, the Packet, the check block, the retro and the retroverification file number by her order too; amended by ENG-2138: the telling answer numbers by her order too
 date: 2026-10-19
 ---
 
@@ -100,3 +100,14 @@ re-recorded-sentences record through `stretch_numbers`' live computation, and th
 retroverification file (ADR 0101, amended the same day). A version's frozen numbers still win
 wherever they stand. The telling answer alone still numbers the standing stretches, as the
 session read without `include_stale` does.
+
+**Amended on 2 November 2026 (ENG-2138): the telling answer counts the stale stretches too.**
+The ENG-2133 paragraph left the telling answer on the standing stretches, so above a part
+recorded again and not told again it said frase 2 for the stretch just told, while the session
+read with `include_stale`, the voice and the check said 3 — and the tablet reads that `frase`
+into the row it shows (`session_notifier.dart:10912`). Her segment route
+answers `n` from `buildPassageTelling` (`app/api/bt/segment/route.ts:166-168`), the one
+numbering every reader of hers shares. The answer now numbers through `passage_numbers`, as the
+session read with the stale rows does, so the stretch just told carries the number every other
+reader gives it. A session with no stale row is numbered as before. No reader of a frase number
+is left on the standing stretches alone.
