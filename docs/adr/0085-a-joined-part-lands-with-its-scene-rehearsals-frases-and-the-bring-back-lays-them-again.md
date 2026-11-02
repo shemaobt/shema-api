@@ -32,6 +32,11 @@ Decided (ENG-1405):
   findings and nuances on the abandoned stretches as recording a part again does, and undoes
   the check as any capture does. A part whose frases already stand answers as it is. Anything else
   answers 409 `NOTHING_TO_BRING_BACK` with nothing written, and a number with no part 404.
+  Amended (ENG-2081): a part joined from a rehearsal of this session whose bytes are no longer
+  the rehearsal's, because a sentence was re-recorded in it since the join, answers 409
+  `PART_NO_LONGER_ITS_REHEARSAL` instead, as her `src/draft/join.ts` answers `spliced`; the
+  tablet says to try again for it and keeps «este ensaio não pode entrar» for
+  `NOTHING_TO_BRING_BACK`. The code is additive: nothing else changes.
 - **The telling is a `retro` take row naming the frase's stored object**: the same key,
   fingerprint, checksum, size, type and verification; its Recording time is the frase's arrival;
   one row per frase in the session. The lay is database writes only, in one transaction.

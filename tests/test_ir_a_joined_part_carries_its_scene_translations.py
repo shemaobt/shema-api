@@ -438,7 +438,7 @@ async def test_a_part_a_sentence_was_re_recorded_in_is_never_offered_and_the_doo
 
     assert await offered(room, session_id) == []
     assert refused.status_code == 409, refused.text
-    assert refused.json()["code"] == "NOTHING_TO_BRING_BACK"
+    assert refused.json()["code"] == "PART_NO_LONGER_ITS_REHEARSAL"
     assert (await the_session(room, session_id))["segments"] == before
 
 
