@@ -51,8 +51,8 @@ from app.services.internalization_room.back_translation import (
     Finding,
     SupersededAttempt,
     findings_remaining,
-    frase_numbers,
     listening_to_the_parts,
+    passage_numbers,
     rehearsed_parts,
     unheard_parts,
 )
@@ -70,6 +70,7 @@ from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
     retired_segments,
+    stale_segments,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -452,7 +453,8 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     telling_back = await standing_state(db, session.id, back_translation_of(session), takes)
     stretches = await final_segments(db, session.id, takes)
     told = told_back(stretches)
-    frases = frase_numbers(told)
+    stale = told_back(await stale_segments(db, session.id, takes))
+    frases = passage_numbers(told, stale, takes)
     replaced = await retired_segments(db, session.id)
     divided = await divided_segments(db, session.id)
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]

@@ -298,8 +298,8 @@ async def test_the_next_telling_of_part_two_lands_between_parts_one_and_three(
     assert [(row["segment_id"], row["frase"]) for row in read] == [
         (standing[one.id].id, 1),
         (retold.id, 2),
-        (standing[three.id].id, 3),
-    ]
+        (standing[three.id].id, 4),
+    ], "a parte 3 era a frase 3 no pacote, com a linha velha da parte 2 desenhada como 3 na tablet"
 
 
 async def test_the_check_block_numbers_the_new_part_in_its_place(
