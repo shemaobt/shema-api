@@ -261,13 +261,12 @@ async def retro_export(
         ]
     telling_back = back_translation_of(session)
     rows = {row.id: row for row in (*standing.values(), *retired)}
-    numbered = {one.idx: one.n for one in approval.frases} if approval else numbers
 
-    def _address(segment_id: str | None) -> dict[str, Any]:
+    def _address(segment_id: str | None, frase: int | None) -> dict[str, Any]:
         row = rows.get(segment_id or "")
         return {
             "idx": segment_id,
-            "frase": numbered.get(segment_id or ""),
+            "frase": frase,
             "clipKey": keys.get(row.take_id) if row else None,
         }
 
@@ -310,7 +309,7 @@ async def retro_export(
                 at=check.at.isoformat(),
                 findings=[
                     RetroCheckFinding(
-                        kind=one.kind.value, note=one.note, **_address(one.segment_id)
+                        kind=one.kind.value, note=one.note, **_address(one.segment_id, one.chunk)
                     )
                     for one in check.findings
                 ]
@@ -321,7 +320,7 @@ async def retro_export(
                         quote=one.quote,
                         story=one.story,
                         voiced=one.voiced,
-                        **_address(one.segment_id),
+                        **_address(one.segment_id, one.chunk),
                     )
                     for one in check.nuances
                 ],
