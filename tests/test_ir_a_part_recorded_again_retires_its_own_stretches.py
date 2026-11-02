@@ -337,8 +337,8 @@ async def test_the_retroverification_file_reads_the_new_part_in_its_place(
     assert [(row["idx"], row["n"]) for row in file["frases"] if not row["stale"]] == [
         (standing[one.id].id, 1),
         (retold.id, 2),
-        (standing[three.id].id, 3),
-    ]
+        (standing[three.id].id, 4),
+    ], "a parte 3 era a frase 3 no arquivo, com a linha velha da parte 2 desenhada como 3 na tablet"
 
 
 async def test_the_analyst_is_numbered_in_reading_order(

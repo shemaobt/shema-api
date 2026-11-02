@@ -64,6 +64,7 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     PART_MS,
+    a_piece_still_to_be_told,
     record_the_part_again,
     rehearsed_in_parts,
     room_client,
@@ -624,7 +625,9 @@ async def test_a_part_recorded_again_and_not_told_again_keeps_its_frase_listed_a
     )  # fmt: skip
 
 
-async def test_stale_frases_follow_the_told_ones_without_moving_their_numbers(db_session) -> None:
+async def test_a_stale_frase_keeps_its_place_and_the_told_ones_after_it_keep_their_numbers(
+    db_session,
+) -> None:
     project, _ = await a_claimed_device(db_session)
     session, (first, _second) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
     await record_the_part_again(db_session, session, first, sha256="d" * 64)
@@ -632,9 +635,24 @@ async def test_stale_frases_follow_the_told_ones_without_moving_their_numbers(db
     frases = (await _exported(db_session, session.id))["frases"]
 
     assert [(one["n"], one["clipKey"], one["stale"]) for one in frases] == [
-        (1, "S2", False),
-        (2, "S1", True),
-    ]
+        (1, "S1", True),
+        (2, "S2", False),
+    ], "o arquivo punha a frase velha depois das contadas, como 2, e a tablet a desenha como 1"
+
+
+async def test_a_stale_piece_nobody_told_is_not_a_frase_of_the_file(db_session) -> None:
+    project, _ = await a_claimed_device(db_session)
+    session, (first, _second) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
+    (told, _other) = await final_segments(db_session, session.id)
+    await a_piece_still_to_be_told(db_session, session, told)
+    await record_the_part_again(db_session, session, first, sha256="d" * 64)
+
+    frases = (await _exported(db_session, session.id))["frases"]
+
+    assert [(one["n"], one["clipKey"], one["stale"], one["transcript"]) for one in frases] == [
+        (1, "S1", True, "a primeira metade contada de volta"),
+        (2, "S2", False, "parte 1 contada de volta"),
+    ], "um pedaço que ninguém contou entrava no arquivo como uma frase vazia e numerada"
 
 
 async def test_history_keeps_what_a_restart_abandoned_and_what_a_correction_replaced(

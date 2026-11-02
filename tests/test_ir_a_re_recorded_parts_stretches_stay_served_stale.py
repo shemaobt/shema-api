@@ -46,6 +46,7 @@ from tests.release_harness import (
     TABLET,
     a_claimed_device,
     at_the_desk,
+    exported_file,
     session_retro,
     team_headers,
 )
@@ -986,3 +987,18 @@ async def test_the_retro_read_numbers_a_stretch_above_a_part_recorded_again_as_t
     assert [one.frase for one in retro.findings] == [3], (
         "o achado da parte 3 chegava ao retro como frase 2"
     )
+
+
+async def test_the_file_numbers_a_stretch_above_a_part_recorded_again_as_the_tablet_draws_it(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session, third, _played = await _part_two_recorded_again_under_part_three(client, db_session)
+
+    frases = (await exported_file(db_session, session.id))["frases"]
+
+    assert [(one["n"], one["clipKey"], one["stale"]) for one in frases] == [
+        (1, "S1", False),
+        (2, "S2", True),
+        (3, "S3", False),
+    ], "o arquivo dizia frase 2 para a parte 3 e punha a linha velha da parte 2 no fim, como 3"
+    assert next(one["idx"] for one in frases if one["n"] == 3) == third
