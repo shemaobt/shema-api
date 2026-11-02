@@ -131,12 +131,14 @@ async def test_asking_again_with_nobody_attending_counts_but_holds_updated_at(
 ) -> None:
     moment = await _touched_long_ago(db_session, halted)
     raised = halted.halts_raised
+    arrived = await service.person_arrived(db_session, halted)
 
     await service.mark_needs_person(db_session, halted)
 
     assert halted.status is IRSessionStatus.NEEDS_PERSON
     assert halted.updated_at == moment, "a repetição mexeu na ordem das salas do time"
     assert halted.halts_raised == raised + 1, "a repetição ainda conta, ADR 0045"
+    assert halted.person_arrived_at == arrived, "quem chegou é da parada, e a repetição é a mesma"
 
 
 async def test_a_first_ask_on_a_reopened_older_room_raises_the_halt_and_moves_updated_at(

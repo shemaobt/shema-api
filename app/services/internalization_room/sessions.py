@@ -1051,7 +1051,9 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     counts, so a return that read the earlier halt leaves this one standing (ADR 0045), but it
     leaves ``updated_at`` where it was. That column orders the team's rooms and names its Current
     book, and a tablet that retries, or re-sends the halt it remembers on relaunch, is not the
-    team's work. A first ask, or one after somebody attended, raises the halt in any room.
+    team's work, and it keeps ``person_arrived_at``: the arrival belongs to the halt it answers
+    and only a new halt clears it. A first ask, or one after somebody attended, raises the halt
+    in any room.
     """
     repeat = and_(IRSession.status == IRSessionStatus.NEEDS_PERSON, IRSession.attended_at.is_(None))
     halted = await db.execute(
@@ -1064,7 +1066,7 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
             attended_at=None,
             attended_by=None,
             halt_kind=HaltKind.BLOCKING.value,
-            person_arrived_at=None,
+            person_arrived_at=case((repeat, IRSession.person_arrived_at), else_=None),
             updated_at=case((repeat, IRSession.updated_at), else_=func.now()),
         )
         .execution_options(synchronize_session=False)
@@ -1115,10 +1117,12 @@ async def raise_a_warning(
 
 
 def _a_new_ask(session: IRSession, *, kind: HaltKind) -> None:
-    """What every halt writes, whichever its kind.
+    """What a warning writes on the row after its update: the kind and a fresh wait.
 
     The kind is written on every halt and cleared by none — see ``halt.last``. The visit is
-    cleared by each kind's own update, in ``mark_needs_person`` and ``raise_a_warning``.
+    cleared by the update itself. ``mark_needs_person`` writes the same two columns inside its
+    own update, because a repetition keeps who arrived and holds ``updated_at``, and a flush
+    behind the update would move it.
     """
     session.halt_kind = kind.value
     session.person_arrived_at = None
