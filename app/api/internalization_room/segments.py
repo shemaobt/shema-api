@@ -167,8 +167,9 @@ async def restart(
         404: {"description": "`NOT_FOUND`: no such session for this team, or no part `number`"},
         409: {
             "description": "`NOTHING_TO_BRING_BACK`: the part was not joined from a scene "
-            "rehearsal of this session, a sentence was re-recorded in it, or the rehearsal "
-            "has no frase; nothing is written"
+            "rehearsal of this session, or the rehearsal has no frase; "
+            "`PART_NO_LONGER_ITS_REHEARSAL`: a sentence was re-recorded in the part since "
+            "the join; nothing is written"
         },
     },
 )
