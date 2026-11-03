@@ -1,5 +1,5 @@
 ---
-status: accepted; amends ADR 0014; amended 28 Oct 2026 by ENG-1292 (the manifest is served live before approval and points to the external check)
+status: accepted; amends ADR 0014; amended 28 Oct 2026 by ENG-1292 (the manifest is served live before approval and points to the external check); superseded in part by ADR 0105: a re-opened draft's live manifest carries the next version's id
 date: 2026-10-22
 ---
 

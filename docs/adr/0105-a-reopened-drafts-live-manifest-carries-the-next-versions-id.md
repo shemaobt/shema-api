@@ -9,10 +9,12 @@ ENG-2142. After a re-open the take downloads, the whole-passage file and the ret
 file named the draft as the next version (ADR 0081), while the live manifest named it after the
 passage's last release. One Desk row, two names for one draft.
 
-Decided (Henok, 3 November): a draft that is not approved as it stands is the next version's
+Decided (Henok, 2026-11-03): a draft that is not approved as it stands is the next version's
 draft, `v(N+1)`, version 1 when the passage has none, and the live manifest carries that id as
-every other download does. An approved draft that stands keeps its version's id, and a session a
-Zerar archived keeps ADR 0100's naming. `finalizeCount` stays the last version.
+every other download does.
+
+An approved draft that stands keeps its version's id, a session a Zerar archived keeps ADR 0100's
+naming, and the live manifest's `finalizeCount` stays the last version (ADR 0086).
 
 Rejected: the last version's id everywhere, which is what Marcia's own route does; it would rename
 the take downloads and amend ADR 0081.
