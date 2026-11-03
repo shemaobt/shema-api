@@ -8,11 +8,26 @@ them is a case in.
 
 from __future__ import annotations
 
+import subprocess
+import tempfile
+from pathlib import Path
+
 #: The bucket the oral-collector deploys to when nothing names one, and a made-up name to
 #: point the setting at. Both modules that read the bucket assert on the first, so it is
 #: written once: it is a real deployed name, not a value a case invented.
 PRODUCTION_BUCKET = "tripod-image-uploads"
 STAGING_BUCKET = "balde-de-staging"
+
+
+def a_tone(seconds: float) -> bytes:
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "tone.wav"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=duration={seconds}", str(out)],
+            check=True,
+        )
+        return out.read_bytes()
+
 
 #: The five cases where a naive implementation diverges: matras and diacritics attach to
 #: their base, a ZWJ sequence is one cluster however many people are in it, and jamo L+V

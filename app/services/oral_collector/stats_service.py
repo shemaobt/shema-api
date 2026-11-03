@@ -13,7 +13,7 @@ from app.models.oc_stats import (
 )
 
 
-def _counted_recording_conditions() -> list[ColumnElement[bool]]:
+def counted_recording_conditions() -> list[ColumnElement[bool]]:
     """The recordings a number *about audio* describes, whatever it groups them by.
 
     A split leaves the parent behind as an `ARCHIVED_AFTER_SPLIT` row that keeps its
@@ -33,8 +33,8 @@ def _counted_recording_conditions() -> list[ColumnElement[bool]]:
 
 
 def _counted_conditions(project_id: str) -> list[ColumnElement[bool]]:
-    """`_counted_recording_conditions`, narrowed to one project."""
-    return [OC_Recording.project_id == project_id, *_counted_recording_conditions()]
+    """`counted_recording_conditions`, narrowed to one project."""
+    return [OC_Recording.project_id == project_id, *counted_recording_conditions()]
 
 
 async def get_genre_stats(db: AsyncSession, project_id: str) -> GenreStatsResponse:
@@ -104,7 +104,7 @@ async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
     Only `total_hours` is filtered, and the asymmetry is deliberate — do not harmonise it.
     Hours are a quantity of audio, so hours the server never received, or a split parent's
     hours already counted under the segments that replaced it, are hours the platform cannot
-    play and must not claim to hold; sharing `_counted_recording_conditions` with
+    play and must not claim to hold; sharing `counted_recording_conditions` with
     `get_genre_stats` is what keeps that number agreeing with every other screen.
 
     The other three answer questions that are not about recordings, and filtering them by
@@ -126,7 +126,7 @@ async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
     total_languages = language_result.scalar_one()
 
     hours_stmt = select(func.coalesce(func.sum(OC_Recording.duration_seconds), 0.0)).where(
-        *_counted_recording_conditions()
+        *counted_recording_conditions()
     )
     hours_result = await db.execute(hours_stmt)
     total_seconds = float(hours_result.scalar_one())
