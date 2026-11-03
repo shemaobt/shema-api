@@ -11,7 +11,10 @@ itself writes rather than about prose describing it.
 import ast
 from pathlib import Path
 
-from app.services.internalization_room.turn_instructions import TEAM_REPORTED_HEADING
+from app.services.internalization_room.turn_instructions import (
+    JOINED_VERDICT_KICKOFF,
+    TEAM_REPORTED_HEADING,
+)
 
 _MODULES = [
     "app/services/internalization_room/back_translation.py",
@@ -76,6 +79,7 @@ _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
     "a análise da tradução não pôde ser feita agora",
+    JOINED_VERDICT_KICKOFF,
 }
 
 

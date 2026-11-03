@@ -137,11 +137,16 @@ async def _open_session(client: httpx.AsyncClient) -> str:
     return str(created.json()["session_id"])
 
 
-async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
+async def _record(
+    client: httpx.AsyncClient, session_id: str, audio: bytes, *, part: int | None = None
+) -> str:
+    data = {"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE}
+    if part is not None:
+        data = {**data, "scope": f"parte-{part}", "chunk_index": str(part)}
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
         headers={"X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
+        data=data,
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
     assert kept.status_code == 200, kept.text
@@ -228,8 +233,8 @@ async def test_the_interval_is_read_inside_its_own_recording(
     every stretch after it.
     """
     session_id = await _open_session(client)
-    first_take = await _record(client, session_id, b"o primeiro ensaio, que a equipe abandonou")
-    second_take = await _record(client, session_id, b"o segundo ensaio, que vale")
+    first_take = await _record(client, session_id, b"a primeira parte do ensaio", part=1)
+    second_take = await _record(client, session_id, b"a segunda parte do ensaio", part=2)
 
     client.said.extend(["contado do primeiro arquivo", "contado do segundo arquivo"])  # type: ignore[attr-defined]
     await _tell_back(
@@ -435,7 +440,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     )
 
     assert first.status_code == 200 and first.json()["captured"] is True
-    assert second.json()["chunks"] == 2
+    assert second.json()["captured"] is True
 
     async def analyst(*, system_prompt: str, user_content: str, **_: Any) -> str:
         return (

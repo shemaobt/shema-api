@@ -124,6 +124,7 @@ class TurnOutcome:
     #: The rung of the ladder that answered the Guide's last draft; ``None`` when no model did.
     model: str | None = None
     accepted_ids: list[str] = field(default_factory=list)
+    earlier_passages: dict[str, str] | None = None
 
 
 def outcome_tag(outcome: TurnOutcome) -> Outcome:
@@ -148,13 +149,18 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     a session grows for as long as it runs, and what pays for the length is the cache, not a
     window.
     """
-    return [
-        Turn(
-            role="assistant" if message.get("role") == "guide" else "user",
-            text=str(message.get("text", "")),
-        )
-        for message in messages
-    ]
+    turns: list[Turn] = []
+    after_a_note = False
+    for message in messages:
+        text = str(message.get("text", ""))
+        if message.get("role") == "guide":
+            turns.append(Turn(role="assistant", text=text))
+        elif after_a_note:
+            turns[-1] = Turn(role="user", text=f"{turns[-1]['text']} {text}")
+        else:
+            turns.append(Turn(role="user", text=text))
+        after_a_note = bool(message.get("room_note"))
+    return turns
 
 
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:

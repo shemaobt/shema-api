@@ -19,7 +19,6 @@ from tests.hard_stretch_harness import current
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     ScriptedAnalyst,
-    nothing_is_read_ahead,
     played_every_part,
     press_terminei,
     rehearsed_in_parts_of,
@@ -41,7 +40,6 @@ def analyst(monkeypatch: pytest.MonkeyPatch) -> ScriptedAnalyst:
 @pytest.fixture(autouse=True)
 def voice(monkeypatch: pytest.MonkeyPatch) -> None:
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
     async def heard(*_: Any, **__: Any) -> str:
         return RETOLD

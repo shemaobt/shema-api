@@ -1,7 +1,7 @@
 """Every time the room could not hear the team, it says her first D line.
 
-Her app calls `didntCatchThat(0)` at every miss: in the conversation, in the Panorama and on a
-telling-back with nothing told. The other two D lines stay in her file and are never chosen.
+Her app calls `didntCatchThat(0)` at every miss: in the conversation and in the Panorama. The
+other two D lines stay in her file and are never chosen.
 """
 
 from typing import Any
@@ -15,7 +15,7 @@ from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM
 from tests.release_harness import PREFIX, P
-from tests.room_harness import press_terminei, room_client
+from tests.room_harness import room_client
 
 PANORAMA = "OV-Ruth"
 
@@ -72,19 +72,3 @@ async def test_three_inaudible_takes_in_a_row_in_a_panorama_session_each_hear_d_
     )
 
     assert await _three_silent_takes(client, session.id) == ["D0", "D0", "D0"]
-
-
-@pytest.mark.parametrize("stored", [1, 2, 3])
-async def test_an_empty_telling_back_hears_d_1_whatever_the_number_of_messages_so_far(
-    client, db_session: AsyncSession, stored: int
-) -> None:
-    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
-    session.messages = [
-        {"role": "guide", "text": "Vamos conhecer a cena.", "outcome": "pass"}
-    ] * stored
-    await db_session.commit()
-
-    answer = await press_terminei(client, session.id)
-
-    assert answer.status_code == 200, answer.text[:300]
-    assert answer.json()["fixed_line"] == "D0"

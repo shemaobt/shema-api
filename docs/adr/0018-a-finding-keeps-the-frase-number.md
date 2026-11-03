@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2030: the number the analyst gives is the row's, which counts the stale stretches, and the reading records its labels so the finding is followed to its stretch
 date: 2026-09-11
 ---
 
@@ -46,3 +46,13 @@ passage approved before this deploy whose session still has a standing finding n
 matches the release that approved it, and the packet reads `release_id` and `version` null
 until the team approves again. A bump would have said the same thing to every consumer at
 once, for every session, approved or not.
+
+**Amended on 30 October 2026 (ENG-2030): the number is the row's, and the reading records its
+labels.** A finding still keeps `chunk`, the number the analyst gave, and the Swap is still paired
+on it. What changed is the number itself: the analyst is shown the numbers the tablet draws, which
+count the stale stretches of a part recorded again (ADR 0067), so `chunk` is the row's number and
+no longer the stretch's position in the list the analyst was given, as it is in her app
+(`liveTurn.ts` at 18fa7c4: `out.frase = n`). The reading keeps its labels in `analysed_frases`,
+beside `analysed_segment_ids`, which is how a finding's number is followed to its stretch once the
+rows move; a reading written before the field has every label equal to its position. Everything
+decided here on a missing element after the last frase holds as it did.

@@ -1,6 +1,6 @@
 """ENG-1577 — the runner's two doors judge a session by the canon it opened with.
 
-ENG-1219 made a session keep the canon it opened with until its passage is approved, and the
+ENG-1219 made a session keep the canon it opened with while it is live, and the
 tablet reads it that way. The text seam's round and the golden doors' turn are the same room
 driven by text, so a re-pin that lands between a runner's session and its turn must not hand
 that session the new map. A canon is re-pinned here the way `the_canon_moves_on` publishes
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from tests.canon_harness import the_canon_moves_on
-from tests.room_harness import nothing_is_read_ahead, the_analyst_is_scripted
+from tests.room_harness import the_analyst_is_scripted
 from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, TEAM_LINE, the_app
 from tests.turn_harness import the_room_agent_is
 
@@ -89,7 +89,6 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
 
     monkeypatch.setattr(room, "synthesize_facilitator_speech", _never_voiced)
-    nothing_is_read_ahead(monkeypatch)
     transport = ASGITransport(app=the_app(db_session))
     async with httpx.AsyncClient(
         transport=transport, base_url="http://test", headers={"X-Access-Code": RUNNER_KEY}

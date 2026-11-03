@@ -33,7 +33,6 @@ from app.services.internalization_room.takes import current_parts, takes_of
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import (
     PLAYBACK_BLOCKER,
-    nothing_is_read_ahead,
     rehearsed_in_parts_of,
     release_blockers,
     room_client,
@@ -47,7 +46,6 @@ PART_LENGTH_MS = 2000
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     async with room_client(db_session, monkeypatch) as room:
         yield room
 

@@ -13,15 +13,17 @@ from app.services.internalization_room.canon.accepted_readings import (
 )
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.classify_coverage import Retelling
 from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.hearing import SentSceneRehearsal
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
-from app.services.internalization_room.moment import moment_at_turn_start, moment_fact
+from app.services.internalization_room.moment import moment_fact
 from app.services.internalization_room.prompt_blocks import (
     RoomFact,
     coverage_status_block,
     earlier_passages_line,
+    kept_rehearsals_line,
     meaning_map_block,
     room_facts_block,
     scene_rehearsals_line,
@@ -35,18 +37,9 @@ from app.services.internalization_room.validated_turn import TurnOutcome, _voice
 logger = logging.getLogger(__name__)
 
 
-def _checked_scene(
-    scene_rehearsal: SentSceneRehearsal | None, messages: list[dict[str, Any]], pericope_num: str
-) -> str | None:
-    if scene_rehearsal is None:
-        return None
-    if scene_rehearsal.scene:
-        return scene_rehearsal.scene
-    moment = moment_at_turn_start(messages)
-    if moment is None or moment.at != "articulation" or moment.part is None:
-        return None
-    scenes = scene_ids_for(pericope_num)
-    return scenes[moment.part - 1] if 1 <= moment.part <= len(scenes) else None
+def _kept_scopes(retellings: dict[str, Any] | None) -> list[str]:
+    told = [Retelling.model_validate(entry) for entry in (retellings or {}).values()]
+    return [retelling.scope for retelling in told if retelling.kept is not None]
 
 
 def _readings_for(
@@ -92,7 +85,6 @@ async def run_turn(
     guide_prompt: str,
     validator_prompt: str,
     pericope_num: str,
-    book: str = "Ruth",
     session_language: str = LANGUAGE_NAMES[AUTHORED],
     language_code: str = AUTHORED,
     opening: bool = False,
@@ -102,6 +94,7 @@ async def run_turn(
     earlier_passages: dict[str, str] | None = None,
     scene_rehearsal: SentSceneRehearsal | None = None,
     scene_rehearsals: list[str] | None = None,
+    retellings: dict[str, Any] | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -134,9 +127,10 @@ async def run_turn(
             fixed_line=line,
         )
 
+    book = load_map(pericope_num).book
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
-    checked = _checked_scene(scene_rehearsal, messages, pericope_num)
+    checked = scene_rehearsal.scene if scene_rehearsal else None
     items = _readings_for(pericope_num, checked, session_id)
     accepted = accepted_readings_block(items, checked) if checked else ""
     reached = (
@@ -153,8 +147,11 @@ async def run_turn(
                     RoomFact.SCENE_REHEARSALS: scene_rehearsals_line(
                         scene_ids_for(pericope_num), reached
                     ),
+                    RoomFact.KEPT_REHEARSALS: kept_rehearsals_line(
+                        scene_ids_for(pericope_num), _kept_scopes(retellings)
+                    ),
                     RoomFact.EARLIER_PASSAGES: earlier,
-                    RoomFact.MOMENT: moment_fact(messages, pericope_num),
+                    RoomFact.MOMENT: moment_fact(messages, pericope_num, reached, scene_rehearsal),
                     RoomFact.ACCEPTED_READINGS: accepted,
                 }
             ),

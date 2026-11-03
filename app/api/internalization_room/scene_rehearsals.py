@@ -27,6 +27,7 @@ from app.models.internalization_room import (
     HeldAttemptView,
     PassageScenesResponse,
     PassageSceneView,
+    QuestionAudioResponse,
     ReaderSceneFraseView,
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
@@ -35,6 +36,7 @@ from app.models.internalization_room import (
     SceneRehearsalView,
     SceneRestartSnapshot,
     SceneRestartView,
+    SentRecordingTime,
     TurnResponse,
 )
 from app.services import internalization_room as room
@@ -42,7 +44,14 @@ from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.part_names import passage_scenes
-from app.services.internalization_room.takes import AUDIO_MIME, TakeStore, listen_url, take_store
+from app.services.internalization_room.takes import (
+    AUDIO_MIME,
+    LONGEST_TAKE_MS,
+    TakeStore,
+    listen_address_of,
+    listen_url,
+    take_store,
+)
 from app.services.internalization_room.turn_dedup import answer_once, answered_turn
 from app.utils.stored_time import as_utc
 
@@ -71,7 +80,7 @@ def _reader_frase_view(frase: IRSceneFrase, replacing: dict[str, str]) -> Reader
 
 
 def _recorded_at(rehearsal: IRSceneRehearsal) -> str:
-    return as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else ""
+    return as_utc(rehearsal.recorded_at).isoformat() if rehearsal.recorded_at else ""
 
 
 def _sent_at(rehearsal: IRSceneRehearsal, sent: set[str]) -> str | None:
@@ -96,6 +105,7 @@ def _view(
         scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
+        sha256=rehearsal.sha256,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
         sent_at=_sent_at(rehearsal, sent),
@@ -132,6 +142,7 @@ def _reader_view(
         scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
+        sha256=rehearsal.sha256,
         verified=rehearsal.verified_at is not None,
         recorded_at=_recorded_at(rehearsal),
         sent_at=_sent_at(rehearsal, sent),
@@ -173,6 +184,29 @@ async def _session(db: AsyncSession, session_id: str, project_id: str) -> IRSess
 async def keep_scene_rehearsal(
     session_id: str,
     scene: str | None = Form(default=None),
+    recorded_at: SentRecordingTime | None = Form(
+        default=None,
+        description=(
+            "When the recording stopped, by the tablet's clock, with its offset: the scene "
+            "rehearsal's recording time however late the upload lands."
+        ),
+    ),
+    duration_ms: int | None = Form(
+        default=None,
+        ge=0,
+        le=LONGEST_TAKE_MS,
+        description=(
+            "The length of the file sent, read from the file itself. Refused with "
+            "TAKE_DURATION_DIFFERS when more than 100 ms from the length the server measures."
+        ),
+    ),
+    sha256: str | None = Form(
+        default=None,
+        description=(
+            "The sha256 of the bytes sent, in hex. Refused with TAKE_FINGERPRINT_DIFFERS when "
+            "it is not theirs; nothing is stored."
+        ),
+    ),
     file: UploadFile = File(...),
     device_id: str = device_dep,
     project_id: str = device_project_dep,
@@ -188,6 +222,9 @@ async def keep_scene_rehearsal(
         content_type=file.content_type or AUDIO_MIME,
         scene=scene,
         store=store,
+        sent_sha256=sha256,
+        sent_duration_ms=duration_ms,
+        sent_recorded_at=recorded_at,
     )
     return await _the_record(db, rehearsal)
 
@@ -353,7 +390,11 @@ async def label_scene_rehearsal(
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SceneRehearsalView:
-    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`."""
+    """A scene the passage lacks is refused with 422 `UNKNOWN_SCENE`.
+
+    Another scene for a rehearsal that is a current part's origin is refused with 409
+    `REHEARSAL_JOINED`.
+    """
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
     with reading_the_canon_of(session.canon_pin):
@@ -465,3 +506,38 @@ async def facilitator_scene_rehearsals(
             for rehearsal in rehearsals
         ],
     )
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_scene_rehearsal_at_the_desk(
+    session_id: str, rehearsal_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> QuestionAudioResponse:
+    """A signed address of the scene rehearsal's recording, archived session or not."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    await db.commit()
+    signed = await listen_address_of(rehearsal)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases/{frase_id}/audio",
+    response_model=QuestionAudioResponse,
+)
+async def listen_to_scene_frase_at_the_desk(
+    session_id: str,
+    rehearsal_id: str,
+    frase_id: str,
+    user: ReaderUser,
+    db: AsyncSession = Depends(get_db),
+) -> QuestionAudioResponse:
+    """A signed address of the frase's own recording, replaced or set aside or not."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    frase = await scenes.frase_in_rehearsal(db, rehearsal, frase_id)
+    await db.commit()
+    signed = await listen_address_of(frase)
+    return QuestionAudioResponse(url=signed.url, expires_at=signed.expires_at.isoformat())

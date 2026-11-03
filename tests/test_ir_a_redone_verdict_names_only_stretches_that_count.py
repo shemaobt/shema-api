@@ -25,7 +25,6 @@ from tests.hard_stretch_harness import FROM_THE_DATABASE
 from tests.room_harness import (
     ScriptedAnalyst,
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     record_the_part_again,
     rehearsed_in_parts,
@@ -45,7 +44,6 @@ THE_TOLD_AGAIN = "a parte 2, gravada de novo e contada de volta"
 @pytest.fixture(autouse=True)
 def _voice(monkeypatch: pytest.MonkeyPatch) -> None:
     the_room_speaks(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
 
 
 @pytest.fixture()

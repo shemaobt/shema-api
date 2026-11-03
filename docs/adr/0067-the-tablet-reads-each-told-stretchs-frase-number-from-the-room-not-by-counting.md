@@ -1,0 +1,113 @@
+---
+status: accepted; amended by ENG-2001: with `include_stale=true` the number counts the stale stretches too, in her order; amended by ENG-2030: the check, the voice and the finding views number by her order too; amended by ENG-2133: the awaiting line, the Packet, the check block, the retro and the retroverification file number by her order too; amended by ENG-2138: the telling answer numbers by her order too
+date: 2026-10-19
+---
+
+# The tablet reads each told stretch's frase number from the room, not by counting
+
+The voice says «na frase 3», and the pair screen of the check puts a numbered list beside it so
+that 3 on the voice is 3 on the screen. The session read carried no number: a stretch was its
+id and its slice. A tablet that counted for itself would number a stretch it had just told, and
+appended before the next read, by where it landed in its own list — wrong whenever the team
+tells out of sequence, and wrong again the moment a cut leaves two untold pieces that the voice
+does not count.
+
+Decided by the ticket (ENG-1679):
+
+- `frase` is the stretch's 1-based position among the **told** stretches in the voice's order,
+  that is `told_back(final_segments)`, the list the analyst is numbered off. It is null on a
+  piece nobody has told yet, and that piece takes no number from the told ones around it.
+- It is served on every `SegmentView` — the session read and the answers of a cut, a replacement
+  and a restart — and on the telling answer, for the stretch just told. The number in the
+  answer is the one the next read serves.
+- One function gives it, `frase_numbers` in `services/internalization_room/back_translation.py`,
+  beside `segments_block`, which writes the voice's lines. The packet and the retroverification
+  file read it too. A test walks the application and fails on an `enumerate(…, start=1)` over a
+  list named `told`, `segments` or `stretches`, or over `told_back(…)`, anywhere but there; a
+  counter spelled another way is for review to catch.
+- A stretch told again keeps its position, so it keeps its number. After «recomeçar a tradução»
+  every stretch is retired and the next telling is frase 1.
+- A finding's `frase` is the number the analyst gave and the voice spoke, followed to where the
+  stretch it named stands now (ENG-1681). The stretch is the one at that position in the list
+  the analyst was shown, `analysed_segment_ids`, and its number is read off the told stretches
+  as the session read does; it is null once that stretch is not among them. A missing element
+  placed after frase N says N while its `segment_id` is the stretch after it; reading the
+  number off the pointer would say N+1. The stored `chunk` is untouched: the packet hashes it
+  and a Swap is paired on it.
+
+No migration: the number is derived at read time from the stretches that stand. No model call.
+
+Consequences:
+
+- Every number the session read and the check's answer serve is true of the reading as it
+  stands now. The text seam, the packet and the retroverification file still carry a finding's
+  `chunk` as the check made it.
+- The telling answer carries no count of stretches (see the amendment below), so the one number
+  it gives about where the stretch sits is its `frase`.
+- The tablet and the Desk parse the session by named keys and ignore the rest, so the new key
+  breaks neither.
+
+Rejected:
+
+- Counting on the tablet: it cannot know which pieces the voice leaves out, and it numbers a
+  stretch appended before the next read by guesswork.
+- A number stored on the stretch's row: every cut, replacement and part recorded again would
+  have to renumber the rows after it, and the packet already freezes the number per **Version**
+  for the reason that a stored one moves.
+
+**Amended on 20 October 2026 (ENG-1682): the telling answer no longer counts stretches.** The
+answer carried a `chunks` number documented as how many stretches the passage has, and it was
+every stretch that counts, told or not: with an untold piece standing it differed from the
+highest `frase`, and a stretch told again left it where it was. Nothing read it. The tablet
+parsed it into a field no code looks at, the Desk and the golden runners never touch the route,
+and the number is not one the voice speaks, so there was no reading of it worth keeping true.
+The field is gone from the answer and from the API reference. The tablet reads
+`json['chunks'] as int? ?? 0`, so an answer without it and a replayed answer that still has it
+(the room replays a stored answer byte for byte for a day) are both read.
+
+**Amended on 30 October 2026 (ENG-2001): the number counts the stale stretches when the tablet
+asks for them.** The first decision above says `frase` is the position among `told_back(final_segments)`
+in the voice's order. On a read with `include_stale=true` (ADR 0023) it is her position instead:
+every told stretch, standing or stale, numbered over the passage part by part, the standing ones
+before the stale ones of the same part, so a stale stretch carries a number that no standing stretch
+repeats. Without `include_stale` nothing changes. The check's findings, the telling answer, the
+**Packet** and the voice keep numbering the standing stretches (ENG-2030 aligns them).
+
+**Amended on 30 October 2026 (ENG-2030): the check, the voice and the finding views count the
+stale stretches too.** The ENG-2001 paragraph above left the check's findings and the voice on
+the standing stretches. They now number as the tablet draws the row: the analyst's block labels
+each told stretch with her position (`passage_numbers`, which is `frase_numbers` placed by the
+session's takes), the stale stretches themselves stay out of the block, the analyst's reply is
+read back through the same labels, the Speaker is handed the number the finding keeps, and
+`finding_frase` reads the finish answer's and the session read's findings off those numbers. A
+session read that does not ask for the stale rows numbers its findings as it numbers its rows,
+standing only. The stored `chunk` is still the number the analyst gave, now the row's number, so
+a Swap is paired on it as before; the reading records the labels it gave in `analysed_frases`,
+beside `analysed_segment_ids`, and that is how a stored finding is followed to its stretch when
+the rows move (ADR 0018, amended the same day). The telling answer, the **Packet** and the
+retroverification file still number the standing stretches.
+
+**Amended on 2 November 2026 (ENG-2133): the Packet, the check block, the retro, the
+retroverification file and the awaiting line count the stale stretches too.** The ENG-2030
+paragraph left them on the standing stretches, so above a part recorded again and not told again
+they said frase 2 for the row the tablet draws, the voice says and the check names as 3. Each now
+numbers through `passage_numbers`: the sentence awaiting's «Frase N awaits its translation», the
+**Packet**'s `back_translation.segments[].frase` (the standing stretches only, so a version can
+carry 1 and 3 with no 2, as her approval freezes the non-stale frases with their `n`), the check
+block's `frase` and `index` (handed the numbers by its caller: the packet's own on the live block,
+the version's frozen list on the standing version's rewrite), the retro and the Desk's
+re-recorded-sentences record through `stretch_numbers`' live computation, and the
+retroverification file (ADR 0101, amended the same day). A version's frozen numbers still win
+wherever they stand. The telling answer alone still numbers the standing stretches, as the
+session read without `include_stale` does.
+
+**Amended on 2 November 2026 (ENG-2138): the telling answer counts the stale stretches too.**
+The ENG-2133 paragraph left the telling answer on the standing stretches, so above a part
+recorded again and not told again it said frase 2 for the stretch just told, while the session
+read with `include_stale`, the voice and the check said 3 — and the tablet reads that `frase`
+into the row it shows (`session_notifier.dart:10912`). Her segment route
+answers `n` from `buildPassageTelling` (`app/api/bt/segment/route.ts:166-168`), the one
+numbering every reader of hers shares. The answer now numbers through `passage_numbers`, as the
+session read with the stale rows does, so the stretch just told carries the number every other
+reader gives it. A session with no stale row is numbered as before. No reader of a frase number
+is left on the standing stretches alone.

@@ -22,12 +22,7 @@ from tests.hard_stretch_harness import (
     retro_takes,
     told,
 )
-from tests.room_harness import (
-    nothing_is_read_ahead,
-    room_client,
-    the_analyst_reads,
-    the_room_speaks,
-)
+from tests.room_harness import room_client, the_analyst_reads, the_room_speaks
 from tests.text_seam_harness import RUNNER_KEY
 
 OTHER_AUDIO = b"a equipe contou de novo, de outro jeito"
@@ -51,7 +46,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         return said.pop(0) if said else "algo que a equipe contou"
 
     monkeypatch.setattr(bt_api, "heard", _transcribe)
-    nothing_is_read_ahead(monkeypatch)
     bucket = MemoryStore()
     monkeypatch.setattr(takes_service, "_store", lambda *_, **__: bucket)
 
@@ -150,7 +144,6 @@ async def test_a_retelling_over_a_slice_no_frase_covers_is_still_a_first_telling
     told_again = await _chunk(client, session_id, take_id, 9000, 18000, retelling=True)
 
     assert told_again.status_code == 200, told_again.text
-    assert told_again.json()["chunks"] == 2
     assert await _slices(db_session, session_id) == [(0, 9000, 1), (9000, 18000, 1)], (
         "o trecho que ninguém tinha contado chega com a marca de recontagem e nada a substituir"
     )

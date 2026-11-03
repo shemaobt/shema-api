@@ -127,7 +127,6 @@ async def _systems(
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=pericope_num,
-        book="Ruth",
         session_language=session_language,
         language_code=language_code,
         opening=True,
@@ -218,7 +217,6 @@ async def _verdict_systems(agent: FakeAgent) -> tuple[str, str]:
         messages=[],
         speaker_prompt=VERDICT_SPEAKER,
         validator_prompt=VALIDATOR,
-        book="Ruth",
         settings=_settings(),
     )
     return agent.systems[0], agent.systems[1]

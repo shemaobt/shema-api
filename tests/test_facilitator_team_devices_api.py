@@ -21,6 +21,7 @@ from app.core.enums import ProjectRole
 from app.services.device import create_device
 from tests.baker import (
     a_language,
+    an_email,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
@@ -72,7 +73,8 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -349,3 +351,16 @@ async def test_last_activity_is_set_once_the_device_reads_its_own_team(client, d
 
     after = (await client.get(team_devices_url(project.id), headers=headers)).json()[0]
     assert after["last_seen_at"] is not None
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"

@@ -20,10 +20,14 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
+from app.services.internalization_room.canon.kept import deployed_pin
 from scripts import hold_deploy
+from tests.canon_harness import the_canon_moves_on
 
 NOW = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
 HOUR = timedelta(minutes=60)
+NEW_PIN = "a" * 40
+UNKEPT_PIN = "c" * 40
 ROOT = Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / ".github" / "workflows" / "deploy.yml"
 
@@ -220,12 +224,49 @@ async def test_a_column_the_pending_migration_adds_does_not_break_the_count(
 async def test_with_no_team_in_the_room_the_deploy_goes_on(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    await a_session(db_session, "sessao-da-chave-da-sala", project_id=None)
+    await a_session(
+        db_session, "sessao-da-chave-da-sala", project_id=None, canon_pin=deployed_pin()
+    )
 
     hold = the_hold_runs(a_runner(tmp_path))
 
     assert hold.returncode == 0, hold.stderr
     assert "No team session is open; the deploy goes on." in hold.stdout
+
+
+async def test_the_deploy_names_a_pin_a_session_holds_that_the_image_keeps_no_canon_for(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    served = deployed_pin()
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN)
+    await a_session(db_session, "sessao-do-canon-guardado", canon_pin=served)
+    await a_session(db_session, "sessao-do-canon-novo", canon_pin=NEW_PIN)
+    await a_session(
+        db_session, "sessao-zerada", archive_id="arquivo-do-zerar", canon_pin=UNKEPT_PIN
+    )
+
+    assert await hold_deploy.dropped(db_session) == [UNKEPT_PIN]
+
+
+@pytest.mark.fresh_interpreter
+@pytest.mark.parametrize("urgent", ["false", "true"])
+@pytest.mark.parametrize("team", ["time-de-ruth", None])
+async def test_an_image_without_a_canon_a_session_holds_fails_at_once_naming_the_pin(
+    db_session: AsyncSession, tmp_path: Path, urgent: str, team: str | None
+) -> None:
+    await a_session(
+        db_session,
+        "sessao-da-ruth",
+        project_id=team,
+        updated_at=datetime.now(UTC),
+        canon_pin=UNKEPT_PIN,
+    )
+
+    hold = the_hold_runs(a_runner(tmp_path), DEPLOY_URGENT=urgent)
+
+    assert hold.returncode == 1
+    assert "Waiting on" not in hold.stdout
+    assert UNKEPT_PIN in the_annotation(hold.stdout, "::error::")
 
 
 @pytest.mark.fresh_interpreter
@@ -254,6 +295,35 @@ async def test_the_deploy_names_the_team_it_waits_for_and_goes_on_once_their_pas
     assert said[1].split()[:3] == ["sessao-da-ruth", "project", "time-de-ruth"]
     assert hold.returncode == 0
     assert rest.endswith("No team session is open; the deploy goes on.\n")
+
+
+@pytest.mark.fresh_interpreter
+async def test_a_pin_a_session_takes_while_the_deploy_waits_fails_it_naming_the_pin(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(
+        db_session, "sessao-da-ruth", updated_at=datetime.now(UTC), canon_pin=deployed_pin()
+    )
+    hold = subprocess.Popen(
+        ["bash", "-e", "-c", the_hold()["run"]],
+        cwd=ROOT,
+        env={
+            **a_runner(tmp_path),
+            "DEPLOY_HOLD_POLL_SECONDS": "0.1",
+            "DEPLOY_HOLD_DEADLINE_MINUTES": "0.2",
+        },
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert hold.stdout is not None
+    said = hold.stdout.readline()
+
+    await a_session(db_session, "sessao-de-noemi", project_id="time-de-noemi", canon_pin=UNKEPT_PIN)
+    rest, _ = hold.communicate(timeout=60)
+
+    assert said == "Waiting on 1 open team session(s):\n"
+    assert hold.returncode == 1
+    assert UNKEPT_PIN in the_annotation(rest, "::error::")
 
 
 @pytest.mark.fresh_interpreter

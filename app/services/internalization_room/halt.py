@@ -2,8 +2,8 @@
 
 Two readings of the halt columns, in one place because four readers need them and the day
 they drift is the day the tablet and the Desk disagree about whether a room is stopped. The
-status a lift restores sits beside them because both doors that lift a halt must agree on it:
-a closed passage goes back to done (ADR 0044).
+status a lift restores sits beside them because the team's return, the one door that lifts a
+blocking halt, must agree with them on it: a closed passage goes back to done (ADR 0044, 0076).
 
 **They are different questions.** ``standing`` is what the tablet and the Desk ask: it must be
 null the moment no halt stands — one signal, not two. ``last`` is what a facilitator asks

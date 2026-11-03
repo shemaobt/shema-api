@@ -33,7 +33,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
-from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
+from tests.room_harness import heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
@@ -52,11 +52,6 @@ THE_MISSING = "a notícia do pão em Belém"
 
 #: The retelling that answers neither: the news arrived and the cause stayed.
 THE_CAUSE_STILL_THERE = "As noras pediram para voltar, e Noemi soube da notícia do pão em Belém."
-
-
-@pytest.fixture(autouse=True)
-def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 class ReaderOfTellings:

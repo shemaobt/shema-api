@@ -37,7 +37,7 @@ def test_a_re_pin_keeps_the_canon_it_replaces_under_its_pin_beside_the_labels_it
     compiler.sha = NEXT
     compiler.files["fixtures/meaning-map/P01-Ruth-1-1-5.md"] = b"map P01 revised"
 
-    assert canon.sync(pin=NEXT, keep=(SHA,)) == 0
+    assert canon.sync(pin=NEXT) == 0
 
     kept = tmp_path / "kept" / SHA
     assert what_is_vendored(kept / "vendor") == {
@@ -59,11 +59,25 @@ def test_a_re_pin_keeps_her_portuguese_titles_beside_the_canon_it_replaces(
     compiler = a_vendor_synced_once_beside_its_labels
     compiler.sha = NEXT
 
-    assert canon.sync(pin=NEXT, keep=(SHA,)) == 0
+    assert canon.sync(pin=NEXT) == 0
 
     assert (tmp_path / "kept" / SHA / "ui-labels.pt.json").read_text() == FIRST_TITLES, (
         "o re-pin deixava a sessão aberta sem os títulos dela com que começou"
     )
+
+
+def test_a_re_pin_says_it_kept_the_canon_it_replaced_and_why(
+    a_vendor_synced_once_beside_its_labels: Compiler, capsys: pytest.CaptureFixture[str]
+) -> None:
+    a_vendor_synced_once_beside_its_labels.sha = NEXT
+    capsys.readouterr()
+
+    assert canon.sync(pin=NEXT) == 0
+
+    said = capsys.readouterr().out.splitlines()
+    assert f"  kept kept/{SHA}: the canon this re-pin replaced, which its sessions still read" in (
+        said
+    ), "o log do sync não dizia que canon guardou nem por quê"
 
 
 def test_the_scheduled_sync_opens_its_change_with_the_canon_it_kept() -> None:

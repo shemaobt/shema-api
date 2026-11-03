@@ -342,17 +342,3 @@ async def test_a_fail_safed_opening_with_no_stored_kickoff_note_lists_no_team_wo
     body = await _boundary_turns(client, consultant, session.id)
 
     assert [turn["team"] for turn in body["turns"]] == [""]
-
-
-async def test_a_fail_safed_opening_still_has_no_team_side_in_the_turns_read(
-    client: httpx.AsyncClient,
-    consultant: dict[str, str],
-    session: IRSession,
-    db_session: AsyncSession,
-) -> None:
-    session = await _fail_safed_opening(db_session, session, opening_note=KICKOFF)
-
-    answer = await client.get(f"{IR}/facilitator/sessions/{session.id}/turns", headers=consultant)
-
-    assert answer.status_code == 200, answer.text
-    assert answer.json()["turns"][0]["team"] is None

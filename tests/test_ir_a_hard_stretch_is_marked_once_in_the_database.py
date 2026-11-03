@@ -41,6 +41,8 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.halt_harness import SESSIONS
+from tests.halt_harness import attend as _attend
 from tests.hard_stretch_harness import (
     DESK,
     DEVICE,
@@ -54,9 +56,6 @@ from tests.hard_stretch_harness import (
 )
 from tests.hard_stretch_harness import (
     a_session as _a_session,
-)
-from tests.hard_stretch_harness import (
-    attend as _attend,
 )
 from tests.hard_stretch_harness import (
     current as _current,
@@ -96,6 +95,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """
     from fastapi import FastAPI
 
+    from app.api.facilitator.sessions import facilitator_sessions_router
     from app.api.facilitator.teams import facilitator_teams_router
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
@@ -121,6 +121,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
     test_app.include_router(facilitator_teams_router, prefix=DESK)
+    test_app.include_router(facilitator_sessions_router, prefix=SESSIONS)
     register_exception_handlers(test_app)
 
     async def _get_db():

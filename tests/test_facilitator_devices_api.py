@@ -27,6 +27,7 @@ from app.core.rate_limit import limiter
 from app.services.device import claim_code, claim_device_as_facilitator, create_device
 from tests.baker import (
     a_language,
+    an_email,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
@@ -85,8 +86,9 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
     """A user with access to one project. Returns (user, project, auth headers)."""
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -493,3 +495,16 @@ async def test_one_facilitator_at_the_limit_does_not_stop_another(client, db_ses
     )
 
     assert unaffected.status_code == 200
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"

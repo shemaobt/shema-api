@@ -290,7 +290,7 @@ async def test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numb
     session, _ = await rehearsed_in_parts_of(
         db_session, [2, 3, 4], pericope=TITLED, unnumbered_first=True
     )
-    analyst.readings = [{"findings": [_addition(4)]}]
+    analyst.readings = [{"findings": [_addition(2)]}]
 
     answered = await _checked(client, db_session, session.id)
 

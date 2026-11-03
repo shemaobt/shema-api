@@ -182,7 +182,8 @@ async def test_a_take_says_when_it_was_recorded(room_client, db_session, room_ap
         audio=b"a equipe contou a passagem",
         store=_MemoryStore(),
     )
-    await _stored_at(db_session, take, NEAR_MIDNIGHT)
+    take.recorded_at = NEAR_MIDNIGHT
+    await _stored_at(db_session, take, None)
 
     answer = await room_client.get(f"{IR}/facilitator/sessions/{session.id}/takes", headers=headers)
 

@@ -15,6 +15,7 @@ import pytest
 from app.core.config import Settings
 from app.core.exceptions import NoWordsHeard
 from app.services.internalization_room import hearing
+from app.services.platform import audio_duration
 from app.services.translation_helper.transcribe_audio import (
     TranscriptionResult,
     transcribe_audio_detailed,
@@ -80,7 +81,7 @@ def the_take_lasts(monkeypatch: pytest.MonkeyPatch, ms: int | None) -> None:
     async def measure(_: bytes) -> int | None:
         return ms
 
-    monkeypatch.setattr(hearing, "measure_ms", measure)
+    monkeypatch.setattr(audio_duration, "measure_ms", measure)
 
 
 def the_probe_never_answers(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
@@ -91,7 +92,7 @@ def the_probe_never_answers(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
         await asyncio.Event().wait()
         return 25_000
 
-    monkeypatch.setattr(hearing, "measure_ms", measure)
+    monkeypatch.setattr(audio_duration, "measure_ms", measure)
     return started
 
 
@@ -105,7 +106,7 @@ def the_probe_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     async def measure(_: bytes) -> int | None:
         raise OSError("ffprobe could not be started")
 
-    monkeypatch.setattr(hearing, "measure_ms", measure)
+    monkeypatch.setattr(audio_duration, "measure_ms", measure)
 
 
 def nothing_settles(monkeypatch: pytest.MonkeyPatch) -> None:

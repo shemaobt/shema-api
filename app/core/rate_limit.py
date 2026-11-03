@@ -24,3 +24,11 @@ def bearer_token_key(request: Request) -> str:
     if scheme.lower() == "bearer" and token:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
     return get_remote_address(request)
+
+
+def report_id_key(request: Request) -> str:
+    return str(request.path_params["report_id"])
+
+
+def interview_pair_key(request: Request) -> str:
+    return str(request.state.interview_pair)

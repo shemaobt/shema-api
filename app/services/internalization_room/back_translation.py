@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSegment, IRTake
-from app.models.internalization_room import PlayedTake
+from app.models.internalization_room import PlayedTake, UntranslatedPart
 from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES, room_language
@@ -23,6 +23,7 @@ from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
+from app.services.internalization_room.takes import is_wav
 
 logger = logging.getLogger(__name__)
 
@@ -167,10 +168,6 @@ class BtAnalysis(BaseModel):
     nuances: list[Nuance] = Field(default_factory=list)
 
 
-class ReadAhead(BtAnalysis):
-    segment_ids: list[str]
-
-
 class SupersededAttempt(BaseModel):
     """A telling-back the team replaced by re-recording.
 
@@ -214,6 +211,19 @@ class CheckRound(BaseModel):
     conferida: bool
     nuances: list[Nuance] = Field(default_factory=list)
     heard_at: datetime | None = None
+
+
+class LaidInSentence(BaseModel):
+    sentence_id: str
+    segment_id: str
+    previous_take_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+    sha256: str
+    storage_key: str
+    heard_before: bool
+    replaced_ends_ms: int | None = None
 
 
 class BackTranslationState(BaseModel):
@@ -285,15 +295,22 @@ class BackTranslationState(BaseModel):
     #: have been served the verdict of the one it replaced. `None` is never read at all, which
     #: an empty list is not.
     analysed_segment_ids: list[str] | None = None
+    #: The frase number each of those stretches was labelled with in that reading, in the
+    #: same order. A finding keeps the label the analyst named, and the label counts the stale
+    #: stretches of the passage, so it is not the stretch's position in the list: this is how
+    #: the number is followed to its stretch once the rows move. `None` on a reading written
+    #: before the field existed, where every label was its position.
+    analysed_frases: list[int] | None = None
     #: What the room said when it last reached a verdict, so a press that decides nothing new
     #: can hand back the same answer without voicing it again. `None` until a verdict has been
     #: spoken *and* stored, which is what separates "already judged" from a press that reached
     #: the analyst and then failed before the team heard anything — that one saves nothing at
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
-    read_ahead: ReadAhead | None = None
     checks: list[CheckRound] = Field(default_factory=list)
     nuances: list[Nuance] = Field(default_factory=list)
+    sentences: list[LaidInSentence] = Field(default_factory=list)
+    pauses_moved: int = 0
 
     @model_validator(mode="before")
     @classmethod
@@ -317,13 +334,6 @@ class BackTranslationState(BaseModel):
         return self.analysed_segment_ids is not None and self.analysed_segment_ids == [
             segment.id for segment in segments
         ]
-
-    def read_ahead_of(self, segments: list[IRSegment]) -> ReadAhead | None:
-        if self.read_ahead is None or self.read_ahead.segment_ids != [
-            segment.id for segment in segments
-        ]:
-            return None
-        return self.read_ahead
 
     def the_verdict_to_serve(self, told: list[IRSegment]) -> VoicedVerdict | None:
         if (
@@ -355,70 +365,90 @@ class BackTranslationState(BaseModel):
         return self.analysed_segment_ids is None
 
 
+#: Her absolute allowance: a part, or a sentence laid into one, is heard with at most this much
+#: of it unplayed in total, and never more than half of it (ADR 0017, ADR 0074).
 PLAYBACK_TOLERANCE_MS = 750
+
+#: Played stretches this close are one, as her player and her server join them (ADR 0074).
+JOINED_WITHIN_MS = 250
 
 THE_WHOLE_PASSAGE = "the whole passage"
 
 
-def played_ranges_cover_clip(
-    played_ranges: list[tuple[int, int]], clip_duration_ms: int | None
-) -> bool:
-    """Whether the reported playback reached the whole clip, within tolerance.
+def joined_spans(played: Iterable[tuple[int, int]], *, within_ms: int = 0) -> list[tuple[int, int]]:
+    """The played spans sorted, each joined to the next when no more than `within_ms` apart."""
+    joined: list[tuple[int, int]] = []
+    for start, end in sorted(played):
+        if end <= start:
+            continue
+        if joined and start <= joined[-1][1] + within_ms:
+            joined[-1] = (joined[-1][0], max(joined[-1][1], end))
+        else:
+            joined.append((start, end))
+    return joined
 
-    A telling-back is a check of what was actually heard, not of what the team remembers,
-    so "checked" over a half-listened clip would be a claim about audio nobody played.
-    Reported ranges are merged and must cover [0, duration] with at most 750 ms of slack
-    at either edge or between stretches. This is the arithmetic only: an absent report is
-    not a short one, so it is not this function's to judge and comes back True. Whether a
-    report exists at all, and whether it is about the recording still in play, is
-    `unheard_parts`, which is what the release gate asks.
 
-    The merged reach has to *land on* the clip's end, not merely reach it: a report that
-    runs past the end by more than the same slack cannot be a report about this clip at
-    all. That is the signature of ranges belonging to a different audio — typically the
-    previous, longer clip, left standing when a piece was replaced under it — and taking
-    them as proof would bless as heard a clip nobody played. The slack is the same on
-    both sides because it is the same rounding on both sides.
+def _heard_through(played: list[tuple[int, int]], starts_ms: int, ends_ms: int) -> bool:
+    """Whether the team heard [starts_ms, ends_ms] of one take, under her rule (ADR 0074).
+
+    The stretches are joined before they are cut to the window, as her server keeps them, so a
+    gap of 250 ms or less costs nothing; the gaps left after the join add up wherever they fall:
+    eight holes of 0.7 s are 5.6 s nobody heard, however short each one is.
     """
-    if not played_ranges or not clip_duration_ms:
-        return True
-    spans = sorted((max(0, int(start)), int(end)) for start, end in played_ranges if end > start)
-    if not spans:
-        return False
-    cursor = 0
-    for start, end in spans:
-        if start > cursor + PLAYBACK_TOLERANCE_MS:
-            return False
-        cursor = max(cursor, end)
-    return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
+    length = ends_ms - starts_ms
+    covered = sum(
+        max(0, min(end, ends_ms) - max(start, starts_ms))
+        for start, end in joined_spans(played, within_ms=JOINED_WITHIN_MS)
+    )
+    return length - covered <= min(PLAYBACK_TOLERANCE_MS, length / 2)
 
 
 def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
     """The parts of the rehearsal the current stretches are slices of, sorted.
 
-    The subject of the listening question, and the one both askers have to agree on: the check
-    refuses on it before the analyst, and the release blocks on it at the handoff. Asked of the
-    stretches that count — a stretch whose audio was replaced names a recording no part is any
-    more — so a part leaves the question by being recorded over and by nothing else.
+    Asked of the stretches that count — a stretch whose audio was replaced names a recording no
+    part is any more — so a part leaves this list by being recorded over and by nothing else.
+    The listening is asked of every current part instead (ADR 0068).
     """
     return sorted({stretch.take_id for stretch in stretches})
 
 
-def untold_parts(parts: list[IRTake], rehearsal_take_ids: list[str]) -> list[IRTake]:
-    """Which of the rehearsal's current parts carry nobody's words, in the order they read.
+def part_length(part: IRTake, played: list[PlayedTake], stretches: list[IRSegment]) -> int:
+    """How long a part runs, for every reader of the listening (ADR 0074).
 
-    Empty is told. A part the team recorded again arrives with no stretch of its own, and the
-    stretches of the recording it replaced went with that recording (ADR 0023) — so a part can
-    stand in the **Packet** as the rehearsal while nothing anybody said is about it.
-
-    Asked of the parts and answered about the parts, because the question is which recording is
-    current and that is a fact of the takes. What was heard of it is a fact of the report, and
-    the function below is where that is asked (ADR 0026).
+    The take's own measured length whenever it has one, never a length a report sent: the
+    tablet's player can still answer with the previous clip's length when a part ends. A take
+    with none goes by the longest length a report gave, so a wrong one errs on the side of
+    playing again, never below the end of the furthest stretch standing on it now. Zero is no
+    length. A take no report names has no length to know, and the answer is zero.
     """
-    return [part for part in parts if part.id not in rehearsal_take_ids]
+    if part.duration_ms:
+        return part.duration_ms
+    lengths = [entry.clip_duration_ms for entry in played if entry.take_id == part.id]
+    if not lengths:
+        return 0
+    reported = max(lengths)
+    told_to = max((one.ends_ms for one in stretches if one.take_id == part.id), default=0)
+    return max(reported, told_to)
 
 
-def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) -> list[str]:
+def listening_to_the_parts(
+    played: list[PlayedTake], parts: list[IRTake], stretches: list[IRSegment]
+) -> list[PlayedTake]:
+    """What was played of each current part, each against `part_length` rather than as stored."""
+    by_id = {part.id: part for part in parts}
+    return [
+        entry.model_copy(
+            update={"clip_duration_ms": part_length(by_id[entry.take_id], played, stretches)}
+        )
+        for entry in played
+        if entry.take_id in by_id
+    ]
+
+
+def unheard_parts(
+    state: BackTranslationState, parts: list[IRTake], stretches: list[IRSegment]
+) -> list[str]:
     """Which parts of the rehearsal the team has no evidence of having heard, sorted.
 
     Empty is heard. The question is asked once per part and answered per part, because that is
@@ -426,11 +456,10 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
     about the others. Asked of the whole passage instead, one retake threw away the listening
     to every part at once, and the answer could never say which part to send the team back to.
 
-    A part is heard when an entry names it and that entry reaches the end of *that part's* own
-    length. Both numbers are required rather than either: a length with nothing played is a
-    report that the team played nothing at all, and spans with no length cannot be checked
-    against anything. The arithmetic itself answers True to both of those — an absent report is
-    not a short one, which is not its question — so the two are asked here, where they are.
+    A part is heard when an entry names it and that entry is heard through *that part's* own
+    length (`part_length`) under her rule. Both numbers are required rather than either: a
+    length with nothing played is a report that the team played nothing at all, and spans with
+    no length cannot be checked against anything.
 
     Entries naming recordings the stretches no longer name are ignored rather than refused.
     They are the residue of a part the team recorded again, about audio no stretch is a slice
@@ -441,14 +470,93 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
     row written before the parts were named names every part and the team plays it through
     again (ADR 0017).
     """
+    listening = listening_to_the_parts(state.played_by_take, parts, stretches)
     heard = {
         entry.take_id
-        for entry in state.played_by_take
+        for entry in listening
         if entry.played_ranges
         and entry.clip_duration_ms
-        and played_ranges_cover_clip(entry.played_ranges, entry.clip_duration_ms)
+        and _heard_through(entry.played_ranges, 0, entry.clip_duration_ms)
     }
-    return sorted(set(rehearsal_take_ids) - heard)
+    laid = {sentence.take_id: sentence for sentence in state.sentences}
+    played = {entry.take_id: entry.played_ranges for entry in listening}
+
+    def is_heard(take_id: str) -> bool:
+        sentence = laid.get(take_id)
+        if sentence is None:
+            return take_id in heard
+        return (sentence.heard_before or take_id in heard) and _heard_through(
+            played.get(take_id, []), sentence.starts_ms, sentence.ends_ms
+        )
+
+    return sorted(part.id for part in parts if not is_heard(part.id))
+
+
+UNTRANSLATED_MIN_MS = 500
+
+
+def is_joined(parts: list[IRTake]) -> bool:
+    """A recording is joined when any current part was laid in from a scene rehearsal."""
+    return any(part.origin is not None for part in parts)
+
+
+def untranslated_parts(
+    parts: list[IRTake], told: list[IRSegment], played: list[PlayedTake] | None = None
+) -> list[UntranslatedPart]:
+    """The parts of a joined recording still to translate, in passage order, and from where.
+
+    A part no translated frase stands on is always one, played from its beginning: hers refuses
+    it at every check, the team's own word included (`bt/check/route.ts:69-75`, rule i), since
+    there is nothing on it to read.
+
+    Handed what the tablet played, a stretch of half a second or more that no frase covers is
+    one too, played from where it starts: her rule ii (`untranslated.ts:15-65`), which stops
+    only the check the room runs by itself. The team's «terminei» is their word that nothing
+    was said there, so the finish never hands it. The length is `part_length`, and only a WAV
+    part's is trusted, as hers trusts only a WAV clip's.
+
+    A part is a scene of the join, numbered by its place among the numbered current parts, as
+    the voice numbers a part; a part recorded whole is no scene and has no number, which is
+    never guessed.
+    """
+    lengths = {
+        part.id: length
+        for part in parts
+        if played is not None and (length := part_length(part, played, told))
+    }
+    found = []
+    position = 0
+    for part in parts:
+        if part.ordinal is not None:
+            position += 1
+        spans = [
+            (stretch.starts_ms, stretch.ends_ms) for stretch in told if stretch.take_id == part.id
+        ]
+        if not spans:
+            from_ms: int | None = 0
+        elif is_wav(part.content_type) and part.id in lengths:
+            from_ms = _first_stretch_untranslated(lengths[part.id], spans)
+        else:
+            from_ms = None
+        if from_ms is not None:
+            found.append(
+                UntranslatedPart(
+                    take_id=part.id,
+                    scene=position if part.ordinal is not None else None,
+                    from_ms=from_ms,
+                )
+            )
+    return found
+
+
+def _first_stretch_untranslated(length_ms: int, spans: list[tuple[int, int]]) -> int | None:
+    """Where the first stretch of half a second or more that no span covers starts, if any."""
+    at = 0
+    for starts_ms, ends_ms in sorted(spans):
+        if starts_ms - at >= UNTRANSLATED_MIN_MS:
+            return at
+        at = max(at, ends_ms)
+    return at if length_ms - at >= UNTRANSLATED_MIN_MS else None
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own
@@ -460,23 +568,76 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
+def frase_numbers(
+    told: list[IRSegment],
+    stale: list[IRSegment] | None = None,
+    part_of: dict[str, int | None] | None = None,
+) -> dict[str, int]:
+    """Her `buildPassageTelling` order: part by part, the standing frases before the stale ones.
+
+    `part_of` is each take's number, which is what places a stale frase among the parts.
+    """
+    if stale:
+        parts = part_of or {}
+
+        def place(segment: IRSegment) -> tuple[int, bool]:
+            ordinal = parts.get(segment.take_id)
+            return (-1 if ordinal is None else ordinal, segment in stale)
+
+        told = sorted([*told, *stale], key=place)
+    return {segment.id: number for number, segment in enumerate(told, start=1)}
+
+
+def passage_numbers(
+    told: list[IRSegment], stale: list[IRSegment], takes: list[IRTake]
+) -> dict[str, int]:
+    """The number on every told stretch, standing or stale, as the tablet draws the row.
+
+    `frase_numbers` placed by the session's takes, which is the one call every reader of a
+    passage position makes: the analyst's block, the Speaker, the finding views and the
+    segment views cannot disagree on which part a stale stretch belongs to.
+    """
+    return frase_numbers(told, stale, {take.id: take.ordinal for take in takes})
+
+
+def finding_frase(
+    finding: Finding,
+    analysed_segment_ids: list[str] | None,
+    analysed_frases: list[int] | None,
+    numbers: dict[str, int],
+) -> int | None:
+    if finding.chunk is None or analysed_segment_ids is None:
+        return finding.chunk
+    labels = analysed_frases or list(range(1, len(analysed_segment_ids) + 1))
+    at = labels.index(finding.chunk) if finding.chunk in labels else len(analysed_segment_ids)
+    if at >= len(analysed_segment_ids):
+        return finding.chunk
+    return numbers.get(analysed_segment_ids[at])
+
+
 def segments_block(
-    segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
+    segments: list[IRSegment],
+    addresses: Addresses,
+    language_code: str = AUTHORED,
+    numbers: dict[str, int] | None = None,
 ) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
-    Numbered from one over the list it is given, so the number is a position in *this* call
-    and never an identifier the analyst has to keep. `_segment_pointed_at` reads it back the
-    same way.
+    Numbered by `numbers`, the passage positions the tablet draws, or from one over the list
+    it is given when none are handed in; either way the number is a label of *this* call and
+    never an identifier the analyst has to keep. `_chunk_named` reads it back through the
+    same numbers.
 
     `language_code` only governs the empty-telling-back placeholder: the segments themselves
     are the team's own words, verbatim, in whatever language they spoke.
     """
     if not segments:
         return _NOTHING_TOLD_BACK_YET[room_language(language_code)]
+    if numbers is None:
+        numbers = frase_numbers(segments)
     lines = []
-    for position, segment in enumerate(segments, start=1):
-        label = [f"frase {position}", addresses.part_of(segment.id)]
+    for segment in segments:
+        label = [f"frase {numbers[segment.id]}", addresses.part_of(segment.id)]
         if segment.pass_number == 2:
             label.append("told again after a verdict")
         lines.append(f"[{' — '.join(one for one in label if one)}] {segment.transcript}")
@@ -537,7 +698,9 @@ def _session_of(segments: list[IRSegment]) -> str:
     return segments[0].session_id if segments else "?"
 
 
-def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
+def _parse_analysis(
+    raw: str, segments: list[IRSegment], numbers: dict[str, int]
+) -> BtAnalysis | None:
     """The analyst's reply read atomically, or None when it cannot be trusted at all.
 
     None and an empty findings list must stay apart all the way up: empty is "read it,
@@ -568,6 +731,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         _refused("findings is not a list", raw, session)
         return None
 
+    positions = {numbers[segment.id]: at for at, segment in enumerate(segments, start=1)}
     reported = parsed["findings"]
     considered = [
         one for one in reported if not _is_the_retired_evidence_kind(one) and not _is_a_nuance(one)
@@ -590,10 +754,11 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
         frase = entry.get("frase", entry.get("chunk"))
-        chunk = _chunk_named(frase, segments)
+        chunk = _chunk_named(frase, positions)
         lands_on = _segment_pointed_at(
             frase,
             segments,
+            positions,
             kind=kind,
             where=entry.get("where", "after" if "frase" in entry else None),
             raw_reply=raw,
@@ -613,7 +778,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         )
 
     _dropped(reported, raw, f"session {session}")
-    nuances = [_a_nuance(one, segments) for one in reported if _is_a_nuance(one)]
+    nuances = [_a_nuance(one, segments, positions) for one in reported if _is_a_nuance(one)]
     return BtAnalysis(findings=findings, nuances=[one for one in nuances if one is not None])
 
 
@@ -626,13 +791,17 @@ def _stands_in(quote: str, transcript: str | None) -> bool:
     return bool(words) and f" {words} " in f" {_words_of(transcript or '')} "
 
 
-def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None:
-    chunk = _chunk_named(entry.get("frase"), segments)
+def _a_nuance(
+    entry: dict[str, Any], segments: list[IRSegment], positions: dict[int, int]
+) -> Nuance | None:
+    chunk = _chunk_named(entry.get("frase"), positions)
     quote = str(entry.get("quote", "")).strip()
     story = str(entry.get("story", "")).strip()
-    if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
+    if chunk is None or not story:
         return None
-    segment = segments[chunk - 1]
+    segment = segments[positions[chunk] - 1]
+    if not _stands_in(quote, segment.transcript):
+        return None
     return Nuance(
         note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",
         chunk=chunk,
@@ -677,8 +846,13 @@ def _log_accepted_reading(
 _VALID_WHERE = frozenset({"before", "inside", "after"})
 
 
-def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
-    """The frase the analyst named, as a position in the reading it was given, or None.
+def _chunk_named(raw: Any, positions: dict[int, int]) -> int | None:
+    """The frase the analyst named, as the label it carries in the reading it was given, or None.
+
+    The number kept is the label the analyst named, which is the number on the team's row
+    and counts the stale stretches it was never shown; `positions` is the reading's labels
+    back to its positions, and only a reader that indexes the list it was given goes through
+    it. A label that is not in this reading names nothing.
 
     The validation `_segment_pointed_at` makes before it resolves an address, asked on its
     own because the two answers are not the same one: a missing element placed after frase N
@@ -692,15 +866,16 @@ def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
     if isinstance(raw, bool) or not isinstance(raw, int | str):
         return None
     try:
-        position = int(raw)
+        named = int(raw)
     except ValueError:
         return None
-    return position if 1 <= position <= len(segments) else None
+    return named if named in positions else None
 
 
 def _segment_pointed_at(
     raw: Any,
     segments: list[IRSegment],
+    positions: dict[int, int],
     *,
     kind: FindingKind,
     where: Any = None,
@@ -728,9 +903,10 @@ def _segment_pointed_at(
     `where` is read only when `kind` is `missing`: every other kind is a statement about the
     chunk itself, so a `where` alongside one is ignored without comment.
     """
-    position = _chunk_named(raw, segments)
-    if position is None:
+    named = _chunk_named(raw, positions)
+    if named is None:
         return None
+    position = positions[named]
 
     if kind is FindingKind.MISSING and where is not None:
         if not isinstance(where, str) or where not in _VALID_WHERE:
@@ -752,6 +928,7 @@ async def analyse_telling_back(
     language_code: str = AUTHORED,
     settings: Settings | None = None,
     session_id: str = "",
+    numbers: dict[str, int] | None = None,
 ) -> BtAnalysis | None:
     """Compare the bridge-language telling-back against the map. Never voiced.
 
@@ -769,13 +946,15 @@ async def analyse_telling_back(
     something the parser refused returns None — the parser has already logged the reply
     and why — and that is not an outage, whatever the old single None used to say.
     """
+    if numbers is None:
+        numbers = frase_numbers(segments)
     cfg = settings or get_settings()
     system = render(
         analyst_prompt,
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
-        SEGMENTS=segments_block(segments, addresses, language_code),
+        SEGMENTS=segments_block(segments, addresses, language_code, numbers),
     )
     try:
         raw = await room_agent().analyst.call_agent(
@@ -790,7 +969,7 @@ async def analyse_telling_back(
     except Exception as failure:
         logger.exception("BT analysis failed for %s", pericope_num)
         raise UpstreamServiceError("a análise da tradução não pôde ser feita agora") from failure
-    analysis = _parse_analysis(raw, segments)
+    analysis = _parse_analysis(raw, segments, numbers)
     if analysis is not None:
         _log_accepted_reading(
             session_id=session_id, reading="analysis", raw=raw, findings=analysis.findings
@@ -1041,7 +1220,7 @@ def _for_her_speaker(finding: Finding | Nuance, addresses: Addresses) -> dict[st
     part = addresses.part_of(finding.segment_id)
     if part and (isinstance(finding, Nuance) or finding.kind is not FindingKind.MISSING):
         handed["part"] = part
-    handed["repair"] = "part"
+    handed["repair"] = addresses.repair_of(finding.segment_id)
     return handed
 
 

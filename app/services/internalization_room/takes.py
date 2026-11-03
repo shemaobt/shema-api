@@ -2,34 +2,67 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import uuid
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Protocol
 
 from google_crc32c import Checksum
-from sqlalchemy import select
+from sqlalchemy import case, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
+from app.core.exceptions import (
+    ERROR_CODE_TAKE_DURATION_DIFFERS,
+    ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
+    ERROR_CODE_TAKE_TOO_LONG,
+    NotFoundError,
+    RecordingRefused,
+    StretchNoLongerCounts,
+    TakeMoved,
+    UnknownReferenceError,
+    ValidationError,
+)
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
+    IRGrain,
     IRSceneFrase,
     IRSceneRehearsal,
     IRSession,
     IRTake,
     IRTakeKind,
 )
+from app.services.internalization_room.questions import SignedAudio
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
+from app.services.platform.audio_duration import measure_ms_bounded
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.reads_project import reads_project
+from app.utils.stored_time import as_utc
 
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
 LISTEN_MINUTES = 15
+#: How long a download link lasts, her ``expiresIn: 3600``: a file handed to Refine is not
+#: played on the spot, so it outlives the fifteen minutes a listen needs.
+DOWNLOAD_LINK_SECONDS = 3600
 
 FILENAMES = {IRTakeKind.ENSAIO: "tomada", IRTakeKind.RETRO: "trecho"}
+
+#: How far the length the tablet sent may sit from the one ffprobe reads off the same bytes:
+#: the two read one file through different containers' rounding, never a different sound.
+DURATION_SLACK_MS = 100
+#: The **Clock offset** worth keeping, her ``CLOCK_SKEW_NOTE_MS``: under five minutes it is a
+#: clock set by hand, not one the consultant should hear about.
+CLOCK_OFFSET_NOTED_MS = 5 * 60_000
+#: The longest length a take can claim: no recording of the room lasts a day, and anything
+#: longer is no recording's length.
+LONGEST_TAKE_MS = 24 * 60 * 60 * 1000
+
+logger = logging.getLogger(__name__)
 
 
 def is_wav(content_type: str) -> bool:
@@ -99,6 +132,60 @@ def recording_digest(audio: bytes) -> str:
 
 
 @dataclass(frozen=True)
+class CheckedRecording:
+    """A recording's hash and the length it keeps, once what the tablet said of it held."""
+
+    sha256: str
+    duration_ms: int | None
+
+
+async def checked_recording(
+    audio: bytes, *, sent_sha256: str | None = None, sent_duration_ms: int | None = None
+) -> CheckedRecording:
+    """Hash and measure the bytes, and refuse a fingerprint or a length they contradict.
+
+    The tablet's length is kept as sent when it is within the slack, or when the bytes cannot be
+    measured; a take sent with none keeps the measured one. Bytes that measure past a day are no
+    recording's, whoever said so.
+    """
+    digest = recording_digest(audio)
+    if sent_sha256 is not None and sent_sha256.lower() != digest:
+        raise RecordingRefused(
+            f"The sha256 sent is not the recording's: {digest}",
+            ERROR_CODE_TAKE_FINGERPRINT_DIFFERS,
+        )
+    measured = await measure_ms_bounded(audio)
+    if measured is not None and measured > LONGEST_TAKE_MS:
+        raise RecordingRefused(
+            f"The recording measures {measured} ms, longer than any recording lasts",
+            ERROR_CODE_TAKE_TOO_LONG,
+        )
+    if (
+        sent_duration_ms is not None
+        and measured is not None
+        and abs(sent_duration_ms - measured) > DURATION_SLACK_MS
+    ):
+        raise RecordingRefused(
+            f"The duration_ms sent is not the recording's: it lasts {measured} ms",
+            ERROR_CODE_TAKE_DURATION_DIFFERS,
+        )
+    return CheckedRecording(
+        sha256=digest, duration_ms=measured if sent_duration_ms is None else sent_duration_ms
+    )
+
+
+def recording_time(sent_recorded_at: datetime | None, arrived: datetime) -> datetime:
+    """The tablet's clock when it sent one, else the server's at the recording's arrival."""
+    return arrived if sent_recorded_at is None else sent_recorded_at
+
+
+def noted_clock_offset(sent_recorded_at: datetime, arrived: datetime) -> int | None:
+    """The tablet's clock minus the server's at arrival, in ms, when it is worth keeping."""
+    offset = round((sent_recorded_at - arrived).total_seconds() * 1000)
+    return None if abs(offset) < CLOCK_OFFSET_NOTED_MS else offset
+
+
+@dataclass(frozen=True)
 class StoredRecording:
     """What the bucket holds under a key, described by the bytes that were stored."""
 
@@ -153,6 +240,13 @@ async def store_take(
     ordinal: int | None = None,
     content_type: str = AUDIO_MIME,
     store: TakeStore | None = None,
+    origin: str | None = None,
+    sent_sha256: str | None = None,
+    sent_duration_ms: int | None = None,
+    sent_recorded_at: datetime | None = None,
+    past_the_set_aside: bool = False,
+    stamps_what_it_replaces: bool = False,
+    the_same: Callable[[str], Awaitable[IRTake | None]] | None = None,
 ) -> IRTake:
     """Put the bytes in the bucket, read it back, then record where it is.
 
@@ -161,24 +255,68 @@ async def store_take(
     reverse — an object with no row — costs storage and nothing else.
 
     The checksums describe the bytes that were stored, not the bytes that were promised, so
-    they are computed here rather than trusted from the request.
-    """
-    digest = recording_digest(audio)
-    key = storage_key(session_id, kind, digest, content_type)
+    they are computed here rather than trusted from the request; what the tablet sent of them
+    is checked before anything is stored.
 
-    existing = await db.execute(
-        select(IRTake).where(
-            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == digest
-        )
+    The **Recording time** is the tablet's when it sent one for a take recorded on it, and the
+    server's for a joined part, whose tablet time only measures the **Clock offset**. Two
+    uploads of the same bytes at once both pass the first look: the unique index refuses the
+    second row, and its upload answers with the first. The insert sits in a savepoint, so the
+    refusal undoes it alone and leaves the caller's objects as they were.
+
+    The server's clock is read once, before the bytes are measured or stored: the take's
+    arrival and its offset are both read on it, so neither counts as the tablet's.
+
+    `past_the_set_aside` looks past the takes a **Grain switch** set aside: the same bytes kept
+    at the grain in force are a new take that stands, sharing the stored object (ADR 0096).
+
+    `stamps_what_it_replaces` stamps, in the insert's own transaction, the parts this take stops
+    being live and the take itself if it arrives as no part, with the server's `arrived` (ADR 0104).
+    A take that stopped being live before is never stamped here.
+
+    `the_same` is the caller's question of which take these bytes already are, given their hash;
+    unasked, it is their identity in storage. It is asked before the bytes are stored and, for a
+    joined part or a take that stamps, again under the session's row before the row is written,
+    so two tablets joining at once never both write one (ADR 0095), and two uploads of one part
+    are accepted one after the other, each stamping the part it replaced.
+    """
+    same = the_same or partial(
+        _the_same_take,
+        db,
+        session_id,
+        kind,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=past_the_set_aside,
     )
-    already = existing.scalar_one_or_none()
+    arrived = datetime.now(UTC)
+    checked = await checked_recording(
+        audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
+    )
+    key = storage_key(session_id, kind, checked.sha256, content_type)
+
+    already = await same(checked.sha256)
     if already is not None:
         return already
     await db.commit()
 
     stored = await store_recording(
-        audio, key=key, sha256=digest, content_type=content_type, store=store
+        audio, key=key, sha256=checked.sha256, content_type=content_type, store=store
     )
+    if origin is not None or stamps_what_it_replaces:
+        await db.execute(select(IRSession.id).where(IRSession.id == session_id).with_for_update())
+        already = await same(checked.sha256)
+        if already is not None:
+            await db.commit()
+            return already
+    offset = (
+        noted_clock_offset(sent_recorded_at, arrived)
+        if origin is not None and sent_recorded_at is not None
+        else None
+    )
+    if offset is not None:
+        logger.warning("A tablet joining in session %s is %d ms off the server", session_id, offset)
     take = IRTake(
         id=str(uuid.uuid4()),
         project_id=project_id,
@@ -195,10 +333,88 @@ async def store_take(
         crc32c=stored.crc32c,
         content_type=stored.content_type,
         verified_at=stored.verified_at,
+        origin=origin,
+        created_at=arrived,
+        recorded_at=recording_time(None if origin is not None else sent_recorded_at, arrived),
+        duration_ms=checked.duration_ms,
+        device_clock_offset_ms=offset,
     )
-    db.add(take)
+    try:
+        async with db.begin_nested():
+            db.add(take)
+            if stamps_what_it_replaces:
+                takes = await takes_of(db, session_id)
+                standing = {
+                    part.id for part in current_parts([one for one in takes if one is not take])
+                }
+                now_live = {part.id for part in current_parts(takes)}
+                for one in takes:
+                    if (one.id in standing or one is take) and one.id not in now_live:
+                        one.superseded_at = arrived
+    except IntegrityError:
+        winner = await same(checked.sha256)
+        if winner is None:
+            raise
+        return winner
     await db.commit()
     return take
+
+
+async def the_take_already_kept(
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    audio: bytes,
+    *,
+    ordinal: int | None = None,
+    pass_number: int | None = None,
+    origin: str | None = None,
+) -> IRTake | None:
+    return await the_take_this_keep_already_is(
+        db,
+        session_id,
+        kind,
+        recording_digest(audio),
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=True,
+    )
+
+
+async def _the_same_take(
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    ordinal: int | None = None,
+    pass_number: int | None = None,
+    origin: str | None = None,
+    past_the_set_aside: bool = False,
+) -> IRTake | None:
+    """The take these bytes are in storage: a resend, or a second tablet's same join.
+
+    A part laid in from a scene rehearsal is that take only under the same number and pass as
+    well, because a swap back to an earlier rehearsal sends bytes the session already holds and
+    is a new take over the one it replaces (ADR 0095). A take recorded as itself is its bytes.
+    """
+    same = (
+        (
+            IRTake.origin.is_not(None),
+            IRTake.ordinal.is_not_distinct_from(ordinal),
+            IRTake.pass_number.is_not_distinct_from(pass_number),
+        )
+        if origin is not None
+        else (IRTake.origin.is_(None),)
+    )
+    query = select(IRTake).where(
+        IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == sha256, *same
+    )
+    if past_the_set_aside:
+        query = query.where(IRTake.set_aside_at.is_(None))
+    found: IRTake | None = await db.scalar(query.order_by(IRTake.set_aside_at.is_not(None)))
+    return found
 
 
 def _verified(landed: StoredObject | None, *, size: int, crc32c: str) -> datetime | None:
@@ -269,14 +485,50 @@ async def listen_url(
     of audio through the application server buys nothing over letting storage serve it, and a
     frase is served the same way.
     """
+    return await signed_listen_url(recording.storage_key, recording.content_type, settings=settings)
+
+
+async def listen_address_of(
+    recording: IRTake | IRSceneRehearsal | IRSceneFrase, *, settings: Settings | None = None
+) -> SignedAudio:
+    """The signed URL and the instant it dies, for a player that cannot follow a redirect."""
+    return await signed_listen_address(
+        recording.storage_key, recording.content_type, settings=settings
+    )
+
+
+async def signed_listen_address(
+    storage_key: str, content_type: str, *, settings: Settings | None = None
+) -> SignedAudio:
+    expires_at = datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES)
+    url = await signed_listen_url(storage_key, content_type, settings=settings)
+    return SignedAudio(url=url, expires_at=expires_at)
+
+
+async def signed_listen_url(
+    storage_key: str, content_type: str, *, settings: Settings | None = None
+) -> str:
+    return await signed_url(storage_key, content_type, minutes=LISTEN_MINUTES, settings=settings)
+
+
+async def signed_url(
+    storage_key: str,
+    content_type: str,
+    *,
+    minutes: int,
+    disposition: str | None = None,
+    settings: Settings | None = None,
+) -> str:
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
+    named = {} if disposition is None else {"response_disposition": disposition}
     return await generate_signed_download_url(
         cfg.gcs_platform_bucket,
-        recording.storage_key,
-        expiry_minutes=LISTEN_MINUTES,
-        response_content_type=recording.content_type,
+        storage_key,
+        expiry_minutes=minutes,
+        response_content_type=content_type,
+        **named,
     )
 
 
@@ -305,31 +557,90 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     return take
 
 
+async def refuse_a_take_that_is_no_longer_a_part(
+    db: AsyncSession, session_id: str, take: IRTake
+) -> None:
+    if take.id not in {part.id for part in current_parts(await takes_of(db, session_id))}:
+        raise StretchNoLongerCounts("This recording is no longer one of the session's parts")
+
+
+async def refuse_a_join_over_a_moved_part(
+    db: AsyncSession,
+    session_id: str,
+    *,
+    ordinal: int | None,
+    pass_number: int | None,
+    origin: str,
+    over_take: str | None,
+    audio: bytes,
+) -> None:
+    """Refuse a join when its part's live take is not the one the team chose it over.
+
+    `over_take` is that take, or None when the team chose the join over an empty scene. A join
+    whose bytes are already kept is its own resend, answered by the storing with that take, which
+    may no longer be the part: the tablet reads the answer against the part. The look holds no
+    lock (ADR 0089), so two joins of different rehearsals at once over one take may both land.
+    """
+    already = await the_take_already_kept(
+        db,
+        session_id,
+        IRTakeKind.ENSAIO,
+        audio,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+    )
+    if already is not None:
+        return
+    live = next(
+        (p.id for p in current_parts(await takes_of(db, session_id)) if p.ordinal == ordinal),
+        None,
+    )
+    if live != over_take:
+        raise TakeMoved("This part's live take is no longer the one the join was chosen over")
+
+
 READING_ORDER = (
     IRTake.ordinal.asc().nulls_first(),
-    IRTake.pass_number.asc().nulls_first(),
-    IRTake.created_at,
+    case((IRTake.kind == IRTakeKind.RETRO, IRTake.pass_number), else_=None).asc().nulls_first(),
+    IRTake.created_at.asc(),
+    IRTake.id.asc(),
 )
 
 
+async def takes_of_sessions(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, list[IRTake]]:
+    """`takes_of` for several sessions in one read, each in its own reading order."""
+    held: dict[str, list[IRTake]] = {session_id: [] for session_id in session_ids}
+    if not held:
+        return held
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id.in_(list(held))).order_by(*READING_ORDER)
+    )
+    for take in result.scalars():
+        held[take.session_id].append(take)
+    return held
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
-    """Every take of a session, in reading order rather than in arrival order.
+    """Every take of a session, by its number first and then in the order it was accepted.
 
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
 
-    Both columns are nullable and the placement is named rather than left to the engine:
-    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
-    that captured none — and a take with no pass predates the room sending one, so either
-    is the earliest thing in its own group. Unnamed, SQLite
-    read that the same way and PostgreSQL read it upside down, which put the oldest
-    recording of a session at the bottom of the packet on the only database that serves
-    a real team.
+    Under one ordinal a rehearsal take reads in the order the room accepted it, whatever its
+    pass or its **Recording time** (ENG-1760). A back-translation take reads by its pass first,
+    which says which side of a check it was told on.
+
+    The ordinal and the pass are nullable, and their placement is named rather than left to
+    the engine: a take with no ordinal belongs to no stretch — the undivided passage, or a
+    recording that captured none — and a back-translation take with no pass predates the room
+    sending one, so either is the earliest thing in its own group. Unnamed, SQLite read that
+    the same way and PostgreSQL read it upside down, which put the oldest recording of a
+    session at the bottom of the packet on the only database that serves a real team.
     """
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
-    )
-    return list(result.scalars().all())
+    return (await takes_of_sessions(db, [session_id]))[session_id]
 
 
 def current_parts(takes: list[IRTake]) -> list[IRTake]:
@@ -341,24 +652,155 @@ def current_parts(takes: list[IRTake]) -> list[IRTake]:
     of them is the part, and the earlier ones stay as history, which the **Retroverification
     file** is where anybody reads.
 
-    A take with no number is the rehearsal told whole, which is one part of its own.
+    A take with no number is the rehearsal told whole, which is one part of its own — but only
+    while the session holds no numbered part. Once the team has recorded by scene the whole is
+    history, kept with its stretches and findings and no longer a part anybody is asked for.
+
+    A take a **Grain switch** set aside is no part, whatever its number: after a switch the parts
+    are the newest grain's alone, so a whole recorded after a switch to the whole passage is the
+    one part even beside numbered takes, which the switch stamped (ADR 0096).
 
     **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
-    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
-    alone it would be wrong, and this module says why two functions up: that stamp is when the
-    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
-    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
-    its own recordings and does not move with the link.
+    the last one the room accepted. Keyed on the pass it would be wrong: a reinstalled tablet,
+    or a second one, counts its passes from 1 again, so its newer take would read below an
+    older pass 2. Keyed on the **Recording time** it would be wrong too: a tablet's clock can
+    read any year, so a take stamped 2099 would hold the part against every later one, and a
+    take stamped 2000 would never become it.
 
     So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
     parts come back in the reading order and no caller sorts them again.
     """
     newest: dict[int | None, IRTake] = {}
     for take in takes:
-        if take.kind is IRTakeKind.ENSAIO:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is None:
             newest[take.ordinal] = take
+    if any(ordinal is not None for ordinal in newest):
+        newest.pop(None, None)
     chosen = {take.id for take in newest.values()}
     return [take for take in takes if take.id in chosen]
+
+
+async def the_take_this_keep_already_is(
+    db: AsyncSession,
+    session_id: str,
+    kind: IRTakeKind,
+    sha256: str,
+    *,
+    ordinal: int | None,
+    pass_number: int | None,
+    origin: str | None,
+    past_the_set_aside: bool,
+) -> IRTake | None:
+    """The take a keep's bytes already are, as the room reads its parts.
+
+    A part joined from the rehearsal already standing under its number, with that part's bytes,
+    is that part whatever pass the tablet counted: a second tablet joins above the pass it last
+    listed and lands on the one part (ADR 0095). Otherwise it is the take its bytes are in
+    storage.
+    """
+    if origin is not None and kind is IRTakeKind.ENSAIO:
+        standing = [
+            part
+            for part in current_parts(await takes_of(db, session_id))
+            if part.ordinal == ordinal
+        ]
+        if standing and (standing[0].origin, standing[0].sha256) == (origin, sha256):
+            return standing[0]
+    return await _the_same_take(
+        db,
+        session_id,
+        kind,
+        sha256,
+        ordinal=ordinal,
+        pass_number=pass_number,
+        origin=origin,
+        past_the_set_aside=past_the_set_aside,
+    )
+
+
+def set_aside_moment(take: IRTake) -> str | None:
+    """When a **Grain switch** set this take aside, with its offset, or none while none has."""
+    return None if take.set_aside_at is None else as_utc(take.set_aside_at).isoformat()
+
+
+def superseded_moment(take: IRTake) -> str | None:
+    """When the server stamped this take as no longer live, with its offset, or none."""
+    return None if take.superseded_at is None else as_utc(take.superseded_at).isoformat()
+
+
+@dataclass(frozen=True)
+class GrainSwitch:
+    """A **Grain switch** as the takes it set aside tell it."""
+
+    at: datetime
+    left: IRGrain
+    took: IRGrain
+    take_ids: tuple[str, ...]
+
+
+def grain_switches(takes: list[IRTake]) -> list[GrainSwitch]:
+    """The session's switches that set something aside, newest first, read off their stamps.
+
+    A switch stamps every rehearsal take the session held with its time, and a late take of the
+    grain left behind carries the latest switch's time, so each distinct `set_aside_at` is one
+    switch (ADR 0096). It left scene if any take it set aside has a number, which is the grain
+    in force before it: a whole kept beside scene parts is no part. Else it left the whole.
+    Handed `takes_of`'s order, each switch lists its takes in it.
+    """
+    stamped: dict[datetime, list[IRTake]] = {}
+    for take in takes:
+        if take.kind is IRTakeKind.ENSAIO and take.set_aside_at is not None:
+            stamped.setdefault(as_utc(take.set_aside_at), []).append(take)
+    switches = []
+    for at, group in sorted(stamped.items(), reverse=True):
+        by_scene = any(take.ordinal is not None for take in group)
+        left, took = (IRGrain.SCENE, IRGrain.WHOLE) if by_scene else (IRGrain.WHOLE, IRGrain.SCENE)
+        switches.append(GrainSwitch(at, left, took, tuple(take.id for take in group)))
+    return switches
+
+
+def of_the_grain_left_behind(session: IRSession, kind: IRTakeKind, ordinal: int | None) -> bool:
+    """Whether a rehearsal take is of the grain a **Grain switch** left behind: never a part."""
+    return (
+        kind is IRTakeKind.ENSAIO
+        and session.grain is not None
+        and (IRGrain.WHOLE if ordinal is None else IRGrain.SCENE) is not session.grain
+    )
+
+
+def grain_in_force(session: IRSession, parts: list[IRTake]) -> IRGrain | None:
+    """The grain the last **Grain switch** chose, else the one the current parts were told in."""
+    if session.grain is not None:
+        return session.grain
+    if any(part.ordinal is not None for part in parts):
+        return IRGrain.SCENE
+    return IRGrain.WHOLE if parts else None
+
+
+def part_positions(parts: list[IRTake]) -> dict[int | None, int | None]:
+    """Each current part's position among the session's current parts, by the number it carries.
+
+    The number the voice says and the **Part key** are both read off this: a rehearsal told
+    whole has no position, and the others count from one in reading order.
+    """
+    positions: dict[int | None, int | None] = {}
+    counted = 0
+    for part in parts:
+        if part.ordinal is None:
+            positions[None] = None
+        else:
+            counted += 1
+            positions[part.ordinal] = counted
+    return positions
+
+
+def part_keys(parts: list[IRTake]) -> dict[str, str]:
+    """Each current part's **Part key** by its take id: `whole`, or `S<n>` at position n."""
+    positions = part_positions(parts)
+    return {
+        part.id: "whole" if positions[part.ordinal] is None else f"S{positions[part.ordinal]}"
+        for part in parts
+    }
 
 
 #: Where a declared part's key lives, and the device a text seam speaks for. A part declared
@@ -369,12 +811,21 @@ TEXT_SEAM_DEVICE = "text-seam"
 TEXT_SEAM_CONTENT_TYPE = "text/plain"
 
 
+def is_declared(take: IRTake) -> bool:
+    """A part the text seam declared: an address with no bytes and no bucket object."""
+    return take.storage_key.startswith(f"{TEXT_SEAM_PREFIX}/")
+
+
 def _declared_key(session_id: str, key: str) -> str:
     return f"{TEXT_SEAM_PREFIX}/{session_id}/{key}"
 
 
 async def declare_rehearsal_parts(
-    db: AsyncSession, session: IRSession, keys: list[str]
+    db: AsyncSession,
+    session: IRSession,
+    keys: list[str],
+    content_types: Mapping[str, str] | None = None,
+    origins: Mapping[str, str] | None = None,
 ) -> list[IRTake]:
     """Her draft clips as real rehearsal takes, declared rather than uploaded.
 
@@ -404,8 +855,9 @@ async def declare_rehearsal_parts(
             size_bytes=0,
             sha256="",
             crc32c="",
-            content_type=TEXT_SEAM_CONTENT_TYPE,
+            content_type=(content_types or {}).get(key, TEXT_SEAM_CONTENT_TYPE),
             ordinal=position,
+            origin=(origins or {}).get(key),
         )
         for position, key in enumerate(keys)
     ]
@@ -420,10 +872,10 @@ async def declared_parts_by_key(db: AsyncSession, session_id: str) -> dict[str, 
     """The parts a seam session declared, by the key her script names them with."""
     prefix = _declared_key(session_id, "")
     result = await db.execute(
-        select(IRTake).where(
-            IRTake.session_id == session_id,
-            IRTake.kind == IRTakeKind.ENSAIO,
-            IRTake.storage_key.startswith(prefix),
-        )
+        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.ENSAIO)
     )
-    return {take.storage_key.removeprefix(prefix): take for take in result.scalars()}
+    return {
+        take.storage_key.removeprefix(prefix): take
+        for take in result.scalars()
+        if is_declared(take)
+    }

@@ -15,7 +15,12 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
-from tests.opening_harness import a_scripted_room, another_tablet_of, the_tablet_opens
+from tests.opening_harness import (
+    GUIDE_OPENING,
+    a_scripted_room,
+    another_tablet_of,
+    the_tablet_opens,
+)
 from tests.release_harness import PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client
 from tests.tablet_turn_harness import the_room_opens
@@ -111,3 +116,25 @@ async def test_a_session_holding_a_room_note_and_a_team_entry_and_no_guide_line_
     )
 
     assert (await the_tablet_reads(client, tablet, session_id))["opened"] is False
+
+
+async def test_a_session_holding_a_room_note_and_a_team_entry_is_opened_by_the_next_audioless_turn(
+    client, db_session, per_request
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    session_id = (await the_tablet_opens(client, tablet, BODY))["session_id"]
+    await the_row_holds(
+        per_request,
+        session_id,
+        [
+            {"role": "room", "text": "[a sessão acabou de começar]"},
+            {"role": "team", "text": "Noemi voltou para Belém"},
+        ],
+    )
+
+    await the_room_opens(client, tablet, session_id)
+
+    assert (await the_tablet_reads(client, tablet, session_id))["opened"] is True
+    async with per_request() as other_instance:
+        row = await other_instance.get(IRSession, session_id)
+    assert [line["text"] for line in row.messages if line["role"] == "guide"] == [GUIDE_OPENING]

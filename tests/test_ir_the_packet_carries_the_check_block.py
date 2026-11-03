@@ -34,7 +34,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     approve_release,
-    build_internalization_release,
     compose_internalization_release,
 )
 from app.services.internalization_room.segments import (
@@ -52,16 +51,18 @@ from tests.release_harness import (
     a_p02_telling_with_the_swapped_cause,
     a_rehearsal_only_half_heard,
     at_the_desk,
+    checked_telling_back,
     desk_release,
     desk_release_at,
+    judged_packet,
     never_analysed_telling_back,
-    one_stretch,
     ready_session,
     releases_of,
     reported_playback,
     team_headers,
     team_release,
     the_one_part_of,
+    the_part_recorded_again,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import (
@@ -70,25 +71,33 @@ from tests.room_harness import (
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    the_analyst_is_scripted,
     the_analyst_reads,
+    the_bucket_is_in_memory,
     the_room_speaks,
+    upload_a_part,
 )
 from tests.turn_harness import the_room_agent_is
 
 #: Her names for the block and for one entry of its list, written out rather than imported.
 #: A case that read them off the module under test would agree with any rename, and the whole
-#: point of this slice is that these eight words are hers.
+#: point of this slice is that these words are hers. The three about the force beside
+#: ``forced`` are ours: who forced it, when, and the blockers it passed (ADR 0075).
 THE_BLOCKS_NAMES = {
     "version",
     "status",
     "conferida",
     "forced",
+    "forcedBy",
+    "forcedAt",
+    "forcedBlockers",
     "heardComplete",
     "lastCheckAt",
     "findings",
+    "nuances",
     "retroUrl",
 }
-AN_ENTRYS_NAMES = {"kind", "frase", "idx", "clipKey"}
+AN_ENTRYS_NAMES = {"kind", "frase", "index", "idx", "clipKey", "scene"}
 
 #: A note no other string in the packet contains, so a case can ask where it did and did not
 #: travel without matching anything else by accident.
@@ -120,11 +129,10 @@ async def room_app(db_session: AsyncSession):
 async def _live_view(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """The packet this session composes right now, read past the gate the case is not about.
 
-    The composer is what both the live facilitator read and the approval call are built on, so
-    this is the view the block is derived from, with `version` null and `forced` false by rule.
-    It answers with the artifact and the blockers apart, which is why a case whose subject is
-    what the packet says can read one and leave the other: the Desk's own route rebuilds under
-    the whole list and answers 409, so a blocked session's live packet has no door but this.
+    The composer is what the approval call is built on, so this is the view the block is
+    derived from, with `version` null and `forced` false by rule. It answers with the artifact
+    and the blockers apart, which is why a case whose subject is what the packet says can read
+    one and leave the other: no route serves the live packet (ADR 0086).
     """
     fresh = await get_session(db, session.id)
     packet, _blockers = await compose_internalization_release(db, fresh)
@@ -132,12 +140,12 @@ async def _live_view(db: AsyncSession, session: IRSession) -> dict[str, Any]:
 
 
 async def _the_desk_reads(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """The packet the Desk's own route serves, judged under the whole list.
+    """The packet this session composes, judged under the whole list.
 
     For a session the gate lets through, which is the stronger question: read past the gate, a
     case about a clean session would go on passing after the session stopped being clean.
     """
-    return await build_internalization_release(db, await get_session(db, session.id))
+    return await judged_packet(db, await get_session(db, session.id))
 
 
 async def _three_stretches_told(db: AsyncSession, session: IRSession) -> BackTranslationState:
@@ -199,7 +207,7 @@ async def test_the_check_block_spells_marcias_names_verbatim(db_session: AsyncSe
     clean = await ready_session(db_session)
     disputed = await ready_session(db_session, tell=told_back_with_an_open_finding)
 
-    clean_packet = await build_internalization_release(db_session, clean)
+    clean_packet = await judged_packet(db_session, clean)
     open_finding = await _live_view(db_session, disputed)
 
     assert set(clean_packet["check"]) == THE_BLOCKS_NAMES
@@ -212,7 +220,7 @@ async def test_a_checked_session_reads_conferida(db_session: AsyncSession) -> No
     """A session the room checked clean, read live: the check happened and nothing was forced."""
     session = await ready_session(db_session)
 
-    check = (await build_internalization_release(db_session, session))["check"]
+    check = (await judged_packet(db_session, session))["check"]
 
     assert check["status"] == "conferida"
     assert check["conferida"] is True
@@ -221,7 +229,8 @@ async def test_a_checked_session_reads_conferida(db_session: AsyncSession) -> No
     assert check["findings"] == []
     assert check["heardComplete"] is True
     assert check["retroUrl"] == (
-        f"/api/internalization-room/facilitator/sessions/{session.id}/retroverificacao"
+        f"/api/internalization-room/facilitator/projects/{session.project_id}/passages/"
+        f"{session.pericope}/retroverificacao"
     )
 
 
@@ -233,9 +242,6 @@ async def test_a_forced_release_reads_forcada_as_stored(
     The stored packet is the contract: the block is stamped from the row the approval writes,
     so `version` is that row's number and `forced` is true. `status` is about the check and
     `forced` about the force, and here the check did not happen.
-
-    The live read of the same session still answers 409 (ENG-937): a forced row reads back by
-    its version and nowhere else.
     """
     project, _credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
@@ -244,7 +250,6 @@ async def test_a_forced_release_reads_forcada_as_stored(
 
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
     read = await client.get(desk_release_at(session.id, 1), headers=desk)
-    live = await client.get(desk_release(session.id), headers=desk)
 
     assert forced.status_code == 200, forced.text
     assert read.status_code == 200, read.text
@@ -254,11 +259,17 @@ async def test_a_forced_release_reads_forcada_as_stored(
     assert check["conferida"] is False
     assert check["version"] == 1
     assert check["findings"] == [
-        {"kind": "addition", "frase": 1, "idx": told.id, "clipKey": told.take_id}
+        {
+            "kind": "addition",
+            "frase": 1,
+            "index": 1,
+            "idx": told.id,
+            "clipKey": told.take_id,
+            "scene": "whole",
+        }
     ]
     (row,) = await releases_of(db_session, session.id)
     assert row.packet["check"] == check, "o bloco servido é o guardado, e não um recomposto"
-    assert live.status_code == 409, live.text
 
 
 async def test_a_never_analysed_session_reads_sem_conferencia(db_session: AsyncSession) -> None:
@@ -338,7 +349,7 @@ async def test_the_analysts_note_is_nowhere_in_the_packet(db_session: AsyncSessi
 
     assert '"note"' not in json.dumps(packet["back_translation"])
     assert THE_ANALYSTS_NOTE not in json.dumps(packet)
-    assert packet["schema_version"] == "tripod.internalization-release.v0.7"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.9"
     assert set(packet["back_translation"]["findings"][0]) == {
         "kind",
         "segment_id",
@@ -364,7 +375,7 @@ async def test_conferida_and_heard_complete_never_disagree_with_the_gate(
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     with pytest.raises(InternalizationReleaseBlocked) as refused:
-        await build_internalization_release(db_session, await get_session(db_session, session.id))
+        await judged_packet(db_session, await get_session(db_session, session.id))
 
     assert "playback_did_not_cover_the_clip" in refused.value.blockers
     half_heard = (await _live_view(db_session, session))["check"]
@@ -381,7 +392,7 @@ async def test_conferida_and_heard_complete_never_disagree_with_the_gate(
     assert read.json()["check"]["heardComplete"] is False
 
     heard_whole = await ready_session(db_session)
-    whole = await build_internalization_release(db_session, heard_whole)
+    whole = await judged_packet(db_session, heard_whole)
     assert whole["check"]["heardComplete"] is True
 
 
@@ -470,7 +481,7 @@ async def test_the_verdict_stamps_when_the_check_ran(
     assert disputed_check["lastCheckAt"] == after_a_finding.checked_at.isoformat()
 
     before_this_deploy = await ready_session(db_session)
-    older = await build_internalization_release(db_session, before_this_deploy)
+    older = await judged_packet(db_session, before_this_deploy)
     assert older["check"]["lastCheckAt"] is None
     assert older["check"]["status"] == "conferida"
 
@@ -620,26 +631,66 @@ async def test_the_stored_block_names_its_own_version_and_the_live_one_none(
     """Each stored block names the number its row was given; the live one names none.
 
     `version` is null on the live read by rule and not by reading the packet's own `version`
-    key — which on a session whose content *is* the latest release says 2 (ADR 0020). The two
-    answer different questions: the packet's says which approved draft this content is, and
-    the block's says which release this block was stamped from.
+    key — which on a session whose takes stand under the latest release says 2 (ADR 0020). The
+    two answer different questions: the packet's says which approved draft this is, and the
+    block's says which release this block was stamped from.
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     first = await client.post(team_release(session.id), headers=team_headers(credential))
-    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await the_part_recorded_again(db_session, session)
+    await reported_playback(db_session, session, await checked_telling_back(db_session, session))
     second = await client.post(team_release(session.id), headers=team_headers(credential))
     v1 = await client.get(desk_release_at(session.id, 1), headers=desk)
     v2 = await client.get(desk_release_at(session.id, 2), headers=desk)
-    live = await client.get(desk_release(session.id), headers=desk)
+    live = await _live_view(db_session, session)
 
     assert first.json()["version"] == 1, first.text
     assert second.json()["version"] == 2, second.text
     assert v1.json()["check"]["version"] == 1
     assert v2.json()["check"]["version"] == 2
-    assert live.status_code == 200, live.text
-    assert live.json()["version"] == 2, "o conteúdo vivo é o da versão 2, e o pacote diz isso"
-    assert live.json()["check"]["version"] is None
-    assert live.json()["check"]["forced"] is False
+    assert live["version"] == 2, "o conteúdo vivo é o da versão 2, e o pacote diz isso"
+    assert live["check"]["version"] is None
+    assert live["check"]["forced"] is False
+
+
+async def test_a_later_write_keeps_the_versions_own_frase_on_the_standing_check_block(
+    client, db_session: AsyncSession, room_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    the_room_speaks(monkeypatch)
+    analyst = the_analyst_is_scripted(monkeypatch)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
+    session, (one, _two, three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
+    again = await upload_a_part(
+        client, session.id, part=2, audio=b"a equipe gravou a parte 2 outra vez"
+    )
+    assert again.status_code == 200, again.text
+    analyst.readings = [
+        {"findings": [{"kind": "unclear", "note": "a frase 3 ficou confusa", "frase": 3}]}
+    ]
+    answered = await press_terminei(
+        client,
+        session.id,
+        report=played_every_part([one.id, again.json()["take_id"], three.id]),
+    )
+    assert answered.status_code == 200, answered.text
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    assert forced.status_code == 200, forced.text
+    fresh = await get_session(db_session, session.id)
+
+    await reported_playback(db_session, fresh, await stored_telling_back(db_session, fresh))
+
+    (row,) = await releases_of(db_session, session.id)
+    await db_session.refresh(row)
+    (finding,) = row.packet["check"]["findings"]
+    frozen = {one["segment_id"]: one["frase"] for one in row.packet["back_translation"]["segments"]}
+    assert frozen[finding["idx"]] == 3
+    assert finding["frase"] == 3, (
+        "a escrita seguinte recontava o bloco da versão pelas posições, e o achado da frase 3 "
+        "virava 2 ao lado de uma lista congelada que diz 3"
+    )

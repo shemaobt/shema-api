@@ -15,7 +15,7 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import run_turn
-from app.services.internalization_room.sessions import get_session, is_panorama
+from app.services.internalization_room.sessions import book_of, get_session, is_panorama, was_opened
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -53,7 +53,9 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             spoken = panorama.language
             with reading_the_canon_of(panorama.canon_pin):
                 if pericope is None:
-                    pericope = await active_passage(db, project_id=panorama.project_id)
+                    pericope = await active_passage(
+                        db, project_id=panorama.project_id, book=book_of(panorama.pericope)
+                    )
                 if pericope is None:
                     logger.info("Nothing left to prepare: the team has closed every passage")
                     return
@@ -172,7 +174,7 @@ async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -
     and handing it the old one's line would frame the team's passage from a map the rest of the
     session never reads. The cost is the same one session writing its own opening.
 
-    A session the team has already spoken in is refused too. The open door returns the team's
+    A session the Guide has already spoken in is refused too. The open door returns the team's
     resumed session (ADR 0045), and a line parked there is never read: only an opening takes
     it, and that session has had its opening.
 
@@ -189,7 +191,7 @@ async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -
         return False
     if prepared.canon_pin != opening.canon_pin:
         return False
-    if opening.messages:
+    if was_opened(opening):
         return False
     await db.execute(
         update(IRSession)

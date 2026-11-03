@@ -1,5 +1,5 @@
 ---
-status: amended by shema-api#760: the restart route is back and writes a SupersededAttempt again
+status: superseded by ADR 0068: terminei refuses no untold part; amended by shema-api#760: the restart route is back and writes a SupersededAttempt again
 date: 2026-09-18
 ---
 

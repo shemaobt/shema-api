@@ -129,16 +129,19 @@ async def _undo_the_visit(url: str, session_id: str) -> tuple[IRSessionStatus, H
     engine = create_async_engine(url)
     try:
         async with async_sessionmaker(engine, class_=AsyncSession)() as db:
-            undone = await unattend(db, await get_session(db, session_id))
+            read = await get_session(db, session_id)
+            undone = await unattend(
+                db, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+            )
             return undone.status, halt.standing(undone)
     finally:
         await engine.dispose()
 
 
-async def test_undoing_a_visit_made_before_the_migration_brings_back_what_it_lifted(
+async def test_undoing_a_visit_made_before_the_migration_brings_back_its_warning_and_no_block(
     before_the_migration,
 ):
-    """A visit to a warning brings back a warning, never a blocking halt nobody raised."""
+    """A visit to a warning brings back a warning; an old visit's lift stays (ADR 0076)."""
     url = before_the_migration["url"]
     assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
@@ -147,9 +150,9 @@ async def test_undoing_a_visit_made_before_the_migration_brings_back_what_it_lif
         HaltKind.WARNING,
     ), "desfazer uma visita a um aviso de antes da migração parava a sala com um bloqueio"
     assert await _undo_the_visit(url, before_the_migration["visited_block"]) == (
-        IRSessionStatus.NEEDS_PERSON,
-        HaltKind.BLOCKING,
-    )
+        IRSessionStatus.IN_PROGRESS,
+        None,
+    ), "desfazer uma visita antiga parou uma sala que a equipe já tocava"
 
 
 async def test_the_downgrade_puts_every_standing_warning_back_in_the_status(before_the_migration):

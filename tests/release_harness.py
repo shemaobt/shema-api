@@ -12,10 +12,13 @@ fixture calling these.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +33,7 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.project import Project
 from app.models.internalization_room import PlayedTake
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -37,15 +41,24 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.release import (
+    InternalizationReleaseBlocked,
+    compose_internalization_release,
+)
+from app.services.internalization_room.retro_export import retro_export
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
+    get_session,
     report_playback,
+    retire_the_part_recorded_again,
 )
+from app.services.internalization_room.take_downloads import _release_id
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
     a_language,
+    an_email,
     make_project,
     make_project_user_access,
     make_user,
@@ -90,14 +103,14 @@ def team_headers(credential: str) -> dict[str, str]:
 
 
 async def a_claimed_device(
-    db: AsyncSession, *, email: str = "fac@example.com", language_name: str | None = None
+    db: AsyncSession, *, email: str | None = None, language_name: str | None = None
 ) -> tuple[Project, str]:
     """A device linked to a project, and the credential it calls the room with.
 
     `language_name` is the team's mother tongue.
     """
     project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
-        db, email=email, language_name=language_name, tablets=1
+        db, email=email or an_email(), language_name=language_name, tablets=1
     )
     return project, tablet.credential
 
@@ -124,6 +137,19 @@ async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
     return list(rows.scalars().all())
 
 
+async def judged_packet(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+    """The packet this session composes, or the refusal naming every blocker standing.
+
+    The gate judged under the whole list, with nothing set aside: what the approval asks of a
+    team that has no facilitator's code. A case about what the packet carries reads it here
+    rather than from a route, because no route serves it live.
+    """
+    artifact, blockers = await compose_internalization_release(db, session)
+    if blockers:
+        raise InternalizationReleaseBlocked(blockers)
+    return artifact
+
+
 async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
     """This session's single current part, read off the rows rather than named by a constant.
 
@@ -135,6 +161,65 @@ async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
     if len(parts) != 1:
         raise ValueError(f"this session holds {len(parts)} current parts, not one")
     return parts[0]
+
+
+async def checked_and_heard(db: AsyncSession, session: IRSession) -> None:
+    """The team's telling-back read clean over every stretch it told, and every part heard: the
+    telling conferida, and nobody has approved it yet."""
+    told = await final_segments(db, session.id)
+    await reported_playback(
+        db,
+        session,
+        BackTranslationState(
+            scope=session.pericope,
+            findings=[],
+            checked=True,
+            analysed_segment_ids=[one.id for one in told],
+        ),
+    )
+
+
+async def checked_heard_and_approved(
+    client: httpx.AsyncClient,
+    db: AsyncSession,
+    session_id: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> int:
+    """The team's telling-back read clean, every part heard, and the passage approved.
+
+    Read through a fresh view of the rows, because the routes wrote them through sessions of
+    their own. Answers the version the approval was given.
+    """
+    db.expire_all()
+    session = await db.get(IRSession, session_id)
+    assert session is not None
+    await checked_and_heard(db, session)
+    answered = await client.post(team_release(session.id), headers=headers)
+    assert answered.status_code == 200, answered.text[:300]
+    version: int | None = answered.json()["version"]
+    assert version is not None, answered.text[:300]
+    return version
+
+
+async def the_part_recorded_again(db: AsyncSession, session: IRSession) -> IRTake:
+    """The team recorded this session's one part again: the change of takes that re-opens a
+    draft (ADR 0081), its ground untold until the team tells it back."""
+    part = await the_one_part_of(db, session)
+    fresh = ensaio_take(
+        session.id,
+        pericope=session.pericope,
+        scope=part.scope,
+        ordinal=part.ordinal,
+        sha256=hashlib.sha256(part.id.encode()).hexdigest(),
+        created_at=part.created_at + timedelta(minutes=1),
+        project_id=session.project_id,
+    )
+    db.add(fresh)
+    part.superseded_at = fresh.created_at
+    await db.commit()
+    await retire_the_part_recorded_again(db, session, fresh)
+    return fresh
 
 
 async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
@@ -437,6 +522,7 @@ async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRS
     state = back_translation_of(session)
     state.checked = True
     state.findings = []
+    state.played_by_take = []
     part = await the_one_part_of(db, session)
     await report_playback(
         db,
@@ -481,9 +567,29 @@ def desk_release(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/release"
 
 
+def desk_passage_release(project_id: str, pericope: str) -> str:
+    return f"{PREFIX}/facilitator/projects/{project_id}/passages/{pericope}/release"
+
+
 def desk_release_at(session_id: str, version: int) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}"
 
 
 def desk_retro(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/retroverificacao"
+
+
+async def session_retro(
+    client: httpx.AsyncClient, session_id: str, headers: dict[str, str]
+) -> httpx.Response:
+    """The passage's file, read through the old session route's redirect."""
+    return await client.get(desk_retro(session_id), headers=headers, follow_redirects=True)
+
+
+async def exported_file(db: AsyncSession, session_id: str) -> dict[str, Any]:
+    """The file of the session's draft as its route serves it, read without the HTTP round trip."""
+    db.expire_all()
+    session = await get_session(db, session_id)
+    release_id = await _release_id(db, session, current_parts(await takes_of(db, session.id)))
+    file = await retro_export(db, session, await approved_draft(db, session), release_id)
+    return file.model_dump(mode="json", by_alias=True)

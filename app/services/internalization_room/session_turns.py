@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, NamedTuple
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
@@ -19,6 +20,7 @@ from app.models.internalization_room import (
 )
 from app.services.internalization_room.conversation import the_conversation
 from app.services.internalization_room.name_check import stored_opening_note
+from app.services.internalization_room.questions import SignedAudio
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -82,13 +84,14 @@ def is_boundary_turn(outcome: TurnOutcomeCode, text: str, *, opening: bool) -> b
 def turns_of(session: IRSession) -> SessionTurnsResponse:
     """The session's turns, oldest first, as the team's side and the voice's side of each.
 
-    The opening has no team side.
+    The opening's team side is its stored opening note.
     """
+    note = stored_opening_note(session)
     return SessionTurnsResponse(
         session_id=session.id,
         turns=[
             SessionTurn(
-                team=None if opening else _team_side(guide),
+                team=_opening_side(note) if opening else _team_side(guide),
                 voice=_voice_side(guide, session.id, number, opening=opening),
             )
             for number, (guide, opening) in enumerate(_voice_turns(session))
@@ -97,12 +100,11 @@ def turns_of(session: IRSession) -> SessionTurnsResponse:
 
 
 def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
-    kickoff = stored_opening_note(session)
     marked = [
         BoundaryTurn(
             number=number,
             outcome=turn.voice.outcome,
-            team=(turn.team.guide_heard if turn.team else kickoff) or "",
+            team=turn.team.guide_heard or "",
             guide=turn.voice.text,
         )
         for number, turn in enumerate(turns_of(session).turns)
@@ -111,8 +113,8 @@ def boundary_turns_of(session: IRSession) -> SessionBoundaryTurnsResponse:
     return SessionBoundaryTurnsResponse(session_id=session.id, count=len(marked), turns=marked)
 
 
-async def turn_clip_url(session: IRSession, number: int) -> str:
-    """A short-lived signed address for the clip of one voice turn.
+async def turn_listen_address(session: IRSession, number: int) -> SignedAudio:
+    """A short-lived signed address for the clip of one voice turn, and the instant it dies.
 
     The clip the turn stored is played whenever its object is still there, whichever voice
     made it. A turn stored without one, or whose object is gone, is voiced once in the
@@ -131,12 +133,13 @@ async def turn_clip_url(session: IRSession, number: int) -> str:
             entry.get("text", ""), language=session.language
         )
         key = voiced.key
-    return await gcs_utils.generate_signed_download_url(
+    url = await gcs_utils.generate_signed_download_url(
         settings.gcs_platform_bucket,
         key,
         expiry_minutes=LISTEN_MINUTES,
         response_content_type=MIME_TYPE,
     )
+    return SignedAudio(url=url, expires_at=datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES))
 
 
 def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
@@ -156,6 +159,43 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
             turns.append((message, not said_before and "mother_tongue" not in message))
         said_before = True
     return turns
+
+
+def opening_stamp(session: IRSession) -> dict[str, str] | None:
+    turns = _voice_turns(session)
+    if not turns or not turns[0][1]:
+        return None
+    return turns[0][0].get("earlier_passages")
+
+
+class TeamTurn(NamedTuple):
+    words: str
+    at: datetime
+
+
+def team_turn_of(session: IRSession, number: int) -> TeamTurn:
+    conversation = the_conversation(session)
+    entry, _ = _voice_turns(session)[number]
+    return TeamTurn(
+        words=str(conversation[conversation.index(entry) - 1]["text"]),
+        at=datetime.fromisoformat(entry["at"]),
+    )
+
+
+def last_turn_number(session: IRSession) -> int:
+    return len(_voice_turns(session)) - 1
+
+
+def _opening_side(note: str) -> TurnTeamSide:
+    return TurnTeamSide(
+        language=None,
+        language_probability=None,
+        take_ms=None,
+        mother_tongue=None,
+        interrupted_at_s=None,
+        guide_heard=note,
+        note_kind="opening",
+    )
 
 
 def _team_side(guide: dict[str, Any]) -> TurnTeamSide:
@@ -189,6 +229,7 @@ def _voice_side(
         ),
         trace=[TurnTraceStep.model_validate(step) for step in guide.get("attempts") or []],
         accepted_ids=guide.get("accepted_ids") or [],
+        earlier_passages=guide.get("earlier_passages"),
         recognition_ms=guide.get("recognition_ms"),
         reply_ms=guide.get("reply_ms"),
         synthesis_ms=guide.get("synthesis_ms"),

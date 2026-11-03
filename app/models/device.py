@@ -205,6 +205,7 @@ class DeviceAttendedResponse(BaseModel):
     needs_person_since: datetime | None = None
     attended_at: datetime | None = None
     attended_by: str | None = None
+    attended_lifted_since: datetime | None = None
 
     @classmethod
     def of(cls, device: Device) -> "DeviceAttendedResponse":
@@ -216,4 +217,7 @@ class DeviceAttendedResponse(BaseModel):
             ),
             attended_at=as_utc(device.attended_at) if device.attended_at else None,
             attended_by=device.attended_by,
+            attended_lifted_since=(
+                as_utc(device.attended_lifted_since) if device.attended_lifted_since else None
+            ),
         )

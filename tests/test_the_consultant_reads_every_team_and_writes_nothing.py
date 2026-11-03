@@ -19,15 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
+    IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
+    IRSceneFrase,
+    IRSceneRehearsal,
     IRSession,
     IRSessionStatus,
     IRTake,
     IRTakeKind,
 )
 from app.services.device import create_device
+from app.services.device.needs_person import record_needs_person
 from app.services.internalization_room import questions as question_service
+from app.services.internalization_room import takes as takes_service
 from app.services.internalization_room.voice_handles import to_handle
 from app.services.oral_collector import gcs_utils
 from app.services.platform import tts
@@ -53,6 +58,9 @@ DESK = "/api/facilitator"
 P = "P03"
 AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 FORCE = {"json": {"force": True}}
+#: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
+NEVER_HALTED = {"params": {"halt": 0}}
+NO_SUCH_HALT = {"params": {"needs_person_since": "2020-01-01T00:00:00+00:00"}}
 
 
 class Bucket:
@@ -96,6 +104,7 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
     the_bucket_is_in_memory(monkeypatch)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", sign)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", sign)
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "plataforma", raising=False)
     return store
 
@@ -121,12 +130,16 @@ def per_request(test_engine) -> async_sessionmaker[AsyncSession]:
 
 
 class Team:
-    def __init__(self, project, session, question, take, device: str) -> None:
+    def __init__(self, project, session, question, take, rehearsal, frase, device: str) -> None:
         self.id = project.id
         self.session = session.id
         self.question = question.id
         self.question_key = question.audio_key
         self.take = take.id
+        self.rehearsal = rehearsal.id
+        self.rehearsal_key = rehearsal.storage_key
+        self.frase = frase.id
+        self.frase_key = frase.storage_key
         self.device = device
 
 
@@ -155,6 +168,21 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
         project_id=project.id,
         status=IRSessionStatus.NEEDS_PERSON,
         messages=[{"role": "guide", "text": "Vamos ouvir a história.", "voice_key": f"voz/{tag}"}],
+        back_translation={
+            "sentences": [
+                {
+                    "sentence_id": f"frase-{tag}",
+                    "segment_id": f"seg-{tag}",
+                    "previous_take_id": f"tk-{tag}-antes",
+                    "take_id": f"tk-{tag}",
+                    "starts_ms": 0,
+                    "ends_ms": 1000,
+                    "sha256": "0" * 64,
+                    "storage_key": f"internalization-room/takes/{tag}/sentence/frase.wav",
+                    "heard_before": False,
+                }
+            ]
+        },
     )
     db.add(session)
     await db.flush()
@@ -181,12 +209,41 @@ async def _a_team(db: AsyncSession, tag: str, bucket: Bucket) -> Team:
         crc32c="AAAAAA==",
         content_type="audio/mp4",
     )
-    db.add_all([question, take])
+    check = IRExternalCheck(
+        release_id=f"r-{tag}", session_id=session.id, version=1, takes=[], frases=[]
+    )
+    rehearsal = IRSceneRehearsal(
+        id=f"sr-{tag}",
+        session_id=session.id,
+        project_id=project.id,
+        pericope=P,
+        n=1,
+        device_id=f"t-{tag}",
+        storage_key=f"internalization-room/scene-rehearsals/{tag}.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+    )
+    frase = IRSceneFrase(
+        id=f"sf-{tag}",
+        rehearsal_id=rehearsal.id,
+        session_id=session.id,
+        starts_ms=0,
+        ends_ms=1000,
+        storage_key=f"internalization-room/scene-rehearsals/{tag}-frase.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+        transcript="a frase",
+    )
+    db.add_all([question, take, check, rehearsal, frase])
     await db.commit()
     await bucket.put(question.audio_key, b"a equipe perguntou", "audio/mp4")
     await bucket.put(f"voz/{tag}", b"a voz falou", "audio/mpeg")
     tablet = await a_linked_tablet(db, team_id=project.id)
-    return Team(project, session, question, take, tablet.device_id)
+    return Team(project, session, question, take, rehearsal, frase, tablet.device_id)
 
 
 async def _a_reader(
@@ -232,10 +289,10 @@ def _writes_on(team: Team, claim_code: str) -> list[tuple[str, str, dict]]:
     return [
         ("POST", f"{IR}/facilitator/questions/{team.question}/reply", AUDIO),
         ("POST", f"{IR}/facilitator/questions/{team.question}/resolve", {}),
-        ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", {}),
-        ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", {}),
-        ("POST", f"{DESK}/devices/{team.device}/attended", {}),
-        ("DELETE", f"{DESK}/devices/{team.device}/attended", {}),
+        ("POST", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
+        ("DELETE", f"{IR}/facilitator/sessions/{team.session}/attended", NEVER_HALTED),
+        ("POST", f"{DESK}/devices/{team.device}/attended", NO_SUCH_HALT),
+        ("DELETE", f"{DESK}/devices/{team.device}/attended", NO_SUCH_HALT),
         ("POST", f"{DESK}/devices/claim", {"json": {"code": claim_code, "project_id": team.id}}),
         ("PATCH", f"{DESK}/devices/{team.device}", {"json": {"label": "outro nome"}}),
         ("DELETE", f"{DESK}/devices/{team.device}", {}),
@@ -248,6 +305,8 @@ def _answer(response: httpx.Response) -> tuple[int, Any]:
     body = response.json()
     if isinstance(body, dict):
         body.pop("generated_at", None)
+        body.pop("exportedAt", None)
+        body.pop("expires_at", None)
     return response.status_code, body
 
 
@@ -339,14 +398,31 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/takes",
         f"{IR}/facilitator/sessions/{session}/release",
         f"{IR}/facilitator/sessions/{session}/releases/1",
-        f"{IR}/facilitator/sessions/{session}/retroverificacao",
         f"{IR}/facilitator/sessions/{session}/scene-rehearsals",
         f"{IR}/facilitator/sessions/{session}/coverage",
         f"{IR}/facilitator/sessions/{session}/boundary-turns",
         f"{IR}/facilitator/sessions/{session}/mother-tongue-takes",
+        f"{IR}/facilitator/sessions/{session}/takes/downloads",
+        f"{IR}/facilitator/sessions/{session}/external-check/1",
+        f"{IR}/facilitator/sessions/{session}/retro",
+        f"{IR}/facilitator/sessions/{session}/re-recorded-sentences",
+        f"{IR}/facilitator/sessions/{session}/takes/whole",
+        f"{IR}/facilitator/sessions/{session}/turns/0/audio",
+        f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}/audio",
+        f"{IR}/facilitator/sessions/{session}/scene-rehearsals/{desk['b'].rehearsal}"
+        f"/frases/{desk['b'].frase}/audio",
+        f"{IR}/facilitator/sessions/{session}/grain-switches",
+        f"{IR}/facilitator/sessions/{session}/re-recorded-sentences/frase-b/address",
     ]
 
-    values = {"session_id": session, "number": 0, "version": 1}
+    values = {
+        "session_id": session,
+        "number": 0,
+        "version": 1,
+        "sentence_id": "frase-b",
+        "rehearsal_id": desk["b"].rehearsal,
+        "frase_id": desk["b"].frase,
+    }
     answers = {
         path: (
             await client.get(path.format(**values), headers=desk.readers["consultant"])
@@ -366,7 +442,20 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
 
         assert _answer(consultants) == _answer(theirs), url
         assert _answer(strangers) != _answer(theirs), url
-    for url in (reads[0], reads[1], reads[2], reads[5], reads[6], reads[9]):
+    for url in (
+        reads[0],
+        reads[1],
+        reads[2],
+        reads[5],
+        reads[8],
+        reads[10],
+        reads[11],
+        reads[12],
+        reads[14],
+        reads[15],
+        reads[16],
+        reads[17],
+    ):
         assert (await client.get(url, headers=desk.readers["consultant"])).status_code == 200, url
 
 
@@ -389,6 +478,10 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"{IR}/facilitator/questions/{team.question}/reply/audio",
         f"{IR}/facilitator/takes/{team.take}/audio",
         f"{IR}/facilitator/sessions/{team.session}/turns/0/audio",
+        f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/audio",
+        f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}/audio",
+        f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}"
+        f"/frases/{team.frase}/audio",
     ]
     mounted = _audio_doors()
     covered = {template_of("GET", url) for url in doors}
@@ -397,7 +490,7 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         f"porta sem rota: {sorted(covered - mounted, key=str)}"
     )
 
-    question, by_handle, reply, take, turn = [
+    question, by_handle, reply, take, turn, sentence, scene, scene_frase = [
         await client.get(url, headers=reader) for url in doors
     ]
 
@@ -408,7 +501,15 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
         b"a facilitadora respondeu"
     )
     assert take.status_code == 307, take.text[:300]
-    assert turn.status_code == 307, turn.text[:300]
+    assert turn.status_code == 200, turn.text[:300]
+    assert bucket.objects[turn.json()["url"].removeprefix("https://signed.test/plataforma/")] == (
+        b"a voz falou"
+    )
+    assert sentence.status_code == 307, sentence.text[:300]
+    assert scene.status_code == 200, scene.text[:300]
+    assert scene.json()["url"] == f"https://signed.test/plataforma/{team.rehearsal_key}"
+    assert scene_frase.status_code == 200, scene_frase.text[:300]
+    assert scene_frase.json()["url"] == f"https://signed.test/plataforma/{team.frase_key}"
     assert await _row(per_request, IRSession, team.session) == session_before
     assert await _row(per_request, IRQuestion, team.question) == question_before
 
@@ -449,7 +550,7 @@ async def test_a_consultant_without_the_facilitator_role_is_refused_at_every_wri
 
 
 async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attended_on_a_and_reads_b(
-    client, desk
+    client, desk, db_session
 ) -> None:
     reader = desk.readers["both"]
 
@@ -457,10 +558,15 @@ async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attende
         f"{IR}/facilitator/questions/{desk['a'].question}/reply", headers=reader, **AUDIO
     )
     attended = await client.post(
-        f"{IR}/facilitator/sessions/{desk['a'].session}/attended", headers=reader
+        f"{IR}/facilitator/sessions/{desk['a'].session}/attended",
+        params={"halt": 0},
+        headers=reader,
     )
+    halt, _ = await record_needs_person(db_session, desk["a"].device)
     device_attended = await client.post(
-        f"{DESK}/devices/{desk['a'].device}/attended", headers=reader
+        f"{DESK}/devices/{desk['a'].device}/attended",
+        headers=reader,
+        params={"needs_person_since": halt.isoformat()},
     )
     read = await client.get(
         f"{IR}/facilitator/sessions/{desk['b'].session}/conversation", headers=reader
@@ -513,21 +619,41 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{DESK}/teams/{team.id}/coverage", {"params": {"pericope": P}}),
         (f"{DESK}/sessions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions", {"params": {"team_id": team.id}}),
+        (f"{IR}/facilitator/projects/{team.id}/passages/{P}/archives", {}),
         (f"{IR}/facilitator/questions/{team.question}/audio", {}),
         (f"{IR}/facilitator/questions/{team.question}/reply/audio", {}),
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
         (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/boundary-turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/grain-switches", {}),
         (f"{IR}/facilitator/sessions/{team.session}/mother-tongue-takes", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/takes/downloads", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/takes/whole", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/audio", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
         (f"{IR}/facilitator/questions/audio/{to_handle(team.question_key)}", {}),
         (f"{IR}/facilitator/sessions/{team.session}/release", {}),
         (f"{IR}/facilitator/sessions/{team.session}/releases/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/retroverificacao", {}),
+        (f"{IR}/facilitator/projects/{team.id}/passages/{P}/retroverificacao", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/retro", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/external-check/1", {}),
         (f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns", {}),
         (f"{IR}/facilitator/sessions/{team.session}/turns/0/audio", {}),
+        (
+            f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}/audio",
+            {},
+        ),
+        (
+            f"{IR}/facilitator/sessions/{team.session}/scene-rehearsals/{team.rehearsal}"
+            f"/frases/{team.frase}/audio",
+            {},
+        ),
+        (f"{IR}/facilitator/takes/{team.take}/address", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/re-recorded-sentences/frase-b/address", {}),
     ]
     nudges = f"{DESK}/teams/{team.id}/nudges"
 
@@ -609,3 +735,17 @@ async def test_a_team_that_does_not_exist_is_refused_at_every_read_even_to_a_con
 
     assert set(answers.values()) == {404}, answers
     assert nudges == 404
+
+
+async def test_a_consultant_reads_the_retroverification_file_of_team_bs_passage(
+    client, desk
+) -> None:
+    team = desk["b"]
+    url = f"{IR}/facilitator/projects/{team.id}/passages/{P}/retroverificacao"
+
+    consultant = await client.get(url, headers=desk.readers["consultant"])
+    stranger = await client.get(url, headers=desk.readers["facilitator"])
+
+    assert consultant.status_code == 200, consultant.text[:300]
+    assert consultant.json()["pericopeId"] == P
+    assert stranger.status_code == 404

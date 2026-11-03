@@ -18,7 +18,7 @@ turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-
 
 | Workflow | What it gates |
 |---|---|
-| Checks | One job, one check on the pull request: the seven commands in a queue under a 10-minute ceiling — `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), `mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py --explicit-package-bases`, the two passes of the doctrine guard, and the canon drift check, which holds the vendored canon to its record and to a fresh clone of Marcia's compiler at the pin, then the canon smoke over every served passage — then the three files marked `fresh_interpreter`. |
+| Checks | One job, one check on the pull request: the seven commands in a queue under a 10-minute ceiling — `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), `mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py scripts/her_golden_round.py --explicit-package-bases`, the two passes of the doctrine guard, and the canon drift check, which holds the vendored canon to its record and to a fresh clone of Marcia's compiler at the pin, then the canon smoke over every served passage — then the three files marked `fresh_interpreter`. |
 | Test | The pytest suite on SQLite in four processes split by file, selecting out the tests marked `migration` or `fresh_interpreter`, with the schema created once per process, under a 12-minute ceiling on the step itself, against a step measured at 6m21s on the runner with ~3700 tests (ENG-1092), inside a 30-minute ceiling on the job that leaves room for a slow apt (ENG-1498). `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
 | Migrations | The graph stands at one head with no duplicate revision ids, the models match the migrated schema (`alembic check`), the newest migrations walk down and back up on a clean Postgres, then the fifteen tests marked `migration` run with `DATABASE_URL` cleared so they build their own SQLite files instead of running against the job's Postgres. |
 | Deploy | A push to `main` builds the image, then waits while a team session is open (`scripts/hold_deploy.py`: a session with a project that the Desk lists, that `end_of` reads as in progress, that is not a panorama, and whose team did anything in the last `DEPLOY_HOLD_MINUTES`, an hour by default — a turn, a take or a raised hand, read the way the Desk reads a team's last activity), naming the sessions every minute; then it upgrades the production database and deploys to Cloud Run. After five hours of waiting it fails naming them and nothing ships. A manual run with `urgent` ticked does not wait and names the sessions that were open. One deploy runs at a time; an urgent run queues behind one already waiting, so cancel that one first. The tablets update only through the store and never check the server, so a server change that the build installed on the tablets cannot speak ships only once the store build that speaks it is on the tablets (app ADR 0082). |
@@ -30,11 +30,12 @@ turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-
 | Request Joãozinho on dev | Requests the reviewer on every head of a pull request into `dev`, including one retargeted onto it, which is what fires the review there. It requests nobody when the author is Joãozinho's own login or a bot, because the review would skip and a skipped check counts as passing. |
 
 Both deploys pull their configuration from GCP Secret Manager, and each sets a few plain
-environment variables on the service directly. They are not the same few. Production sets five:
-the platform bucket, the mail provider, the Azure tenant id, the Azure client id and the CORS
-origins. Staging sets five of its own — the environment name, the mail provider, the job-queue
-app id, its bucket and its CORS origins — because each has to differ from production's: the app
-id in particular, since a second registration under production's id would overwrite it. Anything
+environment variables on the service directly. They are not the same few. Production sets the
+platform bucket, the Oral Collector bucket, the mail provider, the Azure tenant id, the Azure
+client id, the CORS origins, the mother-tongue floor and the two minimum app builds. Staging sets
+six of its own — the environment name, the mail provider, the job-queue app id, its two buckets
+and its CORS origins — because each has to differ from production's: the app id in particular,
+since a second registration under production's id would overwrite it. Anything
 secret comes from Secret Manager, never from a workflow file, and the Azure client secret is
 mounted from there like the rest; the tenant and client ids beside it are not secret.
 

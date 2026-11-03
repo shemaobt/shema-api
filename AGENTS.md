@@ -12,7 +12,7 @@ JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -n 4 --dist load
 
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
-uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py --explicit-package-bases
+uv run mypy app/ scripts/golden_runner.py scripts/bt_golden_runner.py scripts/golden_spend.py scripts/her_golden_round.py --explicit-package-bases
 uv run python scripts/check_doctrine.py
 uv run python scripts/sync_doctrine.py --check
 TRIPOD_COMPILER_REPO=~/tripod_compiler uv run python scripts/sync_internalization_canon.py --check
@@ -20,6 +20,7 @@ DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-
 JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -m fresh_interpreter
 
 env -u DATABASE_URL JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -n 4 --dist loadfile -m migration
+DATABASE_URL=postgresql://<a Postgres you own> JWT_SECRET_KEY=test-secret-for-ci-only uv run python scripts/postgres_waits_are_bounded.py
 PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
@@ -30,12 +31,23 @@ three files that each open a clean interpreter to prove something the suite's ow
 cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in
 place the fifteen migration-walking files would run against that Postgres instead of the
-SQLite file each builds for itself. The three selections partition the whole suite, pinned in
+SQLite file each builds for itself. The line after it is that job's step against its own
+Postgres: the app sets `lock_timeout` and `statement_timeout` in every transaction, and only a
+real Postgres can show it (ADR 0079). The three selections partition the whole suite, pinned in
 `tests/test_ci_gates.py`.
 
 The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is one file per process, in the system temporary directory and named by the xdist worker or, in a serial run, by the pid, so two runs in one checkout and four workers in one run do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that one file and leaves it behind — so a run that names its own database runs serially, without `-n`. The schema is created once per process and each test is given a clean database by a sweep, not by recreating it.
 
 ## Golden runs
+
+**The measure is her runner.** Our backend is accepted by her 23 scripts and her 45 checks, played by her own runner at the pin in `docs/doctrine/FREEZE_PIN` from a checkout of her repository, over `--http` against the Golden doors. One command does it, and keeps her reports in `golden/reports/<date>/` beside the backend commit judged and the pin; it refuses a checkout that is not at the pin or carries changes to it, and its exit is hers (0 passed, 1 a session failed, 2 her preflight stopped the run, 3 the backend died mid-script) or 4 for a refusal before anything played. Her runner needs `ANTHROPIC_API_KEY` for her judge and her preflight. A local backend names its build only when started with `GIT_SHA=$(git rev-parse HEAD)`; without it the round is refused.
+
+```sh
+TRIPOD_INTERNALIZATION_REPO=~/Tripod-Internalization INTERNALIZATION_ROOM_RUNNER_KEY=<key> \
+  uv run python scripts/her_golden_round.py --base-url <host>/api/internalization-room
+```
+
+Our Python runners below, `scripts/golden_runner.py` with its checks and `scripts/bt_golden_runner.py`, are **no longer the measure** (Henok, ENG-1339): they stay as a way to replay a script or a back-translation locally, and a pass there accepts nothing.
 
 Marcia's golden scripts are played against a running server through two doors that exist only
 where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and both answer 404. The
@@ -90,10 +102,27 @@ aliases list under `app/services/internalization_room/canon/vendor/` — moves o
 `scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
 beside the copy. It keeps the canon it replaces, with the element labels, under
-`canon/kept/<pin>/`: a session reads the canon it opened with until its passage is approved.
-Then it drops every kept tree whose pin it is not told to keep with `--keep`, the one it just
-made included: which pins an open session names needs a production read, and while production
-carries only tests the sync takes none. Never edit vendored
+`canon/kept/<pin>/`: a session reads the canon it opened with for as long as the Desk shows
+it, after a Zerar archives it too (ADR 0099). The sync never removes a kept tree. Kept trees
+leave only by hand, through a prune (ADR 0088). From an up-to-date main checkout, fetch
+production's session pins with a Desk token, then prune with them at once (a file older than
+15 minutes is refused) and open a pull request with what it removed:
+
+```sh
+curl -sf -H "Authorization: Bearer <token>" \
+  "$PRODUCTION_API/api/internalization-room/facilitator/canon-pins" -o pins.json &&
+  uv run python scripts/sync_internalization_canon.py --prune --live-pins pins.json
+```
+
+The prune keeps every pin in the file, the pin production serves and the deployed pin. It
+refuses with no file, with a file that is not that read's answer or was not served by production
+(`tripod-backend`), is older than 15 minutes or was answered in this machine's future, with a
+pin it holds no tree for, and when `kept/` is a link or holds one. Both clocks must be on network
+time. While a prune pull request is pending, until it deploys, do not roll production back or
+run the deploy workflow on an older ref: a revision serving a dropped pin opens sessions that
+answer 409 after the next deploy. From this change on, a deploy fails, urgent or not, on an image
+that keeps no canon for a pin some session holds, at once or on any poll of its wait, and names
+the pin; a deploy of an older ref and a traffic rollback are not checked. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.

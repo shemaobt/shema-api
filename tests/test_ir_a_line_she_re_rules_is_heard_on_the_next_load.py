@@ -457,6 +457,24 @@ async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     )
 
 
+@pytest.mark.parametrize("language", ["pt", "en"])
+async def test_her_pause_line_is_never_voiced_though_it_stands_in_her_file(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    language: str,
+) -> None:
+    async with room_client(db_session, monkeypatch) as client:
+        asked = await client.get(
+            f"{PREFIX}/fixed-lines/E0", params={"language": language}, headers=THE_TABLET
+        )
+
+    assert asked.status_code == 404, asked.text
+    assert elevenlabs.voiced == [], (
+        "a rota ainda falava a pausa que manda chamar o facilitador, que o app dela nunca diz"
+    )
+
+
 async def test_a_line_whose_voice_cannot_be_made_answers_no_sound_at_all(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -496,23 +514,6 @@ async def test_a_tablet_with_a_credential_hears_its_line_voiced_with_the_read_le
     assert asked.status_code == 200, asked.text
     assert held == [False], (
         "a leitura da credencial abria a transação e a conexão ficava presa durante a síntese"
-    )
-
-
-@pytest.mark.parametrize(
-    ("spoken", "notices"),
-    [
-        ("pt", {"sem_conexao", "gravacao_presa", "microfone"}),
-        ("en", {"sem_conexao", "gravacao_presa", "microfone"}),
-    ],
-)
-def test_the_app_bundle_is_rendered_with_its_notices_and_none_of_her_lines(
-    spoken: str, notices: set[str]
-) -> None:
-    import scripts.render_fixed_voice_lines as render
-
-    assert set(render.catalogue(spoken)) == notices, (
-        "as falas dela iam gravadas no app, e uma gravação velha tocava depois de ela mudar a letra"
     )
 
 

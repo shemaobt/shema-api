@@ -224,7 +224,7 @@ async def test_a_cold_process_still_finds_the_line_in_the_bucket() -> None:
 async def test_the_panoramas_own_line_is_served_from_cache_without_a_model_call() -> None:
     """The raio rides the same bucket cache as every other facilitator line — a warm cache
     answers it without ever reaching ElevenLabs."""
-    line = panorama_line_for("pt")
+    line = panorama_line_for("Ruth", "pt")
     warm = MemoryStore()
     await synthesize_facilitator_speech(
         line,

@@ -148,6 +148,7 @@ def _in_a_transaction_while_thinking(
         return any(each.in_transaction() for each in (db, *of_their_own))
 
     async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
+        await asyncio.sleep(0.2)
         held["stt"] = in_a_transaction()
         return await _heard(audio, **kwargs)
 
@@ -167,15 +168,15 @@ def _in_a_transaction_while_thinking(
     return held
 
 
-async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
+async def test_a_voiced_turn_reaches_the_database_in_one_commit_after_its_claim(
     client: httpx.AsyncClient, waiting_room: IRSession, commits: list[object]
 ) -> None:
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert len(commits) == 1, (
+    assert len(commits) == 2, (
         "o turno gravava a comprehension e as mensagens em dois commits, cada um com o seu"
-        " refresh da linha inteira"
+        " refresh da linha inteira, além da reivindicação do turno (ADR 0079)"
     )
 
 
@@ -281,7 +282,10 @@ async def test_a_turn_with_its_id_is_remembered_in_the_same_commit_as_its_exchan
     answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
     assert answered.status_code == 200, answered.text[:300]
-    assert len(commits) == 1, "a resposta lembrada do turno era gravada num commit a mais"
+    assert len(commits) == 2, (
+        "a resposta lembrada do turno era gravada num commit a mais, além da reivindicação do"
+        " turno (ADR 0079)"
+    )
 
 
 async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exchange(
@@ -409,12 +413,13 @@ async def test_a_turn_whose_row_moved_while_the_guide_thought_is_refused_not_wri
             )
 
     models.while_the_guide_thinks = another_turn_lands_first
+    session_id = waiting_room.id
 
-    answered = await _the_team_answers(client, waiting_room.id)
+    answered = await _the_team_answers(client, session_id)
 
     assert answered.status_code == 409, answered.text[:300]
     async with rival_factory() as fresh:
-        after = await get_session(fresh, waiting_room.id)
+        after = await get_session(fresh, session_id)
     assert [m["text"] for m in after.messages] == [FIRST_QUESTION, "Rute ficou", "E depois?"], (
         "com a transação solta antes do Guia, o turno escrevia por cima da troca que chegou antes"
     )
@@ -517,7 +522,13 @@ async def test_a_warning_raised_again_after_a_visit_while_the_guide_answers_is_n
     async def a_visit_and_then_the_room_asks_again() -> None:
         async with rival_factory() as rival:
             halted = await get_session(rival, waiting_room.id)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
             await raise_a_warning(rival, halted)
 
     models.while_the_guide_thinks = a_visit_and_then_the_room_asks_again
@@ -545,9 +556,21 @@ async def test_undoing_a_visit_to_a_warning_raised_again_while_the_guide_answere
     async def two_visits_to_two_warnings() -> None:
         async with rival_factory() as rival:
             halted = await get_session(rival, waiting_room.id)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
             await raise_a_warning(rival, halted)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
 
     models.while_the_guide_thinks = two_visits_to_two_warnings
 
@@ -555,7 +578,10 @@ async def test_undoing_a_visit_to_a_warning_raised_again_while_the_guide_answere
 
     assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
-        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+        read = await get_session(fresh, waiting_room.id)
+        undone = await unattend(
+            fresh, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+        )
     assert undone.status is IRSessionStatus.IN_PROGRESS
     assert halt.standing(undone) is HaltKind.WARNING, (
         "desfazer a segunda visita não trazia de volta o aviso que ela tinha encerrado"
@@ -574,7 +600,13 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     async def a_visit_and_then_the_last_settle_close_the_passage() -> None:
         async with rival_factory() as rival:
             halted = await get_session(rival, waiting_room.id)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
             await apply_coverage(
                 rival,
                 waiting_room.id,
@@ -594,7 +626,7 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     )
 
 
-async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_the_halt_back(
+async def test_a_halt_raised_while_the_guide_answered_still_stands_after_its_visit_is_undone(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     models: _Models,
@@ -604,7 +636,13 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_th
         async with rival_factory() as rival:
             halted = await get_session(rival, waiting_room.id)
             await mark_needs_person(rival, halted)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
 
     models.while_the_guide_thinks = the_tablet_asks_and_a_facilitator_marks_the_visit
 
@@ -612,10 +650,12 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_th
 
     assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
-        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+        read = await get_session(fresh, waiting_room.id)
+        undone = await unattend(
+            fresh, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+        )
     assert undone.status is IRSessionStatus.NEEDS_PERSON, (
-        "o turno apagava o lifted_halt de uma parada que nem existia quando começou, e"
-        " desfazer a visita não trazia o pedido de volta"
+        "o turno levantava uma parada que nem existia quando começou"
     )
     assert undone.halt_kind == HaltKind.BLOCKING.value
 
@@ -631,7 +671,14 @@ async def test_undoing_a_visit_to_the_halt_the_turn_began_in_does_not_stop_the_t
 
     async def a_facilitator_marks_the_visit() -> None:
         async with rival_factory() as rival:
-            await attend(rival, await get_session(rival, waiting_room.id), by="facilitadora")
+            read = await get_session(rival, waiting_room.id)
+            await attend(
+                rival,
+                read,
+                by="facilitadora",
+                halts_raised=read.halts_raised,
+                warned_at=read.warned_at,
+            )
 
     models.while_the_guide_thinks = a_facilitator_marks_the_visit
 
@@ -639,7 +686,10 @@ async def test_undoing_a_visit_to_the_halt_the_turn_began_in_does_not_stop_the_t
 
     assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
-        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+        read = await get_session(fresh, waiting_room.id)
+        undone = await unattend(
+            fresh, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+        )
     assert undone.status is IRSessionStatus.IN_PROGRESS, (
         "o turno teria soltado essa parada com ou sem a visita, e desfazer a visita parava"
         " a conversa que a equipe já tinha retomado"
@@ -687,7 +737,13 @@ async def test_undoing_a_visit_to_a_block_under_a_newer_warning_does_not_stop_th
         async with rival_factory() as rival:
             halted = await get_session(rival, waiting_room.id)
             await raise_a_warning(rival, halted)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
 
     models.while_the_guide_thinks = a_warning_and_then_a_visit
 
@@ -695,7 +751,10 @@ async def test_undoing_a_visit_to_a_block_under_a_newer_warning_does_not_stop_th
 
     assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
-        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+        read = await get_session(fresh, waiting_room.id)
+        undone = await unattend(
+            fresh, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+        )
     assert undone.status is IRSessionStatus.IN_PROGRESS, (
         "o turno teria soltado o bloqueio com ou sem a visita, e desfazê-la parava a conversa"
     )
@@ -715,7 +774,14 @@ async def test_undoing_a_visit_to_a_block_under_an_older_warning_does_not_stop_t
 
     async def a_facilitator_marks_the_visit() -> None:
         async with rival_factory() as rival:
-            await attend(rival, await get_session(rival, waiting_room.id), by="facilitadora")
+            read = await get_session(rival, waiting_room.id)
+            await attend(
+                rival,
+                read,
+                by="facilitadora",
+                halts_raised=read.halts_raised,
+                warned_at=read.warned_at,
+            )
 
     models.while_the_guide_thinks = a_facilitator_marks_the_visit
 
@@ -723,7 +789,10 @@ async def test_undoing_a_visit_to_a_block_under_an_older_warning_does_not_stop_t
 
     assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
-        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+        read = await get_session(fresh, waiting_room.id)
+        undone = await unattend(
+            fresh, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+        )
     assert undone.status is IRSessionStatus.IN_PROGRESS, (
         "o turno teria soltado o bloqueio com ou sem a visita, e desfazê-la parava a conversa"
     )
@@ -742,7 +811,13 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_p
         async with rival_factory() as rival:
             halted = await get_session(rival, session.id)
             await mark_needs_person(rival, halted)
-            await attend(rival, halted, by="facilitadora")
+            await attend(
+                rival,
+                halted,
+                by="facilitadora",
+                halts_raised=halted.halts_raised,
+                warned_at=halted.warned_at,
+            )
 
     models.while_the_guide_thinks = the_tablet_asks_and_a_facilitator_marks_the_visit
 
@@ -751,7 +826,10 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_p
     assert opened.status_code == 200, opened.text[:300]
     assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"
     async with rival_factory() as fresh:
-        undone = await unattend(fresh, await get_session(fresh, session.id))
+        read = await get_session(fresh, session.id)
+        undone = await unattend(
+            fresh, read, halts_raised=read.halts_raised, warned_at=read.warned_at
+        )
     assert undone.messages, "a abertura não foi gravada"
     assert undone.status is IRSessionStatus.NEEDS_PERSON, (
         "a abertura relia a visita junto com as mensagens, tomava-a por anterior ao Guia"

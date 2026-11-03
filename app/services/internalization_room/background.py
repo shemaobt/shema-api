@@ -1,60 +1,79 @@
 from __future__ import annotations
 
-import asyncio
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import update
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
-from app.core.stage_clock import count, stage, stopwatch
-from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
+from app.core.stage_clock import count, stopwatch
+from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.models.internalization_room import CoverageFrame
-from app.services.internalization_room.back_translation import (
-    THE_WHOLE_PASSAGE,
-    BackTranslationState,
-    ReadAhead,
-    analyse_telling_back,
-    rehearsed_parts,
-    untold_parts,
-)
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.classify_coverage import classify_coverage
+from app.services.internalization_room.classify_coverage import (
+    KeptRecording,
+    Retelling,
+    classify_coverage,
+)
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
-from app.services.internalization_room.part_names import addresses_for, scene_titles
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
-from app.services.internalization_room.segments import (
-    final_segments,
-    first_untold,
-    told_back,
-)
-from app.services.internalization_room.sessions import (
-    apply_coverage,
-    back_translation_of,
-    get_session,
-    save_back_translation,
-)
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.sessions import apply_coverage, get_session
+from app.services.internalization_room.takes import extension, recording_digest, store_recording
 from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
 
-_reading: dict[str, tuple[list[str], asyncio.Task[BackTranslationState | None]]] = {}
+
+@dataclass(frozen=True)
+class HeardTake:
+    audio: bytes
+    content_type: str
+
+
+async def _kept(session_id: str, take: HeardTake) -> KeptRecording:
+    sha256 = recording_digest(take.audio)
+    stored = await store_recording(
+        take.audio,
+        key=(
+            f"internalization-room/takes/{session_id}/kept/{sha256}/"
+            f"conto.{extension(take.content_type)}"
+        ),
+        sha256=sha256,
+        content_type=take.content_type,
+    )
+    return KeptRecording(storage_key=stored.storage_key, content_type=stored.content_type)
+
+
+async def _retold(
+    session_id: str, turn_number: int, heard: list[Retelling], take: HeardTake | None
+) -> dict[str, Any]:
+    retold: dict[str, Any] = {}
+    for told in heard:
+        if told.approved and take is not None:
+            try:
+                told = told.model_copy(update={"kept": await _kept(session_id, take)})
+            except Exception:
+                logger.exception("The kept take of session %s did not reach the bucket", session_id)
+        retold[str(turn_number)] = told.model_dump(exclude_none=True)
+    return retold
 
 
 async def settle_coverage(
     *,
     session_id: str,
     turn_id: str,
+    turn_number: int,
     team_utterance: str,
     guide_response: str,
     pericope_num: str,
+    take: HeardTake | None = None,
 ) -> None:
     """Advance the tracker after the reply has already shipped.
 
@@ -75,6 +94,7 @@ async def settle_coverage(
                     session = await get_session(db, session_id)
                 coverage_state = session.coverage_state or {}
                 classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
+                heard: list[Retelling] = []
                 with reading_the_canon_of(session.canon_pin):
                     updated = await classify_coverage(
                         coverage_state=coverage_state,
@@ -83,9 +103,11 @@ async def settle_coverage(
                         classifier_prompt=classifier_prompt,
                         pericope_num=pericope_num,
                         session_language=LANGUAGE_NAMES[room_language(session.language)],
+                        on_retelling=heard.append,
                     )
+                    retold = await _retold(session_id, turn_number, heard, take)
                     async with AsyncSessionLocal() as db:
-                        settled = await apply_coverage(db, session_id, updated)
+                        settled = await apply_coverage(db, session_id, updated, retellings=retold)
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)
             )
@@ -141,97 +163,14 @@ async def transcribe_question(*, question_id: str, audio: bytes) -> None:
     try:
         async with AsyncSessionLocal() as db:
             question = await get_question(db, question_id)
-            spoken = room_language((await get_session(db, question.session_id)).language)
+            session = await get_session(db, question.session_id)
+            spoken = room_language(session.language)
+            team_id = session.project_id
             await db.commit()
             await transcribe_for_the_desk(db, question, audio, language=spoken)
+            if question.transcript is not None:
+                nudge(team_id, "hands")
     except TranscriptionDefect:
         logger.exception("Transcription of question %s broke on our side", question_id)
     except Exception:
         logger.exception("Transcription of question %s failed", question_id)
-
-
-async def read_ahead(*, session_id: str) -> None:
-    try:
-        async with AsyncSessionLocal() as db:
-            session = await get_session(db, session_id)
-            state = back_translation_of(session)
-            final = await final_segments(db, session_id)
-            told = told_back(final)
-            key = [segment.id for segment in told]
-            outrun = _reading.get(session_id)
-            if outrun is not None and outrun[0] != key:
-                outrun[1].cancel()
-            takes = await takes_of(db, session_id)
-            if first_untold(final) is not None or untold_parts(
-                current_parts(takes), rehearsed_parts(final)
-            ):
-                return
-            with counted_for(session_id):
-                running = asyncio.create_task(_read_and_keep(db, session, state, told, takes))
-                _reading[session_id] = (key, running)
-                try:
-                    await asyncio.wait([running])
-                finally:
-                    if _reading.get(session_id) == (key, running):
-                        del _reading[session_id]
-    except Exception:
-        logger.exception("Reading ahead failed for session %s", session_id)
-
-
-async def _read_and_keep(
-    db: AsyncSession,
-    session: IRSession,
-    state: BackTranslationState,
-    told: list[IRSegment],
-    takes: list[IRTake],
-) -> BackTranslationState | None:
-    try:
-        language = room_language(session.language)
-        addresses = addresses_for(told, current_parts(takes), scene_titles(session), language)
-        with reading_the_canon_of(session.canon_pin):
-            read = await analyse_telling_back(
-                segments=told,
-                scope=THE_WHOLE_PASSAGE,
-                pericope_num=session.pericope,
-                analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-                addresses=addresses,
-                session_language=LANGUAGE_NAMES[language],
-                language_code=language,
-                settings=get_settings(),
-                session_id=session.id,
-            )
-        if read is None:
-            return None
-        ahead = ReadAhead(
-            segment_ids=[segment.id for segment in told],
-            findings=read.findings,
-            nuances=read.nuances,
-        )
-        await db.refresh(session)
-        kept = back_translation_of(session)
-        kept.read_ahead = ahead
-        await save_back_translation(db, session, kept)
-        return kept
-    except Exception:
-        logger.exception("Reading ahead failed for session %s", session.id)
-        return None
-
-
-async def _joined_ahead(
-    session_id: str, state: BackTranslationState, told: list[IRSegment]
-) -> None:
-    running = _reading.get(session_id)
-    if running is None or running[0] != [segment.id for segment in told]:
-        return
-    with stage("read_ahead"):
-        await asyncio.wait([running[1]])
-    kept = None if running[1].cancelled() else running[1].result()
-    if kept is not None:
-        state.read_ahead = kept.read_ahead
-
-
-async def the_reading_ahead(
-    session_id: str, state: BackTranslationState, told: list[IRSegment]
-) -> ReadAhead | None:
-    await _joined_ahead(session_id, state, told)
-    return state.read_ahead_of(told)

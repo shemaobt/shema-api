@@ -33,11 +33,13 @@ not read off their own panel, and what it tells them is true — there is nobody
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, DeviceHaltMoved, NotFoundError
 from app.db.models.auth import User
 from app.db.models.device import Device
+from app.services.device.demo_team import is_the_demo_team
 from app.services.device.get_device import get_device
 from app.services.project.facilitates_project import facilitates_project
 
@@ -57,33 +59,56 @@ async def _device_to_attend(db: AsyncSession, *, user: User, device_id: str) -> 
     return device
 
 
-async def attend_device(db: AsyncSession, *, user: User, device_id: str) -> Device:
-    """A facilitator says they went to this tablet, which lifts the halt if one stands.
+async def _locked(db: AsyncSession, device: Device) -> Device:
+    """The tablet read again under its row lock, which holds until the commit."""
+    return (
+        await db.execute(
+            select(Device)
+            .where(Device.id == device.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
 
-    **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
-    every tap would record when somebody last touched the Desk rather than when they went to
-    the tablet — and the moment of the visit is the whole of what the field is for.
 
-    A tablet that is not halted is marked all the same and moves nowhere. They went anyway,
-    and that is worth recording; there is simply no halt for the mark to lift, which is what
-    leaving ``attended_lifted_since`` null says and what makes the undo of such a mark move
-    nothing.
-    """
-    device = await _device_to_attend(db, user=user, device_id=device_id)
+def _refuse_unless(held: Device, named: datetime, current: datetime | None) -> None:
+    if current != named:
+        raise DeviceHaltMoved(held.needs_person_since, held.attended_lifted_since)
 
+
+def visited(device: Device, *, by: str | None) -> None:
+    """Stamp a visit to ``device`` and lift its halt, leaving the transaction open."""
     if device.attended_at is None:
         device.attended_at = datetime.now(UTC)
-        device.attended_by = user.id
+        device.attended_by = by
     if device.needs_person_since is not None:
         device.attended_lifted_since = device.needs_person_since
         device.needs_person_since = None
 
+
+async def attend_device(
+    db: AsyncSession, *, user: User, device_id: str, needs_person_since: datetime
+) -> Device:
+    """A facilitator says they went to this tablet, which lifts the halt if one stands.
+
+    **Keeps the first stamp.** A stamp that moved on every tap would record when somebody last
+    touched the Desk rather than when they went to the tablet.
+
+    **It names the halt it answers** (ENG-1785): a tablet that halted again since, or has no
+    halt standing, answers ``HALT_MOVED`` and writes nothing.
+    """
+    device = await _device_to_attend(db, user=user, device_id=device_id)
+    held = await _locked(db, device)
+    _refuse_unless(held, needs_person_since, held.needs_person_since)
+    visited(device, by=user.id)
     await db.commit()
     await db.refresh(device)
     return device
 
 
-async def unattend_device(db: AsyncSession, *, user: User, device_id: str) -> Device:
+async def unattend_device(
+    db: AsyncSession, *, user: User, device_id: str, needs_person_since: datetime
+) -> Device:
     """Withdraw the mark: nobody went, so the tablet asks again with the moment it asked.
 
     What comes back is what this visit lifted and nothing else. A visit that lifted nothing
@@ -91,13 +116,23 @@ async def unattend_device(db: AsyncSession, *, user: User, device_id: str) -> De
     cleared by that session — there is no halt left to restore, because the tablet's own exit
     already happened.
 
+    **It names the halt the visit lifted** (ENG-1785): another value is ``HALT_MOVED`` and
+    writes nothing, so a stale undo never reverses a colleague's later visit. A visit whose
+    lift record is gone, the tablet having opened a session, has no halt left to move.
+
     A tablet nobody marked answers 200 and changes nothing: there is no claim to withdraw, and
     treating the absence as an error would make an idempotent undo impossible to write on the
     Desk.
+
+    A demo team's tablet whose halt the undo put back is stamped again by the server at once,
+    which lifts it, because it never calls a person (ADR 0064).
     """
     device = await _device_to_attend(db, user=user, device_id=device_id)
+    device = await _locked(db, device)
     if device.attended_at is None:
         return device
+    if device.attended_lifted_since is not None:
+        _refuse_unless(device, needs_person_since, device.attended_lifted_since)
 
     lifted = device.attended_lifted_since
     device.attended_at = None
@@ -105,6 +140,8 @@ async def unattend_device(db: AsyncSession, *, user: User, device_id: str) -> De
     device.attended_lifted_since = None
     if lifted is not None and device.needs_person_since is None:
         device.needs_person_since = lifted
+    if device.needs_person_since is not None and await is_the_demo_team(db, device.project_id):
+        visited(device, by=None)
 
     await db.commit()
     await db.refresh(device)

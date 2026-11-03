@@ -15,13 +15,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.room_harness import (
-    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
-    record_the_part_again,
     rehearsed_in_parts,
     room_client,
-    stretch_on,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -72,50 +69,4 @@ async def test_the_verdict_is_read_and_voiced_with_the_database_let_go_not_held_
     assert held == {"analyst": False, "guide": False, "validator": False, "voice": False}, (
         "as leituras do terminei abriam a transação e a conexão ficava presa pelo analista,"
         " pelo Falante, pelo Validador e pela voz"
-    )
-
-
-async def test_a_part_nobody_played_is_named_out_loud_with_the_database_let_go(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
-) -> None:
-    session, (first, second) = await rehearsed_in_parts(db_session, 2)
-
-    answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["unheard_take_ids"] == [second.id]
-    assert held == {"voice": False}, (
-        "o ramo de quem não ouviu sintetizava a fala com a leitura aberta e sem commit nenhum"
-    )
-
-
-async def test_a_stretch_nobody_told_back_is_named_out_loud_with_the_database_let_go(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
-) -> None:
-    session, (part,) = await rehearsed_in_parts(db_session, 1)
-    waiting = await a_piece_still_to_be_told(
-        db_session, session, await stretch_on(db_session, session, part)
-    )
-
-    answered = await press_terminei(client, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["untold_segment_id"] == waiting.id
-    assert held == {"voice": False}, (
-        "o recado do trecho não contado sintetizava a fala com a leitura ainda aberta"
-    )
-
-
-async def test_a_part_recorded_again_and_untold_is_named_out_loud_with_the_database_let_go(
-    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
-) -> None:
-    session, (part,) = await rehearsed_in_parts(db_session, 1)
-    fresh = await record_the_part_again(db_session, session, part, sha256="f" * 64)
-
-    answered = await press_terminei(client, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["untold_take_ids"] == [fresh.id]
-    assert held == {"voice": False}, (
-        "o recado da parte gravada de novo sintetizava a fala com a leitura ainda aberta"
     )

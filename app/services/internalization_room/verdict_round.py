@@ -36,18 +36,19 @@ from app.services.internalization_room.back_translation import (
     findings_block,
     findings_on_stretches_that_count,
     findings_remaining,
+    is_joined,
     nuances_said,
+    passage_numbers,
     said_before,
     segments_block,
     the_finding_that_leads,
 )
-from app.services.internalization_room.background import the_reading_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import final_segments, set_aside_segment_ids
 from app.services.internalization_room.segments import told_back as stretches_told_back
 from app.services.internalization_room.sessions import (
     append_exchange,
@@ -92,6 +93,7 @@ async def check_the_telling_back(
     *,
     state: BackTranslationState,
     told: list[IRSegment],
+    stale: list[IRSegment],
     takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
@@ -113,16 +115,18 @@ async def check_the_telling_back(
     """
     read_this_round: list[Finding] = []
     language = room_language(session.language)
+    numbers = passage_numbers(told, stretches_told_back(stale), takes)
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
         language,
     )
-    told_back = segments_block(told, addresses, language)
+    told_back = segments_block(told, addresses, language, numbers)
     if not state.already_analysed(told):
-        read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
+        read = await analyse_telling_back(
             segments=told,
+            numbers=numbers,
             scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
@@ -160,6 +164,7 @@ async def check_the_telling_back(
         state.nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.analysed_frases = [numbers[segment.id] for segment in told]
 
     state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
 
@@ -181,6 +186,7 @@ async def check_the_telling_back(
             language_code=language,
             settings=settings,
             session_id=session.id,
+            joined=is_joined(current_parts(takes)),
         )
 
     said_already = nuances_said(state.checks)
@@ -247,10 +253,14 @@ async def save_the_spoken_verdict(
 
     async def as_it_stands(read: BackTranslationState) -> None:
         standing = await final_segments(db, session_id)
-        read.findings = findings_on_stretches_that_count(
-            read.findings, (one.id for one in standing)
-        )
-        if not read.already_analysed(stretches_told_back(standing)):
+        aside = await set_aside_segment_ids(db, session_id)
+        read.findings = [
+            *findings_on_stretches_that_count(read.findings, (one.id for one in standing)),
+            *(f for f in base.findings if f.segment_id in aside),
+        ]
+        if len(read.sentences) > len(base.sentences) or not read.already_analysed(
+            stretches_told_back(standing)
+        ):
             read.checked = False
             read.verdict = None
         if len(read.superseded) > len(base.superseded):
@@ -274,6 +284,7 @@ async def save_the_spoken_verdict(
             read.checked_at = stored.checked_at
             read.verdict = stored.verdict
             read.analysed_segment_ids = stored.analysed_segment_ids
+            read.analysed_frases = stored.analysed_frases
 
     state.verdict = VoicedVerdict(
         clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe

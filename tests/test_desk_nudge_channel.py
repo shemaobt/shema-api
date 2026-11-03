@@ -13,7 +13,8 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRQuestion, IRTakeKind
+from app.services.device.needs_person import record_needs_person
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.baker import (
@@ -24,9 +25,9 @@ from tests.baker import (
     make_user,
 )
 from tests.device_harness import a_linked_tablet
-from tests.hard_stretch_harness import MemoryStore, voice
+from tests.halt_harness import queued
+from tests.hard_stretch_harness import Facilitator, MemoryStore, a_new_recording, voice
 from tests.release_harness import ready_session
-from tests.room_harness import nothing_is_read_ahead
 from tests.stream_harness import Listening, listening
 from tests.turn_harness import the_room_agent_is
 
@@ -91,7 +92,6 @@ def desk_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, ears: li
 
     monkeypatch.setattr(bt_api, "heard", _heard)
     monkeypatch.setattr(segments_api, "heard", _heard)
-    nothing_is_read_ahead(monkeypatch)
     the_room_agent_is(monkeypatch, turn=_AgreeingModels())
 
     test_app = FastAPI()
@@ -223,7 +223,7 @@ async def tell(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
         headers=team.tablet,
         data=data,
-        files={"file": ("trecho.m4a", b"a equipe contou o trecho", "audio/mp4")},
+        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
     )
     assert told.status_code == 200, told.text
     return told
@@ -252,7 +252,7 @@ async def replace(
             "starts_ms": str(stretch["starts_ms"]),
             "ends_ms": str(stretch["ends_ms"]),
         },
-        files={"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")},
+        files={"file": ("trecho.m4a", a_new_recording(), "audio/mp4")},
     )
     assert replaced.status_code == status, replaced.text
     return replaced
@@ -347,8 +347,63 @@ async def test_a_nudge_reaches_only_its_own_team(
         assert (ours.status, theirs.status) == (200, 200)
         await raise_a_hand(client, team, session_id)
 
-        assert await nudges_heard(ours) == ["hands"]
+        assert await nudges_heard(ours) == ["hands", "hands"]
         assert await nudges_heard(theirs) == [], "a Mesa de outra equipe ouviu esta sala"
+
+
+async def a_hand_waiting_for_its_transcript(db: AsyncSession, team: Team) -> str:
+    session_id = await a_session(db, team)
+    question = IRQuestion(
+        device_id=team.device_id,
+        session_id=session_id,
+        pericope=P,
+        audio_key="perguntas/a-equipe-levantou-a-mao.m4a",
+    )
+    db.add(question)
+    await db.commit()
+    return str(question.id)
+
+
+async def test_a_raised_hands_transcript_landing_nudges_hands(
+    desk_app: FastAPI, db_session: AsyncSession, team: Team
+) -> None:
+    from app.services.internalization_room import background
+
+    question_id = await a_hand_waiting_for_its_transcript(db_session, team)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        assert desk.status == 200
+        await background.transcribe_question(question_id=question_id, audio=b"a equipe perguntou")
+
+        assert await nudges_heard(desk) == ["hands"], (
+            "o texto da pergunta chegava e o cartão da Mesa seguia sem ele"
+        )
+
+    kept = await db_session.get(IRQuestion, question_id)
+    await db_session.refresh(kept)
+    assert kept.transcript == "a equipe perguntou quem era Noemi"
+
+
+async def test_a_raised_hands_transcript_that_never_lands_nudges_nothing(
+    desk_app: FastAPI,
+    db_session: AsyncSession,
+    team: Team,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.exceptions import UpstreamServiceError
+    from app.services.internalization_room import background
+    from app.services.internalization_room import questions as question_service
+
+    async def _down(*_: Any, **__: Any) -> str:
+        raise UpstreamServiceError("o provedor caiu")
+
+    monkeypatch.setattr(question_service, "transcribe_speech", _down)
+    question_id = await a_hand_waiting_for_its_transcript(db_session, team)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        await background.transcribe_question(question_id=question_id, audio=b"a equipe perguntou")
+
+        assert await nudges_heard(desk) == []
 
 
 @pytest.mark.parametrize("turn_id", [None, "turno-1"], ids=["without-turn-id", "with-turn-id"])
@@ -440,7 +495,7 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
     desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:
     session_id = await a_session(db_session, team)
-    attended = f"{IR}/facilitator/sessions/{session_id}/attended"
+    attended = f"{IR}/facilitator/sessions/{session_id}/attended?halt=0"
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
         marked = await client.post(attended, headers=team.desk)
@@ -452,17 +507,49 @@ async def test_attending_a_session_and_undoing_it_nudge_halts(
         assert await nudges_heard(desk) == ["halts"]
 
 
-async def test_attending_a_tablet_and_undoing_it_nudge_halts(
-    desk_app: FastAPI, client: httpx.AsyncClient, team: Team
+async def queued_row(client: httpx.AsyncClient, team: Team, session_id: str) -> dict:
+    row = await queued(client, Facilitator("", team.team_id, team.desk), session_id)
+    assert row is not None, "a sala não está na fila"
+    return row
+
+
+async def test_a_refused_visit_writes_nothing_and_nudges_nothing(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
 ) -> None:
-    attended = f"{DESK}/devices/{team.device_id}/attended"
+    session_id = await a_session(db_session, team)
+    for _ in range(2):
+        halted = await client.post(f"{IR}/sessions/{session_id}/needs-person", headers=team.tablet)
+        assert halted.status_code == 200, halted.text
+    before = await queued_row(client, team, session_id)
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
-        marked = await client.post(attended, headers=team.desk)
+        refused = await client.post(
+            f"{IR}/facilitator/sessions/{session_id}/attended",
+            params={"halt": 1},
+            headers=team.desk,
+        )
+        assert refused.status_code == 409, refused.text
+        assert await nudges_heard(desk) == []
+
+    stamps = ("attended_at", "attended_by", "updated_at")
+    after = await queued_row(client, team, session_id)
+    assert {key: after[key] for key in stamps} == {key: before[key] for key in stamps}
+
+
+async def test_attending_a_tablet_and_undoing_it_nudge_halts(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    attended = f"{DESK}/devices/{team.device_id}/attended"
+    since, _ = await record_needs_person(db_session, team.device_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        halt = {"needs_person_since": since.isoformat()}
+        marked = await client.post(attended, headers=team.desk, params=halt)
         assert marked.status_code == 200, marked.text
         assert await nudges_heard(desk) == ["halts"]
 
-        undone = await client.delete(attended, headers=team.desk)
+        lifted = {"needs_person_since": marked.json()["attended_lifted_since"]}
+        undone = await client.delete(attended, headers=team.desk, params=lifted)
         assert undone.status_code == 200, undone.text
         assert await nudges_heard(desk) == ["halts"]
 
@@ -606,6 +693,21 @@ async def test_a_release_the_teams_or_the_forced_one_nudges_release(
 
         forced = await client.post(
             f"{IR}/facilitator/sessions/{forced_at_the_desk.id}/release",
+            headers=team.desk,
+            json={"force": True},
+        )
+        assert forced.status_code == 200, forced.text
+        assert await nudges_heard(desk) == ["release"]
+
+
+async def test_a_passage_forced_at_the_desk_nudges_release(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    forced_passage = await ready_session(db_session, project_id=team.team_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        forced = await client.post(
+            f"{IR}/facilitator/projects/{team.team_id}/passages/{forced_passage.pericope}/release",
             headers=team.desk,
             json={"force": True},
         )

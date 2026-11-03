@@ -21,6 +21,8 @@ before any round is paid for), 0 when her bar was met. Each run costs real
 model calls — hers came to roughly US$ 6-7 for five rounds — so it is never part of the test
 suite.
 
+`--rounds N` plays the whole shelf N times and names each report `<name>.run<k>.<stamp>.json`.
+
 A run over every script on the shelf stops before the next script once what it has spent
 reaches `--budget-usd`, or `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both
 are: the script in flight plays its last round first. It names the scripts it did not start on
@@ -43,7 +45,7 @@ from typing import Any
 
 import httpx
 
-from scripts.bt_golden_checks import check_round
+from scripts.bt_golden_checks import BT_CHECKS_PIN, check_round, told_up_to
 from scripts.golden_spend import (
     OVER_BUDGET,
     Call,
@@ -64,6 +66,7 @@ BT_DIR = Path(__file__).resolve().parent.parent / "golden/bt"
 class Clip:
     key: str
     durationMs: int
+    contentType: str | None = None
 
 
 @dataclass
@@ -80,6 +83,7 @@ class Script:
     clips: list[Clip]
     rounds: list[Round]
     why: str = ""
+    joined: bool = False
 
 
 @dataclass
@@ -104,7 +108,11 @@ def load_script(path: Path) -> Script:
         pericopeId=raw["pericopeId"],
         language=raw["language"],
         why=raw.get("why", ""),
-        clips=[Clip(key=one["key"], durationMs=one["durationMs"]) for one in raw["draft"]["clips"]],
+        joined=raw.get("joined") is True,
+        clips=[
+            Clip(key=one["key"], durationMs=one["durationMs"], contentType=one.get("contentType"))
+            for one in raw["draft"]["clips"]
+        ],
         rounds=[Round(frases=one["frases"], expect=one["expect"]) for one in raw["rounds"]],
     )
 
@@ -116,6 +124,7 @@ async def open_session(script: Script, client: httpx.AsyncClient) -> str:
             "pericopeId": script.pericopeId,
             "language": script.language,
             "clips": [asdict(clip) for clip in script.clips],
+            "joined": script.joined,
         },
     )
     declared.raise_for_status()
@@ -137,7 +146,7 @@ async def play(
         )
         answered.raise_for_status()
         reply = answered.json()
-        checks = check_round(reply, round_.expect)
+        checks = check_round(reply, round_.expect, told_up_to(script, idx))
         played.append(
             Played(
                 idx=idx,
@@ -170,7 +179,12 @@ def _announce(line: Played) -> None:
 
 def transcript_of(script: Script, played: list[Played]) -> str:
     """The rounds as a person reads them, beside one of her own markdown reports."""
-    blocks: list[str] = [f"# Golden bt — {script.name}", ""]
+    blocks: list[str] = [
+        f"# Golden bt — {script.name}",
+        "",
+        f"Checks: her `src/golden/btChecks.ts` at {BT_CHECKS_PIN}",
+        "",
+    ]
     if script.why:
         blocks += [f"> {script.why}", ""]
     for line in played:
@@ -229,6 +243,7 @@ def export(
                 "name": script.name,
                 "pericopeId": script.pericopeId,
                 "language": script.language,
+                "checksPin": BT_CHECKS_PIN,
                 "baseUrl": base_url,
                 "sessionId": session_id,
                 "rounds": [asdict(line) for line in played],
@@ -260,11 +275,12 @@ async def run(args: argparse.Namespace) -> int:
     paid: list[Call] = []
     not_started: list[str] = []
     try:
-        for position, script in enumerate(scripts):
+        plan = [(n, script) for n in range(1, getattr(args, "rounds", 1) + 1) for script in scripts]
+        for position, (n, script) in enumerate(plan):
             if budgeted(paid) >= budget:
-                not_started = [later.name for later in scripts[position:]]
+                not_started = [later.name for _, later in plan[position:]]
                 break
-            codes.append(await play_script(script, args, paid))
+            codes.append(await play_script(script, args, paid, n))
     finally:
         by_role, unpriced = priced(paid)
         if by_role or unpriced:
@@ -303,7 +319,9 @@ def scripts_to_play(args: argparse.Namespace) -> list[Path]:
     return [Path(args.script)] if args.script else sorted(BT_DIR.glob("*.json"))
 
 
-async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]) -> int:
+async def play_script(
+    script: Script, args: argparse.Namespace, paid: list[Call], run: int = 1
+) -> int:
     """Play her script through one room and answer with what a CI should do about it.
 
     The catches in this file are the boundary: the room refusing, at the door or in a round,
@@ -335,6 +353,8 @@ async def play_script(script: Script, args: argparse.Namespace, paid: list[Call]
             calls = _paid(played)
             paid.extend(calls)
             stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+            if getattr(args, "rounds", 1) > 1:
+                stamp = f"run{run}.{stamp}"
             report, transcript = export(
                 script,
                 session_id=session_id,
@@ -367,6 +387,7 @@ def main() -> int:
     parser.add_argument("--script", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--budget-usd", type=float, default=None)
+    parser.add_argument("--rounds", type=int, default=1)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
     return asyncio.run(run(parser.parse_args()))
 

@@ -1,4 +1,4 @@
-"""The canon a session opened with, kept under its pin until its passage is approved."""
+"""The canon a session opened with, kept under its pin while its session is live."""
 
 from __future__ import annotations
 
@@ -24,6 +24,10 @@ R = TypeVar("R")
 
 def deployed_pin() -> str:
     return pinned_commit(DEPLOYED_PIN.read_text(encoding="utf-8"))
+
+
+def keeps(pin: str) -> bool:
+    return pin == deployed_pin() or (KEPT_DIR / pin).is_dir()
 
 
 @contextmanager

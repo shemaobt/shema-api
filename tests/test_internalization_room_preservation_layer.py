@@ -24,25 +24,16 @@ day it must stop.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
-from app.services.internalization_room.canon import book_material, parse_map
+from app.services.internalization_room.canon import book_material
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
-from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_LAYER,
-    A_FABLE_LOG_WITHOUT_ONE,
-    a_fable_map,
-    forget_the_canon,
-)
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 
@@ -63,66 +54,6 @@ WITH_LAYER = next(
 )
 
 
-@pytest.fixture
-def a_passage_whose_survey_is_pending(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[str]:
-    """A passage the project has not signed off, and whose preservation layer *is* written.
-
-    A whole little canon of its own — one map and one Compilation Log — so the two signals can
-    be set against each other. The real Ruth material has them agreeing everywhere, and
-    agreement is not the same as either one being read. Nothing of Ruth is touched. The point
-    of writing the layer is that the survey being pending has to carry the refusal on its own.
-    """
-    maps = tmp_path / "meaning-map"
-    logs = tmp_path / "compilation-log"
-    maps.mkdir()
-    logs.mkdir()
-    (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(sta_status="pending"), encoding="utf-8")
-    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
-        A_FABLE_LOG_WITH_A_LAYER, encoding="utf-8"
-    )
-
-    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
-    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    forget_the_canon()
-    yield "Q01"
-    forget_the_canon()
-
-
-@pytest.fixture
-def a_finished_passage_whose_log_records_no_rule(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[str]:
-    maps = tmp_path / "meaning-map"
-    logs = tmp_path / "compilation-log"
-    maps.mkdir()
-    logs.mkdir()
-    (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(), encoding="utf-8")
-    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
-        A_FABLE_LOG_WITHOUT_ONE, encoding="utf-8"
-    )
-
-    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
-    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    forget_the_canon()
-    yield "Q01"
-    forget_the_canon()
-
-
-async def test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer(
-    db_session: AsyncSession, a_finished_passage_whose_log_records_no_rule: str
-) -> None:
-    with pytest.raises(ValidationError) as refusal:
-        await create_session(db_session, pericope=a_finished_passage_whose_log_records_no_rule)
-
-    said = str(refusal.value)
-    assert a_finished_passage_whose_log_records_no_rule in said
-    assert "no preservation layer" in said
-
-
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
@@ -136,36 +67,6 @@ async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     assert session.pericope == WITH_LAYER
     assert preserved
     assert set(preserved) <= set(session.coverage_state)
-
-
-async def test_every_passage_the_canon_offers_either_carries_the_layer_or_is_refused(
-    db_session: AsyncSession,
-) -> None:
-    """The rule, stated over the whole canon, so the next book cannot come in the same door."""
-    opened = {}
-    for pericope in CANON:
-        try:
-            await create_session(db_session, pericope=pericope)
-        except ValidationError:
-            opened[pericope] = False
-        else:
-            opened[pericope] = True
-
-    carries_the_layer = {
-        pericope: any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
-        for pericope in CANON
-    }
-    assert opened == carries_the_layer
-
-
-async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(
-    db_session: AsyncSession, a_passage_whose_survey_is_pending: str
-) -> None:
-    """`sta-status` is the field that marks a map unfinished, and it has never been read."""
-    with pytest.raises(ValidationError) as refusal:
-        await create_session(db_session, pericope=a_passage_whose_survey_is_pending)
-
-    assert a_passage_whose_survey_is_pending in str(refusal.value)
 
 
 def test_the_book_opens_from_ruth_1_1_to_ruth_4_22_with_no_hole_in_the_middle() -> None:

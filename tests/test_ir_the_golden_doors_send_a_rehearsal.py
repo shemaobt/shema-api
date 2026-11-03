@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,6 +27,7 @@ from tests.text_seam_harness import (
     the_app,
     the_models_answer,
 )
+from tests.turn_harness import the_room_agent_is
 
 PIECES = ["Noemi disse: voltem.", "Rute ficou com ela."]
 TWO_PT = (
@@ -148,6 +150,39 @@ async def test_a_golden_rehearsal_sent_hands_the_guide_her_note_with_the_count_t
     assert agent.guide_inputs == [handed]
     body = sent.json()
     assert (body["guideText"], body["outcome"], body["transcript"]) == (GUIDE_LINE, "pass", handed)
+
+
+async def test_the_turn_after_a_sent_rehearsal_reads_her_note_and_the_pieces_as_one_turn_not_two(
+    client, monkeypatch
+) -> None:
+    session_id = await an_open_session(client)
+    rehearsal_id = (await a_kept_rehearsal(client, session_id)).json()["rehearsalId"]
+    sent = await a_sent_rehearsal(client, session_id, rehearsal_id)
+    assert sent.status_code == 200, sent.text
+    agent = the_models_answer(monkeypatch)
+
+    async def _reads_nothing(**_: Any) -> str:
+        return json.dumps({"decisions": []})
+
+    the_room_agent_is(monkeypatch, classifier=_reads_nothing)
+
+    asked = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": "E a próxima cena?"}
+    )
+
+    assert asked.status_code == 200, asked.text
+    assert agent.guide_histories == [
+        [
+            {
+                "role": "user",
+                "text": "[A sessão acabou de começar. A equipe abriu a passagem P01 e está à "
+                "mesa, pronta para começar. Fale primeiro.]",
+            },
+            {"role": "assistant", "text": GUIDE_LINE},
+            {"role": "user", "text": f"{TWO_PT} Noemi disse: voltem. Rute ficou com ela."},
+            {"role": "assistant", "text": GUIDE_LINE},
+        ]
+    ], "o histórico do Guia partia o ensaio em duas falas da equipe, a nota e depois as frases"
 
 
 async def test_the_turn_a_golden_rehearsal_leaves_is_a_checking_turn_by_the_servers_mark(

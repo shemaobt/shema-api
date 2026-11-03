@@ -25,6 +25,7 @@ than random because a test that fails should fail the same way twice.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 
 import pytest
@@ -125,8 +126,17 @@ async def rewind(db_session, session_id: str, seconds: float) -> None:
 
 async def tick_after(client, db_session, headers, session_id: str, seconds: float, tick_id: str):
     """A heartbeat arriving ``seconds`` after the one before it."""
+    beats = await tick_times(db_session, session_id)
     await rewind(db_session, session_id, seconds)
-    return await post_tick(client, headers, session_id, tick_id)
+    real_clock_and_cursor = working_time._clock_and_cursor
+
+    async def _clock_standing_at_the_previous_beat(db, sid):
+        now, cursor = await real_clock_and_cursor(db, sid)
+        return (beats[-1] if beats else now), cursor
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(working_time, "_clock_and_cursor", _clock_standing_at_the_previous_beat)
+        return await post_tick(client, headers, session_id, tick_id)
 
 
 async def _never_recorded(db, session_id: str, client_tick_id: str) -> bool:
@@ -257,6 +267,25 @@ async def test_the_fraction_of_a_second_left_over_is_carried_to_the_next_beat(
 
     assert first.json()["net_working_seconds"] == 1
     assert second.json()["net_working_seconds"] == 3
+
+
+async def test_a_beat_whose_request_is_slow_is_still_charged_the_stretch_it_was_sent_after(
+    client, db_session, alice, session_id, monkeypatch
+):
+    _user, headers = alice
+    await post_tick(client, headers, session_id, BEATS[0])
+    real_clock_and_cursor = working_time._clock_and_cursor
+
+    async def _slow_to_read_the_clock(db, sid):
+        await asyncio.sleep(0.2)
+        return await real_clock_and_cursor(db, sid)
+
+    monkeypatch.setattr(working_time, "_clock_and_cursor", _slow_to_read_the_clock)
+
+    res = await tick_after(client, db_session, headers, session_id, 1.9, BEATS[1])
+
+    assert res.status_code == 200, res.text
+    assert res.json()["net_working_seconds"] == 1
 
 
 async def test_a_clock_that_stepped_backwards_does_not_subtract_from_the_total(

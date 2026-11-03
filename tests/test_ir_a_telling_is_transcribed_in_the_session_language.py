@@ -31,7 +31,7 @@ from tests.hard_stretch_harness import (
     row,
     tell,
 )
-from tests.room_harness import nothing_is_read_ahead, room_client, the_bucket_is_in_memory
+from tests.room_harness import room_client, the_bucket_is_in_memory
 
 PORTUGUESE = "Noemi ouve que o Senhor visitou o seu povo"
 ENGLISH = "Naomi hears that the Lord visited his people"
@@ -75,7 +75,6 @@ async def client(
     provider = httpx.AsyncClient(transport=httpx.MockTransport(scribe.handle))
     monkeypatch.setattr(transcriber, "_make_client", lambda: provider)
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     async with room_client(db_session, monkeypatch) as door:
         yield door
     await provider.aclose()

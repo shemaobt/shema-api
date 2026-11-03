@@ -19,8 +19,6 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import back_translation as back_translation_api
-from app.api.internalization_room import segments as segments_api
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRQuestion, IRSession
@@ -53,7 +51,6 @@ from tests.room_harness import (
     PART_MS,
     heard_every_part,
     press_terminei,
-    record_the_part_again,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
     room_client,
@@ -253,6 +250,7 @@ async def test_the_analyst_reads_a_telling_back_on_a_row_stored_in_spanish_in_th
         session,
         state=back_translation_of(session),
         told=told_stretches(),
+        stale=[],
         takes=[],
         settings=settings(),
     )
@@ -275,6 +273,7 @@ async def test_the_verdict_on_a_row_stored_in_spanish_is_judged_in_the_rooms_lan
         session,
         state=back_translation_of(session),
         told=[],
+        stale=[],
         takes=[],
         settings=settings(),
     )
@@ -308,6 +307,7 @@ async def test_the_coverage_of_a_row_stored_in_spanish_is_classified_in_the_room
     await background.settle_coverage(
         session_id=session.id,
         turn_id="turno-1",
+        turn_number=1,
         team_utterance=PORTUGUESE,
         guide_response="Conte de novo, por favor.",
         pericope_num=PASSAGE,
@@ -317,27 +317,6 @@ async def test_the_coverage_of_a_row_stored_in_spanish_is_classified_in_the_room
     assert all(named in system for system in read), (
         "o classificador de uma sessão guardada em espanhol não lia a troca na língua da sala"
     )
-
-
-@pytest.mark.parametrize(("floor", "named"), FLOORS)
-async def test_the_reading_ahead_of_a_row_stored_in_spanish_is_read_in_the_rooms_language(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
-) -> None:
-    _the_floor_is(monkeypatch, floor)
-    analyst = the_analyst_is_scripted(monkeypatch)
-    codes = _the_codes_a_turn_was_given(monkeypatch, background, "analyse_telling_back")
-    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
-    session, _ = await rehearsed_in_parts(db_session, 1)
-    session.language = "es"
-    await db_session.commit()
-
-    await background.read_ahead(session_id=session.id)
-
-    assert analyst.shown
-    assert all(named in system for system in analyst.shown), (
-        "a leitura antecipada de uma sessão guardada em espanhol falhava em silêncio"
-    )
-    assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
 
 
 @pytest.mark.parametrize("floor", ["en", "pt"])
@@ -351,6 +330,7 @@ async def test_the_note_a_verdict_keeps_on_a_row_stored_in_spanish_is_in_the_roo
         session,
         state=back_translation_of(session),
         told=[],
+        stale=[],
         takes=[],
         settings=settings(),
     )
@@ -431,13 +411,8 @@ def _the_hints_a_telling_back_was_heard_with(monkeypatch: pytest.MonkeyPatch) ->
         hints.append(language)
         return PORTUGUESE
 
-    async def unread(**_: Any) -> None:
-        return None
-
     bucket = MemoryStore()
     monkeypatch.setattr(hearing, "transcribe_audio", transcriber)
-    monkeypatch.setattr(back_translation_api, "read_ahead", unread)
-    monkeypatch.setattr(segments_api, "read_ahead", unread)
     monkeypatch.setattr(takes, "_store", lambda *_, **__: bucket)
     return hints
 
@@ -533,26 +508,6 @@ def test_a_miss_line_for_a_row_stored_in_spanish_is_the_floors_on_a_fleet_held_o
     )
 
 
-async def test_an_untold_part_on_a_row_stored_in_spanish_is_named_in_the_portuguese_floor(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _the_floor_is(monkeypatch, "pt")
-    room = the_room_speaks(monkeypatch)
-    session, (part,) = await rehearsed_in_parts(db_session, 1)
-    await record_the_part_again(db_session, session, part, sha256="d" * 64)
-    session.language = "es"
-    await db_session.commit()
-
-    async with room_client(db_session, monkeypatch) as door:
-        pressed = await press_terminei(door, session.id)
-
-    assert pressed.status_code == 200, pressed.text
-    assert room.said[-1] == (
-        "Ainda falta parte da passagem para vocês me traduzirem. "
-        "Vamos terminar isso primeiro, e depois eu confiro tudo junto."
-    ), "a voz portuguesa lia em inglês a parte que faltava traduzir"
-
-
 async def test_an_unheard_part_on_a_row_stored_in_spanish_is_named_in_the_portuguese_floor(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -566,9 +521,8 @@ async def test_an_unheard_part_on_a_row_stored_in_spanish_is_named_in_the_portug
         pressed = await press_terminei(door, session.id)
 
     assert pressed.status_code == 200, pressed.text
-    assert room.said[-1] == "Ainda falta ouvir um trecho da gravação antes de eu conferir.", (
-        "a voz portuguesa lia em inglês o trecho que faltava ouvir"
-    )
+    assert pressed.json()["fixed_line"] == "P2"
+    assert room.said == []
 
 
 def test_nothing_told_back_on_a_row_stored_in_spanish_reads_in_the_portuguese_floor(

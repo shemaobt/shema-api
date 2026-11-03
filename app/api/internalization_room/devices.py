@@ -9,7 +9,8 @@ the claim code.
 
 All three open to anyone, with no header at all (ADR 0057): the device id is minted by the
 server and unguessable, a claim code is only worth what a facilitator spends on it from the
-Desk, and the device credential is collected once.
+Desk, and the device credential is collected once. The one exception is the demo team's page
+(ADR 0064), which spends a code on the demo team while one is configured.
 
 The third one answers with a credential, and it is the only route here that does (ENG-622).
 The claim mints one and hands it to the Desk, which never reads it; the row keeps only a

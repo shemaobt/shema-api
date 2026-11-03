@@ -33,7 +33,7 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.get_device import get_device
 from app.services.device.rotate_device_credential import rotate_device_credential
 from app.services.device.unlink_device import unlink_device
-from tests.baker import a_language, make_project, make_project_user_access, make_user
+from tests.baker import a_language, an_email, make_project, make_project_user_access, make_user
 
 PREFIX = "/api/internalization-room"
 
@@ -76,7 +76,8 @@ class Tablet:
     claim_time_credential: str
 
 
-async def a_claimed_device(db: AsyncSession, *, email: str = "fac@example.com") -> Tablet:
+async def a_claimed_device(db: AsyncSession, *, email: str | None = None) -> Tablet:
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -244,3 +245,12 @@ async def test_collecting_retires_the_desks_copy_even_after_it_was_rotated(clien
     for retired in (tablet.claim_time_credential, newer):
         refused = await read_itself_with(client, retired)
         assert refused.status_code != 200, refused.text
+
+
+async def test_a_claimed_device_built_twice_with_defaults_gets_two_users_with_two_emails(
+    db_session,
+):
+    first = await a_claimed_device(db_session)
+    second = await a_claimed_device(db_session)
+
+    assert first.user.email != second.user.email

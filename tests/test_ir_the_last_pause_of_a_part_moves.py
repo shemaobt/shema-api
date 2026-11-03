@@ -19,12 +19,7 @@ from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import back_translation_of, save_back_translation
 from tests.release_harness import PREFIX
-from tests.room_harness import (
-    nothing_is_read_ahead,
-    rehearsed_in_parts_of,
-    room_client,
-    the_bucket_is_in_memory,
-)
+from tests.room_harness import rehearsed_in_parts_of, room_client, the_bucket_is_in_memory
 
 PART_LENGTH_MS = 5000
 
@@ -32,7 +27,6 @@ PART_LENGTH_MS = 5000
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     the_bucket_is_in_memory(monkeypatch)
-    nothing_is_read_ahead(monkeypatch)
     async with room_client(db_session, monkeypatch) as room:
         yield room
 
@@ -154,20 +148,22 @@ async def test_a_conferida_passage_keeps_its_last_pause_where_it_was(
     assert transcribed == [], "a passagem conferida ainda deixava mover a pausa"
 
 
+def _a_release_judging(session: IRSession, takes: list[IRTake]) -> IRRelease:
+    return IRRelease(
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        version=1,
+        package_sha256="a" * 64,
+        packet={"audio": {"rehearsal_takes": [{"sha256": take.sha256} for take in takes]}},
+    )
+
+
 async def test_an_approved_passage_keeps_its_last_pause_even_once_it_is_no_longer_conferida(
     client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
 ) -> None:
-    session, _ = await _rehearsed(db_session)
-    db_session.add(
-        IRRelease(
-            session_id=session.id,
-            project_id=session.project_id,
-            pericope=session.pericope,
-            version=1,
-            package_sha256="a" * 64,
-            packet={},
-        )
-    )
+    session, parts = await _rehearsed(db_session)
+    db_session.add(_a_release_judging(session, parts))
     await db_session.commit()
     last = (await final_segments(db_session, session.id))[-1]
 
@@ -176,6 +172,20 @@ async def test_an_approved_passage_keeps_its_last_pause_even_once_it_is_no_longe
     assert refused.status_code == 400, refused.text
     assert refused.json()["code"] == "PAUSE_CANNOT_STAND_THERE"
     assert transcribed == [], "o rascunho aprovado ainda deixava mover a pausa"
+
+
+async def test_a_passage_re_opened_after_its_approval_moves_its_last_pause_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    """ENG-1260: only a draft that stands approved keeps its pauses (ADR 0081)."""
+    session, parts = await _rehearsed(db_session)
+    db_session.add(_a_release_judging(session, parts[:1]))
+    await db_session.commit()
+    last = (await final_segments(db_session, session.id))[-1]
+
+    moved = await _move(client, session.id, last, ends_ms=4200)
+
+    assert moved.status_code == 200, moved.text
 
 
 async def test_a_pause_moved_to_within_a_fifth_of_a_second_of_the_start_is_refused(
@@ -215,6 +225,56 @@ async def test_a_pause_a_hair_past_the_measured_end_still_moves(
     assert moved.status_code == 200, moved.text
     assert moved.json()["segments"][-1]["ends_ms"] == 5200, (
         "o fim medido pelo tablet e o da gravação diferem por um fio, e a pausa no fim era recusada"
+    )
+
+
+async def test_a_pause_on_a_part_with_no_measured_length_moves_as_far_as_its_told_end_allows(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    session, parts = await _rehearsed(db_session)
+    state = back_translation_of(session)
+    state.played_by_take = [
+        PlayedTake(take_id=part.id, played_ranges=[(0, 1000)], clip_duration_ms=1000)
+        for part in parts
+    ]
+    await save_back_translation(db_session, session, state)
+    last = (await final_segments(db_session, session.id))[-1]
+
+    first = await _move(client, session.id, last, ends_ms=3200)
+    moved = (await final_segments(db_session, session.id))[-1]
+    again = await _move(client, session.id, moved, ends_ms=3400)
+
+    assert first.status_code == 200, first.text
+    assert again.status_code == 200, (
+        "um comprimento curto guardado prendia para sempre a pausa da parte sem medida"
+    )
+
+
+async def test_a_pause_on_a_part_with_no_measured_length_moves_within_a_longer_length_reported(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    session, parts = await _rehearsed(db_session)
+    state = back_translation_of(session)
+    state.played_by_take = [
+        PlayedTake(take_id=part.id, played_ranges=[(0, 1000)], clip_duration_ms=1000)
+        for part in parts
+    ]
+    await save_back_translation(db_session, session, state)
+    reported = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/listened-whole",
+        json={
+            "played_by_take": [
+                {"take_id": parts[1].id, "played_ranges": [[0, 5000]], "clip_duration_ms": 5000}
+            ]
+        },
+    )
+    assert reported.status_code == 200, reported.text
+    last = (await final_segments(db_session, session.id))[-1]
+
+    moved = await _move(client, session.id, last, ends_ms=4000)
+
+    assert moved.status_code == 200, (
+        "o comprimento curto guardado nunca subia, e a pausa dentro dos 5000 ms era recusada"
     )
 
 

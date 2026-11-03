@@ -17,17 +17,19 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.db.models.auth import User
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.labels import LabelledElement, labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
@@ -74,9 +76,9 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 
 
 async def a_team_and_its_facilitator(db: AsyncSession) -> tuple[object, dict[str, str]]:
-    language = await make_language(db, name="Terena", code="tqe")
+    language = await a_language(db, name="Terena")
     team = await make_project(db, language.id, name="Equipe Terena")
-    facilitator = await make_user(db, email="facilitadora@example.com")
+    facilitator = await make_user(db)
     await make_project_user_access(db, team.id, facilitator.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, facilitator.id)
     return team, await auth_header(db, facilitator)
@@ -286,3 +288,13 @@ async def test_the_anchor_and_the_tracker_cannot_drift(
     assert card["element_label_en"] == _label(y).label_en, (
         "o cartao nomeou o bead apenas relatado no merge, nao o que realmente subiu de rank"
     )
+
+
+async def test_a_team_and_its_facilitator_built_twice_gets_two_facilitators_with_two_emails(
+    db_session: AsyncSession,
+) -> None:
+    await a_team_and_its_facilitator(db_session)
+    await a_team_and_its_facilitator(db_session)
+
+    emails = (await db_session.execute(select(User.email))).scalars().all()
+    assert len(emails) == len(set(emails)) == 2

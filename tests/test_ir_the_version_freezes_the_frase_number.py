@@ -6,12 +6,13 @@ telling starts the count over. A listener's comment filed against frase 3 has to
 what it meant, so the pairing of the number and the stretch is frozen when the team approves
 and read back out of that **Release**, never recomputed from the rows.
 
-These cases move the passage in the three ways the room offers after an approval — a cut, a
-telling again in place, the telling-back started over — and ask the stored packet of the
-version before it what it still says. They also ask which retro take a frozen stretch names,
-because the number is only half of the address: the other half is the recording of the team
-explaining it, and the room keeps three kinds of retro take that explained nothing the
-version carries.
+These cases move the passage after an approval — a cut, the part recorded again — and ask the
+stored packet of the version before it what it still says. Only a change of takes re-opens the
+draft and mints the next version (ADR 0081); a cut leaves the approved version standing as it
+was frozen. They also ask which
+retro take a frozen stretch names, because the number is only half of the address: the other
+half is the recording of the team explaining it, and the room keeps three kinds of retro take
+that explained nothing the version carries.
 
 Everything goes through `approve_release` and the room's own services. Nothing is mocked.
 """
@@ -48,6 +49,7 @@ from app.services.internalization_room.sessions import (
 )
 from tests.release_harness import (
     P,
+    ensaio_take,
     ready_session,
     reported_playback,
     retro_take,
@@ -162,6 +164,22 @@ async def _stored_again(db: AsyncSession, release: IRRelease) -> IRRelease:
     return release
 
 
+async def _recorded_again_and_told(db: AsyncSession, session: IRSession) -> None:
+    await record_the_part_again(db, session, await the_one_part_of(db, session), sha256="b" * 64)
+    part = await the_one_part_of(db, session)
+    for text, starts_ms, ends_ms in THREE_STRETCHES:
+        retro = await _a_retro_take(db, session, f"retro-de-novo-{starts_ms}")
+        await capture_segment(
+            db,
+            session,
+            take_id=part.id,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+            bridge_take_id=retro.id,
+            transcript=text,
+        )
+
+
 async def test_the_approved_packet_numbers_every_stretch_from_one_in_listening_order(
     db_session: AsyncSession,
 ) -> None:
@@ -192,12 +210,14 @@ async def test_the_approved_packet_numbers_every_stretch_from_one_in_listening_o
 async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
     db_session: AsyncSession,
 ) -> None:
-    """Cutting frase 2 in two makes four frases — in version two, and nowhere else.
+    """Cutting frase 2 in two leaves version one standing, and the halves enter version two.
 
-    Version one was approved over three stretches and says so for good: a comment filed
-    against its frase 3 still reaches the stretch the team heard third.
+    The cut changes no take, so the approval still answers version one, which was approved
+    over three stretches and says so for good: a comment filed against its frase 3 still
+    reaches the stretch the team heard third. A second part recorded afterwards is a change of
+    takes, and the version it mints carries the halves where the cut frase was.
     """
-    session = await _told_in_three_stretches(db_session)
+    session = await _told_in_three_stretches(db_session, ordinal=1)
     first = await approve_release(db_session, session, device_id=TABLET)
     before = [stretch.id for stretch in await final_segments(db_session, session.id)]
 
@@ -208,12 +228,30 @@ async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
         await _tell_again(db_session, session, half, retro, "o que a equipe contou desta metade")
     await _read_and_reported(db_session, session)
 
+    assert (await approve_release(db_session, session, device_id=TABLET)).version == 1
+
+    second_part = ensaio_take(
+        session.id, scope="parte-2", ordinal=2, sha256="c" * 64, project_id=TEAM
+    )
+    db_session.add(second_part)
+    await db_session.commit()
+    retro = await _a_retro_take(db_session, session, "retro-parte-2")
+    await capture_segment(
+        db_session,
+        session,
+        take_id=second_part.id,
+        starts_ms=0,
+        ends_ms=20000,
+        bridge_take_id=retro.id,
+        transcript="e chegaram a Belem no comeco da colheita",
+    )
+    await _read_and_reported(db_session, session)
+
     second = await approve_release(db_session, session, device_id=TABLET)
 
     assert second.version == 2
     frozen = _frozen(second)
-    assert [entry["frase"] for entry in frozen] == [1, 2, 3, 4]
-    assert len({entry["segment_id"] for entry in frozen}) == 4
+    assert [entry["frase"] for entry in frozen] == [1, 2, 3, 4, 5]
     assert (frozen[0]["segment_id"], frozen[3]["segment_id"]) == (before[0], before[2]), (
         "as metades entram onde estava a frase que foi cortada, não no fim da leitura"
     )
@@ -221,44 +259,6 @@ async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
     stored = await _stored_again(db_session, first)
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
     assert [entry["segment_id"] for entry in _frozen(stored)] == before
-
-
-async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version(
-    db_session: AsyncSession,
-) -> None:
-    """Telling frase 2 again leaves it frase 2, on a new row and a new retro take.
-
-    A correction is a new row for the same position (ADR 0004), so the stretch the team told
-    again has an id it did not have before. The number is what did not move, and version one
-    keeps the pair it froze.
-    """
-    session = await _told_in_three_stretches(db_session)
-    first = await approve_release(db_session, session, device_id=TABLET)
-    before = [stretch.id for stretch in await final_segments(db_session, session.id)]
-
-    retro = await _a_retro_take(db_session, session, "retro-outra-vez")
-    await _tell_again(
-        db_session,
-        session,
-        (await final_segments(db_session, session.id))[1],
-        retro,
-        "desta vez elas ouviram que havia pao em Juda",
-    )
-    await _read_and_reported(db_session, session)
-
-    second = await approve_release(db_session, session, device_id=TABLET)
-
-    told_now = await final_segments(db_session, session.id)
-    frozen = _frozen(second)
-    assert [entry["frase"] for entry in frozen] == [1, 2, 3]
-    assert frozen[1]["segment_id"] == told_now[1].id
-    assert frozen[1]["segment_id"] != before[1]
-    assert frozen[1]["retro_take_id"] == retro.id
-    assert (frozen[0]["segment_id"], frozen[2]["segment_id"]) == (before[0], before[2])
-
-    stored = await _stored_again(db_session, first)
-    assert [entry["segment_id"] for entry in _frozen(stored)] == before
-    assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
 async def test_recording_the_part_again_numbers_only_the_next_version(
@@ -274,21 +274,7 @@ async def test_recording_the_part_again_numbers_only_the_next_version(
     first = await approve_release(db_session, session, device_id=TABLET)
     before = [stretch.id for stretch in await final_segments(db_session, session.id)]
 
-    await record_the_part_again(
-        db_session, session, await the_one_part_of(db_session, session), sha256="b" * 64
-    )
-    part = await the_one_part_of(db_session, session)
-    for text, starts_ms, ends_ms in THREE_STRETCHES:
-        retro = await _a_retro_take(db_session, session, f"retro-de-novo-{starts_ms}")
-        await capture_segment(
-            db_session,
-            session,
-            take_id=part.id,
-            starts_ms=starts_ms,
-            ends_ms=ends_ms,
-            bridge_take_id=retro.id,
-            transcript=text,
-        )
+    await _recorded_again_and_told(db_session, session)
     await _read_and_reported(db_session, session)
 
     second = await approve_release(db_session, session, device_id=TABLET)
@@ -486,12 +472,13 @@ async def test_a_stretch_left_untold_by_a_cut_cannot_be_approved(
     That a wordless stretch refuses a release at all is
     `test_ir_no_stretch_travels_without_words.py::test_a_release_is_refused_while_a_stretch_has_no_words`,
     which asserts the whole blocker list. What is here is the version beside it: the team has
-    already approved once, so the refusal has to hold on the path that mints the *next*
-    number, and hold without disturbing the one already frozen. That is what lets every other
-    case here assume a frozen stretch has words.
+    already approved once and recorded the part again, so the refusal has to hold on the path
+    that mints the *next* number, and hold without disturbing the one already frozen. That is
+    what lets every other case here assume a frozen stretch has words.
     """
-    session = await _told_in_three_stretches(db_session)
+    session = await _told_in_three_stretches(db_session, ordinal=1)
     first = await approve_release(db_session, session, device_id=TABLET)
+    await _recorded_again_and_told(db_session, session)
 
     standing = (await final_segments(db_session, session.id))[0]
     await a_piece_still_to_be_told(db_session, session, standing)

@@ -46,6 +46,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.golden_rehearsal import keep_a_golden_rehearsal
 from app.services.internalization_room.hearing import spoken_words_only
 from app.services.internalization_room.sessions import resolve_pericope
 from app.services.internalization_room.takes import (
@@ -92,9 +93,11 @@ def _reported(current: list[Finding], state: BackTranslationState) -> list[Round
             note=f"«{one.quote}» — {one.story}",
             frase=one.chunk,
             stretchId=one.segment_id,
+            quote=one.quote,
+            story=one.story,
+            voiced=one.voiced,
         )
-        for one in state.checks[-1].nuances
-        if one.voiced != "before"
+        for one in (state.checks[-1].nuances if state.checks else [])
     ]
 
 
@@ -121,7 +124,18 @@ async def declare_back_translation_session(
     session = await room.create_session(
         db, pericope=payload.pericopeId, language=_language_code(payload.language)
     )
-    parts = await declare_rehearsal_parts(db, session, keys)
+    origins = (
+        {key: (await keep_a_golden_rehearsal(db, session, scene=key, pieces=[])).id for key in keys}
+        if payload.joined
+        else {}
+    )
+    parts = await declare_rehearsal_parts(
+        db,
+        session,
+        keys,
+        {clip.key: clip.contentType for clip in payload.clips if clip.contentType},
+        origins,
+    )
     await room.report_playback(
         db,
         session,
@@ -200,8 +214,9 @@ async def play_a_round(
 
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
+        stale = await room.stale_segments(db, session.id, takes)
         await db.commit()
-        if state.the_verdict_to_serve(told) is not None:
+        if state.checks and state.the_verdict_to_serve(told) is not None:
             return TextRoundResponse(
                 sessionId=session.id,
                 findings=_reported(room.current_findings(state), state),
@@ -218,6 +233,7 @@ async def play_a_round(
                 session,
                 state=state,
                 told=told,
+                stale=stale,
                 takes=takes,
                 settings=get_settings(),
             )
@@ -234,11 +250,11 @@ async def play_a_round(
 
     return TextRoundResponse(
         sessionId=session.id,
-        findings=_reported(verdict.current, state),
+        findings=_reported([one for one in verdict.current if one in state.findings], state),
         spoken=verdict.said,
         outcome=room.outcome_tag(verdict.outcome),
-        conferida=verdict.checked,
-        findingsRemaining=verdict.findings_remaining,
+        conferida=verdict.checked and state.checked,
+        findingsRemaining=min(verdict.findings_remaining, room.findings_remaining(state.findings)),
         missingWithoutFrase=sum(
             1
             for finding in verdict.read_this_round

@@ -31,8 +31,10 @@ import enum
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.auth import User
 from app.models.internalization_room import CoverageLegend
 from app.services.internalization_room.canon import labels
 from app.services.internalization_room.canon.elements import ElementKind
@@ -78,7 +80,7 @@ async def a_signed_in_caller(db: AsyncSession) -> dict[str, str]:
     because these tests are about the legend; that the door refuses everyone else is
     `test_facilitator_role_gate.py`'s subject and this route is in its table.
     """
-    user = await make_user(db, email="facilitator@example.com")
+    user = await make_user(db)
     await grant_facilitator_app_role(db, user.id)
     return await auth_header(db, user)
 
@@ -257,3 +259,12 @@ async def test_the_route_is_reachable_in_the_application_that_is_deployed():
 
     assert response.status_code != 404, f"{LEGEND_URL} is not served by the application"
     assert response.status_code in (401, 403)
+
+
+async def test_a_signed_in_caller_built_twice_gets_two_users_with_two_emails(db_session):
+    await a_signed_in_caller(db_session)
+    await a_signed_in_caller(db_session)
+
+    emails = (await db_session.execute(select(User.email))).scalars().all()
+
+    assert len(emails) == len(set(emails)) == 2

@@ -38,6 +38,7 @@ from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import ElementKind, element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    an_email,
     grant_facilitator_app_role,
     having_finished_the_passage,
     make_language,
@@ -112,10 +113,11 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 _codes = itertools.count()
 
 
-async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
     """A user who facilitates one team. The language code is counted, not derived from the
     email: two addresses sharing a prefix collide on a unique column and fail the test for a
     reason that has nothing to do with what it asserts."""
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await make_language(db, name=f"Lang {email}", code=f"t{next(_codes):02d}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -515,17 +517,17 @@ async def test_a_team_that_has_not_started_is_answered_about_the_first_passage(
     assert [bead["key"] for bead in body] == element_keys("P01")
 
 
-async def test_a_team_that_closed_the_book_has_no_passage_to_default_to(
+async def test_a_team_that_closed_every_book_has_no_passage_to_default_to(
     client, db_session: AsyncSession
 ) -> None:
     """409 rather than 400 or 404: the request is well formed and the team exists.
 
     There is simply no passage they are on, which is the end of the walk. Naming one answers.
     """
-    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+    from app.services.internalization_room.canon.parse_map import served_maps
 
     _user, project, headers = await a_facilitator(db_session, email="b6end@x.com")
-    for meaning_map in load_book(ROOM_BOOK):
+    for meaning_map in served_maps():
         await a_session_the_team_finished(
             db_session, project_id=project.id, pericope=meaning_map.pericope_num
         )
@@ -699,3 +701,16 @@ async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
     assert body["being:S2:B?"]["label_en"] == ("Someone the text leaves unnamed here"), (
         "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
     )
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"

@@ -168,6 +168,19 @@ def scene_rehearsals_line(scene_ids: list[str], reached: Iterable[str]) -> str:
     )
 
 
+def kept_rehearsals_line(scene_ids: list[str], kept: Iterable[str]) -> str:
+    held = set(kept)
+    if not scene_ids or not all(scene in held for scene in scene_ids):
+        return ""
+    return (
+        "KEPT REHEARSALS: the team's own passing retellings of every part of this passage are "
+        "saved. Small numbered buttons on their screen replay each part in the team's own voice. "
+        "Before the send-off you may offer this once, warmly: if a part has gone cold, they can "
+        "tap its number and hear their own telling of it again. Never require it. These kept "
+        "takes are practice audio for listening only."
+    )
+
+
 def _stamped_earlier(
     pericope_num: str, book: str, statuses: dict[str, str] | None
 ) -> list[tuple[MeaningMap, str]]:

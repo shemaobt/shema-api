@@ -71,6 +71,7 @@ async def generate_signed_download_url(
     *,
     expiry_minutes: int = 15,
     response_content_type: str | None = None,
+    response_disposition: str | None = None,
 ) -> str:
     """Mint a short-lived v4 signed GET URL for a private-bucket object.
 
@@ -89,6 +90,7 @@ async def generate_signed_download_url(
             expiration=timedelta(minutes=expiry_minutes),
             method="GET",
             response_type=response_content_type,
+            response_disposition=response_disposition,
             service_account_email=creds.service_account_email,  # type: ignore[attr-defined]
             access_token=creds.token,  # type: ignore[attr-defined]
         )

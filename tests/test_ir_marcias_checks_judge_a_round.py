@@ -12,9 +12,20 @@ The inputs are typed from her `golden/bt/*.json`; the map behind the P02 ones is
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
-from scripts.bt_golden_checks import check_round
+import pytest
+
+from scripts import bt_golden_checks
+from scripts.bt_golden_checks import (
+    BT_CHECKS_PIN,
+    Told,
+    check_round,
+    quoted_in,
+    told_up_to,
+)
 from scripts.bt_golden_runner import load_script
 from scripts.sync_doctrine import REPO_ROOT
 
@@ -251,7 +262,11 @@ def test_spoken_matches_is_required_when_her_script_carries_it() -> None:
         spoken="Vocês traduziram tudo e a passagem está conferida. Na frase 1 ficou bom.",
     )
 
-    assert check_round(told, expect) == ["the voice does not match /aprov|ouvir/"]
+    assert check_round(told, expect, Told("Brazilian Portuguese", ())) == [
+        "the voice does not match /aprov|ouvir/",
+        'clean round: the voice does not say the fixed line ("no que vocês me traduziram, '
+        'tem tudo o que a história conta — e nada a mais")',
+    ]
 
 
 def test_her_dropped_no_finding_would_have_failed_the_correct_run() -> None:
@@ -431,6 +446,9 @@ THE_NUANCE_FOUND = {
     "kind": "nuance",
     "note": "a frase diz 'um dia' onde a história diz esta noite",
     "frase": 7,
+    "quote": "tivesse marido um dia",
+    "story": "ela poderia ter marido ainda esta noite",
+    "voiced": "now",
 }
 
 ASKS_FRASE_ONE_WHOLE = (
@@ -464,7 +482,7 @@ NEVER_ASKS_FRASE_SEVEN_AGAIN = THE_ONE_DETAIL.replace(
 def test_the_vendored_espera_script_fails_a_first_round_that_never_asks_for_frase_one() -> None:
     script = load_script(REPO_ROOT / "golden/bt/P02-nuance-espera.json")
     expect = script.rounds[0].expect
-    findings = [THE_REQUEST_ADDED, THE_NUANCE_FOUND]
+    findings = [THE_REQUEST_ADDED, {**THE_NUANCE_FOUND, "voiced": None}]
 
     assert check_round(_round(findings=findings, spoken=NEVER_ASKS_FRASE_ONE_AGAIN), expect) == [
         'the voice does not ask to record frase 1 again WHOLE ("regravem a frase 1 inteira" / '
@@ -480,13 +498,16 @@ def test_the_vendored_espera_script_fails_a_second_round_that_never_asks_for_fra
     assert check_round(
         _round(findings=[THE_NUANCE_FOUND], spoken=NEVER_ASKS_FRASE_SEVEN_AGAIN, conferida=True),
         expect,
+        told_up_to(script, 1),
     ) == [
         'the voice does not ask to record frase 7 again WHOLE ("regravem a frase 7 inteira" / '
         '"essa frase inteira" / "a frase toda")'
     ], "o script P02-nuance-espera esperava a frase 7 inteira na segunda rodada"
     assert (
         check_round(
-            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True), expect
+            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True),
+            expect,
+            told_up_to(script, 1),
         )
         == []
     )
@@ -499,13 +520,437 @@ def test_the_vendored_esta_noite_script_fails_a_round_that_never_asks_for_frase_
     assert check_round(
         _round(findings=[THE_NUANCE_FOUND], spoken=NEVER_ASKS_FRASE_SEVEN_AGAIN, conferida=True),
         expect,
+        told_up_to(script, 0),
     ) == [
         'the voice does not ask to record frase 7 again WHOLE ("regravem a frase 7 inteira" / '
         '"essa frase inteira" / "a frase toda")'
     ], "o script P02-nuance-esta-noite esperava a frase 7 inteira e ninguém conferia"
     assert (
         check_round(
-            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True), expect
+            _round(findings=[THE_NUANCE_FOUND], spoken=THE_ONE_DETAIL, conferida=True),
+            expect,
+            told_up_to(script, 0),
         )
         == []
     )
+
+
+THE_CLEAN_LINE = "no que vocês me traduziram, tem tudo o que a história conta — e nada a mais"
+THE_TELLING = Told(
+    "Brazilian Portuguese",
+    ("Noemi ouviu, nos campos de Moabe, que o Senhor tinha dado pão ao seu povo.",),
+)
+CLEAN = {"conferida": True, "findings": []}
+
+
+def _clean(spoken: str) -> dict[str, Any]:
+    return _round(findings=[], conferida=True, spoken=spoken)
+
+
+def test_a_clean_round_without_her_line_fails() -> None:
+    spoken = "Vocês fizeram um bom trabalho com a tradução. Ouçam tudo de novo e aprovem."
+
+    fails = check_round(_clean(spoken), CLEAN, THE_TELLING)
+
+    assert fails == [
+        'clean round: the voice does not say the fixed line ("no que vocês me traduziram, '
+        'tem tudo o que a história conta — e nada a mais")'
+    ]
+
+
+def test_a_clean_round_with_her_line_and_her_invitation_passes() -> None:
+    spoken = (
+        f"Vocês fizeram um bom trabalho. Na tradução, {THE_CLEAN_LINE}. "
+        "Ouçam tudo de novo, do começo ao fim, e aprovem."
+    )
+
+    assert check_round(_clean(spoken), CLEAN, THE_TELLING) == []
+
+
+def test_a_clean_round_that_recites_what_the_team_told_fails_quoting_the_words() -> None:
+    spoken = f"Vocês traduziram bem. {THE_CLEAN_LINE}. A Noemi ouviu do pão. Podem aprovar."
+
+    fails = check_round(_clean(spoken), CLEAN, THE_TELLING)
+
+    assert fails == [
+        "clean round: the voice recites the passage — it names what the team told: noemi, "
+        'ouviu, pao (Marcia\'s ruling 2026-09-24: only "tem tudo", no detail)'
+    ]
+
+
+def test_a_clean_round_that_speaks_of_what_the_story_keeps_quiet_fails() -> None:
+    spoken = f"Vocês traduziram bem. {THE_CLEAN_LINE}. O silêncio fica com vocês."
+
+    assert check_round(_clean(spoken), CLEAN, THE_TELLING) == [
+        'clean round: the voice speaks of what the story keeps quiet: "silêncio"'
+    ]
+
+
+def test_a_clean_round_in_another_language_fails_loudly_instead_of_reading_english_words() -> None:
+    fails = check_round(_clean(f"vocês tradu {THE_CLEAN_LINE}"), CLEAN, Told("English", ()))
+
+    assert fails == [
+        'clean round: this check reads Portuguese only — "English" has no fixed line or allowed '
+        "words in src/golden/btChecks.ts yet; add them before trusting this script's clean round"
+    ]
+
+
+def test_a_clean_round_with_no_telling_handed_to_the_check_fails() -> None:
+    fails = check_round(_clean(f"vocês tradu {THE_CLEAN_LINE}"), CLEAN)
+
+    assert fails == ["clean round: no telling handed to the check — pass toldUpTo(script, i)"]
+
+
+def test_the_telling_is_every_frase_up_to_the_round_superseded_ones_included() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P02-nuance-espera.json")
+
+    told = told_up_to(script, 1)
+
+    assert told.language == "Brazilian Portuguese"
+    assert len(told.frases) == sum(len(one.frases) for one in script.rounds[:2])
+    assert told.frases[-1].startswith("Noemi ouviu, nos campos de Moabe, que o Senhor")
+
+
+RECITES = (
+    "clean round: the voice recites the passage — it names what the team told: {} "
+    '(Marcia\'s ruling 2026-09-24: only "tem tudo", no detail)'
+)
+KEEPS_QUIET = 'clean round: the voice speaks of what the story keeps quiet: "{}"'
+
+
+def _clean_with(told: str, said: str, line: str = THE_CLEAN_LINE) -> list[str]:
+    spoken = f"Vocês fizeram um bom trabalho. {line}. {said}"
+    return check_round(_clean(spoken), CLEAN, Told("Brazilian Portuguese", (told,)))
+
+
+BARE_LINE = "no que vocês me traduziram tem tudo o que a história conta e nada a mais"
+
+
+@pytest.mark.parametrize(
+    ("told", "said", "line", "fails"),
+    [
+        ("Eles choraram.", "Eu choro.", THE_CLEAN_LINE, [RECITES.format("choro")]),
+        ("Ela casaram.", "Eu casa.", THE_CLEAN_LINE, []),
+        ("Ele vestiu.", "Eu vestir.", THE_CLEAN_LINE, [RECITES.format("vestir")]),
+        ("Então saiu.", "Então aprovem.", THE_CLEAN_LINE, []),
+        ("Noemi vivia em Moabe.", "Aprovem em tudo.", THE_CLEAN_LINE, []),
+        ("Noemi saiu.", "Eles calaram.", THE_CLEAN_LINE, [KEEPS_QUIET.format("calaram")]),
+        ("Noemi saiu.", "Com calma, aprovem.", THE_CLEAN_LINE, []),
+        ("Noemi saiu.", "Um segredos.", THE_CLEAN_LINE, [KEEPS_QUIET.format("segredos")]),
+        ("Noemi saiu.", "Aprovem.", BARE_LINE, []),
+    ],
+)
+def test_a_clean_round_is_judged_by_stem_noun_root_and_the_line_as_she_judges_it(
+    told: str, said: str, line: str, fails: list[str]
+) -> None:
+    assert _clean_with(told, said, line) == fails
+
+
+TWO_FRASES = Told(
+    "Brazilian Portuguese",
+    (
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo.",
+        "Ela saiu com as noras pela estrada.",
+    ),
+)
+A_NUANCE = {
+    "kind": "nuance",
+    "note": "«dado pão ao seu povo» — o Senhor visitou o povo e deu pão",
+    "frase": 1,
+    "quote": "dado pão ao seu povo",
+    "story": "o Senhor visitou o povo e deu pão",
+    "voiced": "now",
+}
+THE_NUANCE_VOICE = (
+    "Vocês traduziram bem. Só um detalhe, na frase 1: vocês traduziram dado pão ao seu povo; a "
+    "história conta que o Senhor visitou o povo e deu pão. Se estiver bom assim, vocês podem "
+    "ouvir tudo de novo e aprovar."
+)
+EXPECTS_THE_NUANCE = {
+    "conferida": True,
+    "findings": [{"kind": "nuance", "note": "dado pão"}],
+    "voices_nuance": 1,
+}
+
+
+def _nuance_round(spoken: str = THE_NUANCE_VOICE, **over: Any) -> dict[str, Any]:
+    return _round(**{"findings": [A_NUANCE], "conferida": True, "spoken": spoken, **over})
+
+
+def test_a_nuance_said_the_drafted_way_passes() -> None:
+    assert check_round(_nuance_round(), EXPECTS_THE_NUANCE, TWO_FRASES) == []
+
+
+def test_a_nuance_round_whose_nuance_this_verdict_never_named_fails() -> None:
+    unsaid = {**A_NUANCE, "voiced": None}
+
+    fails = check_round(_nuance_round(findings=[unsaid]), EXPECTS_THE_NUANCE, TWO_FRASES)
+
+    assert fails == [
+        'expected THIS verdict to name a nuance on frase 1 (voiced "now") — got '
+        f"[nuance@1: {A_NUANCE['note']}]"
+    ]
+
+
+def _fails(spoken: str = THE_NUANCE_VOICE, **over: Any) -> list[str]:
+    return check_round(_nuance_round(spoken, **over), EXPECTS_THE_NUANCE, TWO_FRASES)
+
+
+def test_a_nuance_the_voice_does_not_quote_fails() -> None:
+    assert _fails(THE_NUANCE_VOICE.replace("dado pão ao seu povo", "outra coisa")) == [
+        'nuance round: the voice does not quote what the team translated ("dado pão ao seu povo")'
+    ]
+
+
+def test_a_nuance_voice_that_closes_the_approval_or_says_the_inner_word_fails() -> None:
+    spoken = THE_NUANCE_VOICE.replace("ouvir tudo de novo e aprovar", "esperar. É uma nuance")
+
+    assert _fails(spoken) == [
+        'nuance round: the voice does not leave the approval open ("aprovar como rascunho final")',
+        'nuance round: the voice says the inner word "nuance" (it says "um detalhe")',
+    ]
+
+
+def test_a_nuance_voice_that_recites_another_frase_fails_quoting_the_words() -> None:
+    assert _fails(THE_NUANCE_VOICE.replace("Vocês traduziram bem.", "As noras saíram.")) == [
+        "nuance round: the voice names more of the passage than the one detail — it says what "
+        "the team told: noras (only the quote and the story's words for it)"
+    ]
+
+
+def test_a_story_that_recites_another_frase_is_not_the_one_detail_the_voice_may_repeat() -> None:
+    wide = {**A_NUANCE, "story": "o Senhor visitou o povo e as noras"}
+    spoken = THE_NUANCE_VOICE.replace("e deu pão", "e as noras")
+
+    assert _fails(spoken, findings=[wide]) == [
+        "nuance round: the story brings in more than the one detail — words the team told only "
+        "in other frases: noras",
+        "nuance round: the voice names more of the passage than the one detail — it says what "
+        "the team told: noras (only the quote and the story's words for it)",
+    ]
+
+
+def test_a_nuance_voice_that_speaks_of_what_the_story_keeps_quiet_fails() -> None:
+    assert _fails(f"O silêncio fica. {THE_NUANCE_VOICE}") == [
+        'nuance round: the voice speaks of what the story keeps quiet: "silêncio"'
+    ]
+
+
+def test_a_nuance_round_with_no_telling_handed_to_the_check_fails() -> None:
+    assert check_round(_nuance_round(), EXPECTS_THE_NUANCE) == [
+        "nuance round: no telling handed to the check — pass toldUpTo(script, i)"
+    ]
+
+
+def test_the_nuance_must_be_named_on_the_frase_the_script_expects() -> None:
+    assert check_round(_nuance_round(), {**EXPECTS_THE_NUANCE, "voices_nuance": 2}, TWO_FRASES) == [
+        'expected THIS verdict to name a nuance on frase 2 (voiced "now") — got '
+        f"[nuance@1[now]: {A_NUANCE['note']}]"
+    ]
+
+
+def test_the_words_of_her_nuance_pattern_are_free_whatever_the_team_told() -> None:
+    told = Told(
+        "Brazilian Portuguese", (*TWO_FRASES.frases, "Ela regravou a frase, nunca só um pedaço.")
+    )
+    pattern = (
+        "Se está assim no áudio e vocês quiserem mudar, regravem a frase inteira — a frase "
+        "toda, nunca só um pedaço."
+    )
+
+    assert (
+        check_round(_nuance_round(f"{pattern} {THE_NUANCE_VOICE}"), EXPECTS_THE_NUANCE, told) == []
+    )
+
+
+def test_the_team_words_stand_in_the_voice_whole_never_inside_another_word() -> None:
+    assert quoted_in("dado pão", "Tinha DADO pão, ao povo.")
+    assert not quoted_in("pão", "Comeram pãozinho.")
+
+
+THE_LINE_MISSING = (
+    'clean round: the voice does not say the fixed line ("no que vocês me traduziram, '
+    'tem tudo o que a história conta — e nada a mais")'
+)
+UNEXPECTED_NUANCE = (
+    f'an unexpected nuance on frase 1: "{A_NUANCE["note"]}" '
+    "(a false nuance costs the team attention)"
+)
+NOTHING_EXPECTED = {"conferida": True, "findings": []}
+
+
+def test_a_nuance_nobody_expected_fails() -> None:
+    assert check_round(_nuance_round(), NOTHING_EXPECTED, TWO_FRASES) == [
+        f"expected no findings, got [nuance@1[now]: {A_NUANCE['note']}]",
+        UNEXPECTED_NUANCE,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("voiced", "fails"),
+    [("before", [THE_LINE_MISSING]), (None, [UNEXPECTED_NUANCE, THE_LINE_MISSING])],
+    ids=["named before", "left unsaid"],
+)
+def test_a_round_whose_only_nuance_the_voice_does_not_speak_of_is_still_a_clean_round(
+    voiced: str | None, fails: list[str]
+) -> None:
+    spoken = "Vocês traduziram bem. Ouçam e aprovem."
+
+    got = check_round(
+        _round(findings=[{**A_NUANCE, "voiced": voiced}], conferida=True, spoken=spoken),
+        NOTHING_EXPECTED,
+        TWO_FRASES,
+    )
+
+    assert got == fails
+
+
+def test_a_nuance_is_unexpected_when_only_a_finding_of_another_kind_matches_its_note() -> None:
+    expect = {"conferida": True, "findings": [{"kind": "addition", "note": "dado pão"}]}
+    other = {"kind": "addition", "note": "dado pão a mais", "frase": 1}
+    unsaid = {**A_NUANCE, "voiced": None}
+
+    got = check_round(_round(findings=[other, unsaid], conferida=True), expect, TWO_FRASES)
+
+    assert UNEXPECTED_NUANCE in got
+
+
+def test_two_nuances_named_in_one_turn_fail() -> None:
+    second = {**A_NUANCE, "frase": 2}
+
+    fails = check_round(_nuance_round(findings=[A_NUANCE, second]), EXPECTS_THE_NUANCE, TWO_FRASES)
+
+    assert "more than one nuance named in one turn: frases 1, 2" in fails
+
+
+def test_a_nuance_named_beside_a_blocking_finding_fails() -> None:
+    blocking = {"kind": "addition", "note": THE_EXTRA_CAUSE, "frase": 2}
+
+    fails = check_round(
+        _nuance_round(findings=[blocking, A_NUANCE], conferida=False),
+        {
+            **EXPECTS_THE_NUANCE,
+            "conferida": False,
+            "findings": [
+                *EXPECTS_THE_NUANCE["findings"],
+                {"kind": "addition", "note": "noras"},
+            ],
+        },
+        TWO_FRASES,
+    )
+
+    assert (
+        "a nuance was named while a blocking finding is open (it comes alone): "
+        f"addition@2: {THE_EXTRA_CAUSE} | nuance@1[now]: {A_NUANCE['note']}" in fails
+    )
+
+
+def test_an_optional_nuance_may_be_absent_and_a_nuance_left_unsaid_is_not_named() -> None:
+    expect = {
+        **CAUSA_A_MAIS,
+        "findings": [
+            *CAUSA_A_MAIS["findings"],
+            {"kind": "nuance", "note": "pão", "optional": True},
+        ],
+    }
+    unsaid = {**A_NUANCE, "voiced": None, "note": "pão"}
+
+    absent = check_round(_round(), expect, TWO_FRASES)
+    waiting = check_round(_round(findings=[*_round()["findings"], unsaid]), expect, TWO_FRASES)
+
+    assert (absent, waiting) == ([], [])
+
+
+def test_the_last_round_of_every_vendored_script_is_judged_clean_only_with_her_line() -> None:
+    for path in sorted((REPO_ROOT / "golden/bt").glob("*.json")):
+        script = load_script(path)
+        last = len(script.rounds) - 1
+        expect = script.rounds[last].expect
+        if not (expect["conferida"] and not expect["findings"]):
+            continue
+        spoken = "Vocês fizeram um bom trabalho com a tradução. Ouçam tudo de novo e aprovem."
+
+        fails = check_round(_clean(spoken), expect, told_up_to(script, last))
+
+        assert any("does not say the fixed line" in one for one in fails), path.name
+
+
+HER_EXPORTS = {
+    "wholeSentenceRe": "whole_sentence_re",
+    "PART_AGAIN_RE": "PART_AGAIN_RE",
+    "toldUpTo": "told_up_to",
+    "CLEAN_LINE_RE": "CLEAN_LINE_RE",
+    "cleanRoundFails": "clean_round_fails",
+    "nuanceRoundFails": "nuance_round_fails",
+    "checkRound": "check_round",
+}
+THE_RULES_OF_HER_CHECKROUND = {
+    "asks_translation",
+    "asks_the_whole_sentence",
+    "banned_vocabulary",
+    "blessing",
+    "conferida",
+    "expected_findings",
+    "fail_safe",
+    "names_frase",
+    "no_finding",
+    "no_findings_at_all",
+    "no_kinds",
+    "nuances_asked",
+    "o_mapa",
+    "one_frase_per_turn",
+    "says_tradu",
+    "says_voces",
+    "singular_address",
+    "spoken_matches",
+    "spoken_must_not_match",
+    "voices_nuance",
+}
+HER_EXPECT_KEYS = {
+    "conferida",
+    "findings",
+    "frase",
+    "kind",
+    "note",
+    "no_finding",
+    "no_kinds",
+    "optional",
+    "spoken_asks_audio_or_explanation",
+    "spoken_matches",
+    "spoken_must_not_match",
+    "spoken_names_frase",
+    "spoken_whole_sentence",
+    "voices_nuance",
+}
+
+
+def test_every_name_in_her_btchecks_is_here_and_every_public_name_here_is_hers() -> None:
+    module = bt_golden_checks.__name__
+    public = {
+        name
+        for name, value in vars(bt_golden_checks).items()
+        if not name.startswith("_")
+        and (
+            getattr(value, "__module__", None) == module
+            or (isinstance(value, re.Pattern | str) and name.isupper())
+        )
+    }
+    ours = set(HER_EXPORTS.values()) | THE_RULES_OF_HER_CHECKROUND
+    ours |= {"Told", "BT_CHECKS_PIN", "quoted_in"}
+
+    assert {one for one in HER_EXPORTS.values() if not hasattr(bt_golden_checks, one)} == set()
+    assert public == ours
+
+
+def test_the_expectation_keys_the_checks_read_are_the_keys_she_reads() -> None:
+    source = Path(bt_golden_checks.__file__).read_text(encoding="utf-8")
+
+    read = set(re.findall(r'(?:expect|want)(?:\.get\(|\[)"(\w+)"', source))
+
+    assert read == HER_EXPECT_KEYS
+
+
+def test_the_pin_of_the_checks_is_the_commit_the_doctrine_is_frozen_at() -> None:
+    frozen = (REPO_ROOT / "docs/doctrine/FREEZE_PIN").read_text(encoding="utf-8")
+
+    assert f"commit {BT_CHECKS_PIN}" in frozen

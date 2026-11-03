@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room import background
 from app.services.internalization_room.llm import CACHE_BREAK
-from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import capture_segment, final_segments
-from app.services.internalization_room.sessions import get_session
-from tests.release_harness import a_claimed_device, team_headers
+from tests.release_harness import a_claimed_device, exported_file, team_headers
 from tests.room_harness import (
     PREFIX,
     heard_every_part,
@@ -284,28 +279,18 @@ async def test_a_part_recorded_again_makes_its_said_nuance_sayable_even_in_the_s
     )
 
 
-@asynccontextmanager
-async def _the_same(db: AsyncSession) -> AsyncIterator[AsyncSession]:
-    yield db
-
-
-async def test_a_nuance_read_ahead_reaches_the_speaker_and_alone_still_confers(
-    client, analyst, speaker, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+async def test_a_nuance_alone_reaches_the_speaker_and_still_confers(
+    client, analyst, speaker, db_session: AsyncSession
 ) -> None:
-    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _the_same(db_session))
     session, _parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [{"findings": [ON_FRASE_2]}]
     speaker.line = NAMES_FRASE_2
-    await background.read_ahead(session_id=session.id)
 
     pressed = await press_terminei(
         client, session.id, report=await heard_every_part(db_session, session.id)
     )
 
-    assert len(analyst.shown) == 1, "terminei leu de novo em vez de usar a leitura antecipada"
-    assert _handed(speaker) == [2], (
-        "a leitura antecipada jogava a nuance fora e o tablet nunca a ouvia"
-    )
+    assert _handed(speaker) == [2], "a nuance era jogada fora e o tablet nunca a ouvia"
     answer = pressed.json()
     assert answer["checked"] is True, "uma nuance sozinha impedia a aprovação"
     assert answer["findings_remaining"] == 0, "a nuance entrava na conta dos achados em aberto"
@@ -346,6 +331,86 @@ async def test_a_verdict_that_named_no_nuance_names_none_to_the_tablet(
     )
 
 
+async def test_the_session_read_after_a_check_that_named_a_nuance_carries_it_as_the_verdict_did(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    frase_2 = (await final_segments(db_session, session.id))[1]
+    assert read.json()["back_translation"]["named_nuance"] == {
+        "kind": "nuance",
+        "frase": 2,
+        "segment_id": frase_2.id,
+    }, "a releitura da sessão perdia a nuance que o veredito nomeou e a linha voltava sem cor"
+    assert read.json()["back_translation"]["named_nuance"] == pressed.json()["named_nuance"], (
+        "a leitura da sessão e o veredito descreviam a nuance de jeitos diferentes"
+    )
+
+
+@pytest.mark.parametrize("with_stale", [False, True])
+async def test_the_session_read_drops_a_nuance_whose_part_was_recorded_again(
+    client, analyst, speaker, db_session: AsyncSession, with_stale: bool
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    fresh = await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
+    await tell_back_about(db_session, session, fresh, transcript="parte 1 contada de volta")
+
+    read = await client.get(
+        f"{PREFIX}/sessions/{session.id}", params={"include_stale": str(with_stale).lower()}
+    )
+
+    assert read.json()["back_translation"]["named_nuance"] is None, (
+        "a leitura apontava a nuance para um trecho aposentado"
+    )
+
+
+@pytest.mark.parametrize("with_stale", [False, True])
+async def test_the_session_read_numbers_the_nuance_as_it_numbers_the_stretches(
+    client, analyst, speaker, db_session: AsyncSession, with_stale: bool
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await record_the_part_again(db_session, session, parts[0], sha256="e" * 64)
+
+    read = (
+        await client.get(
+            f"{PREFIX}/sessions/{session.id}", params={"include_stale": str(with_stale).lower()}
+        )
+    ).json()["back_translation"]
+
+    named = read["named_nuance"]
+    assert named is not None, "a nuance de um trecho que ainda conta sumia da leitura"
+    numbered = {one["segment_id"]: one for one in read["segments"]}
+    assert numbered[named["segment_id"]]["frase"] == named["frase"], (
+        "a nuance trazia a frase do veredito e marcava outra linha que a leitura"
+    )
+
+
+async def test_the_session_read_with_no_check_carries_no_nuance(
+    client, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+
+    read = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    assert read.status_code == 200, read.text
+    assert read.json()["back_translation"]["named_nuance"] is None, (
+        "uma sessão sem veredito inventava uma nuance"
+    )
+
+
 async def test_the_consultants_file_says_which_nuances_the_voice_already_said(
     client, analyst, speaker, db_session: AsyncSession
 ) -> None:
@@ -357,28 +422,11 @@ async def test_the_consultants_file_says_which_nuances_the_voice_already_said(
     )
     await _heard(client, session.id, pressed.json()["check_at"])
 
-    read = await retroverification_file(db_session, await get_session(db_session, session.id))
+    last = (await exported_file(db_session, session.id))["checks"][-1]
 
-    assert [(one.chunk, one.quote, one.story, one.said) for one in read.nuances] == [
-        (2, "contada de volta", "a história conta de outro jeito", True),
-        (3, "parte 2", "a história diz qual parte", False),
+    assert [
+        (one["frase"], one["quote"], one["story"], one.get("voiced")) for one in last["findings"]
+    ] == [
+        (2, "contada de volta", "a história conta de outro jeito", "now"),
+        (3, "parte 2", "a história diz qual parte", None),
     ], "a consultora não via as nuances nem se a voz já as tinha dito"
-
-
-async def test_a_part_recorded_again_takes_its_nuance_out_of_the_consultants_file(
-    client, analyst, speaker, db_session: AsyncSession
-) -> None:
-    session, parts = await rehearsed_in_parts(db_session, 3)
-    analyst.readings = [{"findings": [ON_FRASE_3, ON_FRASE_2]}]
-    speaker.line = NAMES_FRASE_2
-    pressed = await press_terminei(
-        client, session.id, report=await heard_every_part(db_session, session.id)
-    )
-    await _heard(client, session.id, pressed.json()["check_at"])
-
-    await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
-
-    read = await retroverification_file(db_session, await get_session(db_session, session.id))
-    assert [(one.chunk, one.said) for one in read.nuances] == [(3, False)], (
-        "a nuance de um trecho aposentado seguia na ficha, dita como ainda não dita"
-    )

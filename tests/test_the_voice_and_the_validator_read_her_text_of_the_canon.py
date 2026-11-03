@@ -98,7 +98,6 @@ async def _guide_and_validator(agent: FakeAgent, pericope_num: str) -> tuple[str
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=pericope_num,
-        book="Ruth",
         opening=True,
         settings=settings(),
     )
@@ -221,7 +220,6 @@ async def test_the_voiced_verdicts_speaker_reads_the_validators_whole_material(
         messages=[],
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        book="Ruth",
         settings=settings(),
     )
 

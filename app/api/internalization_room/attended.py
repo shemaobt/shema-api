@@ -1,23 +1,19 @@
-"""The facilitator's own way out of a halt: they went.
+"""The facilitator's Visit: they went to a room, and the Desk records it (ADR 0076).
 
-`NEEDS_PERSON` had one exit and it belonged to the team — a turn that lands. **The server
-still lifts a blocking halt on a landing turn and this slice does not touch that** (a warning
-it never lifts: ENG-1163, and this route is the warning's only exit); `test_the_pause_is_not_a_
-latch` is where it is asserted, and an earlier draft of this file claimed the opposite. What
-is wrong is that the team's turn was the *only* exit, because it makes the queue drain on the
-team's schedule rather than on the facilitator's. A person walks over, helps, and leaves while
-the team is still gathering themselves: nothing has landed, so the room is still on the queue
-and the tablet is still halted, and the next facilitator to read the queue walks the same walk
-again. On a blocking halt the app is also expected to stop sending turns until somebody
-restarts it (slice 3), which removes the team's exit in practice as well.
+The visit writes nothing on the session's status. It takes a halted room off the queue and is
+the only end of a warning; a blocking halt is lifted only by the team's own return.
 
 Two routes and not a boolean field on some larger update, so that the undo is as plain as the
 mark. The undo matters more than it looks: a mark is a claim about the physical world, and the
 person who taps it is the person who will notice, thirty seconds later, that they tapped the
 wrong row.
+
+Both name the halt the Desk read, its halt count and its warning, so a write that lands after
+the room halted again is refused rather than answering a halt nobody saw (ADR 0091).
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
@@ -46,9 +42,13 @@ def _answer(session: IRSession) -> AttendedResponse:
 
 @router.post("/facilitator/sessions/{session_id}/attended", response_model=AttendedResponse)
 async def mark_attended(
-    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    user: FacilitatorUser,
+    halt: int = Query(ge=0),
+    warning: AwareDatetime | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
 ) -> AttendedResponse:
-    """A facilitator went to this room: the halt lifts, and who went is recorded.
+    """A facilitator went to this room: who went is recorded, and the status is not written.
 
     Scoped with ``get_session_for_facilitator``, which answers 404 for a session of another
     team exactly as for one that does not exist — this is a write, and the listing that hands
@@ -56,24 +56,36 @@ async def mark_attended(
 
     Idempotent, and a room that never halted can be marked all the same; ``attend`` is where
     both of those are argued.
+
+    ``halt`` and ``warning`` are the halt count and the warning the Desk read, no warning when
+    absent; another is ``HALT_MOVED``.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    attended = await room.attend(db, session, by=user.id)
+    attended = await room.attend(db, session, by=user.id, halts_raised=halt, warned_at=warning)
     nudge(attended.project_id, "halts")
     return _answer(attended)
 
 
 @router.delete("/facilitator/sessions/{session_id}/attended", response_model=AttendedResponse)
 async def undo_attended(
-    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    user: FacilitatorUser,
+    halt: int = Query(ge=0),
+    warning: AwareDatetime | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
 ) -> AttendedResponse:
-    """Nobody went after all: the stamps clear and the room asks again.
+    """Nobody went after all: the stamps clear and a halted room is back on the queue.
+
+    A demo team's halted room is attended again at once, by the server (ADR 0064).
 
     A session nobody marked answers 200 and changes nothing: there is no claim to withdraw,
     and treating the absence as an error would make an idempotent undo impossible to write on
     the Desk.
+
+    ``halt`` and ``warning`` are the halt count and the warning the Desk read, no warning when
+    absent; another is ``HALT_MOVED``.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    unattended = await room.unattend(db, session)
+    unattended = await room.unattend(db, session, halts_raised=halt, warned_at=warning)
     nudge(unattended.project_id, "halts")
     return _answer(unattended)

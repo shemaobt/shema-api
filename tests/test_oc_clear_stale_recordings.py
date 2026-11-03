@@ -4,11 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import UploadStatus
 from app.core.exceptions import AuthorizationError
+from app.db.models.auth import User
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.project import ProjectUserAccess
 from app.services.oral_collector.gcs_utils import gcs_public_base
 from tests.baker import (
-    make_language,
+    a_language,
     make_oc_recording,
     make_oc_taxonomy,
     make_project,
@@ -27,11 +28,11 @@ def _import_service():
 async def _seed_project_with_manager(
     db: AsyncSession,
     *,
-    email: str = "manager@test.com",
+    email: str | None = None,
     name: str = "Test Project",
-    language_code: str = "tst",
+    language_code: str | None = None,
 ) -> tuple[str, str]:
-    lang = await make_language(db, code=language_code, name=name)
+    lang = await a_language(db, name=name, code=language_code)
     project = await make_project(db, lang.id, name=name)
     manager = await make_user(db, email=email)
     db.add(ProjectUserAccess(project_id=project.id, user_id=manager.id, role="manager"))
@@ -226,3 +227,23 @@ async def test_clearing_stale_recordings_leaves_another_projects_recordings_alon
 
     assert deleted == 1
     assert await _surviving_ids(db_session) == {other_failed.id}
+
+
+async def test_a_project_with_its_manager_seeded_twice_with_defaults_gets_two_managers_with_two_emails(  # noqa: E501
+    db_session: AsyncSession,
+) -> None:
+    _, first_id = await _seed_project_with_manager(db_session)
+    _, second_id = await _seed_project_with_manager(db_session)
+
+    first = await db_session.get(User, first_id)
+    second = await db_session.get(User, second_id)
+    assert first.email != second.email
+
+
+async def test_a_project_with_its_manager_seeded_with_an_email_keeps_it(
+    db_session: AsyncSession,
+) -> None:
+    _, manager_id = await _seed_project_with_manager(db_session, email="x@example.com")
+
+    manager = await db_session.get(User, manager_id)
+    assert manager.email == "x@example.com"

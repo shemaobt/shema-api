@@ -29,9 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book, served_maps
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    an_email,
     grant_facilitator_app_role,
     having_finished_the_passage,
     make_language,
@@ -45,6 +46,7 @@ TEAM_NOT_FOUND = "Team not found"
 PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
+EVERY_BOOK = [meaning_map.pericope_num for meaning_map in served_maps()]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
 
 _codes = itertools.count()
@@ -82,7 +84,8 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-async def a_facilitator(db: AsyncSession, *, email="facilitadora@example.com"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None):
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await make_language(db, name=f"Lang {email}", code=f"p{next(_codes):02d}")
     project = await make_project(db, language.id, name=f"Team {email}")
@@ -163,10 +166,10 @@ async def test_a_passage_closed_out_of_order_reads_closed_and_does_not_move_the_
     assert sum(1 for position in where.values() if position == "current") == 1
 
 
-async def test_a_team_that_finished_the_book_has_no_current_passage(client, db_session) -> None:
+async def test_a_team_that_finished_every_book_has_no_current_passage(client, db_session) -> None:
     """ENG-469: a complete team shows its last passage as closed, not current."""
     _user, team, headers = await a_facilitator(db_session, email="terminou@x.com")
-    await having_closed(db_session, team, *CANON)
+    await having_closed(db_session, team, *EVERY_BOOK)
 
     where = positions((await client.get(pericopes_url(team.id), headers=headers)).json())
 
@@ -188,7 +191,17 @@ async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, 
     assert sum(1 for entry in body if entry["position"] == "closed") == 2
     assert all(
         set(entry)
-        == {"pericope", "reference", "title", "position", "release", "open_findings", "approved"}
+        == {
+            "pericope",
+            "reference",
+            "title",
+            "position",
+            "release",
+            "open_findings",
+            "approved",
+            "session_id",
+            "has_takes",
+        }
         for entry in body
     )
 
@@ -269,16 +282,16 @@ async def test_the_three_surfaces_answer_the_same_passage(client, db_session) ->
     assert opened.pericope == SECOND
 
 
-async def test_a_team_at_the_end_of_the_book_says_so_at_every_door(client, db_session) -> None:
+async def test_a_team_at_the_end_of_every_book_says_so_at_every_door(client, db_session) -> None:
     """The terminal state, agreed on rather than each door inventing its own.
 
-    The two reads answer what they can — a card with no passage, fourteen closed — and the two
+    The two reads answer what they can — a card with no passage, every passage closed — and the two
     that need a passage refuse with the same word rather than wrapping round to the first one.
     """
     from app.core.exceptions import ConflictError
 
     _user, team, headers = await a_facilitator(db_session, email="fim-do-livro@x.com")
-    await having_closed(db_session, team, *CANON)
+    await having_closed(db_session, team, *EVERY_BOOK)
 
     card = (await client.get("/api/facilitator/teams", headers=headers)).json()["teams"][0]
     where = positions((await client.get(pericopes_url(team.id), headers=headers)).json())
@@ -290,3 +303,16 @@ async def test_a_team_at_the_end_of_the_book_says_so_at_every_door(client, db_se
     assert necklace.status_code == 409
     with pytest.raises(ConflictError):
         await room.create_session(db_session, project_id=team.id)
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.services import internalization_room as room
+from app.services.internalization_room.takes import takes_of
 from scripts import bt_golden_runner
 from scripts.bt_golden_runner import export, load_script, open_session, play
 from tests.text_seam_harness import (
@@ -206,6 +207,8 @@ async def test_the_runner_plays_her_script_verbatim_and_exports_the_checks(seam,
     assert body["rounds"][1]["conferida"] is True
     assert "the voice does not name frase 9" in transcript.read_text(encoding="utf-8")
     assert report.name == "P02-causa-a-mais.2026-09-11T03-00-00.json"
+    assert body["checksPin"] == "18fa7c4"
+    assert "her `src/golden/btChecks.ts` at 18fa7c4" in transcript.read_text(encoding="utf-8")
 
 
 async def test_a_failed_check_exits_one(over_the_seam, tmp_path) -> None:
@@ -217,8 +220,13 @@ async def test_a_failed_check_exits_one(over_the_seam, tmp_path) -> None:
     assert list((tmp_path / "reports").glob("P02-causa-a-mais.*.json"))
 
 
-async def test_a_clean_run_exits_zero(over_the_seam, tmp_path) -> None:
+async def test_a_clean_run_exits_zero(over_the_seam, speaker, tmp_path) -> None:
     script = _her_script(tmp_path, expect=HER_EXPECTATION)
+    speaker.then = [
+        speaker.line,
+        "Vocês fizeram um bom trabalho. No que vocês me traduziram, tem tudo o que a história "
+        "conta — e nada a mais. Ouçam tudo de novo e aprovem.",
+    ]
 
     code = await bt_golden_runner.run(_args(script, tmp_path / "reports"))
 
@@ -274,6 +282,19 @@ async def test_with_no_script_named_the_runner_plays_every_bt_script_on_the_shel
     )
 
 
+async def test_rounds_plays_the_shelf_that_many_times_and_names_each_report_by_script_and_run(
+    over_the_seam, tmp_path
+) -> None:
+    script = _her_script(tmp_path, expect=HER_EXPECTATION)
+    args = _args(script, tmp_path / "reports")
+    args.rounds = 3
+
+    await bt_golden_runner.run(args)
+
+    names = sorted(path.name.split(".")[:2] for path in (tmp_path / "reports").glob("*.json"))
+    assert names == [["P02-causa-a-mais", f"run{k}"] for k in (1, 2, 3)]
+
+
 def test_the_shelf_the_runner_reads_by_default_holds_her_ten_bt_scripts() -> None:
     found = sorted(
         path.stem for path in bt_golden_runner.scripts_to_play(argparse.Namespace(script=None))
@@ -291,3 +312,30 @@ def test_the_shelf_the_runner_reads_by_default_holds_her_ten_bt_scripts() -> Non
         "P02-nuance-esta-noite",
         "P02-regravar-frase-troca",
     ], "nenhum roteiro bt dela estava no repositório; o runner lia de /tmp"
+
+
+async def test_her_clips_declared_wav_reach_the_seam_as_wav_parts(seam, db_session) -> None:
+    script = load_script(bt_golden_runner.BT_DIR / "P01-regravar-frase-faltou.json")
+
+    session_id = await open_session(script, seam)
+
+    assert [part.content_type for part in await takes_of(db_session, session_id)] == [
+        "audio/wav"
+    ] * 4, "o runner lia o roteiro dela sem o «contentType», e a costura via quatro textos"
+
+
+@pytest.mark.parametrize(
+    ("name", "joined"), [("P01-regravar-frase-acrescimo", True), ("P02-causa-a-mais", False)]
+)
+async def test_her_script_declared_joined_reaches_the_seam_as_a_joined_recording(
+    seam, db_session, name: str, joined: bool
+) -> None:
+    script = load_script(bt_golden_runner.BT_DIR / f"{name}.json")
+
+    session_id = await open_session(script, seam)
+
+    origins = [part.origin for part in await takes_of(db_session, session_id)]
+    assert origins and all((origin is not None) is joined for origin in origins), (
+        f"{name} says joined={joined} and her runner passes it on (src/golden/bt.ts:93 at "
+        f"18fa7c4), but the seam declared parts with origins {origins}"
+    )

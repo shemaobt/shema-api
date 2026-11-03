@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     env: str = "development"
     #: The git SHA the image was built from, baked in as `GIT_SHA` at build time.
     build_id: str = Field("unknown", validation_alias="GIT_SHA")
+    cloud_run_service: str = Field("", validation_alias="K_SERVICE")
     port: int = 8000
 
     database_url: str
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    qdrant_collection_name: str | None = Field(
+        None, validation_alias=AliasChoices("qdrant_collection_name", "QDRANT_COLLECTION")
+    )
 
     google_api_key: str = ""
     google_maps_api_key: str = ""
@@ -61,9 +65,10 @@ class Settings(BaseSettings):
     #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
     #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
     internalization_room_turn_bound_ms: int = 300_000
-    #: How long a team turn sent while the session's opening drafts waits for it, counted
-    #: from the claim (her ``KICKOFF_WAIT_MS``). The turn's own bound starts after the wait,
-    #: so a turn that waited and then ran long can still be cut by the deployment's ceiling.
+    #: How long a turn waits on another turn of its session holding the **Turn claim**,
+    #: counted from the first claim it found (her ``KICKOFF_WAIT_MS``): the opening, a team
+    #: turn or a «terminei». The turn's own bound starts after the wait, so a turn that waited
+    #: and then ran long can still be cut by the deployment's ceiling (ADR 0053, ADR 0079).
     internalization_room_opening_wait_ms: int = 90_000
     #: The language-detection probability under which a take heard in the session's own
     #: language counts as the mother tongue. A deployment's, never a session's: it is read on
@@ -94,6 +99,9 @@ class Settings(BaseSettings):
     #: Empty is the production configuration: the text seam then does not exist, and its
     #: routes answer 404 rather than asking for a credential nobody has been given.
     internalization_room_runner_key: str = ""
+    #: The demo team, by its team id (ADR 0064). Empty is the production configuration: there
+    #: is no demo team, and the page that spends a code on it answers 404.
+    internalization_room_demo_team_id: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
     #: The room's voice is Mariana's, chosen on 2026-09-21, because Marcia's frozen app is the
@@ -105,6 +113,8 @@ class Settings(BaseSettings):
     #: her app unless the team chose English. The app names the team's choice on the session.
     internalization_room_default_language: str = "pt"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
+    internalization_room_minimum_app_ios: int = Field(default=0, ge=0)
+    internalization_room_minimum_app_android: int = Field(default=0, ge=0)
 
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it
@@ -145,6 +155,8 @@ class Settings(BaseSettings):
 
     @property
     def qdrant_collection(self) -> str:
+        if self.qdrant_collection_name:
+            return self.qdrant_collection_name
         return "meaning_map_prod" if self.env == "production" else "meaning_map_test"
 
     @field_validator("build_id", mode="before")

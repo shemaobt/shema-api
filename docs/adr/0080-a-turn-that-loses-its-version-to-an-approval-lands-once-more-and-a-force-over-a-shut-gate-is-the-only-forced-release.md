@@ -1,0 +1,72 @@
+---
+status: accepted
+date: 2026-10-22
+---
+
+# A turn that loses its version to an approval lands once more, and a force over a shut gate is the only forced release
+
+An approval claims the session's version so that a Zerar or a turn that moved the session first
+refuses the mint (ADR 0052, ADR 0066). The claim writes nothing in the conversation, yet a team
+turn whose Guide was still answering when it landed lost `_land`'s version guard and answered a
+generic 409, and the Guide's paid line was lost with it. The tablet does not ask a turn's 409
+again. Separately, a force over a passage with nothing to waive was recorded as forced, on
+purpose: the row said who pressed the button. Her finalize (Tripod-Internalization
+`app/api/draft/finalize/route.ts` at 18fa7c4, lines 58-70) records a force as forced only when
+the translation is not conferida, and the ticket's acceptance 8 asks for her rule (ENG-1259).
+
+Decided by the Definer on 2026-10-22 (recorded on ENG-1259):
+
+- A team turn whose guarded write matches nothing reads the row as stored now. When the
+  session is still live and the conversation it read is still the conversation stored,
+  whatever moved the version moved nothing the turn writes over, and the turn lands once more
+  on the stored version. When a Zerar archived the session it is answered as gone (ADR 0052);
+  when the conversation moved, or the second write also matches nothing, it is refused as
+  before. The archive and the conversation are read in one statement, so a Zerar that lands
+  between the first write and that read is never taken for an approval.
+  One more write at most. Only a turn takes the second landing: an approval that loses its
+  version to a turn is still refused (ADR 0066). The Turn claim is untouched (ADR 0079): it
+  orders turns among themselves, and the approval does not take it.
+- A force that waives no blocker is an ordinary approval: `forced_by`, `forced_at`,
+  `forced_blockers` and `forced_open_findings` are null, and the check block's `forced` is false
+  with `forcedBy`, `forcedAt` and `forcedBlockers` null. A force that waives any blocker stays
+  forced, including ADR 0075's clean check with a part not heard, which still reads `conferida`
+  with `forced` true and the listening among the blockers passed.
+- Whether a release was forced is derived from its blockers on every read (the Definer,
+  2026-10-23): forced when it names who forced it and its `forced_blockers` is not an empty
+  list. Releases stored before this deploy keep what they recorded, who pressed and when; one
+  whose `forced_blockers` is `[]` waived nothing and reads as an ordinary approval on the
+  session read, the Desk, the retroverification file and the stored packet's check block, which
+  is outside the hash (ADR 0020). One whose `forced_blockers` is null predates the column and
+  stays forced (ENG-1305). No row is rewritten.
+
+Rejected:
+
+- The approval takes the Turn claim. It would wait up to 90 s behind a Guide, and a turn already
+  past its claim would still lose the version.
+- The approval does not move the version. A Zerar, or a session that moved, would no longer
+  refuse the mint (ADR 0052, ADR 0066).
+- Any lost landing is retried. A turn that lost to another turn would write over that turn's
+  exchange, which is what `_land` exists to prevent (ENG-643).
+- The 409 is kept and the tablet asks again. The Guide's line is already paid for and lost, and
+  the tablet does not ask a turn's 409 again.
+- A clean force stays forced (the rule before this one). A clean passage would read as forced in
+  the manifest, the dossier and the retroverification file, which is the record the ticket says
+  misleads the consultant.
+
+Consequences:
+
+- A turn lands after an approval that was minted from the conversation before it. The packet
+  reads nothing from the conversation, so the approved draft stays approved and asking again
+  returns the same release.
+- Every write of the conversation takes the second landing, the opening and the telling-back
+  verdict included. A verdict that lands after a release now keeps its check, which the
+  packet does read: the draft has moved, and the next approval is a new version, as when the
+  team tells the passage back again. Before, that verdict was refused and its check lost.
+- The rule reads the conversation, not who moved the version. Today only an approval's claim
+  and a Zerar move it without touching the conversation, and a Zerar is answered as gone; a
+  writer added later that moves the version and leaves the conversation is landed over once in
+  the same way.
+- A clean force no longer records who pressed it. The Desk already draws a null `forced_at` as a
+  release nobody forced.
+- A reader that reads `forced_at`, `forced_by` or the packet's `check.forced` on its own would
+  call an old clean force forced again; every reader asks the one derivation.

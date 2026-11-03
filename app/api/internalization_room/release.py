@@ -1,43 +1,81 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser, ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import NothingToForce
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.models.internalization_room import (
+    ApprovedDraftView,
     ForcedReleaseResponse,
     ForceReleaseRequest,
     TeamReleaseResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.manifest import refine_manifest
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.passage_force import force_passage
 from app.services.internalization_room.release import (
     GROUNDED_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
-    build_internalization_release,
+    packet_as_read,
     release_by_version,
+    was_forced,
 )
+from app.services.internalization_room.release_check import check_release, rerun_release_check
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
 
 
+def forced_answer(release: IRRelease) -> ForcedReleaseResponse:
+    return ForcedReleaseResponse(
+        release_id=release.packet["release_id"],
+        session_id=release.session_id,
+        version=release.version,
+        package_sha256=release.package_sha256,
+        approved_at=as_utc(release.approved_at).isoformat(),
+        forced_at=(
+            as_utc(release.forced_at).isoformat()
+            if release.forced_at and was_forced(release.forced_by, release.forced_blockers)
+            else None
+        ),
+    )
+
+
+def check_later(background: BackgroundTasks, release: IRRelease) -> None:
+    if release.release_check is None:
+        background.add_task(check_release, release.id)
+
+
+def approval_of(release: IRRelease) -> ApprovedDraftView:
+    forced = was_forced(release.forced_by, release.forced_blockers)
+    return ApprovedDraftView(
+        version=release.version,
+        release_id=release.packet["release_id"],
+        approved_at=as_utc(release.approved_at).isoformat(),
+        forced=forced,
+        forced_blockers=(release.forced_blockers or []) if forced else [],
+    )
+
+
 @router.get("/facilitator/sessions/{session_id}/release")
 async def internalization_release(
-    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: ReaderUser, response: Response, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """The Refine handoff artifact for one finished session, built fail-closed.
+    """The Refine **Manifest** of this session's draft, saved as ``{releaseId}.json`` (ADR 0086).
 
-    A facilitator route on purpose: the release is the seam between apps, read by the
-    person carrying the work into Refine, never by the tablet in front of the team. A
-    session that is not ready answers 409 with the blockers named — a partial artifact
-    would look downstream exactly like a finished one.
+    A facilitator route on purpose: the manifest is the seam between apps, read by the
+    person carrying the work into Refine, never by the tablet in front of the team. A draft
+    that is not approved as it stands is read live under the passage's last release's id, with
+    no finalised time and no check, and answers 404 when it holds no take. An archived, demo
+    or team-less session answers 409 ``DRAFT_NOT_APPROVED``; the stored packet is read back by
+    version.
 
     Gated on ``ReaderUser`` and not on the app-wide gate it arrived with. It was
     written against a ``CurrentUser`` that ENG-438 had already retired — the route is
@@ -50,11 +88,12 @@ async def internalization_release(
     arrived with. That is a defect this composition created rather than inherited: on
     ``main`` there was no per-team scoping to violate, and on this branch the route did not
     exist, so neither side was wrong and their intersection had no reviewer. Resolving the
-    session by id alone handed a facilitator of one team the handoff artifact of another —
-    every finding, every quote, the whole of what that team recorded.
+    session by id alone handed a facilitator of one team what another team recorded.
     """
     session = await room.get_session_for_reader(db, user, session_id)
-    return await build_internalization_release(db, session)
+    manifest = await refine_manifest(db, session)
+    response.headers["content-disposition"] = f'attachment; filename="{manifest["releaseId"]}.json"'
+    return manifest
 
 
 @router.get("/facilitator/sessions/{session_id}/releases/{version}")
@@ -64,11 +103,11 @@ async def facilitator_release_by_version(
     """One approved draft of this session's passage, exactly as it was approved.
 
     The stored packet is the contract (ADR 0014): what a **Version** means is that this
-    content was approved under that number, so it is served verbatim and never rebuilt. A
-    forced draft reads back here whole — its open findings listed and `checked` false — which
-    is the one thing the route beside this cannot do. That one is a live rebuild under the
-    whole list, and on a session a facilitator had to force it answers with the refusal
-    rather than with the draft the Desk minted.
+    content was approved under that number, so it is served as stored and never rebuilt, its
+    check block's force derived from what it waived (ADR 0080). A forced draft reads back here
+    whole — its open findings listed and `checked` false. The route beside this serves Refine
+    the manifest of the approved draft, which carries none of the team's words; this is the
+    record that keeps them.
 
     A number nobody approved is 404, and so is a session this facilitator does not
     facilitate: the scoping is the same one the read beside it does, and a release carries
@@ -76,7 +115,22 @@ async def facilitator_release_by_version(
     """
     session = await room.get_session_for_reader(db, user, session_id)
     release = await release_by_version(db, session, version)
-    return release.packet
+    return packet_as_read(release)
+
+
+@router.post("/facilitator/sessions/{session_id}/releases/{version}/check")
+async def rerun_internalization_release_check(
+    session_id: str, version: int, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """The check of an approved version, run again: the new result replaces the earlier one.
+
+    Only a facilitator's code runs it, the team's is refused by the role. The result is the
+    row's, never the manifest's: it travels in the approval of the retroverificação file
+    (ADR 0102).
+    """
+    session = await room.get_session_for_facilitator(db, user, session_id)
+    release = await release_by_version(db, session, version)
+    return await rerun_release_check(db, release)
 
 
 @router.post(
@@ -87,9 +141,10 @@ async def force_internalization_release(
     session_id: str,
     payload: ForceReleaseRequest,
     user: FacilitatorUser,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> ForcedReleaseResponse:
-    """A facilitator mints this release past an open finding or an unheard part.
+    """A facilitator mints this release past every blocker but a missing recording.
 
     The road for a team that disagrees with a finding is the raised hand, and it ends here:
     a person answered it, agreed with the team, and this is that person's code. So it is a
@@ -100,9 +155,10 @@ async def force_internalization_release(
     whose only purpose is to overrule the gate has nothing to say to a caller who did not ask
     it to, and answering about the session would mean deciding what that caller meant.
 
-    Only the two codes of ``FORCEABLE_BLOCKERS`` are set aside; the rest refuse the force with
-    the same 409 naming them the Desk's own routes always answer a refusal with. The team's own
-    route answers those with a 200 now (ENG-954); this one is a person's, and stays a 409.
+    Every blocker but ``no_rehearsal_audio`` is set aside (ADR 0075); that one refuses the
+    force with the same 409 naming it the Desk's own routes always answer a refusal with. The
+    team's own route answers its refusals with a 200 now (ENG-954); this one is a person's, and
+    stays a 409.
     """
     if not payload.force:
         raise NothingToForce(
@@ -110,15 +166,38 @@ async def force_internalization_release(
         )
     session = await room.get_session_for_facilitator(db, user, session_id)
     release = await approve_release(db, session, forced_by=user.id)
+    check_later(background, release)
     nudge(session.project_id, "release")
-    return ForcedReleaseResponse(
-        release_id=release.packet["release_id"],
-        session_id=release.session_id,
-        version=release.version,
-        package_sha256=release.package_sha256,
-        approved_at=as_utc(release.approved_at).isoformat(),
-        forced_at=as_utc(release.forced_at).isoformat() if release.forced_at else None,
-    )
+    return forced_answer(release)
+
+
+@router.post(
+    "/facilitator/projects/{project_id}/passages/{pericope}/release",
+    response_model=ForcedReleaseResponse,
+)
+async def force_passage_release(
+    project_id: str,
+    payload: ForceReleaseRequest,
+    user: FacilitatorUser,
+    background: BackgroundTasks,
+    pericope: str = Path(max_length=120),
+    db: AsyncSession = Depends(get_db),
+) -> ForcedReleaseResponse:
+    """«Aprovar mesmo assim (forçar)», addressed to the passage like the Zerar (ADR 0075).
+
+    The room picks the passage's live session that holds rehearsal takes, so the Desk names
+    the team and the pericope and never a session. A team the caller does not facilitate is
+    refused as one that does not exist; a body that does not ask for a force is refused as on
+    the route above.
+    """
+    if not payload.force:
+        raise NothingToForce(
+            "this route only mints a release past the gate, and nothing asked it to"
+        )
+    release = await force_passage(db, user, project_id=project_id, pericope=pericope)
+    check_later(background, release)
+    nudge(project_id, "release")
+    return forced_answer(release)
 
 
 async def _team_release_blocked(
@@ -126,38 +205,30 @@ async def _team_release_blocked(
 ) -> TeamReleaseResponse:
     """The refused half of the team's answer, its ground derived the finish route's way.
 
-    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` land only where their own
-    blocker fired — but that is the gate's rule, not this function's:
-    `compose_internalization_release` appends `untold_stretch` exactly when `first_untold`
-    finds one, `untold_part` exactly when `untold_parts` is non-empty, and
-    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over a
-    rehearsed part. Asking the same service helpers `terminei` already reads its own answer
-    from (`app/api/internalization_room/back_translation.py`), unconditionally once inside the
-    one short-circuit below, answers exactly the body the gate's own append order already
-    promises; the one guard left is there only to skip the `takes_of` query when nothing needs
-    it. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
+    `unheard_take_ids` and `untold_segment_id` land only where their own blocker fired — but
+    that is the gate's rule, not this function's: `compose_internalization_release` appends
+    `untold_stretch` exactly when `first_untold` finds one, and
+    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over the current
+    parts of a rehearsed session. Asking the same service helpers `terminei` already reads its
+    own answer from (`app/api/internalization_room/back_translation.py`), unconditionally once
+    inside the one short-circuit below, answers exactly the body the gate's own append order
+    already promises; the one guard left is there only to skip the reads when nothing needs
+    them. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
     and re-deriving the ground after the refusal keeps
     `compose_internalization_release`'s return type untouched.
     """
-    untold_take_ids: list[str] = []
     unheard_take_ids: list[str] = []
     untold_segment_id: str | None = None
     if GROUNDED_BLOCKERS & set(blockers):
         final = await room.final_segments(db, session.id)
         untold = room.first_untold(final)
         untold_segment_id = untold.id if untold else None
-        rehearsed = room.rehearsed_parts(final)
-        if "untold_part" in blockers:
-            takes = await takes_of(db, session.id)
-            untold_take_ids = [
-                part.id for part in room.untold_parts(current_parts(takes), rehearsed)
-            ]
+        takes = await takes_of(db, session.id)
         state = room.back_translation_of(session)
-        unheard_take_ids = room.unheard_parts(state, rehearsed)
+        unheard_take_ids = room.unheard_parts(state, current_parts(takes), final)
     return TeamReleaseResponse(
         session_id=session.id,
         blockers=blockers,
-        untold_take_ids=untold_take_ids,
         unheard_take_ids=unheard_take_ids,
         untold_segment_id=untold_segment_id,
     )
@@ -170,6 +241,7 @@ async def _team_release_blocked(
 )
 async def approve_internalization_release(
     session_id: str,
+    background: BackgroundTasks,
     project_id: str = device_project_dep,
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
@@ -205,12 +277,16 @@ async def approve_internalization_release(
         release = await approve_release(db, session, device_id=device_id)
     except InternalizationReleaseBlocked as exc:
         return await _team_release_blocked(db, session, exc.blockers)
+    check_later(background, release)
     nudge(session.project_id, "release")
+    approval = approval_of(release)
     return TeamReleaseResponse(
         session_id=session_id,
-        release_id=release.packet["release_id"],
-        version=release.version,
+        release_id=approval.release_id,
+        version=approval.version,
         package_sha256=release.package_sha256,
-        approved_at=as_utc(release.approved_at).isoformat(),
+        approved_at=approval.approved_at,
         blockers=[],
+        forced=approval.forced,
+        forced_blockers=approval.forced_blockers,
     )

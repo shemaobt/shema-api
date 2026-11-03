@@ -1,6 +1,6 @@
 """ENG-1333 — the ledger the consultant reads is the one the voice reads, after a re-pin.
 
-A session keeps the canon it opened with until its passage is approved, and the Guide's turn
+A session keeps the canon it opened with while it is live, and the Guide's turn
 reads its ledger under that pin. The consultant's read has to name the same beads, so this plays
 a real tablet turn on a session whose canon has been replaced since it opened and holds the
 ledger the Desk was served before that turn against the one the Guide was handed in it.

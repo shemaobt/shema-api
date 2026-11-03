@@ -1,11 +1,19 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_serializer,
+)
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
+from app.models.internalization_room_text_seam import Outcome
 
 
 class LabelledElement(BaseModel):
@@ -22,8 +30,8 @@ class LabelledElement(BaseModel):
 
     **`label_pt` is nullable and `label_en` is not**, which is the shape that promise actually
     names: the Desk's own `CoverageLabels` is `{ pt: string | null, en: string }`, because
-    English comes almost free from the canon and Portuguese is translation work. The canon
-    serves fourteen and D-03 walks every team through them.
+    English comes almost free from the canon and Portuguese is translation work. The room
+    serves three books and D-03 walks every team through each of their passages.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -131,8 +139,8 @@ class ElementCoverage(BaseModel):
     `label_pt` is nullable and `label_en` is not, which is `LabelledElement`'s shape carried
     through unchanged. A passage nobody has translated is served from the canon with
     Portuguese absent, and a bead here must be able to say so: narrowing it to `str` would
-    mean this route could only ever answer the four translated passages, while D-03 walks
-    every team through all fourteen.
+    mean this route could only ever answer Ruth's translated passages, while D-03 walks
+    every team through every passage of the served books.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -160,6 +168,7 @@ class PassageRelease(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    release_id: str
     version: int
     forced_at: datetime | None
     approved_at: datetime
@@ -175,6 +184,17 @@ class PericopeStanding(BaseModel):
     release: PassageRelease | None
     open_findings: int
     approved: bool
+    session_id: str | None
+    has_takes: bool
+
+
+class BookStanding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    book: str
+    passage_total: int
+    approved_total: int
+    complete: bool
 
 
 class SessionBead(BaseModel):
@@ -265,6 +285,7 @@ class CoverageView(BaseModel):
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 
 Cause = Literal[
+    "scene_rehearsal",
     "entrance",
     "articulation_entrance",
     "where_we_are",
@@ -332,6 +353,33 @@ class SegmentView(BaseModel):
     #: it resumes a told stretch. Null while nothing was told on it — a piece cut out of another
     #: stretch — and on a stretch told through the text seam, which records no take.
     bridge_take_id: str | None = None
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The number the voice speaks for this stretch: its 1-based position among the told "
+            "stretches, in the voice's order. Null on a piece nobody has told yet, which takes "
+            "no number. A stretch told again keeps its number, and numbering starts over when "
+            "the translation is started over. Asked with `include_stale=true`, the stale "
+            "stretches are numbered too, in her order: part by part, the standing stretches "
+            "before the stale ones of the same part, and no number repeats."
+        ),
+    )
+    stale: bool | None = Field(
+        default=None,
+        description=(
+            "Only served to a tablet that asks with `include_stale=true`, and then on every "
+            "stretch: true on one whose part was recorded again and that nobody has told again, "
+            "which stays out of the check, the release gate and the findings; false on the "
+            "stretches that count. Absent when the tablet did not ask."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _a_mark_nobody_asked_for_is_absent(self, handler: Any):  # type: ignore[no-untyped-def]
+        served: dict[str, Any] = handler(self)
+        if self.stale is None:
+            served.pop("stale", None)
+        return served
 
 
 class DivideSegmentRequest(BaseModel):
@@ -343,6 +391,19 @@ class DivideSegmentRequest(BaseModel):
     """
 
     at_ms: int
+
+
+class GrainSwitchRequest(BaseModel):
+    """The grain the team chose: the passage told whole, or scene by scene."""
+
+    grain: Literal["whole", "scene"]
+    reopens_the_approved_draft: bool = Field(
+        default=False,
+        description=(
+            "True when the team armed the tap that re-opens its approved draft (ADR 0081). "
+            "Without it, over an approved draft, a switch is refused DRAFT_APPROVED."
+        ),
+    )
 
 
 class SegmentsResponse(BaseModel):
@@ -361,10 +422,67 @@ class SegmentsResponse(BaseModel):
     needs_person: bool = False
 
 
+class SentenceLaidInResponse(BaseModel):
+    """The part after one whole sentence was recorded again and laid in its frase's place.
+
+    The part is a new rehearsal take: the frase and every other frase of that part now sit on
+    it, the frases after the new sentence moved by the difference in length, and the take they
+    sat on before is kept. The whole list, as the other stretch verbs answer.
+    """
+
+    session_id: str
+    segments: list[SegmentView] = Field(default_factory=list)
+
+
 class FindingView(BaseModel):
     kind: str
-    frase: int | None = None
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The frase the check named, in the number the voice speaks it, followed to where "
+            "that stretch stands now: a cut, a telling or a part recorded again moves it. A "
+            "missing element placed after frase N says N while `segment_id` points at the "
+            "stretch after it. Null when the analyst named no readable frase, and when the "
+            "stretch it named is no longer among the told ones."
+        ),
+    )
     segment_id: str | None = None
+
+
+class RerecordedSentenceView(BaseModel):
+    """One sentence the team recorded again and the room laid into its part.
+
+    Both recordings are kept: `previous_take_id` is the part as it stood before, still a
+    rehearsal take of the session and still playable by its id, and `sentence_id` names the
+    sentence as the team recorded it, before its silence was trimmed. `take_id`, `starts_ms`
+    and `ends_ms` are where the new sentence sits on the part now.
+    """
+
+    sentence_id: str
+    segment_id: str
+    previous_take_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+
+
+class ReRecordedSentence(BaseModel):
+    sentence_id: str
+    segment_id: str
+    scene: str | None
+    at: str
+    starts_ms: int
+    replaced_ends_ms: int | None
+    ends_ms: int
+    previous_take_id: str
+    take_id: str = Field(description="The take the sentence was laid into.")
+    in_use: bool
+    awaiting_frase: int | None
+
+
+class SessionReRecordedSentences(BaseModel):
+    session_id: str
+    sentences: list[ReRecordedSentence]
 
 
 class BackTranslationProgress(BaseModel):
@@ -385,7 +503,157 @@ class BackTranslationProgress(BaseModel):
     finding_segment_id: str | None = None
     finding_kind: str | None = None
     findings: list[FindingView] = Field(default_factory=list)
+    named_nuance: FindingView | None = None
     superseded_attempts: int = 0
+    bring_back: list[int] = Field(
+        default_factory=list,
+        description=(
+            "The numbers of the joined parts whose scene rehearsal's frases «trazer de volta as "
+            "traduções do ensaio desta cena» can lay again: none of them stands on the part, no "
+            "sentence was re-recorded in it, and the rehearsal is of this session (ADR 0085)."
+        ),
+    )
+    awaiting_segment_id: str | None = Field(
+        default=None,
+        description=(
+            "The frase whose sentence was recorded again and is not translated yet. It keeps "
+            "its number and only its own translation, at exactly the span the new sentence "
+            "took, may be told; until then «terminei» answers `FRASE_AWAITING` naming it, "
+            "with her N-6. Null when no frase awaits."
+        ),
+    )
+    rerecorded_sentences: list[RerecordedSentenceView] = Field(
+        default_factory=list,
+        description="Every sentence recorded again and laid into its part, in the order laid.",
+    )
+
+
+class KeptTakeView(BaseModel):
+    scope: str
+    turn_number: int
+    audio_url: str
+
+
+class ApprovedDraftView(BaseModel):
+    version: int
+    release_id: str
+    approved_at: str
+    forced: bool
+    forced_blockers: list[str] = Field(default_factory=list)
+    #: How many **Outside listeners** this version's **Checagem externa** has numbered; none
+    #: before it is opened.
+    listeners: int = 0
+
+
+class ExternalCheckPart(BaseModel):
+    take_id: str
+    key: str | None
+
+
+class ExternalCheckFrase(BaseModel):
+    #: Null on a release written before frases were numbered.
+    frase: int | None
+    segment_id: str
+    take_id: str | None
+    starts_ms: int | None
+    ends_ms: int | None
+
+
+class ExternalCheckView(BaseModel):
+    """The **Checagem externa** of one approved version, as its first open copied it."""
+
+    check_id: str
+    version: int
+    opened_at: str
+    takes: list[ExternalCheckPart]
+    frases: list[ExternalCheckFrase]
+
+
+class ListenerRecordingView(BaseModel):
+    """A **Listener recording** as stored; no field ever carries its words."""
+
+    recording_id: str
+    kind: str
+    #: The frase a ``frase`` comment is on, as the tablet named it, and its **Frase number** in
+    #: the check (null on a stretch never numbered, or on a part).
+    segment_id: str | None
+    frase: int | None
+    content_type: str
+    duration_ms: int | None
+    size_bytes: int
+    sha256: str
+    stored_at: str
+
+
+class ListenerFraseView(BaseModel):
+    """One frase a listener answered: ok only when marked «está boa» with no comment."""
+
+    segment_id: str
+    frase: int | None
+    ok: bool
+    comments: list[ListenerRecordingView]
+
+
+class ListenerView(BaseModel):
+    """An **Outside listener**, known by the number alone, with what they recorded."""
+
+    number: int
+    started_at: str
+    finished_at: str | None
+    completed: bool
+    #: The newest retelling; the earlier ones stay stored.
+    retelling: ListenerRecordingView | None
+    whole: list[ListenerRecordingView]
+    frases: list[ListenerFraseView]
+
+
+class ListenerFactsFrase(BaseModel):
+    segment_id: str
+    frase: int | None
+    ok: bool
+    comments: int
+
+
+class ExternalCheckPointer(BaseModel):
+    """What the Manifest says of a version's external check: her three keys, in her order."""
+
+    listeners: int
+    comments: int
+    url: str
+
+
+class ListenerFacts(BaseModel):
+    """What the team reads back of a listener: facts, never a recording of theirs."""
+
+    number: int
+    started_at: str
+    finished_at: str | None
+    completed: bool
+    retold: bool
+    whole: int
+    frases: list[ListenerFactsFrase]
+
+
+class ExternalCheckListenersView(BaseModel):
+    """A version's **Checagem externa** with its outside listeners, for the facilitator."""
+
+    check_id: str
+    version: int
+    opened_at: str
+    listeners: list[ListenerView]
+
+
+class NewListenerRequest(BaseModel):
+    #: Minted by the tablet for one «Novo ouvinte» tap and sent again with any resend of it.
+    attempt: str = Field(min_length=1, max_length=64)
+
+
+class MarkRequest(BaseModel):
+    segment_id: str
+
+
+class FinishRequest(BaseModel):
+    completed: bool
 
 
 class SessionStateResponse(BaseModel):
@@ -412,6 +680,11 @@ class SessionStateResponse(BaseModel):
     #: session's Opening only while this is false.
     opened: bool = False
     moment: MomentView | None = None
+    kept_takes: list[KeptTakeView] = Field(default_factory=list)
+    #: The approval this session's draft stands under, while the passage's latest release
+    #: carries the hash of the packet the session composes now (ADR 0071); null otherwise, and
+    #: always null on a panorama. Derived on every read, never stored.
+    approved: ApprovedDraftView | None = None
 
 
 class TurnResponse(BaseModel):
@@ -437,12 +710,16 @@ class PassageView(BaseModel):
     #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
     #: the one entry with no beads of its own.
     kind: Literal["passage", "panorama"]
-    #: Where to fetch the line that names this passage aloud. There is no text field: the
-    #: team does not read, so a passage the room cannot say is a passage it cannot offer.
-    audio_url: str
+    #: Where to fetch the line that names this entry aloud, or None when no line is written
+    #: for it or its line could not be voiced (ADR 0066).
+    audio_url: str | None = None
+    #: The passage's Scripture reference as its Meaning Map's heading writes it, for the
+    #: facilitator's menu. The panorama has none.
+    reference: str | None = None
     beads: int = 0
     absence_index: int = -1
-    #: The team holds a live Release of this passage, from any tablet, forced or not.
+    #: The team's draft of this passage stands under its latest live Release, approved from
+    #: any tablet, forced or not; a re-open clears it until the next approval (ADR 0081).
     approved: bool = False
 
 
@@ -451,16 +728,17 @@ class BookPassagesResponse(BaseModel):
     passages: list[PassageView]
 
 
+class ServedBooksResponse(BaseModel):
+    books: list[str]
+
+
 class FixedLineView(BaseModel):
     audio_url: str
 
 
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
-    #: How many stretches the passage has after this call, not how many recordings the team
-    #: sent. A retelling replaces the stretch it retells, so it adds none — the number moves
-    #: only when the team tells a stretch nobody had told yet.
-    chunks: int
+    segment_id: str
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
@@ -471,6 +749,13 @@ class BackTranslationChunkResponse(BaseModel):
     #: next one will be too. False on every telling after it, because the ask is once per
     #: stretch and repeating it would erase the visit it already got.
     needs_person: bool = False
+    frase: int | None = Field(
+        default=None,
+        description=(
+            "The number the voice speaks for the stretch just told, which is the number the "
+            "next session read serves for it. A stretch told again keeps its number."
+        ),
+    )
 
 
 class PlayedTake(BaseModel):
@@ -482,9 +767,8 @@ class PlayedTake(BaseModel):
     it. Named, the rule the room applies is per part: what the team heard of one part is judged
     against that part alone.
 
-    The tablet keeps the ledger and sends all of it every time, because what is stored is what
-    was sent: a report listing one part is a report that one part was played and the others
-    were not.
+    Reports add up per take (ADR 0074): the tablet reports as each part ends and on leaving, so
+    a report listing one part says what was played of that part and nothing about the others.
 
     A length of zero is the honest default for an entry that arrives without one, rather than a
     refusal. Nothing can be measured against it, so it costs the release — and `terminei` still
@@ -530,13 +814,58 @@ class FinishBackTranslationRequest(BaseModel):
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
 
+class CheckRefusal(StrEnum):
+    """Why `terminei` reached no verdict, asked in this order and answered with the first.
+
+    - `FRASE_AWAITING`: a frase stands with no translation, or its sentence was recorded again
+      and awaits its new one, asked first, with her N-6 in `fixed_line`; `untold_segment_id`
+      names it and the tablet opens it.
+    - `PART_UNHEARD`: a part of the recording was not heard through; `unheard_take_ids` names it,
+      `fixed_line` is her P-unheard line, and the screen says «ainda falta ouvir um trecho da
+      gravação».
+    - `STRETCH_UNTRANSLATED`: on a joined recording, a part no translated frase stands on;
+      `untranslated` names each by its scene and where to play from, `fixed_line` is her N-3
+      line, and the screen says «falta traduzir um trecho — ouçam e traduzam, depois toquem em
+      'terminei'» with the scenes by number.
+    - `NOTHING_TRANSLATED`: no frase is translated; the screen says «ainda não tem frase
+      traduzida».
+    - `CHECK_UNAVAILABLE`: the check's model could not answer and nothing was saved; the screen
+      says «não deu para conferir agora — tentem de novo», and `terminei` again is the retry.
+    """
+
+    FRASE_AWAITING = "FRASE_AWAITING"
+    PART_UNHEARD = "PART_UNHEARD"
+    STRETCH_UNTRANSLATED = "STRETCH_UNTRANSLATED"
+    NOTHING_TRANSLATED = "NOTHING_TRANSLATED"
+    CHECK_UNAVAILABLE = "CHECK_UNAVAILABLE"
+
+
+class UntranslatedPart(BaseModel):
+    """A part of a joined recording with something still to translate, and where it starts."""
+
+    take_id: str
+    scene: int | None = Field(
+        default=None,
+        description=(
+            "The scene this part is, by its number in the passage, from one: the hint names "
+            "it («cena 2»). Null on a part recorded whole, which is no scene."
+        ),
+    )
+    from_ms: int = Field(
+        description=(
+            "Where in this part's own milliseconds the recording plays from: the first stretch "
+            "no translated frase covers, or 0 on a part with no translated frase at all."
+        ),
+    )
+
+
 class BackTranslationVerdictResponse(BaseModel):
     """What `terminei` answers: the verdict's voice and the findings of the check that gave it.
 
     `findings` is every finding of the check, in the analyst's order, as a kind, a frase number
     and a stretch, and never the analyst's note. It rides beside the leading finding and does
-    not replace it. An errand answer, which is not a check's, carries no list: the session
-    read is the standing truth, and a tablet that needs the marks after an errand reads them
+    not replace it. A refusal, which is not a check's answer, carries no list: the session
+    read is the standing truth, and a tablet that needs the marks after a refusal reads them
     there.
     """
 
@@ -565,18 +894,22 @@ class BackTranslationVerdictResponse(BaseModel):
     #: they owe is a clip to play. Empty on every answer that is not this refusal, so the app
     #: decides by the field and never by what is missing from the body.
     unheard_take_ids: list[str] = Field(default_factory=list)
-    #: Which current parts of the rehearsal carry nobody's words, by their own take, in the
-    #: order the parts read; empty when every one of them has been told back. Its own field for
-    #: the reason the two above are their own: a part recorded again owes a telling, and an app
-    #: reading this off `unheard_take_ids` would send the team to play a recording they still
-    #: have to explain, while one reading it off `untold_segment_id` would look for a stretch
-    #: that does not exist. Empty on every answer that is not this refusal.
-    untold_take_ids: list[str] = Field(default_factory=list)
     findings: list[FindingView] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
     check_at: datetime | None = None
     named_nuance: FindingView | None = None
+    refusal: CheckRefusal | None = Field(
+        default=None,
+        description="Set when the press reached no verdict, and why; null on a verdict.",
+    )
+    untranslated: list[UntranslatedPart] = Field(
+        default_factory=list,
+        description=(
+            "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order; the "
+            "recording plays from the first. Empty on every other answer."
+        ),
+    )
 
 
 class VerdictHeardRequest(BaseModel):
@@ -585,6 +918,54 @@ class VerdictHeardRequest(BaseModel):
 
 class VerdictHeardResponse(BaseModel):
     marked: bool
+
+
+class ListenedWholeResponse(BaseModel):
+    """What follows a listening report, before any «terminei»: the parts still unheard, and more.
+
+    `unheard_take_ids` answers every report. Only a joined recording is ever checked by itself,
+    and only once a passage record: when `automatic_check` is true the tablet says
+    `fixed_line`, her N-2, reads «conferindo…» on «terminei» and presses the finish itself,
+    with no tap. Otherwise the tablet does what it does after a listen today.
+    """
+
+    session_id: str
+    automatic_check: bool = Field(
+        default=False,
+        description=(
+            "True when the room checks this recording now with no tap: say `fixed_line`, then "
+            "call `back-translation/finish` as «terminei» does. Never true on a recording no "
+            "join touched, nor once the passage record holds a check."
+        ),
+    )
+    fixed_line: str = Field(
+        default="",
+        description="Her line to say now, by position (`GET /fixed-lines`); empty for none.",
+    )
+    refusal: CheckRefusal | None = Field(
+        default=None,
+        description=(
+            "`STRETCH_UNTRANSLATED` when a joined recording still has something to translate, "
+            "whatever the record holds: say `fixed_line`, her N-3, show «falta traduzir um "
+            "trecho — ouçam e traduzam, depois toquem em 'terminei'» with the scenes, and play "
+            "from the first of `untranslated`. Null otherwise."
+        ),
+    )
+    untranslated: list[UntranslatedPart] = Field(
+        default_factory=list,
+        description=(
+            "On `STRETCH_UNTRANSLATED`, the parts still to translate in passage order: a part "
+            "with no translated frase, or a WAV part with half a second or more no frase "
+            "covers. Empty otherwise."
+        ),
+    )
+    unheard_take_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The current parts the room still counts as unheard after storing this report, "
+            "sorted, by the rule of ADR 0074; empty when every part is heard."
+        ),
+    )
 
 
 class NeedsPersonResponse(BaseModel):
@@ -646,9 +1027,9 @@ class InboxQuestionView(BaseModel):
     bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
     both are served and the client picks, as it already does everywhere else.
 
-    **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
-    passages and four of them are translated, so on the other ten every bead carries English
-    and a null Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
+    **``label_en`` is the one that is always there.** Only Ruth has a catalogue; Esther and
+    Jonah have none, so on their passages every bead but a scene carries English and a null
+    Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
     and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
@@ -711,6 +1092,7 @@ class QuestionInboxResponse(BaseModel):
     than ``questions``, and when the two disagree the count is the true one.** That is the
     point of serving it: a client that counts the array it received reads one number inside
     the Desk and a larger one on the team list, and nothing about either looks broken.
+    ``answered_total`` is counted the same way for the questions answered or resolved.
 
     ``next_cursor`` is null on the last page. It is opaque on purpose — it stands for a place
     in this route's order, and a caller that took it apart would be depending on that order
@@ -719,6 +1101,7 @@ class QuestionInboxResponse(BaseModel):
 
     questions: list[InboxQuestionView]
     open_total: int
+    answered_total: int
     next_cursor: str | None
 
 
@@ -760,6 +1143,10 @@ class FacilitatorSessionView(BaseModel):
     project_id: str
     team_name: str
     halt: str | None = None
+    #: The halt count a visit or its undo names (ADR 0091).
+    halts_raised: int
+    #: The standing warning's moment, ISO-8601 with an offset; a visit names it beside the halt
+    #: count (ADR 0091).
     warned_at: str | None = None
     #: ISO-8601 with an offset, like every other instant this module serves.
     attended_at: str | None = None
@@ -851,6 +1238,18 @@ class FacilitatorSessionsResponse(BaseModel):
     devices: list[FacilitatorHaltedDeviceView] = []
 
 
+def _an_instant_on_the_utc_clock(when: datetime) -> datetime:
+    try:
+        return when.astimezone(UTC)
+    except OverflowError:
+        raise ValueError("A recording time with no instant on the UTC clock") from None
+
+
+#: A **Recording time** as the tablet sends it: an instant with its offset, read on the UTC
+#: clock. One past the calendar's edge once converted is malformed, as one with no offset is.
+SentRecordingTime = Annotated[AwareDatetime, AfterValidator(_an_instant_on_the_utc_clock)]
+
+
 class TakeResponse(BaseModel):
     take_id: str
     session_id: str
@@ -866,13 +1265,55 @@ class TakeResponse(BaseModel):
     #: to Refine.
     ordinal: int | None = None
     pass_number: int | None = None
+    #: A tablet resuming from the listing reads this to know the recording is a joined one.
+    origin: str | None = None
     pericope: str = ""
     recorded_at: str = ""
+    duration_ms: int | None = None
+    #: When a grain switch set this take aside; the tablet never shows such a take as a part.
+    set_aside_at: str | None = None
 
 
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+    #: The grain in force: the last switch's, else read off the current parts; null with no part
+    #: and no switch.
+    grain: Literal["whole", "scene"] | None = None
+
+
+class ReaderTakeResponse(TakeResponse):
+    #: When the server accepted the take, with its offset.
+    created_at: str
+    #: When the server stamped the take as no longer live; null while live, and on a take stored
+    #: before the stamp existed (ADR 0104).
+    superseded_at: str | None = None
+    #: The **Clock offset** of the tablet that joined this part, null under five minutes and on
+    #: any take that is not a joined part. The team never sees it.
+    device_clock_offset_ms: int | None = None
+
+
+class ReaderTakesResponse(BaseModel):
+    session_id: str
+    takes: list[ReaderTakeResponse]
+    #: As `TakesResponse.grain`.
+    grain: Literal["whole", "scene"] | None = None
+
+
+class GrainSwitchView(BaseModel):
+    #: The switch's time, as the takes listing gives the `set_aside_at` of the takes it set aside.
+    at: str
+    #: The grain the switch left: scene if any take it set aside has a number, else whole.
+    from_: Literal["whole", "scene"] = Field(serialization_alias="from")
+    #: The other grain. The grain in force is the takes listing's `grain`, never this.
+    to: Literal["whole", "scene"]
+    #: The takes the switch set aside, in the takes listing's order.
+    take_ids: list[str]
+
+
+class GrainSwitchesResponse(BaseModel):
+    #: Newest first.
+    switches: list[GrainSwitchView]
 
 
 class MotherTongueTake(BaseModel):
@@ -886,11 +1327,86 @@ class MotherTongueTake(BaseModel):
     play_url: str | None
     unread: bool
     duration_ms: int | None = None
+    #: The **Clock offset** of the tablet that joined this part, for the consultant's one line.
+    device_clock_offset_ms: int | None = None
+
+
+class KeptRehearsal(BaseModel):
+    turn_number: int
+    words: str
+    from_other_session: bool
+    scope: str
+    audio_url: str
 
 
 class MotherTongueTakesResponse(BaseModel):
     session_id: str
     takes: list[MotherTongueTake]
+    kept_rehearsals: list[KeptRehearsal] = Field(default_factory=list)
+    recording_grain: Literal["parts", "whole"] | None = None
+    finished_at: str | None = None
+
+
+class TakeDownload(BaseModel):
+    """One rehearsal take for Refine: its **Part key**, its file name, a link that saves it."""
+
+    take_id: str
+    key: str
+    filename: str
+    url: str
+    sha256: str
+    size_bytes: int
+    duration_ms: int | None
+    content_type: str
+
+
+class SupersededTakeDownload(TakeDownload):
+    """A **Superseded take**, with the server's time it stopped being live, if stamped."""
+
+    superseded_at: str | None
+    #: When a grain switch set it aside.
+    set_aside_at: str | None = None
+
+
+class InsertDownload(BaseModel):
+    """The raw recording of one re-recorded sentence, under her ``insert-`` name."""
+
+    sentence_id: str
+    key: str
+    filename: str
+    url: str
+
+
+class WholeDownload(BaseModel):
+    """The whole passage as one WAV: the route that serves it, built when it is asked."""
+
+    filename: str
+    url: str
+    duration_ms: int | None
+
+
+class WholePassageLinkResponse(BaseModel):
+    """Where a facilitator's browser fetches the whole passage as one WAV, and for how long.
+
+    Handed back rather than redirected to, as `QuestionAudioResponse` is: the Desk reads the
+    answer with a header-carrying request and cannot follow a cross-origin redirect without
+    proxying the file.
+    """
+
+    url: str
+    expires_at: str
+
+
+class TakeDownloadsResponse(BaseModel):
+    """The session's rehearsal takes by file name, live parts and superseded takes apart."""
+
+    session_id: str
+    release_id: str
+    links_valid_for_s: int
+    takes: list[TakeDownload]
+    superseded_takes: list[SupersededTakeDownload]
+    whole: WholeDownload | None = None
+    inserts: list[InsertDownload] = []
 
 
 class SceneFraseView(BaseModel):
@@ -912,6 +1428,9 @@ class SceneRehearsalFacts(BaseModel):
     scene_said: Literal["recording", "later"] | None = None
     duration_ms: int | None = None
     content_type: str
+    #: The sha256 of the rehearsal's bytes, in hex: what a join sends as the part's fingerprint,
+    #: so the room keeps exactly those bytes.
+    sha256: str
     verified: bool = False
     recorded_at: str = ""
     sent_at: str | None = None
@@ -1058,9 +1577,10 @@ class TeamReleaseResponse(BaseModel):
     approved_at: str | None = None
     #: The gate's codes in the order the gate raised them; empty on a mint. Never a sentence.
     blockers: list[str] = Field(default_factory=list)
-    #: Which current parts carry nobody's words, by their own take, when `untold_part` is
-    #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).
-    untold_take_ids: list[str] = Field(default_factory=list)
+    #: True when the answer is a release a facilitator forced; false on a refusal.
+    forced: bool = False
+    #: The blockers that release was forced past; empty unless ``forced``.
+    forced_blockers: list[str] = Field(default_factory=list)
     #: Which parts of the rehearsal the report does not cover, by their own take, when
     #: `playback_did_not_cover_the_clip` is among the blockers; empty otherwise.
     unheard_take_ids: list[str] = Field(default_factory=list)
@@ -1088,222 +1608,6 @@ class QuestionAudioResponse(BaseModel):
     expires_at: str
 
 
-class RetroverificationFinding(BaseModel):
-    """What the analyst raised, with the words they wrote it in.
-
-    The note lives here and nowhere else. `chunk` is the number the analyst gave, kept beside
-    the stretch it resolved to, because a missing element placed after frase N resolves to the
-    stretch after it and the two halves of one swap would otherwise look unrelated (ADR 0018).
-    """
-
-    kind: str
-    note: str
-    segment_id: str | None = None
-    chunk: int | None = None
-    fills_silence: bool = False
-    raised_by_check: bool = False
-
-
-class RetroverificationNuance(BaseModel):
-    chunk: int
-    segment_id: str
-    quote: str
-    story: str
-    said: bool
-
-
-class RetroverificationRelease(BaseModel):
-    """One approved draft of the passage, as the consultant's file lists it.
-
-    Every release of the passage and not only this session's: that is what a **Version** is
-    per, so a number another conversation about this passage minted names a draft of the same
-    passage. `session_id` is which conversation wrote it, which is the fact a list scoped to
-    one session could not carry.
-
-    `forced_open_findings` is what was open when a person overruled the gate, the analyst's
-    words included. The **Packet** beside it says what was open as a kind and an address; this
-    is where the why lives.
-
-    It is a **view of** the stored row and not the row itself: typed as the finding model
-    beside this one, so a consultant's client reads a field instead of a string key, which
-    means a key the row happens to carry and this model does not is dropped, and a row with no
-    `note` would be refused rather than served. Every row any version of the approval has
-    written validates — `Finding.note` has always existed and is always dumped, and the other
-    five fields carry defaults.
-    """
-
-    version: int
-    session_id: str
-    #: ISO-8601 with an offset, like every other instant this module serves.
-    approved_at: str
-    device_id: str | None = None
-    forced_by: str | None = None
-    forced_at: str | None = None
-    forced_open_findings: list[RetroverificationFinding] = Field(default_factory=list)
-    package_sha256: str
-
-
-class RetroverificationAttempt(BaseModel):
-    """A telling-back the team replaced, and what it reported having listened to.
-
-    Read as history and never as evidence about the recording standing now: the report cannot
-    be restated per part after the fact, because there is nothing left to key it to (ADR 0017).
-
-    **Both shapes travel**, which is the exception ADR 0017 wrote for exactly these rows. An
-    attempt archived before the parts were named carries only the flat pair, and a view serving
-    `played_by_take` alone would report that reading as having listened to nothing — which is
-    not what the row holds.
-
-    Its findings keep the analyst's words, like the current ones: an archived reading is the
-    material this file exists to carry.
-    """
-
-    findings: list[RetroverificationFinding] = Field(default_factory=list)
-    played_by_take: list[PlayedTake] = Field(default_factory=list)
-    played_ranges: list[list[int]] = Field(default_factory=list)
-    clip_duration_ms: int | None = None
-
-
-class RetroverificationTelling(BaseModel):
-    """One earlier version of a stretch: what the team said that time, and when it stopped.
-
-    A **Correction** is a new row for the same position (ADR 0004), so what the team said
-    before is a row of its own rather than an edit that erased it. `bridge_take_id` is the
-    recording of them saying it, which is reachable in `takes` like any other.
-    """
-
-    segment_id: str
-    transcript: str | None = None
-    pass_number: int
-    tellings: int
-    bridge_take_id: str | None = None
-    #: ISO-8601 with an offset, like every other instant this module serves.
-    created_at: str | None = None
-    superseded_at: str | None = None
-
-
-class RetroverificationStretch(BaseModel):
-    """One stretch standing now, with its number, its slice and everything told before it.
-
-    `frase` is the number the latest **Version** froze for this stretch, or the position in
-    the reading of right now when nothing has been approved. **It is absent rather than null**
-    for a stretch the frozen reading does not carry — a stretch told after the approval was in
-    no reading that version numbered, and the number an older reading might have given it is
-    recoverable from nothing. A reader asking for it meets the failure instead of a silence
-    that looks like an answer, which is the rule the **Packet** applies to the same question.
-    """
-
-    segment_id: str
-    frase: int | None = None
-    take_id: str
-    starts_ms: int
-    ends_ms: int
-    pass_number: int
-    tellings: int
-    transcript: str | None = None
-    parent_segment_id: str | None = None
-    history: list[RetroverificationTelling] = Field(default_factory=list)
-
-    @model_serializer(mode="wrap")
-    def _a_number_it_does_not_have_is_absent(self, handler: Any) -> dict[str, Any]:
-        served: dict[str, Any] = handler(self)
-        if self.frase is None:
-            served.pop("frase", None)
-        return served
-
-
-class RetroverificationListening(BaseModel):
-    """What the team played of one part of the rehearsal, and whether that covered it.
-
-    One entry per part, in that part's own milliseconds: a part is its own recording, so what
-    was heard of one is judged against that part alone (ADR 0017). A part no report names
-    carries nothing played and is not heard.
-    """
-
-    take_id: str
-    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
-    clip_duration_ms: int = 0
-    heard: bool
-
-
-class RetroverificationHardStretch(BaseModel):
-    """One **Hard stretch** mark, placed on the stretch it is about now.
-
-    The row names the first telling of the chain and is cleared by nothing, so it cannot move
-    with the stretch; the file walks the chain forward and says both. `segment_id` is null when
-    the chain was abandoned — the mark stands, and there is no stretch left to point at.
-
-    A chain that ended on a stretch the team divided names a stretch that is standing and is
-    not a unit, so that id is found in `divided` and not in `stretches`. A reader resolving one
-    looks in both lists.
-    """
-
-    segment_id: str | None = None
-    first_telling_id: str
-    tellings: int
-    #: ISO-8601 with an offset, like every other instant this module serves.
-    crossed_at: str
-
-
-class RetroverificationTake(BaseModel):
-    """One recording of the session, and where to hear it.
-
-    `url` is the path of the facilitator's own audio route and never a signed link: a signed
-    URL expires in minutes and this document outlives it. That route already serves a
-    recording a retelling replaced, because a take is never superseded.
-    """
-
-    take_id: str
-    kind: str
-    scope: str
-    ordinal: int | None = None
-    pass_number: int | None = None
-    sha256: str
-    #: ISO-8601 with an offset, like every other instant this module serves.
-    recorded_at: str | None = None
-    url: str
-
-
-class RetroverificationFile(BaseModel):
-    """Everything the check learned about one session, for the facilitator and the consultant.
-
-    `numbering` says what the numbers beside the stretches are worth: `frozen` when a
-    **Version** exists and `live` when the reading of right now is all there is. `notices`
-    says the same thing in the consultant's own language, beside the flags a program reads —
-    a file that only carried the booleans would leave the person reading it to work out what
-    a missing number means.
-    """
-
-    session_id: str
-    pericope: str
-    project_id: str | None = None
-    #: ISO-8601 with an offset, like every other instant this module serves.
-    generated_at: str
-    releases: list[RetroverificationRelease] = Field(default_factory=list)
-    numbering: Literal["frozen", "live"]
-    notices: list[str] = Field(default_factory=list)
-    approved: bool
-    analysed: bool
-    checked: bool
-    checked_at: str | None = None
-    stretches: list[RetroverificationStretch] = Field(default_factory=list)
-    #: The stretches the team divided: standing, and no longer a unit. They fall between the
-    #: two lists beside them — not final, because they were divided, and not retired, because
-    #: nothing replaced them — so what the team said about the whole stretch before they heard
-    #: two ideas in it, and every telling before that, had nowhere to go. Each carries the
-    #: `frase` the frozen reading gave it, when it was in one: nothing refuses dividing a
-    #: stretch after the team approved, and that is the case freezing exists for — a comment
-    #: filed against that number was filed before the cut.
-    divided: list[RetroverificationStretch] = Field(default_factory=list)
-    abandoned: list[RetroverificationTelling] = Field(default_factory=list)
-    findings: list[RetroverificationFinding] = Field(default_factory=list)
-    nuances: list[RetroverificationNuance] = Field(default_factory=list)
-    superseded_attempts: list[RetroverificationAttempt] = Field(default_factory=list)
-    listening: list[RetroverificationListening] = Field(default_factory=list)
-    hard_stretches: list[RetroverificationHardStretch] = Field(default_factory=list)
-    takes: list[RetroverificationTake] = Field(default_factory=list)
-
-
 class ConversationTurn(BaseModel):
     role: Literal["team", "guide"]
     text: str
@@ -1325,6 +1629,14 @@ class TurnTeamSide(BaseModel):
     mother_tongue: bool | None
     interrupted_at_s: float | None
     guide_heard: str | None
+    note_kind: Literal["opening"] | None = None
+
+    @model_serializer(mode="wrap")
+    def _a_turn_that_is_no_note_carries_no_mark(self, handler: Any):  # type: ignore[no-untyped-def]
+        served: dict[str, Any] = handler(self)
+        if self.note_kind is None:
+            served.pop("note_kind", None)
+        return served
 
 
 TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
@@ -1359,6 +1671,14 @@ class TurnMoment(BaseModel):
     part: int | None = None
     closed: bool = False
     fenced: bool = False
+    numberlessOpening: bool = False
+
+    @model_serializer(mode="wrap")
+    def _an_opening_not_heard_is_absent(self, handler: Any) -> dict[str, Any]:
+        served: dict[str, Any] = handler(self)
+        if not self.numberlessOpening:
+            served.pop("numberlessOpening", None)
+        return served
 
 
 class TurnMomentStep(BaseModel):
@@ -1374,6 +1694,7 @@ class TurnVoiceSide(BaseModel):
     attempts: int
     trace: list[TurnTraceStep]
     accepted_ids: list[str]
+    earlier_passages: dict[str, str] | None
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None
@@ -1384,7 +1705,7 @@ class TurnVoiceSide(BaseModel):
 
 
 class SessionTurn(BaseModel):
-    team: TurnTeamSide | None
+    team: TurnTeamSide
     voice: TurnVoiceSide
 
 
@@ -1461,3 +1782,124 @@ class SessionCoverageResponse(BaseModel):
     panorama: bool
     no_elements: bool
     ledger: str | None
+
+
+RetroKind = Literal["missing", "addition", "silence", "unclear"]
+
+
+_PART_KEY = (
+    "The **Part key** of the part it lands on, `whole` or `S<n>` as the frases carry it; null "
+    "when unknown."
+)
+
+
+class SessionRetroFinding(BaseModel):
+    kind: RetroKind
+    frase: int | None
+    scene: str | None = Field(
+        description=_PART_KEY + " A finding with no frase still names its part when its stretch "
+        "is known; a missing element placed after everything the team told names none."
+    )
+
+
+class SessionRetroNuance(BaseModel):
+    frase: int | None
+    said: bool
+    scene: str | None = Field(description=_PART_KEY)
+
+
+class SessionRetroFrase(BaseModel):
+    frase: int | None
+    segment_id: str
+    take_id: str
+    scene: str | None
+    starts_ms: int
+    ends_ms: int
+    pass_number: int
+    transcript: str
+    stale: bool = Field(
+        description=(
+            "True for a told stretch of a part the team recorded again and did not tell again. "
+            "Stale frases are listed after the standing ones, numbered as the team's tablet "
+            "draws them unless a version froze their numbers (ADR 0067); its `take_id` is the "
+            "take the part had before."
+        )
+    )
+    bridge_take_id: str | None = Field(
+        description=(
+            "The take of the team's Portuguese telling of this frase, played at "
+            "`/facilitator/takes/{take_id}/address`; null when the frase was told without a "
+            "spoken telling."
+        )
+    )
+    awaiting_sentence_id: str | None = Field(
+        description=(
+            "On the frase awaiting its translation, the re-recorded sentence it awaits, as the "
+            "re-recorded sentences record names it: played at "
+            "`/re-recorded-sentences/{sentence_id}/address`. Null on every other frase, and on "
+            "all of them once the frase is told again."
+        )
+    )
+    supersedes: int | None = Field(
+        description=(
+            "On a retelling, the number of the frase it tells again, which is its own `frase`: "
+            "a retelling reads where the stretch it replaced did. Null on a first telling, and "
+            "wherever `frase` is null."
+        )
+    )
+
+
+class SessionRetroReopenedFrase(BaseModel):
+    frase: int | None
+    take_id: str
+    scene: str | None
+    starts_ms: int
+    ends_ms: int
+
+
+class SessionRetroReopened(BaseModel):
+    version: int
+    approved_at: str
+    frases: list[SessionRetroReopenedFrase]
+
+
+class SessionRetroCheckFinding(BaseModel):
+    kind: RetroKind
+    frase: int | None
+
+
+class SessionRetroCheck(BaseModel):
+    at: str
+    outcome: Outcome
+    conferida: bool
+    spoken: str
+    findings: list[SessionRetroCheckFinding]
+
+
+class SessionRetroResponse(BaseModel):
+    session_id: str
+    status: Literal["conferida", "forcada", "sem_conferencia"]
+    forced_at: str | None
+    version: int | None
+    approved_at: str | None
+    heard_complete: bool
+    findings: list[SessionRetroFinding]
+    nuances: list[SessionRetroNuance]
+    release_check: dict[str, Any] | None = Field(
+        description=(
+            "The release check of the version `version` names, as stored: "
+            "`{ran_at, whole, checks: [{name, passed, notes?}]}`, `notes` present only when it "
+            "has entries. A passed check that carries notes reads as an «aviso» (ADR 0102). Null "
+            "with no approved version, on a reopened read, and while no check has landed."
+        )
+    )
+    frases: list[SessionRetroFrase]
+    reopened: SessionRetroReopened | None
+    checks: list[SessionRetroCheck]
+
+
+class CanonPinsResponse(BaseModel):
+    environment: str
+    deployed_pin: str
+    answered_at: datetime
+    pins: list[str]

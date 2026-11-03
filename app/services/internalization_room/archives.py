@@ -18,6 +18,10 @@ from app.db.models.auth import User
 from app.db.models.internalization_room import (
     IRArchive,
     IRCoverageEvent,
+    IRExternalCheck,
+    IRExternalListener,
+    IRExternalMark,
+    IRExternalRecording,
     IRRelease,
     IRSceneFrase,
     IRSceneRehearsal,
@@ -28,11 +32,12 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room_archive import ArchivedSession, KeptPart
-from app.services.internalization_room.conversation import the_conversation
+from app.services.internalization_room.conversation import guide_turns_of
 from app.services.internalization_room.live import live
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
 from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 from app.utils.stored_time import as_utc
 
 _HANGING_OFF_A_SESSION = (
@@ -43,6 +48,10 @@ _HANGING_OFF_A_SESSION = (
     IRSceneRehearsal,
     IRSceneFrase,
     IRSceneRestart,
+    IRExternalCheck,
+    IRExternalListener,
+    IRExternalRecording,
+    IRExternalMark,
 )
 
 
@@ -114,6 +123,22 @@ async def archive_pericope(
     return archive
 
 
+async def archives_of(
+    db: AsyncSession, user: User, *, project_id: str, pericope: str
+) -> list[IRArchive]:
+    """The team's archives of this pericope, newest first; equal times fall back to the id so
+    the order is stable. The pericope is matched as written, with no canon check.
+    """
+    if not await reads_project(db, user, project_id):
+        raise NotFoundError(TEAM_NOT_FOUND)
+    archives = await db.scalars(
+        select(IRArchive)
+        .where(IRArchive.project_id == project_id, IRArchive.pericope == pericope)
+        .order_by(IRArchive.archived_at.desc(), IRArchive.id.desc())
+    )
+    return list(archives)
+
+
 async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[ArchivedSession]:
     """Each session's dossier: ``turns`` counts the guide's lines of the conversation, her
     ``turnCount``, leaving out the telling-back verdicts as the turns route and the Desk do.
@@ -149,7 +174,7 @@ async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[Archi
             language=session.language,
             status=session.status.value,
             coverage=session.coverage_state,
-            turns=sum(1 for line in the_conversation(session) if line.get("role") == "guide"),
+            turns=guide_turns_of(session),
             kept_takes=kept[session.id],
             release_versions=versions.get(session.id, []),
             created_at=as_utc(session.created_at).isoformat(),

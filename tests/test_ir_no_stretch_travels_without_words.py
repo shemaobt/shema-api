@@ -25,7 +25,6 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
-    build_internalization_release,
 )
 from app.services.internalization_room.segments import (
     capture_segment,
@@ -36,7 +35,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     report_playback,
 )
-from tests.release_harness import ensaio_take
+from tests.release_harness import ensaio_take, judged_packet
 from tests.room_harness import a_piece_still_to_be_told
 
 P = "P03"
@@ -53,7 +52,7 @@ async def _told_back_and_read(db: AsyncSession) -> tuple[IRSession, IRTake]:
     """
     session = await create_session(db, pericope=P, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    take = ensaio_take(session.id, sha256="a" * 64)
+    take = ensaio_take(session.id, sha256="a" * 64, scope="parte-1", ordinal=1)
     db.add(take)
     await db.commit()
     told = await capture_segment(
@@ -73,6 +72,9 @@ async def _the_analyst_has_read(
     db: AsyncSession, session: IRSession, stretches: list[IRSegment]
 ) -> None:
     """The verdict the team already has, and the report of the clip they already played."""
+    told_to: dict[str, int] = {}
+    for stretch in stretches:
+        told_to[stretch.take_id] = max(told_to.get(stretch.take_id, CLIP_MS), stretch.ends_ms)
     await report_playback(
         db,
         session,
@@ -82,8 +84,8 @@ async def _the_analyst_has_read(
             analysed_segment_ids=[stretch.id for stretch in stretches],
         ),
         played_by_take=[
-            PlayedTake(take_id=take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
-            for take_id in sorted({stretch.take_id for stretch in stretches})
+            PlayedTake(take_id=take_id, played_ranges=[(0, end)], clip_duration_ms=end)
+            for take_id, end in sorted(told_to.items())
         ],
         played_ranges=[[0, CLIP_MS]],
         clip_duration_ms=CLIP_MS,
@@ -136,7 +138,7 @@ async def _tell_it_back(
 
 async def _blockers(db: AsyncSession, session: IRSession) -> list[str]:
     with pytest.raises(InternalizationReleaseBlocked) as refused:
-        await build_internalization_release(db, session)
+        await judged_packet(db, session)
     return refused.value.blockers
 
 
@@ -215,7 +217,7 @@ async def test_a_passage_told_back_whole_still_releases_with_all_its_stretches(
     )
     await _the_analyst_has_read(db_session, session, await final_segments(db_session, session.id))
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     carried = artifact["back_translation"]["segments"]
     assert [one["text"] for one in carried] == [
@@ -240,7 +242,7 @@ async def test_a_stretch_told_back_after_its_recording_moved_releases(
     await _tell_it_back(db_session, session, tail, "e Rute veio com ela")
     await _the_analyst_has_read(db_session, session, await final_segments(db_session, session.id))
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await judged_packet(db_session, session)
 
     assert artifact["readiness"] == "ready_for_refine"
     assert [one["text"] for one in artifact["back_translation"]["segments"]] == [

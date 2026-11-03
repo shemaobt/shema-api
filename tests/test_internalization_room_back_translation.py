@@ -18,7 +18,6 @@ from app.services.internalization_room.back_translation import (
     current_findings,
     findings_block,
     findings_remaining,
-    played_ranges_cover_clip,
     points_at_a_stretch,
     segments_block,
     the_finding_that_leads,
@@ -585,58 +584,6 @@ async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_ke
     assert "insufficient_evidence" in caplog.text.replace(raw, ""), "e diz qual espécie caiu"
     assert "reading accepted" in caplog.text
     assert "refused" not in caplog.text
-
-
-def test_contiguous_playback_covers_the_clip() -> None:
-    assert played_ranges_cover_clip([[0, 30000], [30000, 61000]], 61000)
-
-
-def test_tolerance_forgives_the_edges_but_not_a_hole() -> None:
-    assert played_ranges_cover_clip([[400, 60400]], 61000)
-    assert not played_ranges_cover_clip([[0, 20000], [24000, 61000]], 61000)
-
-
-def test_a_half_listened_clip_is_not_covered() -> None:
-    assert not played_ranges_cover_clip([[0, 30000]], 61000)
-
-
-def test_playback_that_runs_past_the_clip_is_not_playback_of_that_clip() -> None:
-    """A cursor beyond the clip is the signature of ranges from a different audio.
-
-    Typically the previous, longer clip: the piece was replaced and the old listening
-    report stayed standing. Approving it would bless as "heard" a clip nobody played.
-    """
-    assert not played_ranges_cover_clip([[0, 45000]], 37000)
-
-
-def test_the_slack_is_still_slack_on_the_far_edge() -> None:
-    """The cure may not become the disease.
-
-    Playback reports round, and a report that overshoots the end by a fraction is the
-    same rounding the near edge is already forgiven for.
-    """
-    assert played_ranges_cover_clip([[0, 37700]], 37000)
-    assert not played_ranges_cover_clip([[0, 39000]], 37000)
-
-
-def test_stretches_with_a_tolerable_gap_still_cover_the_clip() -> None:
-    """Covered in pieces, with a hole small enough to be the gap between two taps."""
-    assert played_ranges_cover_clip([[0, 30000], [30500, 61000]], 61000)
-
-
-def test_an_absent_report_is_not_a_short_one() -> None:
-    """The arithmetic has nothing to measure and says so by not objecting.
-
-    Whether an absent report counts as having listened is not decided here — the release gate
-    asks `unheard_parts`, and there it does not.
-    """
-    assert played_ranges_cover_clip([], None)
-    assert played_ranges_cover_clip([], 61000)
-    assert played_ranges_cover_clip([[0, 61000]], None)
-
-
-def test_an_empty_report_with_a_duration_does_not_pass() -> None:
-    assert not played_ranges_cover_clip([[5000, 5000]], 61000)
 
 
 # ---------------------------------------------------------------------------

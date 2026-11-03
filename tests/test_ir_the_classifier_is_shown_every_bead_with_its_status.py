@@ -166,6 +166,7 @@ async def test_a_settle_offers_every_bead_short_of_engaged_whatever_scene_holds_
     await background.settle_coverage(
         session_id=session.id,
         turn_id="turn-5",
+        turn_number=1,
         team_utterance="Ruth stayed with Naomi in Moab",
         guide_response="what happened to the two women",
         pericope_num=P,

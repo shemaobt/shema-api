@@ -70,7 +70,18 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     },
     ("POST", "/api/internalization-room/facilitator/questions/{question_id}/resolve"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/grain-switches"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/mother-tongue-takes"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes/downloads"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes/whole"): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/re-recorded-sentences",
+    ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/re-recorded-sentences/{sentence_id}/audio",
+    ): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals"): {},
     ("GET", "/api/internalization-room/facilitator/takes/{take_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/release"): {},
@@ -82,16 +93,39 @@ _REQUESTS: dict[tuple[str, str], dict] = {
         "json": {"force": True}
     },
     (
+        "POST",
+        "/api/internalization-room/facilitator/sessions/{session_id}/releases/{version}/check",
+    ): {},
+    (
         "GET",
         "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao",
     ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}"
+        "/retroverificacao",
+    ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/external-check/{version}",
+    ): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/conversation"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/coverage"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/retro"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/turns"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/boundary-turns"): {},
     (
         "GET",
         "/api/internalization-room/facilitator/sessions/{session_id}/turns/{number}/audio",
+    ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
+    ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}"
+        "/frases/{frase_id}/audio",
     ): {},
     ("GET", "/api/internalization-room/facilitator/sessions"): {},
     ("POST", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
@@ -99,6 +133,20 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     (
         "POST",
         "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}/archive",
+    ): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}/archives",
+    ): {},
+    (
+        "POST",
+        "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}/release",
+    ): {"json": {"force": True}},
+    ("GET", "/api/internalization-room/facilitator/canon-pins"): {},
+    ("GET", "/api/internalization-room/facilitator/takes/{take_id}/address"): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/re-recorded-sentences/{sentence_id}/address",
     ): {},
 }
 

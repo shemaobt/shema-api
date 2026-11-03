@@ -51,6 +51,10 @@ def the_room_answers(
 
 
 GOLDEN_PRICED = [charged_call("guide", 2.0), charged_call("validator", 1.0)]
+THE_CLEAN_VOICE = (
+    "Vocês fizeram um bom trabalho. No que vocês me traduziram, tem tudo o que a história "
+    "conta — e nada a mais. Ouçam tudo de novo e aprovem."
+)
 BT_PRICED = [charged_call("analyst", 2.0), charged_call("speaker", 1.0)]
 
 

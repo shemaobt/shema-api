@@ -1,4 +1,4 @@
-"""ENG-1219 — a session keeps the canon it opened with until its passage is approved.
+"""ENG-1219 — a session keeps the canon it opened with while it is live.
 
 Her ruling of 1 October: «It keeps the map it was opened with until it is approved.» A new
 canon is published here the way a re-pin publishes one: the canon served until then is kept
@@ -40,7 +40,6 @@ from tests.opening_harness import another_tablet_of, desk_routes, the_tablet_ope
 from tests.release_harness import P, a_claimed_device, at_the_desk, ready_session
 from tests.room_harness import (
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -163,6 +162,7 @@ async def _the_team_works_the_bead_the_new_canon_dropped(
     await background.settle_coverage(
         session_id=session_id,
         turn_id="depois",
+        turn_number=1,
         team_utterance="Elimeleque tinha morrido",
         guide_response="E o que mais?",
         pericope_num=P,
@@ -380,7 +380,6 @@ async def test_an_approved_passage_opened_again_in_a_new_session_reads_the_canon
 async def test_the_ensaio_final_check_of_a_session_open_when_a_new_canon_is_published_reads_its_own_canon(  # noqa: E501
     client, db_session, prompts, monkeypatch, tmp_path
 ) -> None:
-    nothing_is_read_ahead(monkeypatch)
     analyst = the_analyst_is_scripted(monkeypatch)
     kept_session, _ = await rehearsed_in_parts(db_session, 1)
 
@@ -401,22 +400,6 @@ async def test_the_ensaio_final_check_of_a_session_open_when_a_new_canon_is_publ
     assert KEPT_RULE in read, "a checagem do ensaio final leu as regras do canon novo"
     assert KEPT_SILENCE in read, "a checagem do ensaio final leu os silêncios do canon novo"
     assert VENDORED_LINE not in read and VENDORED_RULE not in read
-
-
-async def test_the_reading_ahead_of_a_session_open_when_a_new_canon_is_published_reads_its_own_canon(  # noqa: E501
-    db_session, monkeypatch, tmp_path
-) -> None:
-    analyst = the_analyst_is_scripted(monkeypatch)
-    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
-    kept_session, _ = await rehearsed_in_parts(db_session, 1)
-    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_is_told_its_own_way)
-    fresh, _ = await rehearsed_in_parts(db_session, 1)
-
-    await background.read_ahead(session_id=fresh.id)
-    await background.read_ahead(session_id=kept_session.id)
-
-    assert KEPT_LINE in analyst.shown[-1], "a leitura antecipada leu o mapa novo"
-    assert VENDORED_LINE not in analyst.shown[-1]
 
 
 async def test_the_scenes_of_a_session_open_when_a_new_canon_is_published_keep_the_titles_it_opened_with(  # noqa: E501

@@ -33,7 +33,7 @@ _AXES = (
 
 
 @per_canon(maxsize=64)
-def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
+def scene_of(pericope_num: str) -> dict[str, int]:
     """The scene each bead belongs to, for every bead that belongs to one.
 
     Preservation rules and the Level-1 axes are absent: they belong to the passage and to
@@ -41,7 +41,7 @@ def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
     """
     return {
         element.key: element.scene
-        for element in elements_for(pericope_num, book)
+        for element in elements_for(pericope_num)
         if element.scene is not None
     }
 
@@ -71,7 +71,7 @@ def _things_named(meaning_map: MeaningMap, codes: list[str]) -> list[tuple[str, 
     return [(code, thing_name(meaning_map, code)) for code in codes]
 
 
-def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Element]:
+def elements_of(meaning_map: MeaningMap) -> list[Element]:
     """The passage's coverage spine, derived from its map.
 
     The four Level-1 axes first, then one bead per scene, per entity in each scene, per
@@ -95,11 +95,11 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
         for kind, section in _AXES
     ]
 
-    rules = (
-        [rule for rule in preservation_rules(book) if rule.pericope == meaning_map.pericope_num]
-        if book
-        else []
-    )
+    rules = [
+        rule
+        for rule in preservation_rules(meaning_map.book)
+        if rule.pericope == meaning_map.pericope_num
+    ]
     folded: set[str] = set()
 
     for scene in meaning_map.scenes:
@@ -159,17 +159,17 @@ def _rule_label(rule: PreservationRule) -> str:
 
 
 @per_canon(maxsize=32)
-def elements_for(pericope_num: str, book: str = "Ruth") -> tuple[Element, ...]:
-    return tuple(elements_of(load_map(pericope_num), book=book))
+def elements_for(pericope_num: str) -> tuple[Element, ...]:
+    return tuple(elements_of(load_map(pericope_num)))
 
 
-def element_keys(pericope_num: str, book: str = "Ruth") -> list[str]:
-    return [element.key for element in elements_for(pericope_num, book)]
+def element_keys(pericope_num: str) -> list[str]:
+    return [element.key for element in elements_for(pericope_num)]
 
 
-def absence_index(pericope_num: str, book: str = "Ruth") -> int:
+def absence_index(pericope_num: str) -> int:
     """Where the first significant absence sits in bead order, for the ring bead."""
-    for index, element in enumerate(elements_for(pericope_num, book)):
+    for index, element in enumerate(elements_for(pericope_num)):
         if element.kind is ElementKind.ABSENCE:
             return index
     return -1

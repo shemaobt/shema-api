@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended by ADR 0076: a visit lifts nothing, so the open lifts the halt and has no visit to make final
 date: 2026-10-02
 ---
 

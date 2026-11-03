@@ -9,11 +9,13 @@ from typing import Any, TypeVar
 from sqlalchemy import (
     JSON,
     ColumnElement,
+    Row,
     Text,
     and_,
     case,
     cast,
     delete,
+    func,
     literal,
     or_,
     select,
@@ -23,12 +25,20 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
-from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    HaltMoved,
+    NotFoundError,
+    PassageClosed,
+    ValidationError,
+)
 from app.core.room_enums import HaltKind
+from app.core.served_books import SERVED_BOOKS
 from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
+    IRGrain,
     IRSession,
     IRSessionStatus,
     IRTake,
@@ -36,17 +46,21 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room import PlayedTake
+from app.services.device.demo_team import is_the_demo_team
 from app.services.internalization_room import halt, turn_instructions
+from app.services.internalization_room.approved_draft import refuse_to_reopen_the_approved_draft
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     CheckRound,
     SupersededAttempt,
     findings_after_a_part_is_recorded_again,
+    joined_spans,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map, not_served
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
+from app.services.internalization_room.check_block import keep_the_check_on_the_standing_release
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -65,6 +79,7 @@ from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
+    current_segments,
     final_segments,
     retire_every_segment,
     retire_the_segments_of,
@@ -72,7 +87,12 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
 )
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    grain_in_force,
+    of_the_grain_left_behind,
+    takes_of,
+)
 from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
 from app.services.project.facilitated_scope import confined_to, readable_project_ids
 from app.services.project.facilitates_project import facilitates_project
@@ -98,17 +118,9 @@ def book_of(pericope: str) -> str:
 
 
 def resolve_pericope(pericope: str) -> str:
-    """`OV` alone is the panorama of whichever book the room serves, so a client can ask
-    for it without naming the book — the canon stays entirely on this side.
-
-    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
-    on the wire, so a client that opens a session with the id the wheel just handed it
-    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
-
-    It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
-    belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
-    under another name: a book is not a passage, the room serves one, and `elements_for`,
-    `labelled_elements` and `run_turn` already take it as a parameter.
+    """`OV` alone, and `PANORAMA` (`"panorama"`, the id the wheel once put on the wire), are
+    Ruth's Panorama, for a tablet that names no book. Every served book's own Panorama is
+    `OV-<Book>` (ADR 0066).
     """
     if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
@@ -126,11 +138,10 @@ async def create_session(
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
-    The meaning map is loaded before anything is written, so unapproved or unsupported
-    canon is refused before a session exists — and so is a passage whose preservation layer
-    nobody has written, which would otherwise be walked against a completion floor missing
-    its top row. A panorama has no coverage spine and never completes: it prepares the team
-    to enter the book, and asks no retelling of them.
+    The meaning map is loaded before anything is written, so a passage or a Panorama of a
+    book the room does not serve is refused before a session exists (ADR 0066). A panorama
+    has no coverage spine and never completes: it prepares the team to enter the book, and
+    asks no retelling of them.
 
     ``pericope`` is optional and its absence is a question, not a default. It used to be
     ``DEFAULT_PERICOPE``, so a room that did not name a passage was answered the first one
@@ -157,11 +168,12 @@ async def create_session(
     heard the book's panorama and asks for it again is opened the panorama (ENG-1237, folded
     from ENG-1282). Only a silence is filled, never a request overruled.
 
-    Raises ``ConflictError`` when the team has closed every passage that opens and none was
-    named. That is the end of the book, and it is a defined state rather than a wrap-around:
-    the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
-    a passage is the way back in. The end it names is the end of the walkable book, which is
-    the only end a team can reach — a passage `require_walkable` refuses can never be closed.
+    Raises ``ConflictError`` when the team has closed every passage that opens in every served
+    book and none was named. That is the end of the walk, and it is a defined state rather than
+    a wrap-around: the request is well formed and the team exists, so 409 rather than 400 or
+    404, and naming a passage is the way back in. The end it names is the end of the walkable
+    books, the only end a team can reach — a passage `require_walkable` refuses can never be
+    closed.
 
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A
@@ -175,6 +187,7 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
+        book=None,
     )
     session = await _minted(
         db,
@@ -196,6 +209,7 @@ async def open_session(
     project_id: str,
     after_panorama: bool = False,
     language: str | None = None,
+    after: IRSession | None = None,
 ) -> tuple[IRSession, bool]:
     """The session the room's open door returns, and whether this open created it.
 
@@ -221,9 +235,12 @@ async def open_session(
     Panorama's opening ahead again.
 
     A tablet that opens a session halted by its call for a person is back in the room, so the
-    open writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and a
-    visit that lifted it becomes final. A warning stands, because a facilitator's visit is
-    its only exit (ADR 0039).
+    open writes what a landed turn writes for it (`_a_teams_return`): the halt lifts. A warning
+    stands, because a facilitator's visit is its only exit (ADR 0039).
+
+    An open that names no passage lands on the team's next passage of the book of the session
+    it came from, ``after``, and of the team's Current book when it came from none (ADR 0066,
+    ADR 0094).
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -231,6 +248,7 @@ async def open_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
+        book=book_of(after.pericope) if after is not None else None,
     )
     session = await _pointed(db, project_id, pericope, spoken)
     created = False
@@ -252,7 +270,7 @@ async def open_session(
             session, created = await get_session(db, winner), False
     if after_panorama and not session.after_panorama:
         session.after_panorama = True
-    if session.status is IRSessionStatus.NEEDS_PERSON or session.lifted_halt is not None:
+    if session.status is IRSessionStatus.NEEDS_PERSON:
         await db.execute(
             update(IRSession)
             .where(IRSession.id == session.id)
@@ -348,16 +366,20 @@ async def _resolved(
     after_panorama: bool,
     project_id: str | None,
     language: str | None,
+    book: str | None,
 ) -> tuple[str, bool, str]:
     """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
-        pericope = await active_passage(db, project_id=project_id)
+        pericope = await active_passage(db, project_id=project_id, book=book)
         if pericope is None:
             raise ConflictError(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if not is_panorama(pericope):
+    if is_panorama(pericope):
+        if (book := book_of(pericope)) not in SERVED_BOOKS:
+            raise ValidationError(not_served(book))
+    else:
         require_walkable(load_map(pericope))
     spoken = normalize(language)
     if language is not None and spoken is None:
@@ -475,7 +497,12 @@ async def _the_live_session(db: AsyncSession, session_id: str) -> IRSession:
 
 
 async def _land(
-    db: AsyncSession, session: IRSession, values: dict[str, Any], *, commit: bool = True
+    db: AsyncSession,
+    session: IRSession,
+    values: dict[str, Any],
+    *,
+    commit: bool = True,
+    again_if_unmoved: bool = False,
 ) -> IRSession:
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
@@ -491,8 +518,32 @@ async def _land(
     A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
     live and lands after the Zerar finds nothing to land on, and is answered as the session
     gone, with the unknown session's words, rather than as another turn's conflict (ADR 0052).
+
+    ``again_if_unmoved`` is for a write of the conversation: when what moved the version left the
+    session live and the conversation as this ``session`` read it, it was an approval's claim and
+    not another turn, and the write lands once more on the version stored now. One that lost to
+    another turn is still refused (ADR 0080).
     """
     await db.flush()
+    landed = await _write_at_the_version_read(db, session, values)
+    if landed is None and again_if_unmoved and await _took_the_version_if_unmoved(db, session):
+        landed = await _write_at_the_version_read(db, session, values)
+    if landed is None:
+        await refuse_if_archived(db, session)
+        # Nothing matched, so nothing is pending: leave the transaction to the caller's
+        # teardown rather than rolling back a session shared with the rest of the request,
+        # the way autosave_state.py's own version conflict does.
+        raise ConflictError("This session was written to by another turn.")
+    for key, value in {**values, **landed._mapping}.items():
+        set_committed_value(session, key, value)
+    if commit:
+        await db.commit()
+    return session
+
+
+async def _write_at_the_version_read(
+    db: AsyncSession, session: IRSession, values: dict[str, Any]
+) -> Row[Any] | None:
     stmt = (
         update(IRSession)
         .where(IRSession.id == session.id, IRSession.version == session.version)
@@ -503,25 +554,60 @@ async def _land(
             IRSession.status,
             IRSession.ended_at,
             IRSession.updated_at,
-            IRSession.lifted_halt,
         )
         .execution_options(synchronize_session=False)
     )
-    landed = (await db.execute(stmt)).one_or_none()
-    if landed is None and await db.scalar(
-        select(IRSession.archive_id).where(IRSession.id == session.id)
-    ):
+    return (await db.execute(stmt)).one_or_none()
+
+
+async def _took_the_version_if_unmoved(db: AsyncSession, session: IRSession) -> bool:
+    """Take the version stored now when the session is live and its conversation is the one
+    ``session`` read; read in one statement, so a Zerar landing in between is never missed."""
+    stored = (
+        await db.execute(
+            select(IRSession.version, IRSession.messages, IRSession.archive_id).where(
+                IRSession.id == session.id
+            )
+        )
+    ).one()
+    if stored.archive_id is not None or stored.messages != session.messages:
+        return False
+    set_committed_value(session, "version", stored.version)
+    return True
+
+
+async def claim_the_version(db: AsyncSession, session: IRSession) -> None:
+    """Take this session's version for a write that lands beside the session rather than on
+    it, a release minted on it, so a Zerar or a turn that moved it first refuses this one the
+    way `_land` refuses a turn (ADR 0066).
+
+    `updated_at` is written its own value, as `prepare_opening` and the Zerar write it: the
+    Desk reads it as the last time the team spoke, and a release a facilitator forced is not
+    the team speaking.
+    """
+    await _land(db, session, {"updated_at": IRSession.updated_at}, commit=False)
+
+
+async def hold_the_session_row(db: AsyncSession, session: IRSession) -> None:
+    """Take the session's row until this transaction ends, and read it again under it.
+
+    The approval takes it before it composes, and every write of the telling-back takes it with
+    its conditional write of the row (`_written_forward`), so the two land one at a time and the
+    later one sees the earlier (ADR 0081).
+    """
+    await db.execute(
+        select(IRSession)
+        .where(IRSession.id == session.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+async def refuse_if_archived(db: AsyncSession, session: IRSession) -> None:
+    """Refuse a session a Zerar archived, as stored now and not as it was read, with the
+    unknown session's words (ADR 0052)."""
+    if await db.scalar(select(IRSession.archive_id).where(IRSession.id == session.id)):
         raise NotFoundError(_no_such_session(session.id))
-    if landed is None:
-        # Nothing matched, so nothing is pending: leave the transaction to the caller's
-        # teardown rather than rolling back a session shared with the rest of the request,
-        # the way autosave_state.py's own version conflict does.
-        raise ConflictError("This session was written to by another turn.")
-    for key, value in {**values, **landed._mapping}.items():
-        set_committed_value(session, key, value)
-    if commit:
-        await db.commit()
-    return session
 
 
 async def append_exchange(
@@ -557,23 +643,13 @@ async def append_exchange(
     the record keeps as the team's words when that round fires. It has no scene: the
     verdict is read against the stretches told, not against a pointer on the map.
 
-    A turn that lands is the proof a person came back, so it also releases
-    `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
-    `attend` is the other, and is the one a facilitator controls (ENG-609). The team resuming
-    ends a blocking halt and never a warning (ENG-1163): a warning refuses nothing, so the team
-    going on is no sign anybody came, and it stands until a facilitator attends the session.
-    Only a halt already standing when the turn began is lifted: one the tablet raised while
-    the Guide was still answering is a request nobody has answered yet.
-
-    It clears `lifted_halt`, which is the record of a halt an outstanding visit lifted and
-    which undoing that visit would put back, when the visit is the one the row carried as the
-    turn began, or when it lifted the halt the turn began in. Either way there is nothing left
-    to put back — the turn is the team's own exit and would have lifted the halt with or
-    without the visit — so leaving it set lets a facilitator correcting a ten-minute-old tap
-    stop a conversation in full flow. A visit to a halt raised while the Guide was answering
-    keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
-    The stamps are deliberately **not** cleared: who went and when is what the history is for,
-    and a landing turn is no evidence they did not go.
+    A turn that lands is the team's return, so it releases `NEEDS_PERSON`; with a tablet
+    opening the session, it is the only way out of a blocking halt (ADR 0076). It never ends
+    a warning (ENG-1163): a warning refuses nothing, so the team going on is no sign anybody
+    came, and it stands until a facilitator attends the session. Only a halt already standing
+    when the turn began is lifted: one the tablet raised while the Guide was still answering
+    is a request nobody has answered yet. The visit's stamps are **not** cleared: who went
+    and when is what the history is for.
 
     ``scene_rehearsals`` is the scenes whose scene rehearsal had reached the Guide as of this
     turn, kept on the Guide's entry, the one entry every turn has; an empty list is the fact
@@ -646,6 +722,8 @@ async def append_exchange(
         guide["scene_rehearsal"] = scene_rehearsal.model_dump()
     if outcome is not None and outcome.accepted_ids:
         guide["accepted_ids"] = outcome.accepted_ids
+    if outcome is not None and outcome.earlier_passages is not None:
+        guide["earlier_passages"] = outcome.earlier_passages
     step = (
         None
         if is_panorama(session.pericope)
@@ -653,14 +731,16 @@ async def append_exchange(
             session.messages or [],
             guide_response,
             fail_safe=outcome is not None and outcome.used_fail_safe,
-            parts=len(scene_ids_for(session.pericope)),
+            scenes=scene_ids_for(session.pericope),
+            arriving=scene_rehearsal,
+            reached=scene_rehearsals,
         )
     )
     if step is not None:
         guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
-    return await _land(db, session, values, commit=commit)
+    return await _land(db, session, values, commit=commit, again_if_unmoved=True)
 
 
 def _the_turns_times() -> dict[str, int]:
@@ -683,22 +763,9 @@ def _a_teams_return(session: IRSession) -> dict[str, Any]:
     again (ADR 0045). A blocking halt that was read lifts, guarded by ``halts_raised`` so a
     halt raised between the read and the write is a new ask and stands, and by the status so
     a lift that lost the race restores nothing.
-
-    And a visit that lifted the halt becomes final: the team's own return is the evidence the
-    room is going, so undoing the visit afterwards has nothing to put back. That holds for a
-    visit read before the write, and for one that landed in between, while it answers the
-    halt that was read.
     """
-    nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
     if session.status is not IRSessionStatus.NEEDS_PERSON:
-        return {"lifted_halt": case((nothing_to_put_back, None), else_=IRSession.lifted_halt)}
-    nothing_to_put_back = or_(
-        nothing_to_put_back,
-        and_(
-            IRSession.halts_raised == session.halts_raised,
-            IRSession.lifted_halt == HaltKind.BLOCKING.value,
-        ),
-    )
+        return {}
     return {
         "status": case(
             (
@@ -710,7 +777,6 @@ def _a_teams_return(session: IRSession) -> dict[str, Any]:
             ),
             else_=IRSession.status,
         ),
-        "lifted_halt": case((nothing_to_put_back, None), else_=IRSession.lifted_halt),
     }
 
 
@@ -728,7 +794,7 @@ _STORED_JSON = Text().with_variant(JSONB(), "postgresql")
 _TRIES = 5
 
 _Stored = dict[str, Any]
-_JSONColumn = InstrumentedAttribute[_Stored]
+_JSONColumn = InstrumentedAttribute[_Stored] | InstrumentedAttribute[_Stored | None]
 
 
 async def _written_forward(
@@ -762,14 +828,14 @@ async def _written_forward(
 async def _written_unless_moved(
     db: AsyncSession, session_id: str, column: _JSONColumn, read: _Stored | None, value: _Stored
 ) -> bool:
+    unmoved: ColumnElement[bool] = cast(column, _STORED_JSON).is_not_distinct_from(
+        cast(literal(read, JSON), _STORED_JSON)
+    )
+    if read is None:
+        unmoved = or_(column.is_(None), unmoved)
     written = await db.execute(
         update(IRSession)
-        .where(
-            IRSession.id == session_id,
-            cast(column, _STORED_JSON).is_not_distinct_from(
-                cast(literal(read, JSON), _STORED_JSON)
-            ),
-        )
+        .where(IRSession.id == session_id, unmoved)
         .values({column: value})
         .execution_options(synchronize_session=False)
     )
@@ -777,7 +843,11 @@ async def _written_unless_moved(
 
 
 async def apply_coverage(
-    db: AsyncSession, session_id: str, coverage_state: dict[str, str]
+    db: AsyncSession,
+    session_id: str,
+    coverage_state: dict[str, str],
+    *,
+    retellings: dict[str, Any] | None = None,
 ) -> IRSession:
     """Store the tracker after the off-path classifier ran.
 
@@ -807,6 +877,15 @@ async def apply_coverage(
     )
     record_transitions(db, session, before=kept or {}, after=settled)
     set_committed_value(session, "coverage_state", settled)
+    if retellings:
+
+        async def told(read: dict[str, Any] | None) -> dict[str, Any]:
+            return {**(read or {}), **retellings}
+
+        _, retold = await _written_forward(
+            db, session.id, IRSession.retellings, session.retellings, told
+        )
+        set_committed_value(session, "retellings", retold)
     if not is_panorama(session.pericope) and session_is_done(session) and session.ended_at is None:
         await db.execute(
             update(IRSession)
@@ -831,8 +910,8 @@ async def apply_coverage(
 def was_opened(session: IRSession) -> bool:
     """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
 
-    The tablet asks a session's Opening only while it is not opened, so a session that already
-    holds the Guide's line is not asked for a second one.
+    Every reader asks this: the session state, the turn door, the Opening's write and the
+    hand-over of a prepared one.
     """
     return any(line.get("role") == "guide" for line in session.messages or [])
 
@@ -854,21 +933,23 @@ async def append_opening(
     scene: str | None = None,
     commit: bool = True,
 ) -> bool:
-    """The opening written as the session's first line, or dropped when the team spoke first.
+    """The opening written as the Guide's first line, or dropped when the Guide has spoken first.
 
     The opening is read off an empty session and only comes back to be written after the
     Guide has answered, which in the room has taken eleven minutes: long enough for the
-    tablet to give up, the team to speak, and their turn to be stored first. Written then,
-    it stood behind the team's turn as a line the Guide never said in that order; refused by
-    the row's version instead, it was gone and the tablet was never told. So the session is
-    read again here, and an opening that is no longer the first thing said is dropped from
-    the record and logged — the tablet still hears the line it asked for.
+    tablet to give up, the team to speak, and the Guide's answer to their turn to be stored
+    first. Written then, it stood behind that answer as a line the Guide never said in that
+    order; refused by the row's version instead, it was gone and the tablet was never told. So
+    the session is read again here, and an opening that finds the Guide's line already stored
+    is dropped from the record and logged — the tablet still hears the line it asked for. A
+    team entry with no Guide line does not open the session, so the opening is written behind
+    it.
     """
     await db.refresh(session, ["messages", "version"])
-    if session.messages:
+    if was_opened(session):
         await db.refresh(session)
         logger.warning(
-            "The opening of session %s landed after the team's first turn; dropped, not appended",
+            "The opening of session %s landed after the session was opened; dropped, not appended",
             session.id,
         )
         return False
@@ -921,12 +1002,9 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     A session with no `project_id` belongs to no team and reaches nobody, which is the
     same rule questions follow — unowned is nobody's, not everybody's.
 
-    The halves drain differently, and only the halts drain at all. A warning leaves by one
-    door, a facilitator marking the room attended. `NEEDS_PERSON` leaves by two doors: a turn
-    that lands is the team resuming, and a facilitator marking the room attended (`attend`)
-    is the person saying they went. The second door is why the
-    first is no longer the whole sentence — a room helped by somebody who then left drained
-    only when the team next spoke, which may be never. `DONE` is
+    The halves drain differently, and only the halts drain at all. A facilitator marking the
+    room attended drains both: a warning ends, and a halted room is listed only while nobody
+    is marked as having gone, though its status stays the team's to lift (ADR 0076). `DONE` is
     terminal — nothing in this service writes a status back out of it, and reading the
     release does not mark a session as carried — so that half grows once per finished
     passage and never shrinks. At pilot volume that is a short list; it is not a shape
@@ -939,7 +1017,11 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
         select(IRSession)
         .where(
             or_(
-                IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)),
+                and_(
+                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
+                    IRSession.attended_at.is_(None),
+                ),
+                IRSession.status == IRSessionStatus.DONE,
                 halt.a_warning_stands(),
             ),
             live(),
@@ -958,16 +1040,55 @@ async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
 
     ``halts_raised`` counts blocking halts only: it is how a landing turn tells the halt it
     began in from one raised while the Guide was answering, and a warning is neither.
+
+    **A new ask is an unattended ask**, so the update that raises the halt also clears the
+    visit that answered the previous one, and the room is back on the queue. It clears it in
+    the same statement so a visit that landed after ``session`` was read is cleared too. A
+    warning that visit ended stays ended: once the stamps go the visit can no longer be
+    undone, so what it ended is final.
+
+    **An ask on a room that is already halted and unattended is a repeat** (ENG-2121): it still
+    counts, so a return that read the earlier halt leaves this one standing (ADR 0045), but it
+    leaves ``updated_at`` where it was. That column orders the team's rooms and names its Current
+    book, and a tablet that retries, or re-sends the halt it remembers on relaunch, is not the
+    team's work, and it keeps ``person_arrived_at``: the arrival belongs to the halt it answers
+    and only a new halt clears it. A first ask, or one after somebody attended, raises the halt
+    in any room.
     """
+    repeat = and_(IRSession.status == IRSessionStatus.NEEDS_PERSON, IRSession.attended_at.is_(None))
     halted = await db.execute(
         update(IRSession)
         .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
-        .values(status=IRSessionStatus.NEEDS_PERSON, halts_raised=IRSession.halts_raised + 1)
+        .values(
+            status=IRSessionStatus.NEEDS_PERSON,
+            halts_raised=IRSession.halts_raised + 1,
+            warned_at=case((IRSession.attended_at.is_not(None), None), else_=IRSession.warned_at),
+            attended_at=None,
+            attended_by=None,
+            halt_kind=HaltKind.BLOCKING.value,
+            person_arrived_at=case((repeat, IRSession.person_arrived_at), else_=None),
+            updated_at=case((repeat, IRSession.updated_at), else_=func.now()),
+        )
         .execution_options(synchronize_session=False)
     )
     if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
-    _a_new_ask(session, kind=HaltKind.BLOCKING)
+    if await is_the_demo_team(db, session.project_id):
+        await db.flush()
+        await db.refresh(
+            session,
+            [
+                "status",
+                "halts_raised",
+                "warned_at",
+                "attended_at",
+                "halt_kind",
+                "person_arrived_at",
+            ],
+        )
+        return await attend(
+            db, session, by=None, halts_raised=session.halts_raised, warned_at=session.warned_at
+        )
     return await _written(db, session, commit=True)
 
 
@@ -978,35 +1099,32 @@ async def raise_a_warning(
 
     **The status is not written** (ENG-1163). A warning refuses nothing, so the session stays
     where it was — in progress, or done — and the warning stands beside it until a facilitator
-    attends the session (``halt.standing``).
+    attends the session (``halt.standing``). A new warning is an unattended one, so the update
+    that raises it also clears the visit that answered the previous halt, in the same
+    statement so a visit that landed after ``session`` was read is cleared too.
     """
+    await db.execute(
+        update(IRSession)
+        .where(IRSession.id == session.id)
+        .values(warned_at=datetime.now(UTC), attended_at=None, attended_by=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.refresh(session, ["warned_at", "attended_at", "attended_by"])
     _a_new_ask(session, kind=HaltKind.WARNING)
-    session.warned_at = datetime.now(UTC)
+    if await is_the_demo_team(db, session.project_id):
+        _visited(session, by=None)
     return await _written(db, session, commit=commit)
 
 
 def _a_new_ask(session: IRSession, *, kind: HaltKind) -> None:
-    """What every halt writes, whichever its kind.
+    """What a warning writes on the row after its update: the kind and a fresh wait.
 
-    The kind is written on every halt and cleared by none — see ``halt.last``.
-
-    **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
-    cleared here. The stamps are what a facilitator reads to skip a row a colleague already
-    walked to; carried forward, they tell them to skip a room nobody has been to for this
-    halt. Sharper than it looks: a successful ``attend`` takes the row off the queue, so a
-    halted row could only ever carry stamps by carrying stale ones — the field would have been
-    delivered exclusively by that mistake.
-
-    **A warning that visit ended stays ended.** A warning stands while nobody is marked as
-    having gone, so clearing the stamps alone would bring it back for a room somebody already
-    walked to. Once the stamps go the visit can no longer be undone, so what it ended is final.
+    The kind is written on every halt and cleared by none — see ``halt.last``. The visit is
+    cleared by the update itself. ``mark_needs_person`` writes the same two columns inside its
+    own update, because a repetition keeps who arrived and holds ``updated_at``, and a flush
+    behind the update would move it.
     """
-    if session.attended_at is not None:
-        session.warned_at = None
     session.halt_kind = kind.value
-    session.attended_at = None
-    session.attended_by = None
-    session.lifted_halt = None
     session.person_arrived_at = None
 
 
@@ -1043,84 +1161,122 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     the halt, and refusing one that arrives just as a turn lands would lose the arrival of a
     person who is standing in the room either way.
 
+    **The row's ``updated_at`` stays where it was.** It orders the team's rooms and so decides
+    its Current book; a second tablet left on an old halted room would otherwise pull the team
+    back to that room's book with a gesture that is not the team's work.
+
     Answers the moment rather than the row, the way ``record_needs_person`` does on the device
     side: the caller wants the one thing this writes, and a row typed as nullable would make
     every caller handle a null this function has just ruled out.
     """
     if session.person_arrived_at is None:
-        session.person_arrived_at = datetime.now(UTC)
+        await db.execute(
+            update(IRSession)
+            .where(IRSession.id == session.id, IRSession.person_arrived_at.is_(None))
+            .values(person_arrived_at=datetime.now(UTC), updated_at=IRSession.updated_at)
+            .execution_options(synchronize_session=False)
+        )
         await db.commit()
         await db.refresh(session)
+    assert session.person_arrived_at is not None
     return session.person_arrived_at
 
 
-async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
-    """A facilitator says they went to this room, which ends every halt standing.
+async def attend(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    by: str | None,
+    halts_raised: int,
+    warned_at: datetime | None,
+) -> IRSession:
+    """A facilitator says they went to this room: a Visit, which writes nothing on the status.
 
-    **Both kinds, and that had to be decided rather than assumed.** A warning refuses nothing
-    and the room could go on without anybody — but the warning exists to bring somebody, and
-    once they are there it has done its work; leaving it standing would keep the team on a
-    queue nobody can drain. When a blocking halt stands over a warning, one visit ends both
-    (ADR 0039): whoever came is in the room for either.
+    The visit is the only exit a warning has (ADR 0039): it ends because ``attended_at`` is now
+    set, and undoing the visit brings it back, except on a demo team, whose undo is attended
+    again at once (ADR 0064). A blocking halt is the team's to lift, and the
+    visit only takes the room off the queue (ADR 0076).
 
-    **The only exit a warning has.** The warning ends because ``attended_at`` is now set, and
-    nothing else is written for it: undoing the visit clears the stamp and the warning stands
-    again. ``append_exchange`` goes on lifting a blocking halt on the next landing turn, which
-    is the team's exit; this is the one the *facilitator* controls, and the person who went
-    may well leave before the team speaks again.
+    **It names the halt it answers** (ADR 0091): ``halts_raised`` and ``warned_at`` as the
+    Desk read them. The count moves with a blocking halt only (ADR 0039), and ``warned_at``
+    with a warning. The stamp is written only while both are still the room's, under the
+    row's lock, so a halt raised after the read is never hidden by a visit to the one before.
 
     **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
     every tap would record when somebody last touched the Desk rather than when they went to
     the room — and the moment of the visit is the whole of what this field is for.
 
-    A session that is not halted is marked all the same and moves nowhere. They went anyway,
-    and that is worth recording; pushing an untroubled conversation through the state machine
-    because somebody noted a visit is not. ``lifted_halt`` is what separates the two cases,
-    and it is written here rather than worked out later because afterwards there is nothing
-    left to work it out from.
+    ``by`` is None when nobody went: the server stamps a demo team's halt itself (ADR 0064).
+
+    ``updated_at`` is written its own value: a visit is not the team's act, and the team's
+    Current book reads its latest session by that column (ADR 0094).
     """
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
+    _visited(session, by=by)
+    session.updated_at = IRSession.updated_at
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def _visited(session: IRSession, *, by: str | None) -> None:
+    """What a visit writes, leaving the transaction open: the stamp, and nothing else."""
     if session.attended_at is None:
         session.attended_at = datetime.now(UTC)
         session.attended_by = by
-    if session.status is IRSessionStatus.NEEDS_PERSON:
-        session.lifted_halt = HaltKind.BLOCKING.value
-        session.status = halt.a_lift_restores()
-    await db.commit()
-    await db.refresh(session)
-    return session
 
 
-async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
-    """Withdraw the mark: nobody went, so the room asks again.
+async def unattend(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> IRSession:
+    """Withdraw the mark: nobody went. The stamps clear and the status is not written.
 
-    The halt comes back with the kind it had, because a halt restored as a generic one is a
-    facilitator sent on the wrong walk. Only a session that carries a mark can lose one.
+    A halted room is back on the queue, and a warning the visit ended stands again: it stands
+    while ``warned_at`` is set and nobody is marked as having gone. A demo team's halt is
+    stamped again by the server at once, because it never calls a person (ADR 0064); a visit
+    to a demo room that never halted clears like any other. Whether a halt stands is read
+    under the row's lock, so a halt raised or lifted after ``session`` was read is the one it
+    answers.
 
-    **What comes back is what this visit lifted, and nothing else.** ``halt_kind`` cannot
-    answer that: it is never cleared, so it means "halted at some point, ever". Restoring from
-    it re-halted a room the team had already restarted themselves — the facilitator marks a
-    row their queue showed a minute stale, changes their mind, and a conversation in full flow
-    stops with a kind belonging to a halt somebody cleared an hour earlier. ``lifted_halt`` is
-    the fact that was missing, and a visit that lifted nothing undoes to nothing.
+    Like the visit, it names the halt the Desk read (ADR 0091): an undo of a visit to an older
+    halt would clear a colleague's visit to the newer one.
 
-    A warning the visit ended comes back without being written: it stands while ``warned_at``
-    is set and nobody is marked as having gone, so clearing the stamps is all it takes, and no
-    landing turn in between can have ended it.
-
-    ``DONE`` is terminal and this is not a way back into a passage the floor closed; the
-    stamps still clear, because the claim being withdrawn is about the visit, not the passage.
+    ``updated_at`` is left as it was, as the visit left it (ADR 0094). The demo read comes
+    before the stamps clear, because a read flushes what is pending and the flush would move it.
     """
+    demo = await is_the_demo_team(db, session.project_id)
+    await _the_halt_held(db, session, halts_raised=halts_raised, warned_at=warned_at)
     if session.attended_at is None:
         return session
-    lifted = session.lifted_halt
     session.attended_at = None
     session.attended_by = None
-    session.lifted_halt = None
-    if lifted is not None and session.status is IRSessionStatus.IN_PROGRESS:
-        session.status = IRSessionStatus.NEEDS_PERSON
+    if demo and halt.standing(session) is not None:
+        _visited(session, by=None)
+    session.updated_at = IRSession.updated_at
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def _the_halt_held(
+    db: AsyncSession, session: IRSession, *, halts_raised: int, warned_at: datetime | None
+) -> None:
+    """Read the room again under its row lock, and refuse a write naming a halt that moved.
+
+    The lock holds until the visit's commit, so nothing raises or lifts a halt between this
+    comparison and the write. ``warned_at`` is compared as the instant it is, never as stored
+    text, which a row written by SQL may spell differently from a bound value.
+    """
+    held = (
+        await db.execute(
+            select(IRSession)
+            .where(IRSession.id == session.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if (held.halts_raised, held.warned_at) != (halts_raised, warned_at):
+        raise HaltMoved(held.halts_raised, held.warned_at)
 
 
 def back_translation_of(session: IRSession) -> BackTranslationState:
@@ -1162,12 +1318,40 @@ def _changed(read: CheckRound, wanted: CheckRound) -> dict[str, Any]:
     return {name: value for name, value in vars(wanted).items() if getattr(read, name) != value}
 
 
+def _played_forward(
+    read: list[PlayedTake], wanted: list[PlayedTake], fresh: list[PlayedTake]
+) -> list[PlayedTake]:
+    return fresh if wanted == read else _added_up(fresh, wanted)
+
+
+def _added_up(stored: list[PlayedTake], reported: list[PlayedTake]) -> list[PlayedTake]:
+    by_take = {entry.take_id: entry for entry in stored}
+    for entry in reported:
+        earlier = by_take.get(entry.take_id, PlayedTake(take_id=entry.take_id))
+        by_take[entry.take_id] = PlayedTake(
+            take_id=entry.take_id,
+            played_ranges=joined_spans([*earlier.played_ranges, *entry.played_ranges]),
+            clip_duration_ms=max(earlier.clip_duration_ms, entry.clip_duration_ms),
+        )
+    return list(by_take.values())
+
+
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
-    for name in vars(wanted).keys() - {"findings", "nuances", "checks"}:
+    for name in vars(wanted).keys() - {
+        "findings",
+        "nuances",
+        "checks",
+        "played_by_take",
+        "pauses_moved",
+    }:
         if getattr(wanted, name) != getattr(read, name):
             setattr(fresh, name, getattr(wanted, name))
+    fresh.pauses_moved += wanted.pauses_moved - read.pauses_moved
+    fresh.played_by_take = _played_forward(
+        read.played_by_take, wanted.played_by_take, fresh.played_by_take
+    )
     fresh.findings = _standing_forward(read.findings, wanted.findings, fresh.findings)
     fresh.nuances = _standing_forward(read.nuances, wanted.nuances, fresh.nuances)
     fresh.checks = _rounds_forward(read.checks, wanted.checks, fresh.checks)
@@ -1184,17 +1368,24 @@ async def save_back_translation(
 ) -> IRSession:
     """Write the telling-back state, merged onto what is stored if another write landed first.
 
-    ``rule`` is what the caller decided on the state it read, applied again to the merged one.
+    ``rule`` is what the caller decided on the state it read, applied again to the state about to
+    be stored: the merged one when another write landed first, the one as written when none did.
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
+
+    The state written is the standing version's check too, in the same transaction (ADR 0081).
     """
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
 
     async def onto(read: dict[str, Any] | None) -> dict[str, Any]:
         if read == session.back_translation:
-            return written
+            if rule is None:
+                return written
+            as_written = BackTranslationState.model_validate(written)
+            await rule(as_written)
+            return as_written.model_dump(mode="json")
         merged = _merged_forward(base, state, BackTranslationState.model_validate(read or {}))
         if rule is not None:
             await rule(merged)
@@ -1207,6 +1398,7 @@ async def save_back_translation(
     for name, value in vars(BackTranslationState.model_validate(written)).items():
         if getattr(state, name) != value:
             setattr(state, name, value)
+    await keep_the_check_on_the_standing_release(db, session, state)
     if commit:
         await db.commit()
         await db.refresh(session)
@@ -1224,15 +1416,16 @@ async def report_playback(
     played_ranges: list[tuple[int, int]],
     clip_duration_ms: int | None,
 ) -> BackTranslationState:
-    """Store what the tablet played of each rehearsal part, as it was sent.
+    """Add what the tablet played of each rehearsal part to what is stored, per take.
 
-    The per-part report is stored exactly as the tablet sent it, subject and all. Nothing is
-    computed from it here and nothing is thrown away: the app names the recording each span was
-    played from, and the room has no better answer than the one the player measured.
-
-    **A report with parts replaces, it does not merge.** What arrives is the whole of what the
-    team has heard, never a delta, because the tablet keeps the ledger and the server has no way
-    to tell a part left out of a short report from a part that was never played.
+    **A report with parts adds to what is stored, per take** (ADR 0074). The tablet reports as
+    each part ends and on leaving, so a report names the parts it holds and no more; replacing
+    on it erased a part an earlier report heard, and one tablet's report erased another's on the
+    same session, and it adds up again when another report landed first. A take's spans are kept
+    joined only where they touch, so the rule can still see a gap, and its length is the
+    longest reported, so a zero never replaces a measurement. That length is stored and
+    never read as is: every reader goes through `part_length`, and asks of the current parts
+    only, so the entry of a part recorded again stays stored and is never read again.
 
     **A report with no part named takes nothing away.** An older build sends the flat pair and
     nothing else, and the two builds meet on one session when a team changes tablet mid-passage.
@@ -1251,7 +1444,7 @@ async def report_playback(
     """
     told = await final_segments(db, session.id)
     if played_by_take:
-        state.played_by_take = played_by_take
+        state.played_by_take = _added_up(state.played_by_take, played_by_take)
     state.played_ranges = [[start, end] for start, end in played_ranges]
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})
@@ -1349,9 +1542,91 @@ async def start_the_translation_over(db: AsyncSession, session: IRSession) -> No
         standing.checked_at = None
         standing.verdict = None
         standing.analysed_segment_ids = None
+        standing.analysed_frases = None
 
     state = back_translation_of(session)
     state.superseded = [*state.superseded, SupersededAttempt()]
     await started_over(state)
     await retire_every_segment(db, session.id)
     await save_back_translation(db, session, state, rule=started_over)
+
+
+async def switch_the_grain(
+    db: AsyncSession, session: IRSession, grain: IRGrain, *, reopens_the_approved_draft: bool
+) -> bool:
+    """The team moves between the passage told whole and scene by scene, and says whether it did.
+
+    A switch to the grain in force changes nothing and asks nothing, not even whether the draft
+    stands approved. A real one records the grain and its time on the session and stamps every
+    rehearsal take the session holds with that time: the earlier grain's parts, their superseded
+    takes and a whole that had already stepped aside, since none was recorded after the switch.
+    The stamp is set once and never cleared, so a switch back restores nothing (ADR 0096).
+
+    It stamps rather than comparing **Recording times** with the switch, because a joined part
+    keeps the server's clock and a tablet take its own, and a drifting clock would put a take on
+    the wrong side.
+
+    The telling-back starts over as «recomeçar a tradução» does, but only when there is one to
+    start over: her switch restarts only over frases or checks, and an empty attempt would show
+    the consultant one nobody made.
+
+    The session's row is held through the helper the approval holds it with, and the grain and
+    the approved draft are read under it: an approval composing while the switch waits lands
+    first and the switch then refuses it without the armed tap, and a rival switch to the same
+    grain finds it in force. Nothing inside reaches the bucket (ADR 0081, ADR 0089).
+
+    It sweeps the earlier grain once more after its commit: a keep whose take committed while
+    the stamp ran, and which read the session before the switch committed, stamped nothing.
+    """
+    await hold_the_session_row(db, session)
+    parts = current_parts(await takes_of(db, session.id))
+    if grain_in_force(session, parts) is grain:
+        await db.commit()
+        return False
+    if not reopens_the_approved_draft:
+        await refuse_to_reopen_the_approved_draft(db, session)
+    at = datetime.now(UTC)
+    session.grain = grain
+    session.grain_switched_at = at
+
+    unstamped = (
+        IRTake.session_id == session.id,
+        IRTake.kind == IRTakeKind.ENSAIO,
+        IRTake.set_aside_at.is_(None),
+    )
+    await db.execute(update(IRTake).where(*unstamped).values(set_aside_at=at))
+    await db.execute(
+        update(IRTake).where(IRTake.id.in_([part.id for part in parts])).values(superseded_at=at)
+    )
+    state = back_translation_of(session)
+    if state.checks or state.checked or await current_segments(db, session.id):
+        await start_the_translation_over(db, session)
+    else:
+        await db.commit()
+
+    earlier = IRTake.ordinal.is_not(None) if grain is IRGrain.WHOLE else IRTake.ordinal.is_(None)
+    await db.execute(
+        update(IRTake).where(*unstamped, earlier).values(set_aside_at=at, superseded_at=at)
+    )
+    await db.commit()
+    await db.refresh(session)
+    return True
+
+
+async def set_aside_by_the_grain_in_force(
+    db: AsyncSession, session: IRSession, take: IRTake
+) -> None:
+    """A rehearsal take of the grain a **Grain switch** left behind is kept and set aside at once.
+
+    The Outbox drains one part's recordings at a time, so a take recorded before the switch can
+    land after it. It is set aside and never refused, because the tablet would hold a refused
+    row forever. It carries the time of the switch that made its grain the earlier one, which is
+    the latest (ADR 0096).
+    """
+    if take.set_aside_at is not None:
+        return
+    await db.refresh(session, ["grain", "grain_switched_at"])
+    if of_the_grain_left_behind(session, take.kind, take.ordinal):
+        take.set_aside_at = session.grain_switched_at
+        take.superseded_at = session.grain_switched_at
+        await db.commit()

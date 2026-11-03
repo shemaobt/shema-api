@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.exceptions import ConflictError
+from app.services import internalization_room as room
 from app.services.internalization_room import idempotency
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
@@ -20,6 +21,7 @@ from tests.hard_stretch_harness import (
     DEVICE,
     IR,
     SLICES,
+    a_new_recording,
 )
 from tests.hard_stretch_harness import (
     MemoryStore as _MemoryStore,
@@ -39,6 +41,7 @@ from tests.hard_stretch_harness import (
 from tests.release_harness import a_claimed_device
 
 OTHER_AUDIO = b"a equipe contou este trecho de outro jeito"
+CORRECTION_AUDIO = b"a equipe corrigiu este trecho"
 CLOCK = "app.services.internalization_room.idempotency.utcnow"
 WAIT_S = 10
 
@@ -164,13 +167,14 @@ async def _replace(
     stretch: int,
     *,
     key: str | None = None,
+    audio: bytes = CORRECTION_AUDIO,
 ) -> httpx.Response:
     starts, ends = SLICES[stretch - 1]
     return await client.post(
         f"{IR}/sessions/{session_id}/segments/{segment_id}/replace",
         headers=_headers(key),
         data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
-        files={"file": ("correcao.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("correcao.m4a", audio, "audio/mp4")},
     )
 
 
@@ -209,10 +213,12 @@ async def test_one_correction_per_key(
     heard: str,
     status: int,
     tellings: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
     [stretch] = await _current(db_session, session_id)
+    monkeypatch.setattr(room, "is_a_resend", lambda *_: False)
 
     _answers(client).append(heard)
     first = await _replace(client, session_id, take_id, stretch.id, 1, key="uma-correcao")
@@ -222,7 +228,9 @@ async def test_one_correction_per_key(
     assert again.status_code == first.status_code
     assert again.json() == first.json()
     [standing] = await _current(db_session, session_id)
-    assert standing.tellings == tellings
+    assert standing.tellings == tellings, (
+        "a chave repetida não era respondida pelo replay: a porta voltava a decidir sozinha"
+    )
 
 
 async def test_a_key_reused_with_another_body_is_refused(
@@ -372,12 +380,17 @@ async def test_a_retold_chunk_sent_twice_under_one_key_counts_one_telling(
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
     _answers(client).append("o trecho 1 de novo")
-    retold = await _chunk(client, session_id, take_id, 1, again=True)
+    retold = await _chunk(client, session_id, take_id, 1, again=True, audio=OTHER_AUDIO)
     assert retold.status_code == 200, retold.text
 
     _answers(client).append("o trecho 1 pela terceira vez")
-    first = await _chunk(client, session_id, take_id, 1, key="terceira", again=True)
-    again = await _chunk(client, session_id, take_id, 1, key="terceira", again=True)
+    third_audio = a_new_recording()
+    first = await _chunk(
+        client, session_id, take_id, 1, key="terceira", again=True, audio=third_audio
+    )
+    again = await _chunk(
+        client, session_id, take_id, 1, key="terceira", again=True, audio=third_audio
+    )
 
     assert first.status_code == 200, first.text
     assert again.json() == first.json()
@@ -395,7 +408,9 @@ async def test_a_stretch_superseded_while_a_chunk_is_heard_refuses_the_chunk(
     held = Held("o trecho 1 de novo")
     _answers(client).extend([held, "o trecho 1 corrigido"])
 
-    chunk = asyncio.create_task(_chunk(client, session_id, take_id, 1, again=True))
+    chunk = asyncio.create_task(
+        _chunk(client, session_id, take_id, 1, again=True, audio=OTHER_AUDIO)
+    )
     try:
         await held.until_reached()
         superseded = await _replace(client, session_id, take_id, stretch.id, 1)
@@ -563,4 +578,4 @@ async def test_a_store_that_fails_after_a_cancellation_frees_the_key(
     resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
 
     assert resent.status_code == 200, resent.text
-    assert len(await _current(db_session, session_id)) == 2
+    assert [one.tellings for one in await _current(db_session, session_id)] == [1]

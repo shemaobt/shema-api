@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -27,7 +28,7 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core import stage_clock
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room import llm
+from app.services.internalization_room import llm, session_turns
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.oral_collector import gcs_utils
@@ -254,9 +255,9 @@ class Room:
         self.team = team
 
 
-async def _a_room(db: AsyncSession, room_app) -> Room:
+async def _a_room(db: AsyncSession, room_app, pericope: str = P) -> Room:
     project, credential = await a_claimed_device(db)
-    session = await create_session(db, language="pt", pericope=P, project_id=project.id)
+    session = await create_session(db, language="pt", pericope=pericope, project_id=project.id)
     desk, _facilitator = await at_the_desk(db, room_app, project)
     return Room(session.id, credential, desk, project.id)
 
@@ -292,8 +293,9 @@ async def _read(client: httpx.AsyncClient, room: Room) -> list[dict[str, Any]]:
 
 async def _play(client: httpx.AsyncClient, room: Room, turn: dict[str, Any]) -> str:
     response = await client.get(turn["voice"]["audio_url"], headers=room.desk)
-    assert response.status_code == 307, response.text[:300]
-    return response.headers["location"].removeprefix("https://signed.test/plataforma/")
+    assert response.status_code == 200, response.text[:300]
+    assert set(response.json()) == {"url", "expires_at"}
+    return response.json()["url"].removeprefix("https://signed.test/plataforma/")
 
 
 async def _what_the_tablet_heard(client: httpx.AsyncClient, room: Room, audio_url: str) -> bytes:
@@ -330,7 +332,6 @@ async def test_a_session_of_five_turns_reads_as_five_pairs_oldest_first_each_wit
     turns = await _read(client, room)
 
     assert [turn["voice"]["text"] for turn in turns] == [OPENING, *LINES]
-    assert turns[0]["team"] is None
     assert [turn["team"] for turn in turns[1:]] == [
         {
             "language": "pt",
@@ -382,6 +383,29 @@ async def test_a_turn_where_the_team_cut_the_voice_off_at_4_s_reads_as_interrupt
     assert cut["team"]["guide_heard"].startswith("[A equipe interrompeu")
     assert cut["team"]["guide_heard"] != WORDS[0]
     assert cut["team"]["guide_heard"].endswith(WORDS[0])
+
+
+async def test_a_panorama_turn_where_the_team_cut_the_voice_off_at_1200_ms_reads_as_interrupted_at_1_2_seconds(  # noqa: E501
+    client, db_session, room_app, script
+) -> None:
+    room = await _a_room(db_session, room_app, pericope="OV-Ruth")
+    script.drafts = [OPENING, LINES[0]]
+    await _opens(client, room)
+    script.heard = _heard(WORDS[0])
+    await _says(
+        client,
+        room,
+        "cortou",
+        interrupted="1",
+        interrupted_at_ms="1200",
+        interrupted_of_ms="5000",
+    )
+
+    (_opening, cut) = await _read(client, room)
+
+    assert cut["team"]["interrupted_at_s"] == 1.2, (
+        "a Mesa lia um turno do Panorama cortado pela equipe como um turno que ninguém cortou"
+    )
 
 
 async def test_a_mother_tongue_take_reads_as_mother_tongue_with_the_note_instead_of_words(
@@ -593,6 +617,60 @@ async def test_playing_a_turn_stored_before_this_change_synthesizes_it_once_in_t
     assert first in bucket.objects
 
 
+async def test_playing_a_turn_answers_a_signed_address_of_its_clip_and_the_instant_it_dies_in_the_future_with_an_offset(  # noqa: E501
+    client, db_session, room_app, script, elevenlabs, bucket
+) -> None:
+    room = await _a_room(db_session, room_app)
+    script.drafts = [OPENING, LINES[0]]
+    opened = await _opens(client, room)
+    script.heard = _heard(WORDS[0])
+    await _says(client, room, "uma-vez")
+    heard = await _what_the_tablet_heard(client, room, opened["audio_url"])
+
+    (opening, _turn) = await _read(client, room)
+    response = await client.get(opening["voice"]["audio_url"], headers=room.desk)
+
+    assert response.status_code == 200, response.text[:300]
+    body = response.json()
+    assert set(body) == {"url", "expires_at"}
+    assert bucket.objects[body["url"].removeprefix("https://signed.test/plataforma/")] == heard
+    expires_at = datetime.fromisoformat(body["expires_at"])
+    assert expires_at.tzinfo is not None
+    window = (expires_at - datetime.now(UTC)).total_seconds()
+    assert 0 < window <= session_turns.LISTEN_MINUTES * 60
+
+
+async def test_the_same_turn_played_twice_within_the_window_answers_200_both_times_and_leaves_the_session_unchanged(  # noqa: E501
+    client, db_session, room_app, script, per_request
+) -> None:
+    room = await _a_room(db_session, room_app)
+    script.drafts = [OPENING, LINES[0]]
+    await _opens(client, room)
+    script.heard = _heard(WORDS[0])
+    await _says(client, room, "duas-vezes")
+    before = await _row(per_request, room.session_id)
+    (_opening, turn) = await _read(client, room)
+
+    first = await client.get(turn["voice"]["audio_url"], headers=room.desk)
+    second = await client.get(turn["voice"]["audio_url"], headers=room.desk)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert first.json()["url"] == second.json()["url"]
+    assert await _row(per_request, room.session_id) == before
+
+
+async def test_playing_a_turn_past_the_last_voice_turn_is_not_found(
+    client, db_session, room_app, script, elevenlabs, bucket
+) -> None:
+    room = await _a_room(db_session, room_app)
+    script.drafts = [OPENING]
+    await _opens(client, room)
+
+    response = await client.get(f"{_turns_of(room.session_id)}/1/audio", headers=room.desk)
+
+    assert response.status_code == 404, response.text[:300]
+
+
 async def test_reading_a_live_sessions_turns_and_playing_one_leaves_the_session_unchanged(
     client, db_session, room_app, script, per_request
 ) -> None:
@@ -659,7 +737,6 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
 
     (opening, old) = await _read(client, room)
 
-    assert opening["team"] is None
     assert opening["voice"]["outcome"] == "no_record"
     assert old["team"] == {
         "language": None,
@@ -675,6 +752,7 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
         "attempts": 0,
         "trace": [],
         "accepted_ids": [],
+        "earlier_passages": None,
         "recognition_ms": None,
         "reply_ms": None,
         "synthesis_ms": None,

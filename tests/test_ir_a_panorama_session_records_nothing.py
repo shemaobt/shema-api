@@ -24,7 +24,6 @@ from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     another_rehearsal_take,
-    nothing_is_read_ahead,
     press_terminei,
     room_client,
     stored_telling_back,
@@ -54,7 +53,6 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     async def heard(*_: Any, **__: Any) -> str:
         return "algo que a equipe contou"
 
-    nothing_is_read_ahead(monkeypatch)
     the_transcriber_says(monkeypatch, [])
     monkeypatch.setattr(segments_api, "heard", heard)
     return the_bucket_is_in_memory(monkeypatch)
@@ -172,6 +170,20 @@ async def test_starting_the_translation_over_under_a_panorama_is_refused(
 
     refused = await client.post(
         f"{PREFIX}/sessions/{session.id}/back-translation/restart", headers=HEADERS
+    )
+
+    _refused(refused)
+    assert [one.id for one in await final_segments(db_session, session.id)] == before
+
+
+async def test_a_grain_switch_under_a_panorama_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession, bucket: MemoryStore
+) -> None:
+    session, _, _ = await _a_panorama_with_a_told_stretch(db_session)
+    before = [one.id for one in await final_segments(db_session, session.id)]
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session.id}/grain", headers=HEADERS, json={"grain": "scene"}
     )
 
     _refused(refused)

@@ -15,8 +15,8 @@ from app.services.internalization_room.canon.parse_map import MeaningMap
 def _p01_labels_with(label: str, monkeypatch: pytest.MonkeyPatch) -> None:
     real = smoke.labelled_elements
 
-    def labelled(pericope_num: str, *, book: str) -> list[LabelledElement]:
-        labels = real(pericope_num, book=book)
+    def labelled(pericope_num: str) -> list[LabelledElement]:
+        labels = real(pericope_num)
         if pericope_num == "P01":
             labels[0] = labels[0].model_copy(update={"label_en": label})
         return labels
@@ -58,6 +58,8 @@ def test_a_scene_with_no_title_fails_and_is_named(monkeypatch: pytest.MonkeyPatc
 
     def load_book(book: str) -> tuple[MeaningMap, ...]:
         maps = list(real(book))
+        if book != "Ruth":
+            return tuple(maps)
         first = maps[0]
         scenes = [first.scenes[0].model_copy(update={"title": " "}), *first.scenes[1:]]
         maps[0] = first.model_copy(update={"scenes": scenes})
@@ -132,7 +134,8 @@ def test_a_digest_without_its_reference_line_or_its_arc_fails_and_is_named(
 
     def load_book(book: str) -> tuple[MeaningMap, ...]:
         maps = list(real(book))
-        maps[0] = maps[0].model_copy(update=update)
+        if book == "Ruth":
+            maps[0] = maps[0].model_copy(update=update)
         return tuple(maps)
 
     monkeypatch.setattr(smoke, "load_book", load_book)
@@ -149,6 +152,6 @@ def test_a_menu_that_offers_fewer_passages_than_the_record_holds_fails(
     monkeypatch.setattr(smoke, "MANIFEST", tmp_path / "VENDOR_MANIFEST.json")
 
     assert smoke.problems() == [
-        "the menu offers 14 passages in en but the record holds 15",
-        "the menu offers 14 passages in pt but the record holds 15",
+        "the menu offers 37 passages in en but the record holds 38",
+        "the menu offers 37 passages in pt but the record holds 38",
     ]

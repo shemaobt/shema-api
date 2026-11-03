@@ -53,3 +53,25 @@ and now by the same mechanism. **And a captured telling is one transaction**: th
 the telling-back state and the mark commit together, so the count and the mark cannot come
 apart. The `>=` gate stays, for the stretches the builds that could left standing at the number
 with no mark.
+
+**Amended on 20 October 2026 (ENG-1695): the chunks door reads the address, not the flag.** The
+door used to make a version only when the chunk arrived with `retelling` on. Since the tablet
+stopped resending a frase whose answer was lost — it says «não entendi» and the team tells
+that slice again under a new key — the server can hold a frase the tablet no longer knows it
+sent, and the second telling arrived with the flag off: two current frases stood on one
+slice, with two numbers, both read by her Analyst. A chunk whose take, start and end are those
+of a stretch that counts is now that stretch's next version, whatever else it carries: same
+position, same number, the earlier telling kept in the history, the count of tellings one
+more. The flag is gone from the door, and a client that still sends it is not refused. The
+pass is unchanged (`pass_of_a_telling`), and a telling at any other slice is a new frase as
+before. This rests on the tablet telling the same stretch again, so the address comes back
+verbatim (`from` and `to` unchanged): a re-measured slice would be a new frase. And the same
+recording sent again for a stretch that already holds it is a resend and not a telling —
+nothing is superseded, nothing is counted and the stretch's answer is given again — because
+a freed idempotency key brings the same bytes back, and a count that ran ahead of the
+recordings would warn one telling early. The replace door, which a frase told again uses,
+asks the same function (`is_a_resend`) by the same address, so a lost answer whose recording
+comes back under a new key, even at the id the first attempt had already replaced, is answered
+with the standing frase and nothing else. Rejected: moving the lookup into `capture_segment`,
+which would change the text seam and every service-level caller that writes two stretches at
+one slice on purpose.

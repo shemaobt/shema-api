@@ -21,16 +21,21 @@ from app.core.exceptions import CanonNotKept
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
-from app.models.internalization_room import PericopePosition
+from app.models.internalization_room import PericopePosition, PericopeStanding
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
+from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
-from app.services.internalization_room.latest_by_passage import latest_releases
+from app.services.internalization_room.latest_by_passage import latest_releases, live_sessions
 from app.services.internalization_room.live import live
-from app.services.internalization_room.progression import finished_passages, resolve, standing
+from app.services.internalization_room.progression import (
+    book_standings,
+    standing,
+    where_teams_stand,
+)
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.list_facilitator_teams import team_cards
 from app.services.project.team_state import team_state
@@ -45,9 +50,13 @@ async def read_facilitator_team(
     and one that is not the caller's are indistinguishable from here, which is what lets the
     route answer them with one refusal. Telling them apart is the enumeration ENG-443 closed.
 
-    Four statements and none of them grows: the team's row, the passages it has finished, its
-    latest releases, and the necklace of the passage it is standing on. The second serves both
-    the active passage and ``closed_total`` from one read rather than asking twice.
+    Six statements and none of them grows: the team's row, the passages it has finished, the
+    books of its live sessions, its latest releases, their open findings, and the necklace of
+    the passage it is standing on. The finished passages serve the active passage,
+    ``closed_total`` and each book's completeness from one read, and the releases serve both
+    ``approved_total`` and ``books``. The standing of the Current book's passages is served
+    from that same reading (ENG-1781), so the Desk never draws an active passage from one
+    request and the list from another that a session entered in between could have moved.
 
     The necklace read was measured on a throwaway Postgres 17 with 210,000 events over 200
     teams, ``ANALYZE``d and not against an empty table: a **Bitmap Index Scan** on
@@ -57,8 +66,8 @@ async def read_facilitator_team(
     """
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
-    finished = (await finished_passages(db, project_ids=[team_id])).get(team_id, set())
-    here = resolve(finished)
+    whereabouts = (await where_teams_stand(db, project_ids=[team_id]))[team_id]
+    here = whereabouts.passage
     row = (
         await db.execute(
             team_cards(scope).where(Project.id == team_id).add_columns(_the_canon_pin_on(here))
@@ -67,7 +76,18 @@ async def read_facilitator_team(
     if row is None:
         return None
 
-    passages = standing(finished, releases=await latest_releases(db, team_id), findings={})
+    releases = await latest_releases(db, team_id)
+    findings, drafts = await live_sessions(db, team_id)
+    approved = await standing_approvals(db, team_id, among=releases)
+    passages = standing(
+        whereabouts.finished,
+        book=whereabouts.book,
+        here=here,
+        releases=releases,
+        approved=approved,
+        findings=findings,
+        drafts=drafts,
+    )
     closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
     active = None
     if here is not None:
@@ -83,7 +103,7 @@ async def read_facilitator_team(
         mother_tongue=row.mother_tongue,
         active_passage=active,
         state=team_state(
-            book_closed=here is None,
+            every_book_closed=whereabouts.complete,
             last_activity_at=row.last_activity_at,
             now=moment,
         ),
@@ -93,6 +113,8 @@ async def read_facilitator_team(
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
         approved_total=sum(1 for entry in passages if entry.approved),
+        books=book_standings(whereabouts, approved=approved),
+        pericopes=passages,
         scene_the_team_is_in=await _scene_they_are_in(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
@@ -116,7 +138,6 @@ async def _scene_they_are_in(
     team_id: str,
     pericope: str | None,
     pin: str | None,
-    book: str = ROOM_BOOK,
 ) -> str | None:
     """The scene of the bead this team moved most recently, named as that scene's own bead.
 
@@ -137,7 +158,7 @@ async def _scene_they_are_in(
 
     try:
         with reading_the_canon_of(pin):
-            answers = scene_of(pericope, book)
+            answers = scene_of(pericope)
     except CanonNotKept:
         return None
     moved = [key for key in history if key in answers]
@@ -146,3 +167,20 @@ async def _scene_they_are_in(
 
     latest = max(moved, key=lambda key: history[key].at)
     return scene_key(answers[latest])
+
+
+async def team_standing(db: AsyncSession, project_id: str) -> list[PericopeStanding]:
+    """The Current book's passages as this team stands on them, each with its latest release
+    and open findings."""
+    whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
+    releases = await latest_releases(db, project_id)
+    findings, drafts = await live_sessions(db, project_id)
+    return standing(
+        whereabouts.finished,
+        book=whereabouts.book,
+        here=whereabouts.passage,
+        releases=releases,
+        approved=await standing_approvals(db, project_id, among=releases),
+        findings=findings,
+        drafts=drafts,
+    )

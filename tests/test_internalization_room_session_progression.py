@@ -35,7 +35,7 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book, served_maps
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.prepare_opening import hand_over
 from tests.baker import (
@@ -50,10 +50,12 @@ _codes = itertools.count()
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND = CANON[0], CANON[1]
 
-#: The passages a team can actually finish: those `unwalkable` leaves open. For Ruth today that
-#: is all of `CANON`; a map the room refuses drops out of this list and stays in `CANON`.
+EVERY_BOOK = [meaning_map.pericope_num for meaning_map in served_maps()]
+
+#: The passages of every served book a team can actually finish: those `unwalkable` leaves
+#: open. Today that is all of `EVERY_BOOK`; a map the room refuses drops out of this list.
 WALKABLE = [
-    meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
+    meaning_map.pericope_num for meaning_map in served_maps() if not unwalkable(meaning_map)
 ]
 
 
@@ -152,7 +154,7 @@ async def test_a_team_that_closed_the_last_passage_is_refused_rather_than_sent_r
     position that leaves nothing to open. Naming a passage still works, which is the door out.
     """
     team = await a_team(db_session, name="Terminou")
-    await having_finished(db_session, team, *CANON)
+    await having_finished(db_session, team, *EVERY_BOOK)
 
     with pytest.raises(ConflictError):
         await room.create_session(db_session, project_id=team.id)

@@ -20,9 +20,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
+    ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+    ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+    ERROR_CODE_PAUSE_PAST_THE_END,
     ConflictError,
     FraseOutOfPlace,
     NotFoundError,
+    PauseCannotMove,
+    RehearsalJoined,
     RestartOutOfOrder,
     SceneRehearsalSending,
     SceneRehearsalSent,
@@ -37,6 +42,7 @@ from app.db.models.internalization_room import (
     IRSceneRestart,
     IRSceneSaid,
     IRSession,
+    IRTake,
     IRTurn,
 )
 from app.models.internalization_room import (
@@ -49,18 +55,21 @@ from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.hearing import HeardSpeech, SentSceneRehearsal, heard
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.live import live
-from app.services.internalization_room.opening_claim import (
-    Draft,
-    answer_around_the_opening,
-    oldest_live_claim,
-)
+from app.services.internalization_room.segments import refuse_a_frase_under_the_floor
 from app.services.internalization_room.takes import (
     TakeStore,
+    checked_recording,
+    current_parts,
     extension,
     recording_digest,
     store_recording,
+    takes_of,
 )
-from app.services.platform.audio_duration import measure_ms
+from app.services.internalization_room.turn_claim import (
+    Draft,
+    answer_under_the_turn_claim,
+    oldest_live_claim,
+)
 
 NUMBERING_TRIES = 50
 
@@ -78,6 +87,9 @@ async def keep_scene_rehearsal(
     content_type: str,
     scene: str | None,
     store: TakeStore | None = None,
+    sent_sha256: str | None = None,
+    sent_duration_ms: int | None = None,
+    sent_recorded_at: datetime | None = None,
 ) -> IRSceneRehearsal:
     """Store the scene as sent and number it in its session; the same bytes are the same one.
 
@@ -86,9 +98,17 @@ async def keep_scene_rehearsal(
     Two keeps at once can read the same last number: the unique index refuses the second,
     which walks to the next number, the house loop ``speaker_service`` uses. A loser that
     carried the same bytes answers with the winner instead.
+
+    What the tablet sent of the recording is checked as a take's is; a scene rehearsal is always
+    recorded on the tablet, so the time it was sent with is its **Recording time**. With none,
+    the database stamps it with the row's arrival as the row is numbered, so a passage's
+    rehearsals keep listing in their numbering order.
     """
     session_id, project_id, pericope = session.id, session.project_id, session.pericope
-    sha256 = recording_digest(audio)
+    checked = await checked_recording(
+        audio, sent_sha256=sent_sha256, sent_duration_ms=sent_duration_ms
+    )
+    sha256 = checked.sha256
     already = await _the_same_scene(db, session_id, sha256)
     if already is not None:
         return already
@@ -101,7 +121,6 @@ async def keep_scene_rehearsal(
         content_type=content_type,
         store=store,
     )
-    duration_ms = await measure_ms(audio)
     label = None
     if scene:
         with reading_the_canon_of(session.canon_pin):
@@ -118,7 +137,7 @@ async def keep_scene_rehearsal(
             pericope=pericope,
             n=n,
             device_id=device_id,
-            duration_ms=duration_ms,
+            duration_ms=checked.duration_ms,
             scene=label,
             scene_said=IRSceneSaid.RECORDING if scene else None,
             scene_foreign=foreign,
@@ -129,6 +148,8 @@ async def keep_scene_rehearsal(
             content_type=stored.content_type,
             verified_at=stored.verified_at,
         )
+        if sent_recorded_at is not None:
+            rehearsal.recorded_at = sent_recorded_at
         db.add(rehearsal)
         try:
             await db.commit()
@@ -172,6 +193,20 @@ async def scene_rehearsals_of_the_passage(
         .order_by(IRSceneRehearsal.created_at, IRSceneRehearsal.n)
     )
     return list(found)
+
+
+async def refuse_an_origin_that_is_no_scene_rehearsal(
+    db: AsyncSession, session: IRSession, origin: str
+) -> None:
+    """A part is joined only from one of the team's live scene rehearsals of this passage.
+
+    The origin is what makes a recording joined, and a joined recording is refused and checked
+    on rules a recording no join touched never meets: an id naming nothing would put a team
+    that recorded the passage as itself under them.
+    """
+    rehearsals = await scene_rehearsals_of_the_passage(db, session)
+    if origin not in {rehearsal.id for rehearsal in rehearsals}:
+        raise UnknownReferenceError(f"{origin} is no scene rehearsal of this passage")
 
 
 async def scene_rehearsals_of_the_session(
@@ -219,16 +254,34 @@ async def label_the_scene(
     """The team's scene label given after the recording, sent or not: said later.
 
     A scene the passage lacks is refused and changes nothing; the label already standing is
-    kept as it was said.
+    kept as it was said. A rehearsal that is a current part's origin keeps its label; another is
+    refused with `REHEARSAL_JOINED`.
     """
     if scene not in scene_ids_for(rehearsal.pericope):
         raise UnknownScene(f"{scene} is not a scene of {rehearsal.pericope}")
     rehearsal = await _locked(db, rehearsal.id)
     if scene != rehearsal.scene:
+        if await _is_a_current_origin(db, rehearsal):
+            raise RehearsalJoined(f"Scene rehearsal {rehearsal.id} is joined as a part")
         rehearsal.scene = scene
         rehearsal.scene_said = IRSceneSaid.LATER
     await db.commit()
     return rehearsal
+
+
+async def _is_a_current_origin(db: AsyncSession, rehearsal: IRSceneRehearsal) -> bool:
+    """Whether a live session of the passage holds a current part whose origin is the rehearsal."""
+    holders = await db.scalars(
+        select(IRTake.session_id)
+        .join(IRSession, IRSession.id == IRTake.session_id)
+        .where(IRTake.origin == rehearsal.id, live(IRSession))
+        .distinct()
+    )
+    for session_id in holders.all():
+        parts = current_parts(await takes_of(db, session_id))
+        if any(part.origin == rehearsal.id for part in parts):
+            return True
+    return False
 
 
 def current_attempt(restarts: Sequence[IRSceneRestart]) -> str | None:
@@ -384,27 +437,116 @@ def _refuse_a_place_outside(rehearsal: IRSceneRehearsal, starts_ms: int, ends_ms
         )
 
 
-async def _current_of_the_chain(
-    db: AsyncSession, rehearsal: IRSceneRehearsal, replaces: str, attempt: str | None
-) -> str:
+def _current_of_the_chain(frases: Sequence[IRSceneFrase], replaces: str) -> IRSceneFrase:
     """The current frase of the chain `replaces` belongs to, whichever version it names.
 
     A team that records one frase again offline, and again, can only name the version it had.
     """
-    found = await db.scalars(
-        select(IRSceneFrase).where(
-            IRSceneFrase.rehearsal_id == rehearsal.id,
-            IRSceneFrase.attempt.is_not_distinct_from(attempt),
-        )
-    )
-    frases = list(found)
-    if replaces not in {frase.id for frase in frases}:
+    by_id = {frase.id: frase for frase in frases}
+    if replaces not in by_id:
         raise UnknownReferenceError(f"Scene frase {replaces} is not a frase of this attempt")
     replacing = replaced_by(frases)
     current = replaces
     while current in replacing:
         current = replacing[current]
-    return current
+    return by_id[current]
+
+
+def _refuse_a_pause_that_cannot_move(
+    rehearsal: IRSceneRehearsal,
+    frases: Sequence[IRSceneFrase],
+    *,
+    named: IRSceneFrase,
+    head: IRSceneFrase,
+    starts_ms: int,
+    ends_ms: int,
+) -> None:
+    """A **Moved pause** stands only on the last frase of its attempt, from that frase's start
+    to an end inside the recording; the first refusal that applies wins, in her order.
+
+    A frase over the place of its chain's newest version is that frase translated again, and
+    lands there. A move against a version replaced since, from another start, or shorter than
+    the shortest frase cannot stand there. The last frase is read among the attempt's `frases`,
+    in place order, set-aside ones counted, and on a tie at the end the later one is last, as
+    the Ensaio Final reads it; so a move held for its restart or overtaken by one is kept as
+    any frase of that attempt is.
+    """
+    if (starts_ms, ends_ms) == (head.starts_ms, head.ends_ms):
+        return
+    if head is not named:
+        raise PauseCannotMove(
+            f"Scene frase {named.id} was replaced by {head.id} since it was read",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    replacing = replaced_by(frases)
+    standing = [frase for frase in frases if frase.id not in replacing]
+    last = max(reversed(standing), key=lambda frase: frase.ends_ms, default=None)
+    if last is not named:
+        raise PauseCannotMove(
+            "The pause moves only on the last frase of the scene rehearsal",
+            ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+        )
+    if starts_ms != named.starts_ms:
+        raise PauseCannotMove(
+            f"A moved pause keeps its frase from {named.starts_ms} ms, not from {starts_ms} ms",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    refuse_a_frase_under_the_floor(starts_ms, ends_ms)
+    if rehearsal.duration_ms is not None and ends_ms > rehearsal.duration_ms:
+        raise PauseCannotMove(
+            f"A pause at {ends_ms} ms falls past the end of a recording of "
+            f"{rehearsal.duration_ms} ms",
+            ERROR_CODE_PAUSE_PAST_THE_END,
+        )
+
+
+async def _place_the_frase(
+    db: AsyncSession,
+    rehearsal: IRSceneRehearsal,
+    *,
+    starts_ms: int,
+    ends_ms: int,
+    replaces: str | None,
+    attempt: str | None,
+) -> str | None:
+    """The chain head the frase replaces, once its place is free.
+
+    The attempt's frases are read once. A frase that names another is refused first as a
+    pause that cannot move. A frase over a stretch a current frase of its attempt holds is out
+    of place, unless it replaces that frase. Frases that only touch at an edge do not overlap.
+    """
+    found = await db.scalars(
+        select(IRSceneFrase)
+        .where(
+            IRSceneFrase.rehearsal_id == rehearsal.id,
+            IRSceneFrase.attempt.is_not_distinct_from(attempt),
+        )
+        .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
+    )
+    frases = list(found)
+    head = None
+    if replaces is not None:
+        head = _current_of_the_chain(frases, replaces)
+        _refuse_a_pause_that_cannot_move(
+            rehearsal,
+            frases,
+            named=next(frase for frase in frases if frase.id == replaces),
+            head=head,
+            starts_ms=starts_ms,
+            ends_ms=ends_ms,
+        )
+    _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
+    current = [frase for frase in frases if frase.restart_id is None]
+    superseded = replaced_by(current)
+    for frase in current:
+        if frase.id in superseded or frase is head:
+            continue
+        if starts_ms < frase.ends_ms and frase.starts_ms < ends_ms:
+            raise FraseOutOfPlace(
+                f"A frase from {starts_ms} ms to {ends_ms} ms overlaps the frase {frase.id}, "
+                f"from {frase.starts_ms} ms to {frase.ends_ms} ms"
+            )
+    return None if head is None else head.id
 
 
 async def _refuse_another_rehearsals_attempt(
@@ -456,19 +598,27 @@ async def keep_a_frase(
     is refused as `WordlessTelling`, becoming no frase. Hearing takes seconds, so what it lands
     on is read again under the rehearsal's lock, which a restart takes too: the same frase
     resent meanwhile is answered with the first, a rehearsal sent meanwhile refuses the frase,
-    one archived meanwhile stamps it, one restarted meanwhile sets it aside, and a frase replaced
-    meanwhile is replaced at its newest.
+    one archived meanwhile stamps it, one restarted meanwhile sets it aside, a **Moved pause**
+    whose frase stopped being the last of its attempt meanwhile is refused, and a frase
+    translated again over its chain's newest place is replaced there. A frase that lands over a
+    stretch a current frase holds is out of place, so two frases posted at once over one stretch
+    keep only one.
     """
     sha256 = recording_digest(audio)
     already = await _the_same_frase(db, rehearsal.id, sha256)
     if already is not None:
         return already
     await _refuse_a_standing_claim(db, rehearsal)
-    _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
     if after_restart is not None:
         await _refuse_another_rehearsals_attempt(db, rehearsal, after_restart)
-    if replaces is not None:
-        await _current_of_the_chain(db, rehearsal, replaces, after_restart)
+    await _place_the_frase(
+        db,
+        rehearsal,
+        starts_ms=starts_ms,
+        ends_ms=ends_ms,
+        replaces=replaces,
+        attempt=after_restart,
+    )
     await db.commit()
 
     folder = f"{_prefix(session.id, rehearsal.sha256)}/frases/{sha256}"
@@ -496,10 +646,13 @@ async def keep_a_frase(
     if already is not None:
         return already
     await _refuse_a_standing_claim(db, rehearsal)
-    chain_head = (
-        None
-        if replaces is None
-        else await _current_of_the_chain(db, rehearsal, replaces, after_restart)
+    chain_head = await _place_the_frase(
+        db,
+        rehearsal,
+        starts_ms=starts_ms,
+        ends_ms=ends_ms,
+        replaces=replaces,
+        attempt=after_restart,
     )
 
     frase = IRSceneFrase(
@@ -607,7 +760,7 @@ async def send_the_scene_rehearsal(
         db, session, rehearsal, turn_id=turn_id, closes=closes
     )
     try:
-        return await answer_around_the_opening(
+        return await answer_under_the_turn_claim(
             db,
             session,
             opening=False,
@@ -691,7 +844,7 @@ async def _claim_the_send(
 async def _release_the_send(rehearsal_id: str, turn_id: str, claimed_at: datetime) -> None:
     """Unsend a rehearsal whose turn under `turn_id` never landed, so it can be sent again.
 
-    On a session of its own, as an opening claim is released (ADR 0053), and only the claim this
+    On a session of its own, as a turn claim is released (ADR 0079), and only the claim this
     request made: a resend that renewed it holds it now. A turn stored under that id landed,
     whichever request failed after it, and keeps the rehearsal sent.
     """

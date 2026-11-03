@@ -15,7 +15,6 @@ from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
@@ -32,28 +31,15 @@ from tests.baker import (
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import ensaio_take, retro_take
 from tests.room_harness import the_bucket_is_in_memory
+from tests.signer_harness import Signer, the_bucket_signs
 
 IR = "/api/internalization-room"
 P = "P01"
 
 
-class Signer:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, int]] = []
-
-    async def __call__(
-        self, bucket: str, key: str, *, expiry_minutes: int, response_content_type: str | None
-    ) -> str:
-        self.calls.append((key, expiry_minutes))
-        return f"https://signed.example/{bucket}/{key}?grant={len(self.calls)}"
-
-
 @pytest.fixture(autouse=True)
 def signer(monkeypatch: pytest.MonkeyPatch) -> Signer:
-    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
-    signing = Signer()
-    monkeypatch.setattr(takes_service, "generate_signed_download_url", signing)
-    return signing
+    return the_bucket_signs(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -104,18 +90,23 @@ async def _keep(
     ordinal: int | None,
     sha: str,
     size_bytes: int = 2048,
-    created_at: datetime | None = None,
+    recorded_at: datetime | None = None,
+    duration_ms: int | None = None,
     pass_number: int | None = None,
+    created_at: datetime | None = None,
 ) -> str:
     take = ensaio_take(
         session.id,
         ordinal=ordinal,
         sha256=sha,
         project_id=team.id,
-        created_at=created_at,
         pass_number=pass_number,
+        created_at=created_at,
     )
     take.size_bytes = size_bytes
+    take.duration_ms = duration_ms
+    if recorded_at is not None:
+        take.recorded_at = recorded_at
     db.add(take)
     await db.commit()
     takes_service._store().objects[take.storage_key] = b"audio"
@@ -152,7 +143,7 @@ async def test_the_takes_come_in_reading_order_each_named_by_its_position_among_
     ]
 
 
-async def test_a_rehearsal_told_whole_has_no_part_and_does_not_move_the_numbered_ones(
+async def test_a_rehearsal_told_whole_steps_aside_and_does_not_move_the_numbered_ones(
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,
@@ -160,13 +151,12 @@ async def test_a_rehearsal_told_whole_has_no_part_and_does_not_move_the_numbered
     db_session: AsyncSession,
 ) -> None:
     first = await _keep(db_session, session, team, ordinal=1, sha="a" * 64)
-    whole = await _keep(db_session, session, team, ordinal=None, sha="w" * 64)
+    await _keep(db_session, session, team, ordinal=None, sha="w" * 64)
     second = await _keep(db_session, session, team, ordinal=2, sha="b" * 64)
 
     body = await _read(client, consultant, session.id)
 
     assert [(row["take_id"], row["part"]) for row in body["takes"]] == [
-        (whole, None),
         (first, 1),
         (second, 2),
     ]
@@ -203,19 +193,33 @@ async def test_the_fingerprint_is_the_first_twelve_characters_of_the_sha256(
     assert [row["fingerprint"] for row in body["takes"]] == ["0123456789ab"]
 
 
-async def test_the_time_is_the_moment_the_take_was_kept_with_its_offset(
+async def test_the_time_is_the_takes_recording_time_with_its_offset(
     client: httpx.AsyncClient,
     consultant: dict[str, str],
     session: IRSession,
     team: Project,
     db_session: AsyncSession,
 ) -> None:
-    kept_at = datetime(2026, 9, 1, 10, 2, tzinfo=UTC)
-    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, created_at=kept_at)
+    recorded_at = datetime(2026, 9, 1, 10, 2, tzinfo=UTC)
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, recorded_at=recorded_at)
 
     body = await _read(client, consultant, session.id)
 
     assert [row["recorded_at"] for row in body["takes"]] == ["2026-09-01T10:02:00+00:00"]
+
+
+async def test_the_consultant_reads_the_duration_the_take_kept(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, duration_ms=3000)
+
+    body = await _read(client, consultant, session.id)
+
+    assert [row["duration_ms"] for row in body["takes"]] == [3000]
 
 
 async def test_a_take_that_kept_no_duration_shows_none_never_one_guessed_from_its_size(
@@ -241,8 +245,24 @@ async def test_a_telling_back_and_a_part_recorded_again_are_not_listed_beside_th
     team: Project,
     db_session: AsyncSession,
 ) -> None:
-    await _keep(db_session, session, team, ordinal=1, sha="a" * 64, pass_number=1)
-    again = await _keep(db_session, session, team, ordinal=1, sha="b" * 64, pass_number=2)
+    await _keep(
+        db_session,
+        session,
+        team,
+        ordinal=1,
+        sha="a" * 64,
+        pass_number=1,
+        created_at=datetime(2026, 9, 1, 10, 0, tzinfo=UTC),
+    )
+    again = await _keep(
+        db_session,
+        session,
+        team,
+        ordinal=1,
+        sha="b" * 64,
+        pass_number=2,
+        created_at=datetime(2026, 9, 1, 10, 5, tzinfo=UTC),
+    )
     second = await _keep(db_session, session, team, ordinal=2, sha="c" * 64, pass_number=1)
     db_session.add(retro_take(session.id, ordinal=1, sha256="d" * 64, project_id=team.id))
     await db_session.commit()
@@ -272,7 +292,7 @@ async def test_each_take_carries_a_link_of_fifteen_minutes_and_a_second_read_min
     ]
     assert [url.split("?")[0] for url in second] == [url.split("?")[0] for url in first]
     assert set(first).isdisjoint(second)
-    assert {minutes for _key, minutes in signer.calls} == {15}
+    assert {minutes for _key, minutes, _type in signer.calls} == {15}
 
 
 async def test_a_take_the_bucket_does_not_hold_is_unread_and_the_others_still_answer(
@@ -295,7 +315,7 @@ async def test_a_take_the_bucket_does_not_hold_is_unread_and_the_others_still_an
         (2, True, True),
         (3, False, False),
     ]
-    assert [key for key, _minutes in signer.calls] == [
+    assert [key for key, _minutes, _type in signer.calls] == [
         f"takes/{session.id}/ensaio/{sha * 64}" for sha in "ac"
     ]
 
@@ -407,7 +427,13 @@ async def test_a_session_that_recorded_nothing_answers_an_empty_list_not_an_erro
 ) -> None:
     body = await _read(client, consultant, session.id)
 
-    assert body == {"session_id": session.id, "takes": []}
+    assert body == {
+        "session_id": session.id,
+        "takes": [],
+        "kept_rehearsals": [],
+        "recording_grain": None,
+        "finished_at": None,
+    }
 
 
 def _as_stored(row: Any) -> dict[str, Any]:

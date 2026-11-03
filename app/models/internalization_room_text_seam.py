@@ -41,12 +41,14 @@ class DeclaredClip(BaseModel):
 
     key: str = Field(max_length=120)
     durationMs: int = Field(ge=0)
+    contentType: str | None = Field(default=None, max_length=64)
 
 
 class DeclareBackTranslationSessionRequest(BaseModel):
     pericopeId: str = Field(max_length=120)
     language: str = Field(max_length=40)
     clips: list[DeclaredClip]
+    joined: bool = False
 
 
 class DeclaredPart(BaseModel):
@@ -88,6 +90,10 @@ class RoundFinding(BaseModel):
     #: named no readable position, which is the case her item 1 leaves open.
     frase: int | None
     stretchId: str | None
+    #: Her `quote`, `story` and `voiced`: only a nuance has them, read from the stored nuance.
+    quote: str | None = None
+    story: str | None = None
+    voiced: Literal["now", "before"] | None = None
 
 
 class TextRoundResponse(BaseModel):

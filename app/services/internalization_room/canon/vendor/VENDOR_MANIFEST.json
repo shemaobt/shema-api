@@ -1,9 +1,34 @@
 {
   "pin_commit": "5b5c8d2b3ae7632279c07017224f861ae369b0d7",
   "books": [
+    "esther",
+    "jonah",
     "ruth"
   ],
   "passages": [
+    "E01",
+    "E02",
+    "E03",
+    "E04",
+    "E05",
+    "E06",
+    "E07",
+    "E08",
+    "E09",
+    "E10",
+    "E11",
+    "E12",
+    "E13",
+    "E14",
+    "E15",
+    "E16",
+    "E17",
+    "E18",
+    "J01",
+    "J02",
+    "J03",
+    "J04",
+    "J05",
     "P01",
     "P02",
     "P03",
@@ -20,6 +45,98 @@
     "P14"
   ],
   "files": [
+    {
+      "path": "meaning-map/E01-Esther-1-1-9.md",
+      "sha256": "0c5eaa001b15c4e1cb36bb92e8833cc5103712cea5b010ecebff2b5a41d2a32c"
+    },
+    {
+      "path": "meaning-map/E02-Esther-1-10-22.md",
+      "sha256": "b7c3c0984db90027e32c49fc426c720e2917b3740898b59198908890c103bc2b"
+    },
+    {
+      "path": "meaning-map/E03-Esther-2-1-4.md",
+      "sha256": "49ddb2d07338e5031161d9e0de2548824f885864d6214382a2f02b19a39e7d07"
+    },
+    {
+      "path": "meaning-map/E04-Esther-2-5-18.md",
+      "sha256": "1f8db2fb77c499204199060184123ef9d38bc93c78f0e439c9ae8dbebad0a1d8"
+    },
+    {
+      "path": "meaning-map/E05-Esther-2-19-23.md",
+      "sha256": "0d0c2ad0160b6ff34cb2e0181b4d5574ff29da07be9d1dd218a75b4dd80cd7e9"
+    },
+    {
+      "path": "meaning-map/E06-Esther-3-1-6.md",
+      "sha256": "b08352162c24680a56af10cd549257816563acc858eab0d88c9a60c8114d9bab"
+    },
+    {
+      "path": "meaning-map/E07-Esther-3-7-15.md",
+      "sha256": "292d6cbc191b9c2df663dc3cc6c140efd1ac9701d2575420f33624117687908a"
+    },
+    {
+      "path": "meaning-map/E08-Esther-4-1-8.md",
+      "sha256": "bfa6de6f2f118a36d547ae794e3293b37bec8c38cef03827dcc792f6d2575ec2"
+    },
+    {
+      "path": "meaning-map/E09-Esther-4-9-17.md",
+      "sha256": "9bbc0ef582593115209ee471d269e78516e740b681f4b335e5c1bf9ca614b314"
+    },
+    {
+      "path": "meaning-map/E10-Esther-5-1-14.md",
+      "sha256": "5f1d5f86dacb3b20bb570c9d9bf11fd70105b0d2c18ffaaa70f2135d72bbb5d8"
+    },
+    {
+      "path": "meaning-map/E11-Esther-6-1-14.md",
+      "sha256": "7b53ad1e0f0df77670bc2262b3cfafcb2e29256275449960bd2610b85df3e735"
+    },
+    {
+      "path": "meaning-map/E12-Esther-7-1-10.md",
+      "sha256": "cac88d41e695346ac38ff0a31d856458f37c3c9daf9ec828353120d17d4441ba"
+    },
+    {
+      "path": "meaning-map/E13-Esther-8-1-8.md",
+      "sha256": "d079a960d53eb62292ed76db784a2c140ad20fc15037f979af6b25483ef3e5d9"
+    },
+    {
+      "path": "meaning-map/E14-Esther-8-9-17.md",
+      "sha256": "73ce6563c29078893fcf39481bd05e5a3d0031a37a800ce990bd107848d84a27"
+    },
+    {
+      "path": "meaning-map/E15-Esther-9-1-10.md",
+      "sha256": "87c90540b77f4fc80fec879ca4753576a250b67458a268f68b9aac4d4f887f34"
+    },
+    {
+      "path": "meaning-map/E16-Esther-9-11-19.md",
+      "sha256": "4ec6a79fe6aa88eaa6e9de5825f7fdffbbd044ab699b22446f4e6327579aa81f"
+    },
+    {
+      "path": "meaning-map/E17-Esther-9-20-32.md",
+      "sha256": "36780c15e10f2875d958715ef215dd258c0d4d1778ebd2bc99c77dc7103b21e8"
+    },
+    {
+      "path": "meaning-map/E18-Esther-10-1-3.md",
+      "sha256": "2a52506b09e48ac0c61bc6673220afe47fa04be5c8e1a050fcab0dd8886c403d"
+    },
+    {
+      "path": "meaning-map/J01-Jonah-1-1-3.md",
+      "sha256": "d6c6ae37316922f271ce5b4aa4a0d6d6b85c5d32a4535b949490b44f979dd1bf"
+    },
+    {
+      "path": "meaning-map/J02-Jonah-1-4-2-1.md",
+      "sha256": "124c53be0ec67a99dfd15e72edd5428b73698e82327e38897421776eee08c928"
+    },
+    {
+      "path": "meaning-map/J03-Jonah-2-2-9.md",
+      "sha256": "e3a6ade271f52f42c0fa67469a1f73fc15ccaebf861a2af0fb70c1ed407252ff"
+    },
+    {
+      "path": "meaning-map/J04-Jonah-2-10-3-10.md",
+      "sha256": "019f1e53f4341b020b11181334f825fd2f38de6909e5d0aed14ea5f33d5e8e1e"
+    },
+    {
+      "path": "meaning-map/J05-Jonah-4-1-11.md",
+      "sha256": "624cad8ee302bf837e43604c5cca9cf1bf612dfa13e12b9271519d3cd3e39258"
+    },
     {
       "path": "meaning-map/P01-Ruth-1-1-5.md",
       "sha256": "1852ecb9d42fb2bc084cabd79c09e26ada70d4f4189fc4aa0e584a50c15c8c05"
@@ -75,6 +192,98 @@
     {
       "path": "meaning-map/P14-Ruth-4-18-22.md",
       "sha256": "dc7c25dace7ba4ce6f1403f5f9ca41439d6f3477be562ce0031cf94c155ed5cf"
+    },
+    {
+      "path": "meaning-coordinates/E01-Esther-1-1-9-MEANING-COORDINATES.md",
+      "sha256": "8af7fb0c7a980ebb96d2a4505681cc963d9aeb854f0c7bd0910ec2140e9a80c9"
+    },
+    {
+      "path": "meaning-coordinates/E02-Esther-1-10-22-MEANING-COORDINATES.md",
+      "sha256": "6d758907c3afdea47e7c35c2deb0b0995824f427dc8f8888bf38ef9610cab9ab"
+    },
+    {
+      "path": "meaning-coordinates/E03-Esther-2-1-4-MEANING-COORDINATES.md",
+      "sha256": "0f777d0b1af4411abbd21442af0cdb680d68450cf376c7bcc4bf3c4a9897f951"
+    },
+    {
+      "path": "meaning-coordinates/E04-Esther-2-5-18-MEANING-COORDINATES.md",
+      "sha256": "e9868585af231ee8e4fca5e3d7f8d75318e430ee671836a8b4a1fcde4c4a7944"
+    },
+    {
+      "path": "meaning-coordinates/E05-Esther-2-19-23-MEANING-COORDINATES.md",
+      "sha256": "34ce3eed2c0f85a9134d53b53bc7761dd05b70fc816be44c4b9074b1d6307d9e"
+    },
+    {
+      "path": "meaning-coordinates/E06-Esther-3-1-6-MEANING-COORDINATES.md",
+      "sha256": "f3ae8a5e56be592812451b9af61659c77e1bc4a5bc3c177b15a3c459a6c8943d"
+    },
+    {
+      "path": "meaning-coordinates/E07-Esther-3-7-15-MEANING-COORDINATES.md",
+      "sha256": "67a49b2af4ac93914f36ff20c544fb7b178998b6a87d802b53740ca66f8e5e22"
+    },
+    {
+      "path": "meaning-coordinates/E08-Esther-4-1-8-MEANING-COORDINATES.md",
+      "sha256": "510e3aabd16b8b761503fef5ed8d4cc8aca2fe69e0edf1fe61aed412d0f1d862"
+    },
+    {
+      "path": "meaning-coordinates/E09-Esther-4-9-17-MEANING-COORDINATES.md",
+      "sha256": "6e5222ee1649240077c37ab467e50d418dc348241ee4350e04a7565f33dfb974"
+    },
+    {
+      "path": "meaning-coordinates/E10-Esther-5-1-14-MEANING-COORDINATES.md",
+      "sha256": "6f5c09bd4183d5c6988d87c470947da75facdbe9ba3f497e922e06a7be166137"
+    },
+    {
+      "path": "meaning-coordinates/E11-Esther-6-1-14-MEANING-COORDINATES.md",
+      "sha256": "4d8ee021e13a7172a3b9fc95e895228ddc52d1b21794c9994154bcb52088a40a"
+    },
+    {
+      "path": "meaning-coordinates/E12-Esther-7-1-10-MEANING-COORDINATES.md",
+      "sha256": "759c9a6c919a359f7b6c72038f6aefc43f7f0a3311b0c692c19a6c73a9e75e43"
+    },
+    {
+      "path": "meaning-coordinates/E13-Esther-8-1-8-MEANING-COORDINATES.md",
+      "sha256": "3944df7b181cc638b817a86f609203f67d0d206a7f43cd8042aae0095fd73d1e"
+    },
+    {
+      "path": "meaning-coordinates/E14-Esther-8-9-17-MEANING-COORDINATES.md",
+      "sha256": "981dfb12251043371758fbf2922b533b0c2a5d1a5ebddc3ffdd1c886aa48b152"
+    },
+    {
+      "path": "meaning-coordinates/E15-Esther-9-1-10-MEANING-COORDINATES.md",
+      "sha256": "d51b6b5e07d2de54645289f1a919c5cb7916787c9b009513d7a914dd87fb696d"
+    },
+    {
+      "path": "meaning-coordinates/E16-Esther-9-11-19-MEANING-COORDINATES.md",
+      "sha256": "dc288678990f540146781645372a5c104e3b73749cc87c5c4464edef8d879642"
+    },
+    {
+      "path": "meaning-coordinates/E17-Esther-9-20-32-MEANING-COORDINATES.md",
+      "sha256": "a0aee8de15c5548ef66b29c008e1494a81327d4a8ae6743df069c725a2479f51"
+    },
+    {
+      "path": "meaning-coordinates/E18-Esther-10-1-3-MEANING-COORDINATES.md",
+      "sha256": "945b079d713fc4cd46ed7138306f8d133537ecb039d6cd32ac1020a5bc5c47f6"
+    },
+    {
+      "path": "meaning-coordinates/J01-Jonah-1-1-3-MEANING-COORDINATES.md",
+      "sha256": "cd43e45f340d27c5e511a2000eacca4739c07ff363e3d2957e2db8878082ad4d"
+    },
+    {
+      "path": "meaning-coordinates/J02-Jonah-1-4-2-1-MEANING-COORDINATES.md",
+      "sha256": "d1b3f870f60a187361fca4640806b35ef92dd61b37503eb1d38c7fc2f4afb015"
+    },
+    {
+      "path": "meaning-coordinates/J03-Jonah-2-2-9-MEANING-COORDINATES.md",
+      "sha256": "1905f312c157459770bee947900a24c6f4a5049259be11c1189be532fbd1836c"
+    },
+    {
+      "path": "meaning-coordinates/J04-Jonah-2-10-3-10-MEANING-COORDINATES.md",
+      "sha256": "d649a802354ae6097d9ef0da3bf17b86e9192dfb375608f2538681dca9f69e5e"
+    },
+    {
+      "path": "meaning-coordinates/J05-Jonah-4-1-11-MEANING-COORDINATES.md",
+      "sha256": "01d4e3c3515f4a6c4b95441a968e8293b272eedfe5508b94a7961e5c6b05ca8a"
     },
     {
       "path": "meaning-coordinates/P01-Ruth-1-1-5-MEANING-COORDINATES.md",
@@ -133,6 +342,98 @@
       "sha256": "7d8b760ced8753d785e2d5cc63d73a962a9155337413cfab383260065b0ebc55"
     },
     {
+      "path": "compilation-log/E01-Esther-1-1-9-COMPILATION-LOG.md",
+      "sha256": "d514be9c855f568994079e1aa3b561aefc722e82d8d8b17a4ff80e0ca5a69560"
+    },
+    {
+      "path": "compilation-log/E02-Esther-1-10-22-COMPILATION-LOG.md",
+      "sha256": "8b6451d70e65af5811aebda47a4e6716242335ff903c75fdf2eb48b40ec6d3b8"
+    },
+    {
+      "path": "compilation-log/E03-Esther-2-1-4-COMPILATION-LOG.md",
+      "sha256": "39d8f3f3a79daddeabf2dfeac501458098453f667b1467d42fdab9f52d9126f8"
+    },
+    {
+      "path": "compilation-log/E04-Esther-2-5-18-COMPILATION-LOG.md",
+      "sha256": "2c42f1f2cc93d319a4108e6b3ce66dc32b300f18f4417e35868f5a0b5deae145"
+    },
+    {
+      "path": "compilation-log/E05-Esther-2-19-23-COMPILATION-LOG.md",
+      "sha256": "34bec29faa2ad40792d7e4a430941bb648b6921172b05ee03d8d21eea9f892bf"
+    },
+    {
+      "path": "compilation-log/E06-Esther-3-1-6-COMPILATION-LOG.md",
+      "sha256": "f3298fcfb276d150f38d231ee4a3a9e56e2851101c5adb22b20db49fc89bf848"
+    },
+    {
+      "path": "compilation-log/E07-Esther-3-7-15-COMPILATION-LOG.md",
+      "sha256": "b1f938da20aab4bb43cca201d475e9cb9df885c9ca81f4b5ca260ec2fb2a6bfa"
+    },
+    {
+      "path": "compilation-log/E08-Esther-4-1-8-COMPILATION-LOG.md",
+      "sha256": "c2c308793151dc556a86dfbf5fb224b754a545a85a5789873aaff27d25262dd4"
+    },
+    {
+      "path": "compilation-log/E09-Esther-4-9-17-COMPILATION-LOG.md",
+      "sha256": "87b584f2fdb1d9af5deea85ec5903ee8c8260bd78ef9e5a9afea55d6260970bd"
+    },
+    {
+      "path": "compilation-log/E10-Esther-5-1-14-COMPILATION-LOG.md",
+      "sha256": "70868a48950574e646849ec045078d3b12c2a08cd30b816755a35101a2b7829b"
+    },
+    {
+      "path": "compilation-log/E11-Esther-6-1-14-COMPILATION-LOG.md",
+      "sha256": "979665e7e4fca36ee54bbf7535be6965233a9d83d2aed70e34f96e490fc61416"
+    },
+    {
+      "path": "compilation-log/E12-Esther-7-1-10-COMPILATION-LOG.md",
+      "sha256": "b21ec38bcbb1767b3be4b5f922cf7e004f5f0f54a62a7fe195544ff1deab6b55"
+    },
+    {
+      "path": "compilation-log/E13-Esther-8-1-8-COMPILATION-LOG.md",
+      "sha256": "2eedc08892f6e061a58917150cecc78d66b8031af50d93e192e5924b4e2d4ad6"
+    },
+    {
+      "path": "compilation-log/E14-Esther-8-9-17-COMPILATION-LOG.md",
+      "sha256": "80a029ff42ff00301dd8647b76a8b02d9e88da0b7e76f5a4ad5a144c291f6092"
+    },
+    {
+      "path": "compilation-log/E15-Esther-9-1-10-COMPILATION-LOG.md",
+      "sha256": "e6b241957944670495bf6eb2bfd281af9c1dd91e4bb27598d366d2678dfbe2ae"
+    },
+    {
+      "path": "compilation-log/E16-Esther-9-11-19-COMPILATION-LOG.md",
+      "sha256": "a7fb575c74cdffea3ad130dd115a3c696e3065a7365008a74ab97abfa2ff04bd"
+    },
+    {
+      "path": "compilation-log/E17-Esther-9-20-32-COMPILATION-LOG.md",
+      "sha256": "88ade9785c0d2845c7c4a608eec5a147d7bbebce4b74fe5810afcffcb3dec1c3"
+    },
+    {
+      "path": "compilation-log/E18-Esther-10-1-3-COMPILATION-LOG.md",
+      "sha256": "08422354e71fa1fae1af41a5c9a836b1b1a4f1c0b78e76f67ed23f6e6c49bd7c"
+    },
+    {
+      "path": "compilation-log/J01-Jonah-1-1-3-COMPILATION-LOG.md",
+      "sha256": "b43c5c96b57ee452401ab24ee579667c207b69a395f0ad1c84a3177046e43eac"
+    },
+    {
+      "path": "compilation-log/J02-Jonah-1-4-2-1-COMPILATION-LOG.md",
+      "sha256": "683a7254ad21efe0b03de885ec709ee969b557bc41d663c81b55b92952081d98"
+    },
+    {
+      "path": "compilation-log/J03-Jonah-2-2-9-COMPILATION-LOG.md",
+      "sha256": "789e7970c71bcf01a116bebece848bacfc1dea57a2914dc9a05e8caecfe28d2a"
+    },
+    {
+      "path": "compilation-log/J04-Jonah-2-10-3-10-COMPILATION-LOG.md",
+      "sha256": "de98855dd685d0823f330a3d18998b0f860df5511625586c6bbc6d9fa9e3708a"
+    },
+    {
+      "path": "compilation-log/J05-Jonah-4-1-11-COMPILATION-LOG.md",
+      "sha256": "96b2267537aa619125d168427d44ac9a52e22a1f316c090bb3b98b6826d0e771"
+    },
+    {
       "path": "compilation-log/P01-Ruth-1-1-5-COMPILATION-LOG.md",
       "sha256": "6c935689a2a1c4ade9e6f5cd6a2a022dc59803fe0ebf5345bb4e503755be1e2a"
     },
@@ -187,6 +488,14 @@
     {
       "path": "compilation-log/P14-Ruth-4-18-22-COMPILATION-LOG.md",
       "sha256": "4167545760de1050a55165eddde335f0046e5bd49c6a5b1352cbfe76aff07b07"
+    },
+    {
+      "path": "registry/esther.aliases.json",
+      "sha256": "3353c0316b6bbca642643ce08b8527a07eda6c0e3fcfee5f84fe3ae1e64fd1d9"
+    },
+    {
+      "path": "registry/jonah.aliases.json",
+      "sha256": "6b8043d20b1c45dc6f47f305aac3107f82033e09f8035975a1003dbbeb5d0e7f"
     },
     {
       "path": "registry/ruth.aliases.json",

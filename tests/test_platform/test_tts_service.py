@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app.core.config import Settings
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import ProviderNotConfigured, UpstreamServiceError, ValidationError
 from app.services.platform import stt, tts
 from app.services.platform.tts import (
     cache_key,
@@ -322,7 +322,7 @@ async def test_a_cache_write_failure_does_not_throw_away_the_audio_we_paid_for()
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(UpstreamServiceError):
+    with pytest.raises(ProviderNotConfigured):
         await synthesize_speech(
             QUESTION,
             language="pt-BR",

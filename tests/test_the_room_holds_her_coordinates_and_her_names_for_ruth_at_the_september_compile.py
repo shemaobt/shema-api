@@ -46,10 +46,14 @@ def _sha256(path: str) -> str:
 
 
 def test_every_passage_of_ruth_has_its_map_its_coordinates_and_its_log() -> None:
-    held = sorted(str(path.relative_to(VENDOR)) for path in VENDOR.rglob("*") if path.is_file())
+    held = sorted(
+        str(path.relative_to(VENDOR))
+        for path in VENDOR.rglob("*")
+        if path.is_file() and ("-Ruth-" in path.name or path.name.startswith("ruth."))
+    )
 
     assert held == sorted(
-        ["VENDOR_MANIFEST.json", "VENDOR_PIN", "registry/ruth.aliases.json"]
+        ["registry/ruth.aliases.json"]
         + [f"meaning-map/{stem}.md" for stem in STEMS]
         + [f"meaning-coordinates/{stem}-MEANING-COORDINATES.md" for stem in STEMS]
         + [f"compilation-log/{stem}-COMPILATION-LOG.md" for stem in STEMS]

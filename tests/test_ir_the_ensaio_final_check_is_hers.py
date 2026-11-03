@@ -12,6 +12,8 @@ from app.core.config import get_settings
 from app.core.exceptions import ERROR_CODE_UPSTREAM, UpstreamServiceError
 from app.services import internalization_room as room
 from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.scene_rehearsals import scene_rehearsals_of_the_session
+from app.services.internalization_room.takes import takes_of
 from tests.text_seam_harness import RUNNER_KEY, the_app
 from tests.turn_harness import the_room_agent_is
 
@@ -159,6 +161,40 @@ async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validato
     ) in speaker.validations[-1], "o Validador não lia o pontapé dela como o que a equipe disse"
 
 
+HER_JOINED_KICKOFF = (
+    "(The app joined the team's scene rehearsals into one recording and the team heard it "
+    "whole. The frases are the translations they made of each scene, with any they re-recorded "
+    "or translated again since. Speak the verdict now.)"
+)
+
+
+async def test_a_session_her_script_declares_joined_is_a_joined_recording_and_opens_on_her_kickoff(
+    client, speaker, db_session
+) -> None:
+    declared = await client.post(
+        f"{SEAM}/session",
+        json={"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS, "joined": True},
+    )
+    assert declared.status_code == 200, declared.text
+    session_id = str(declared.json()["sessionId"])
+
+    await _a_round(client, TELLING, session_id=session_id)
+
+    rehearsals = {one.id for one in await scene_rehearsals_of_the_session(db_session, session_id)}
+    origins = [part.origin for part in await takes_of(db_session, session_id)]
+    assert len(origins) == len(CLIPS) and all(origin in rehearsals for origin in origins), (
+        "a part her script declares joined must come from a scene rehearsal of its session, "
+        f"as a tablet join's does: {origins} against {rehearsals}"
+    )
+    assert speaker.drafts[-1]["user_content"] == HER_JOINED_KICKOFF, (
+        "her verdictKickoff (src/backtranslation/repair.ts:41-48 at 18fa7c4) opens a joined "
+        "recording's verdict on §8.3's text"
+    )
+    assert f"passage.\n\n{HER_JOINED_KICKOFF}" in speaker.validations[-1], (
+        "the Validator does not read her joined kickoff as what the team said"
+    )
+
+
 def _handed(speaker: Speaker, run: int = -1) -> str:
     system = speaker.drafts[run]["system_prompt"].replace(CACHE_BREAK, "")
     return system.split("## The findings for the whole passage\n\n", 1)[1]
@@ -217,6 +253,29 @@ async def test_an_addition_reaches_her_speaker_with_its_part_and_nothing_of_ours
         }
     ], "o falante recebia o endereço nosso, com «das frases N a M», não a parte dela"
     assert result["spoken"] == SAID, "a sala colava a nossa frase «I» depois do veredito"
+
+
+async def test_a_clip_her_script_declares_wav_lets_her_speaker_ask_for_the_whole_sentence(
+    client, analyst, speaker
+) -> None:
+    declared = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**clip, "contentType": "audio/wav"} for clip in CLIPS],
+        },
+    )
+    assert declared.status_code == 200, declared.text
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]}
+    ]
+
+    await _a_round(client, TELLING, session_id=str(declared.json()["sessionId"]))
+
+    assert [one["repair"] for one in json.loads(_handed(speaker))] == ["sentence"], (
+        "a costura jogava fora o «audio/wav» do roteiro dela e o falante ouvia «part»"
+    )
 
 
 async def test_a_retold_frase_is_judged_by_her_analyst_over_the_whole_telling(
@@ -557,3 +616,18 @@ async def test_a_clean_round_after_a_finding_confers_and_the_first_round_is_stil
         [],
     ], "os achados da primeira passada, com a nota do Analista, sumiam"
     assert kept[0].at < kept[1].at
+
+
+async def test_a_content_type_longer_than_a_take_can_hold_is_refused_at_the_door(client) -> None:
+    refused = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**CLIPS[0], "contentType": "audio/" + "x" * 59}],
+        },
+    )
+
+    assert refused.status_code == 422, (
+        "um tipo de 65 caracteres passava a porta e quebrava na coluna de 64 do take"
+    )

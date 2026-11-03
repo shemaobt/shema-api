@@ -29,7 +29,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
-from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
+from tests.room_harness import heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
@@ -50,11 +50,6 @@ TELLINGS = (
 THE_ADDITION = "o pedido das noras para voltar"
 THE_MISSING = "a notícia do pão em Belém"
 THE_SILENCE = "o pedido das noras, que a história guarda"
-
-
-@pytest.fixture(autouse=True)
-def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
-    nothing_is_read_ahead(monkeypatch)
 
 
 class ReaderOfTellings:

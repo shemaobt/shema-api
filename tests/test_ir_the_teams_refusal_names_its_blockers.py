@@ -2,15 +2,15 @@
 
 A refused team approval used to be a 409 with a sentence: the tablet's client throws on it and
 learns nothing about which door is shut. It is a 200 now, the way the check's own refusals
-already are (ENG-889's rule: the app infers nothing from absence), and for the three blockers
-that have a door on the tablet — `untold_part`, `playback_did_not_cover_the_clip`,
-`untold_stretch` — the answer also names the ground, on the same fields *terminei* already
-uses: `untold_take_ids`, `unheard_take_ids`, `untold_segment_id` (ADR 0027).
+already are (ENG-889's rule: the app infers nothing from absence), and for the two blockers
+that have a door on the tablet — `playback_did_not_cover_the_clip` and `untold_stretch` — the
+answer also names the ground, on the same fields *terminei* already uses: `unheard_take_ids`
+and `untold_segment_id`.
 
 The route-level cases that only change status live beside the ten refusal tests they replace
 (`test_ir_a_release_is_refused_while_a_finding_is_open.py`,
 `test_ir_a_release_is_a_numbered_row.py`). What is new here is the ground: a case has to record
-audio or divide a stretch to reach `untold_part` or `untold_stretch`, which those two files have
+audio or divide a stretch to reach a new part or `untold_stretch`, which those two files have
 no builder for.
 """
 
@@ -35,7 +35,6 @@ from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
     press_terminei,
-    record_the_part_again,
     rehearsed_in_parts,
     room_client,
     the_analyst_reads,
@@ -44,7 +43,6 @@ from tests.room_harness import (
     upload_a_part,
 )
 
-UNTOLD_PART = "untold_part"
 PLAYBACK_BLOCKER = "playback_did_not_cover_the_clip"
 UNTOLD_STRETCH = "untold_stretch"
 
@@ -73,17 +71,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield room
 
 
-async def test_a_part_recorded_again_and_not_told_back_refuses_the_team_by_its_take(
+async def test_a_part_recorded_again_and_never_played_refuses_the_team_by_its_take(
     client, db_session: AsyncSession
 ) -> None:
-    """Path 1: a checked passage whose part two was recorded again and never told back.
+    """Path 1: a checked passage whose part two was recorded again, never told back or played.
 
     The check confers the other two parts clean, and then recording a part again starts the
     check over on its own — the passage the team is standing on has changed — so the room's
-    answer carries `telling_back_not_checked` beside `untold_part`; only the second of the two
-    has a door on the tablet, and only it names ground. Measured with the probe in ENG-954's
-    report: the acceptance path names `untold_part` alone, and the sibling is real product
-    behaviour the path left out.
+    answer carries `telling_back_not_checked` beside the listening; only the second of the two
+    has a door on the tablet, and only it names ground. A part nobody told back is no blocker of
+    its own: her check runs with it, but it still has to be heard.
     """
     project, credential = await a_claimed_device(db_session)
     client.headers.update(team_headers(credential))
@@ -100,9 +97,8 @@ async def test_a_part_recorded_again_and_not_told_back_refuses_the_team_by_its_t
 
     assert refused.status_code == 200, refused.text
     body = refused.json()
-    assert body["blockers"] == ["telling_back_not_checked", UNTOLD_PART]
-    assert body["untold_take_ids"] == [fresh_take_id]
-    assert body["unheard_take_ids"] == []
+    assert body["blockers"] == ["telling_back_not_checked", PLAYBACK_BLOCKER]
+    assert body["unheard_take_ids"] == [fresh_take_id]
     assert body["untold_segment_id"] is None
     assert body["version"] is None
     assert body["release_id"] is None
@@ -130,7 +126,6 @@ async def test_an_untold_stretch_refuses_the_team_by_its_stretch(
     body = refused.json()
     assert body["blockers"] == [UNTOLD_STRETCH]
     assert body["untold_segment_id"] == tail.id
-    assert body["untold_take_ids"] == []
     assert body["unheard_take_ids"] == []
     assert body["version"] is None
     assert await releases_of(db_session, session.id) == []
@@ -139,26 +134,25 @@ async def test_an_untold_stretch_refuses_the_team_by_its_stretch(
 async def test_two_blockers_at_once_both_name_their_own_ground(
     client, db_session: AsyncSession
 ) -> None:
-    """Path 11: a part recorded again beside a rehearsal only half heard.
+    """Path 11: a stretch cut in two and left half untold, beside a rehearsal only half heard.
 
-    Both are missing material and neither yields to a force; the team's own answer names both
-    codes, in the gate's order, each on its own field — never one field standing in for two
-    errands (ADR 0027's rule, asked here of the release).
+    The team's own answer names both codes, in the gate's order, each on its own field — never
+    one field standing in for two errands (ADR 0027's rule, asked here of the release).
 
-    The state is built by hand with `checked=True` after `record_the_part_again`, which no
-    live session reaches: recording a part again resets `checked` on its own (ADR 0027), so a
-    real session here would also carry `telling_back_not_checked`. This case is kept anyway
-    because it is the one place two *grounded* blockers fire together, and what it proves —
-    that each field lands on its own key and neither shadows the other — does not depend on
-    the third, ungrounded code being absent.
+    The state is built by hand with `checked=True`, so the case is the one place two
+    *grounded* blockers fire together, and what it proves — that each field lands on its own
+    key and neither shadows the other — does not depend on an ungrounded code being absent.
     """
     project, credential = await a_claimed_device(db_session)
     session, (one, two) = await rehearsed_in_parts(db_session, 2, project_id=project.id)
 
-    fresh = await record_the_part_again(db_session, session, two, sha256="f" * 64)
-    (standing,) = await final_segments(db_session, session.id)
+    standing = await final_segments(db_session, session.id)
+    tail = await a_piece_still_to_be_told(db_session, session, standing[1])
     state = BackTranslationState(
-        scope=P, checked=True, findings=[], analysed_segment_ids=[standing.id]
+        scope=P,
+        checked=True,
+        findings=[],
+        analysed_segment_ids=[row.id for row in await final_segments(db_session, session.id)],
     )
     await reported_playback(
         db_session, session, state, played_ranges=[[0, 20000]], clip_duration_ms=PART_MS
@@ -168,9 +162,8 @@ async def test_two_blockers_at_once_both_name_their_own_ground(
 
     assert refused.status_code == 200, refused.text
     body = refused.json()
-    assert body["blockers"] == [UNTOLD_PART, PLAYBACK_BLOCKER]
-    assert body["untold_take_ids"] == [fresh.id]
-    assert body["unheard_take_ids"] == [one.id]
-    assert body["untold_segment_id"] is None
+    assert body["blockers"] == [UNTOLD_STRETCH, PLAYBACK_BLOCKER]
+    assert body["unheard_take_ids"] == sorted([one.id, two.id])
+    assert body["untold_segment_id"] == tail.id
     assert body["version"] is None
     assert await releases_of(db_session, session.id) == []

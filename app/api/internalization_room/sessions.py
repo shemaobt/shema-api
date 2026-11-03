@@ -13,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import (
     device_project_dep,
+    include_stale_dep,
     linked_tablet_dep,
 )
-from app.api.internalization_room.back_translation import finding_views
-from app.api.internalization_room.segments import segment_view
+from app.api.internalization_room.back_translation import finding_views, named_nuance_view
+from app.api.internalization_room.release import approval_of
+from app.api.internalization_room.segments import segment_views
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, UpstreamServiceError, ValidationError
@@ -32,14 +34,17 @@ from app.models.internalization_room import (
     HardStretchView,
     NeedsPersonResponse,
     PersonArrivedResponse,
+    RerecordedSentenceView,
     SessionStateResponse,
     TurnResponse,
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
-from app.services.internalization_room import halt, opening_claim
+from app.services.internalization_room import halt, turn_claim
+from app.services.internalization_room.approved_draft import approved_draft
 from app.services.internalization_room.back_translation import findings_on_stretches_that_count
 from app.services.internalization_room.background import (
+    HeardTake,
     read_the_earlier_passages_again,
     settle_coverage,
 )
@@ -52,11 +57,13 @@ from app.services.internalization_room.hearing import (
     heard_speech,
     stop_hearing,
 )
+from app.services.internalization_room.joined_parts import parts_to_bring_back
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.outside_listeners import listeners_counted
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -65,10 +72,14 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
+from app.services.internalization_room.sentences import the_sentence_awaiting
+from app.services.internalization_room.session_takes import kept_takes_of
+from app.services.internalization_room.session_turns import last_turn_number
 from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
 from app.services.internalization_room.synthesize_facilitator_speech import (
     facilitator_speech_key,
 )
+from app.services.internalization_room.takes import AUDIO_MIME, current_parts, takes_of
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -289,6 +300,7 @@ def _settle_later(
     turn_id: str,
     team_utterance: str,
     guide_response: str,
+    take: HeardTake | None,
 ) -> bool:
     """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
@@ -308,29 +320,44 @@ def _settle_later(
         settle_coverage,
         session_id=session.id,
         turn_id=turn_id,
+        turn_number=last_turn_number(session),
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,
+        take=take,
     )
     return True
 
 
-async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
+async def _state(
+    db: AsyncSession, session: IRSession, *, include_stale: bool = False
+) -> SessionStateResponse:
+    approved = await approved_draft(db, session)
     return SessionStateResponse(
         session_id=session.id,
         pericope=session.pericope,
         status=str(session.status),
         coverage=coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
-        back_translation=await _progress(db, session),
+        back_translation=await _progress(db, session, include_stale=include_stale),
         language=session.language,
         halt=halt.standing(session),
         opened=was_opened(session),
         moment=moment_view(session),
+        kept_takes=await kept_takes_of(session),
+        approved=(
+            approval_of(approved).model_copy(
+                update={"listeners": await listeners_counted(db, approved)}
+            )
+            if approved
+            else None
+        ),
     )
 
 
-async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProgress:
+async def _progress(
+    db: AsyncSession, session: IRSession, *, include_stale: bool = False
+) -> BackTranslationProgress:
     """What a tablet needs to pick a telling-back back up where it stopped.
 
     All of it was already on the session and none of it had a way out, so an app that
@@ -341,17 +368,42 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     resumes is the same reading the analyst gets.
     """
     state = room.back_translation_of(session)
-    stretches = await room.final_segments(db, session.id)
+    takes = await takes_of(db, session.id)
+    stretches = await room.final_segments(db, session.id, takes)
     findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
     finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
+    awaiting = await the_sentence_awaiting(db, session)
+    stale = await room.stale_segments(db, session.id, takes) if include_stale else None
+    segments = segment_views(stretches, stale, takes)
+    nuance_numbers = {
+        one.segment_id: one.frase for one in segments if one.frase is not None and not one.stale
+    }
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[segment_view(one) for one in stretches],
+        segments=segments,
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
-        findings=finding_views(findings),
+        findings=finding_views(
+            findings,
+            state,
+            room.passage_numbers(room.told_back(stretches), room.told_back(stale or []), takes),
+        ),
+        named_nuance=named_nuance_view(state, nuance_numbers),
         superseded_attempts=len(state.superseded),
+        bring_back=await parts_to_bring_back(db, session, current_parts(takes), stretches),
+        awaiting_segment_id=awaiting.segment_id if awaiting else None,
+        rerecorded_sentences=[
+            RerecordedSentenceView(
+                sentence_id=one.sentence_id,
+                segment_id=one.segment_id,
+                previous_take_id=one.previous_take_id,
+                take_id=one.take_id,
+                starts_ms=one.starts_ms,
+                ends_ms=one.ends_ms,
+            )
+            for one in state.sentences
+        ],
     )
 
 
@@ -397,6 +449,7 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
+        after=previous,
     )
     await clear_needs_person(db, caller.id)
     nudge(session.project_id, "halts")
@@ -419,11 +472,12 @@ async def create_session(
 )
 async def read_session(
     session_id: str,
+    asking_for_stale: bool = include_stale_dep,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
-    return await _state(db, session)
+    return await _state(db, session, include_stale=asking_for_stale)
 
 
 @router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
@@ -496,6 +550,7 @@ async def facilitator_sessions(
                 project_id=team,
                 team_name=named.get(team, ""),
                 halt=halt.standing(session),
+                halts_raised=session.halts_raised,
                 warned_at=(
                     as_utc(warned).isoformat()
                     if (warned := halt.standing_warning_since(session)) is not None
@@ -758,7 +813,7 @@ async def _answer_the_turn(
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
         halted = session.status is IRSessionStatus.NEEDS_PERSON
-        opening = file is None and not (session.messages or [])
+        opening = file is None and not was_opened(session)
         if not opening:
             with stage("db_let_go"):
                 await db.commit()
@@ -781,8 +836,9 @@ async def _answer_the_turn(
         )
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
+    take = None if file is None else HeardTake(audio_bytes, file.content_type or AUDIO_MIME)
 
-    return await opening_claim.answer_around_the_opening(
+    return await turn_claim.answer_under_the_turn_claim(
         db,
         session,
         opening=opening,
@@ -799,6 +855,7 @@ async def _answer_the_turn(
             opening=opening,
             halted=halted,
             bound_s=bound_s,
+            take=take,
         ),
     )
 
@@ -813,7 +870,9 @@ async def draft_the_turn(
     halted: bool,
     speech_heard: HeardSpeech,
     deadline: float,
+    claim: turn_claim.TurnClaim,
     bound_s: float,
+    take: HeardTake | None = None,
 ) -> TurnResponse:
     reply, outcome, language = await _keep_the_turn(
         db,
@@ -824,7 +883,9 @@ async def draft_the_turn(
         halted=halted,
         speech_heard=speech_heard,
         deadline=deadline,
+        claim=claim,
         bound_s=bound_s,
+        take=take,
     )
     if outcome is None:
         return reply
@@ -851,6 +912,7 @@ async def draft_the_turn_as_text(
     halted: bool,
     speech_heard: HeardSpeech,
     deadline: float,
+    claim: turn_claim.TurnClaim,
     bound_s: float,
     scene_rehearsals: list[str] | None = None,
 ) -> TurnResponse:
@@ -863,6 +925,7 @@ async def draft_the_turn_as_text(
         halted=halted,
         speech_heard=speech_heard,
         deadline=deadline,
+        claim=claim,
         bound_s=bound_s,
         scene_rehearsals=scene_rehearsals,
     )
@@ -879,8 +942,10 @@ async def _keep_the_turn(
     halted: bool,
     speech_heard: HeardSpeech,
     deadline: float,
+    claim: turn_claim.TurnClaim,
     bound_s: float,
     scene_rehearsals: list[str] | None = None,
+    take: HeardTake | None = None,
 ) -> tuple[TurnResponse, room.TurnOutcome | None, str]:
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
@@ -905,9 +970,10 @@ async def _keep_the_turn(
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        await db.commit()
+        language = session.language
+        await _keep_unless_the_opening_was_passed(db, claim, session.id)
         nudge(team_id, "sessions")
-        return reply, None, session.language
+        return reply, None, language
 
     if opening:
         with stage("db_let_go"):
@@ -963,6 +1029,7 @@ async def _keep_the_turn(
             turn_id=response_turn_id,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
+            take=take,
         )
     if earlier_passages_due(session.earlier_passages):
         background.add_task(read_the_earlier_passages_again, session_id=session.id)
@@ -988,13 +1055,29 @@ async def _keep_the_turn(
         moment=moment_view(session),
     )
     lifted = halted and session.status is not IRSessionStatus.NEEDS_PERSON
+    language = session.language
     with stage("db_write"):
         if turn_id:
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        await db.commit()
+        if opening:
+            await _keep_unless_the_opening_was_passed(db, claim, session.id)
+        else:
+            await db.commit()
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-    return reply, outcome, session.language
+    return reply, outcome, language
+
+
+async def _keep_unless_the_opening_was_passed(
+    db: AsyncSession, claim: turn_claim.TurnClaim, session_id: str
+) -> None:
+    """Commit the opening, or drop it whole when a team turn took its claim meanwhile: the
+    team's turn is the session's first line then, and the late opening is heard but never
+    kept (ADR 0053, ADR 0079)."""
+    if await turn_claim.still_holds(db, claim, session_id):
+        await db.commit()
+    else:
+        await db.rollback()

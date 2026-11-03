@@ -32,12 +32,13 @@ from app.services.internalization_room.canon import (
     titles,
 )
 
+HER_CANON = Path(__file__).parent / "fixtures" / "her-canon-5b5c8d2"
+
 
 def forget_the_canon() -> None:
     parse_map.load_map.cache_clear()
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
-    book_material._register_complete.cache_clear()
     book_material.significant_absences.cache_clear()
     accepted_readings.accepted_readings_of.cache_clear()
     elements.elements_for.cache_clear()
@@ -145,7 +146,7 @@ def the_canon_moves_on(
     return tree
 
 
-def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
+def a_fable_map(number: int = 1, *, sta_status: str = "complete", status: str = "complete") -> str:
     return textwrap.dedent(
         f"""\
         ---
@@ -155,7 +156,7 @@ def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
         bcv: "Fable 1:{number}-{number + 1}"
         genre-group: "NARRATIVE"
         genre: "HISTORICAL_NARRATIVE"
-        status: "complete"
+        status: "{status}"
         sta-status: "{sta_status}"
         ---
 
@@ -202,18 +203,10 @@ _A_RULE = {
 }
 
 
-def _a_fable_log(audit: list[dict], checklist: dict | None = None) -> str:
+def _a_fable_log(audit: list[dict]) -> str:
     body: dict = {"high_risk_register_audit": audit}
-    if checklist is not None:
-        body["validation_checklist"] = checklist
     return "# COMPILATION LOG\n\n" + json.dumps(body, indent=2) + "\n"
 
 
 A_FABLE_LOG_WITH_A_LAYER = _a_fable_log([_A_RULE])
 A_FABLE_LOG_WITHOUT_ONE = _a_fable_log([])
-A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE], {"high_risk_register_complete": True}
-)
-A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
-    [_A_RULE], {"high_risk_register_complete": False}
-)

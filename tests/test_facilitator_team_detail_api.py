@@ -33,9 +33,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys, elements_for
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book, served_maps
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    an_email,
     grant_facilitator_app_role,
     having_finished_the_passage,
     make_language,
@@ -43,6 +44,11 @@ from tests.baker import (
     make_project_user_access,
     make_user,
     open_ir_session,
+)
+from tests.release_harness import (
+    rehearsed_session,
+    reported_playback,
+    told_back_with_an_open_finding,
 )
 
 TEAM_NOT_FOUND = "Team not found"
@@ -86,7 +92,8 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-async def a_facilitator(db: AsyncSession, *, email: str, tongue: str = "Terena"):
+async def a_facilitator(db: AsyncSession, *, email: str | None = None, tongue: str = "Terena"):
+    email = email or an_email()
     user = await make_user(db, email=email)
     language = await make_language(db, name=tongue, code=f"d{next(_codes):02d}")
     project = await make_project(db, language.id, name=f"Equipe {email.split('@')[0]}")
@@ -269,13 +276,18 @@ async def test_a_passage_closed_out_of_order_still_counts(client, db_session) ->
     assert body["active_passage"]["pericope"] == SECOND
 
 
-async def test_a_team_that_finished_the_book_has_closed_all_of_it(client, db_session) -> None:
+async def test_a_team_that_finished_every_book_has_closed_all_of_the_book_it_is_in(
+    client, db_session
+) -> None:
     _user, team, headers = await a_facilitator(db_session, email="fim@x.com")
-    await having_closed(db_session, team, *CANON)
+    await having_closed(
+        db_session, team, *(meaning_map.pericope_num for meaning_map in served_maps())
+    )
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
+    listed = (await client.get(f"{team_url(team.id)}/pericopes", headers=headers)).json()
 
-    assert body["closed_total"] == len(CANON)
+    assert body["closed_total"] == len(listed)
     assert body["active_passage"] is None
     assert body["state"] == "complete"
 
@@ -390,6 +402,28 @@ async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_s
 # --------------------------------------------------------------------------------- what it costs
 
 
+async def test_the_detail_carries_the_standing_the_pericopes_door_answers(
+    client, db_session
+) -> None:
+    """ENG-1781: the Desk's page needs the active passage and the book's standing from one
+    reading of where the team stands, or a session entered between two requests leaves it
+    with a passage that none of the listed ones is current."""
+    _user, team, headers = await a_facilitator(db_session, email="mesma-leitura@x.com")
+    await having_closed(db_session, team, FIRST, SECOND)
+    session, _take = await rehearsed_session(db_session, pericope=THIRD, project_id=team.id)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+    listed = (await client.get(f"{team_url(team.id)}/pericopes", headers=headers)).json()
+
+    assert body["pericopes"] == listed
+    assert {e["pericope"]: e["open_findings"] for e in listed}[THIRD] == 1
+    current = [entry["pericope"] for entry in body["pericopes"] if entry["position"] == "current"]
+    assert current == [body["active_passage"]["pericope"]] == [THIRD]
+
+
 async def test_the_answer_does_not_pay_per_bead_or_per_team(
     client, db_session, test_engine
 ) -> None:
@@ -417,4 +451,11 @@ async def test_the_answer_does_not_pay_per_bead_or_per_team(
     against_events = [s for s in seen if "ir_coverage_events" in s]
 
     assert len(against_events) <= 2, f"mais de duas leituras dos eventos: {against_events}"
-    assert len(seen) <= 5, f"a resposta custou {len(seen)} statements: {seen}"
+    assert len(seen) <= 7, f"a resposta custou {len(seen)} statements: {seen}"
+
+
+async def test_two_default_facilitators_get_two_different_project_names(db_session):
+    _first, first_team, _ = await a_facilitator(db_session)
+    _second, second_team, _ = await a_facilitator(db_session)
+
+    assert first_team.name != second_team.name

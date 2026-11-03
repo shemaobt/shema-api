@@ -304,7 +304,7 @@ async def test_a_declared_session_has_her_parts_heard(client, db_session) -> Non
     assert [take.kind for take in takes] == [IRTakeKind.ENSAIO] * 3
     state = room.back_translation_of(session)
     assert [entry.clip_duration_ms for entry in state.played_by_take] == [20000, 25000, 45000]
-    assert unheard_parts(state, [take.id for take in takes]) == [], (
+    assert unheard_parts(state, takes, []) == [], (
         "o roteiro dela marca cada clipe como ouvido por inteiro antes da primeira rodada; "
         "sem isso a passagem nunca fecha e a rodada dela mede outra coisa"
     )
@@ -320,6 +320,9 @@ async def test_the_causa_a_mais_round_carries_an_addition_on_frase_1_and_no_miss
 
     assert [(one["kind"], one["frase"]) for one in result["findings"]] == [("addition", 1)]
     assert result["findings"][0]["stretchId"], "o achado tem de nomear o trecho que ele pega"
+    assert [(one["quote"], one["story"], one["voiced"]) for one in result["findings"]] == [
+        (None, None, None)
+    ], "só a nuance tem citação, história e voiced; nos outros tipos são nulos, nunca ausentes"
     assert "frase 1" in result["spoken"]
     assert result["outcome"] == "pass"
     assert result["conferida"] is False
@@ -360,7 +363,10 @@ async def test_a_visit_while_the_crossing_round_is_read_keeps_its_warning_ended(
         if visits and visits[-1] == "armed":
             factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
             async with factory() as rival:
-                await room.attend(rival, await room.get_session(rival, visits[0]), by="ana")
+                read = await room.get_session(rival, visits[0])
+                await room.attend(
+                    rival, read, by="ana", halts_raised=read.halts_raised, warned_at=read.warned_at
+                )
             visits.append("went")
         return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
 
@@ -674,3 +680,33 @@ async def test_a_frase_with_an_annotation_among_its_words_is_stored_and_read_wit
     )
     assert "[frase 1 — a parte 2 — Primeiro apelo e recusa] Noemi disse às duas noras…" in seen[0]
     assert "[silêncio]" not in seen[0], "o analista recebia a anotação como palavras da equipe"
+
+
+async def test_a_nuance_is_served_with_the_quote_the_story_and_the_voiced_it_is_stored_with(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [
+        {
+            "findings": [
+                {
+                    "kind": "nuance",
+                    "note": "a ordem dos fatos",
+                    "frase": 1,
+                    "quote": "dado pão ao seu povo",
+                    "story": "o Senhor visitou o povo e deu pão",
+                }
+            ]
+        }
+    ]
+    speaker.line = "Vocês traduziram bem. Só um detalhe, na frase 1: vocês traduziram aprovar."
+    session_id = await _a_session(client)
+
+    result = await _a_round(client, session_id, CAUSA_A_MAIS)
+
+    [nuance] = result["findings"]
+    assert nuance["kind"] == "nuance"
+    assert (nuance["quote"], nuance["story"]) == (
+        "dado pão ao seu povo",
+        "o Senhor visitou o povo e deu pão",
+    )
+    assert nuance["voiced"] == "now"

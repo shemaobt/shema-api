@@ -21,6 +21,10 @@ def the_conversation(session: IRSession) -> list[dict[str, Any]]:
     return [message for message in session.messages or [] if not message.get("told_back")]
 
 
+def guide_turns_of(session: IRSession) -> int:
+    return sum(1 for line in the_conversation(session) if line.get("role") == "guide")
+
+
 def _turn_of(message: dict[str, Any]) -> ConversationTurn:
     letter = message.get("category") or ""
     fail_safe = message["role"] == "guide" and (

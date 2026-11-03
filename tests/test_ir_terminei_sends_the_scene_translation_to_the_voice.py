@@ -28,10 +28,16 @@ from app.services import internalization_room as room_service
 from tests.baker import make_app, make_project_user_access, make_role, make_user, make_user_app_role
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
-from tests.hearing_harness import nothing_settles, the_transcriber_hears
+from tests.hearing_harness import nothing_settles, the_loop_clock_passes, the_transcriber_hears
 from tests.room_harness import the_room_speaks
-from tests.scene_rehearsal_harness import recording
+from tests.scene_rehearsal_harness import recording, the_take_lasts_as_long_as_its_wav, translate
 from tests.turn_harness import the_room_agent_is
+
+
+@pytest.fixture(autouse=True)
+def measured_by_its_wav(monkeypatch: pytest.MonkeyPatch) -> None:
+    the_take_lasts_as_long_as_its_wav(monkeypatch)
+
 
 IR = "/api/internalization-room"
 P = "P01"
@@ -203,15 +209,14 @@ async def a_frase(
     after_restart: str | None = None,
 ) -> httpx.Response:
     room.answers.append(said)
-    data = {"starts_ms": str(place[0]), "ends_ms": str(place[1])}
-    if replaces is not None:
-        data["replaces"] = replaces
-    if after_restart is not None:
-        data["after_restart"] = after_restart
-    return await room.client.post(
-        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
-        data=data,
-        files={"file": ("frase.wav", recording(1, tone), "audio/wav")},
+    return await translate(
+        room,
+        session_id,
+        rehearsal_id,
+        place,
+        recording(1, tone),
+        replaces=replaces,
+        after_restart=after_restart,
     )
 
 
@@ -533,14 +538,16 @@ async def test_a_send_whose_turn_never_lands_leaves_the_rehearsal_sendable(
     session_id = await an_opened_session(room, db_session)
     rehearsal_id = await a_rehearsal(room, session_id)
     await translated(room, session_id, rehearsal_id, [((0, 4000), "um")])
-    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 300)
-    room.guide.thinks = 1.0
+    room.guide.holds = asyncio.Event()
+    first = asyncio.create_task(send(room, session_id, rehearsal_id, "turno-perdido"))
+    await asyncio.wait_for(room.guide.asked.wait(), timeout=10)
+    the_loop_clock_passes(monkeypatch, get_settings().internalization_room_turn_bound_ms / 1000 + 1)
 
-    lost = await send(room, session_id, rehearsal_id, "turno-perdido")
+    lost = await asyncio.wait_for(first, timeout=10)
 
     assert lost.status_code == 502, lost.text
     assert (await read_by_the_desk(room, session_id, rehearsal_id))["sent_at"] is None
-    room.guide.thinks = 0.0
+    room.guide.holds = None
     landed = await send(room, session_id, rehearsal_id, "turno-que-chega")
     assert landed.status_code == 200, landed.text
     assert room.guide.inputs == [f"{ONE_PT} um", f"{ONE_PT} um"]
@@ -564,8 +571,9 @@ async def test_a_frase_arriving_after_the_send_is_refused(
 async def test_a_late_failure_under_a_turn_id_that_already_landed_leaves_the_rehearsal_sent(
     room: Room, db_session: AsyncSession, rival_factory
 ) -> None:
-    """The same turn id resent to another instance drafts again; when that draft fails after the
-    first one landed, the rehearsal stays sent under the turn that answered it."""
+    """The same turn id resent to another instance after the first one landed answers the
+    stored reply instead of drafting again, and the rehearsal stays sent under the turn that
+    answered it."""
     from app.core.config import get_settings
     from app.db.models.internalization_room import IRSceneRehearsal, IRSession
     from app.services.internalization_room.scene_rehearsals import send_the_scene_rehearsal
@@ -580,17 +588,18 @@ async def test_a_late_failure_under_a_turn_id_that_already_landed_leaves_the_reh
         raise RuntimeError("a outra instância caiu")
 
     async with rival_factory() as db:
-        with pytest.raises(RuntimeError):
-            await send_the_scene_rehearsal(
-                db,
-                await db.get(IRSession, session_id),
-                await db.get(IRSceneRehearsal, rehearsal_id),
-                turn_id="turno-que-chegou",
-                closes=None,
-                project_id=TABLET_TEAM,
-                bound_s=get_settings().internalization_room_turn_bound_ms / 1000,
-                draft=another_instance_fails,
-            )
+        resent = await send_the_scene_rehearsal(
+            db,
+            await db.get(IRSession, session_id),
+            await db.get(IRSceneRehearsal, rehearsal_id),
+            turn_id="turno-que-chegou",
+            closes=None,
+            project_id=TABLET_TEAM,
+            bound_s=get_settings().internalization_room_turn_bound_ms / 1000,
+            draft=another_instance_fails,
+        )
+
+    assert resent.model_dump(mode="json") == sent.json()
 
     assert (await read_by_the_desk(room, session_id, rehearsal_id))["sent_at"] is not None
     late = await send(room, session_id, rehearsal_id, "outro-turno")
@@ -675,8 +684,8 @@ async def test_a_terminei_while_another_is_still_reaching_the_voice_is_told_it_i
 async def test_a_release_by_a_draft_whose_claim_a_resend_renewed_leaves_the_rehearsal_being_sent(
     room: Room, db_session: AsyncSession, rival_factory
 ) -> None:
-    """Instance A drafts turn T; T resent to instance B drafts again and renews the claim; A
-    then fails and releases. The rehearsal is still B's to send."""
+    """Instance A drafts turn T; T resent to instance B renews the claim and waits on A's turn;
+    A then fails and releases, and B drafts. The rehearsal is still B's to send."""
     from app.core.config import get_settings
     from app.db.models.internalization_room import IRSceneRehearsal, IRSession
     from app.services.internalization_room.scene_rehearsals import send_the_scene_rehearsal
@@ -687,9 +696,18 @@ async def test_a_release_by_a_draft_whose_claim_a_resend_renewed_leaves_the_rehe
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     a_drafts, b_drafts = asyncio.Event(), asyncio.Event()
 
+    async def renewed_by_b(claimed_by_a: Any) -> None:
+        while True:
+            async with rival_factory() as db:
+                if (await db.get(IRSceneRehearsal, rehearsal_id)).sent_at != claimed_by_a:
+                    return
+            await asyncio.sleep(0.05)
+
     async def instance_a_fails(**_: Any) -> Any:
+        async with rival_factory() as db:
+            claimed_by_a = (await db.get(IRSceneRehearsal, rehearsal_id)).sent_at
         a_drafts.set()
-        await b_drafts.wait()
+        await asyncio.wait_for(renewed_by_b(claimed_by_a), timeout=10)
         raise RuntimeError("a instância A caiu")
 
     async def instance_b_drafts(**_: Any) -> Any:
@@ -716,6 +734,7 @@ async def test_a_release_by_a_draft_whose_claim_a_resend_renewed_leaves_the_rehe
     b = asyncio.create_task(on_an_instance(instance_b_drafts))
     with pytest.raises(RuntimeError):
         await asyncio.wait_for(a, timeout=10)
+    await asyncio.wait_for(b_drafts.wait(), timeout=10)
 
     meanwhile = await send(room, session_id, rehearsal_id, "turno-t2")
 

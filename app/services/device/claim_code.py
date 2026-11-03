@@ -85,7 +85,17 @@ def utcnow() -> datetime:
 def generate_claim_code() -> str:
     """A fresh code in the ``XXX-XXXX`` shape a facilitator reads out loud."""
     drawn = "".join(secrets.choice(CLAIM_CODE_ALPHABET) for _ in range(_HEAD_LENGTH + _TAIL_LENGTH))
-    return f"{drawn[:_HEAD_LENGTH]}-{drawn[_HEAD_LENGTH:]}"
+    return _halved(drawn)
+
+
+def as_shown(typed: str) -> str:
+    """``typed`` as the tablet shows it, whatever a keyboard put between its two halves."""
+    kept = "".join(character for character in typed if character.isalnum()).upper()
+    return _halved(kept) if len(kept) == _HEAD_LENGTH + _TAIL_LENGTH else kept
+
+
+def _halved(characters: str) -> str:
+    return f"{characters[:_HEAD_LENGTH]}-{characters[_HEAD_LENGTH:]}"
 
 
 def hash_claim_code(code: str) -> str:

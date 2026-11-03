@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from tests.baker import (
+    an_email,
     grant_facilitator_app_role,
     make_language,
     make_project,
@@ -93,9 +94,10 @@ async def a_team(db: AsyncSession, *, name: str):
     return await make_project(db, language.id, name=name)
 
 
-async def a_facilitator(db: AsyncSession, *teams, email: str = "facilitadora@example.com"):
+async def a_facilitator(db: AsyncSession, *teams, email: str | None = None):
     from app.services.auth.issue_tokens import issue_tokens
 
+    email = email or an_email()
     user = await make_user(db, email=email)
     for team in teams:
         await make_project_user_access(db, team.id, user.id, role=ProjectRole.FACILITATOR)
@@ -267,3 +269,16 @@ async def test_a_hand_raised_on_no_bead_is_named_by_nothing(client, db_session):
         None,
         None,
     ), f"uma pergunta sem conta ganhou rotulo: {card}"
+
+
+async def test_a_facilitator_built_twice_with_defaults_gets_two_users_with_two_emails(db_session):
+    first = await a_facilitator(db_session)
+    second = await a_facilitator(db_session)
+
+    assert first[0].email != second[0].email
+
+
+async def test_a_facilitator_called_with_an_email_keeps_it(db_session):
+    user = (await a_facilitator(db_session, email="x@example.com"))[0]
+
+    assert user.email == "x@example.com"

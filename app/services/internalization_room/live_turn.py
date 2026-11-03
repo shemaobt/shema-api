@@ -25,13 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back, stamped_with_what_was_heard
-from app.services.internalization_room.validated_turn import CutPoint
 
 
 async def run_comprehension_turn(
@@ -52,7 +50,6 @@ async def run_comprehension_turn(
     The opening has no take, and an outcome that names none is one the room did not hear.
     """
     pericope = session.pericope
-    book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp = session.earlier_passages
     if stamp is None:
@@ -68,7 +65,6 @@ async def run_comprehension_turn(
         messages=messages,
         transcript=speech.text,
         opening=opening,
-        book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope=pericope,
@@ -79,15 +75,8 @@ async def run_comprehension_turn(
     if stamp is not session.earlier_passages:
         session.earlier_passages = stamp
     if not opening:
-        outcome = replace(
-            stamped_with_what_was_heard(outcome, speech),
-            interrupted=(
-                CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
-                if speech.interrupted
-                else None
-            ),
-        )
-    return outcome
+        outcome = stamped_with_what_was_heard(outcome, speech)
+    return replace(outcome, earlier_passages=None if stamp is None else dict(stamp))
 
 
 __all__ = ["current_scene_id", "run_comprehension_turn"]

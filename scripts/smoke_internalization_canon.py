@@ -44,7 +44,7 @@ def problems() -> list[str]:
     for book in sorted(SERVED_BOOKS):
         for meaning_map in load_book(book):
             tag = meaning_map.pericope_num
-            for element in labelled_elements(tag, book=book):
+            for element in labelled_elements(tag):
                 if wrong := _wrong_with(element.label_en):
                     found.append(
                         f"{tag}: the coverage label of {element.key} {wrong}: {element.label_en!r}"

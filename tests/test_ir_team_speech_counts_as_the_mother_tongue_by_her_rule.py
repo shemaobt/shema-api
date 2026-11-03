@@ -27,6 +27,7 @@ from app.services.internalization_room import hearing
 from app.services.internalization_room.sessions import (
     create_session,
 )
+from app.services.platform import audio_duration
 from tests.deploy_harness import deploy_env_vars
 from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import (
@@ -422,7 +423,7 @@ async def test_a_take_with_no_words_whose_probe_never_answers_is_answered_with_d
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bound = 100.0
-    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", bound)
+    monkeypatch.setattr(audio_duration, "MEASURING_BOUND_S", bound)
     session = await _an_open_session(db_session, tablet, guide)
     the_transcriber_hears_no_words(monkeypatch)
     probe_started = the_probe_never_answers(monkeypatch)
@@ -450,15 +451,13 @@ async def test_a_take_with_no_words_whose_probe_never_answers_is_answered_with_d
 async def test_a_probe_that_never_answers_is_stopped_once_the_bound_has_passed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from app.services.platform import audio_duration
-
     pid_file = tmp_path / "probe.pid"
     hung_probe = tmp_path / "ffprobe"
     hung_probe.write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 60\n")
     hung_probe.chmod(0o755)
     monkeypatch.setattr(audio_duration, "PROBE", str(hung_probe))
     bound = 3600.0
-    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", bound)
+    monkeypatch.setattr(audio_duration, "MEASURING_BOUND_S", bound)
     the_transcriber_hears_no_words(monkeypatch)
     hearing_the_take = asyncio.create_task(
         hearing.heard_speech(b"audio", language="pt", settings=settings())

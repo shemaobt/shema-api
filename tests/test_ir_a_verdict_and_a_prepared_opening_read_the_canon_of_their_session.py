@@ -18,7 +18,6 @@ from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     P,
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -106,7 +105,6 @@ async def test_a_verdict_played_through_the_text_seam_moves_the_moment_by_the_sc
 ) -> None:
     the_analyst_reads(monkeypatch)
     the_room_agent_is(monkeypatch, turn=ScriptedAgent([INTO_THE_LAST_SCENE_EN]))
-    nothing_is_read_ahead(monkeypatch)
 
     async def _never_voiced(text: str, **_: Any) -> None:
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")

@@ -3,8 +3,8 @@
 The old comprehension assessor's instructions stayed in the prompts directory for a month
 after the last code that loaded them was deleted, still telling a model to carry open points
 to Refine. A text that looks live beside her eight is read as one of them by whoever opens the
-directory next, so the directory holds her prompts and the three files of ours the room reads:
-the passage names, and the Portuguese fail-safe supplement with its provenance.
+directory next, so the directory holds her prompts and the one file of ours the room reads:
+the passage names.
 """
 
 from __future__ import annotations
@@ -25,14 +25,10 @@ HERS = {
     "guide_system_prompt.md",
     "validator_system_prompt.md",
 }
-OURS = {
-    "passage_lines.md",
-    "_fail_safe_pt_supplement.md",
-    "_fail_safe_pt_supplement_provenance.md",
-}
+OURS = {"passage_lines.md"}
 
 
-def test_the_prompts_directory_holds_her_eight_and_the_three_files_of_ours_the_room_reads() -> None:
+def test_the_prompts_directory_holds_her_eight_and_the_one_file_of_ours_the_room_reads() -> None:
     on_disk = {path.name for path in PROMPTS.iterdir() if path.is_file()}
 
     assert on_disk == HERS | OURS, (

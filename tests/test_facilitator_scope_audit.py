@@ -54,8 +54,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
+    IRExternalCheck,
     IRQuestion,
     IRQuestionStatus,
+    IRSceneFrase,
+    IRSceneRehearsal,
     IRSession,
     IRTake,
     IRTakeKind,
@@ -80,16 +83,22 @@ AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
 #: The only body the force route accepts as a force. Without it the route answers
 #: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
 FORCE = {"json": {"force": True}}
+#: A visit names the halt count the Desk read (ADR 0091); these sessions never halted.
+NEVER_HALTED = {"params": {"halt": 0}}
+
+NO_SUCH_HALT = {"params": {"needs_person_since": "2020-01-01T00:00:00+00:00"}}
 
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The real application, so no route is out of scope by not being mounted here."""
     from app.api.internalization_room import takes as take_routes
+    from app.core.config import get_settings
     from app.core.database import get_db
     from app.main import app
     from app.services.internalization_room import questions as question_service
     from app.services.internalization_room import session_takes
+    from app.services.internalization_room import takes as takes_service
 
     class MemoryStore:
         def __init__(self) -> None:
@@ -115,6 +124,12 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
+
+    async def _signed_download(bucket: str, key: str, **kw) -> str:
+        return f"https://storage.example/{bucket}/{key}"
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    monkeypatch.setattr(takes_service, "generate_signed_download_url", _signed_download)
     monkeypatch.setattr(session_takes, "listen_url", _signed_take)
     the_bucket_is_in_memory(monkeypatch)
 
@@ -200,6 +215,51 @@ async def _a_recorded_session_of(db: AsyncSession, owner: Facilitator, tag: str)
     return session.id, take.id
 
 
+async def _a_scene_rehearsal_of(
+    db: AsyncSession, session_id: str, project_id: str, tag: str
+) -> tuple[str, str]:
+    rehearsal = IRSceneRehearsal(
+        id=f"sr-{tag}",
+        session_id=session_id,
+        project_id=project_id,
+        pericope="P03",
+        n=1,
+        device_id=f"t-{tag}",
+        storage_key=f"internalization-room/scene-rehearsals/{tag}.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+    )
+    db.add(rehearsal)
+    await db.flush()
+    frase = IRSceneFrase(
+        id=f"sf-{tag}",
+        rehearsal_id=rehearsal.id,
+        session_id=session_id,
+        starts_ms=0,
+        ends_ms=1000,
+        storage_key=f"internalization-room/scene-rehearsals/{tag}-frase.wav",
+        size_bytes=8,
+        sha256="0" * 64,
+        crc32c="AAAAAA==",
+        content_type="audio/wav",
+        transcript="a frase",
+    )
+    db.add(frase)
+    await db.commit()
+    return rehearsal.id, frase.id
+
+
+async def _an_opened_check_of(db: AsyncSession, session_id: str) -> None:
+    db.add(
+        IRExternalCheck(
+            release_id=f"r-{session_id}", session_id=session_id, version=1, takes=[], frases=[]
+        )
+    )
+    await db.commit()
+
+
 async def _claim_of(db: AsyncSession, owner: Facilitator, tag: str) -> dict:
     minted = await create_device(db)
     return {"json": {"code": minted.claim_code, "project_id": owner.project.id}}
@@ -240,6 +300,10 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     await question_service._store().put(owned_key, b"a equipe perguntou", "audio/mp4")
     absent_key = "internalization-room/questions/nao-existe-em-lugar-nenhum.m4a"
     session_id, take_id = await _a_recorded_session_of(db, owner, f"t{tag}")
+    await _an_opened_check_of(db, session_id)
+    rehearsal_id, frase_id = await _a_scene_rehearsal_of(
+        db, session_id, owner.project.id, f"r{tag}"
+    )
     # One session per route: the mark and its undo are the same claim written and
     # withdrawn, so sharing a session would make each case depend on the other's order.
     attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
@@ -286,14 +350,15 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "POST",
-            "owned": (f"{DESK}/devices/{attend_device}/attended", {}),
-            "absent": (f"{DESK}/devices/{absent}/attended", {}),
+            "owned": (f"{DESK}/devices/{attend_device}/attended", NO_SUCH_HALT),
+            "absent": (f"{DESK}/devices/{absent}/attended", NO_SUCH_HALT),
             "ids": (attend_device, absent),
+            "owner_expects": 409,
         },
         {
             "method": "DELETE",
-            "owned": (f"{DESK}/devices/{unattend_device}/attended", {}),
-            "absent": (f"{DESK}/devices/{absent}/attended", {}),
+            "owned": (f"{DESK}/devices/{unattend_device}/attended", NO_SUCH_HALT),
+            "absent": (f"{DESK}/devices/{absent}/attended", NO_SUCH_HALT),
             "ids": (unattend_device, absent),
         },
         {
@@ -331,6 +396,32 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/archive", {}),
             "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/archive", {}),
             "ids": (owner.project.id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/archives", {}),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/archives", {}),
+            "ids": (owner.project.id, absent),
+        },
+        {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/release", FORCE),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/release", FORCE),
+            "ids": (owner.project.id, absent),
+            #: The owner's passage holds no rehearsal take, so the force refuses it naming
+            #: `no_rehearsal_audio`. A stranger is 404, which is the whole question here.
+            "owner_expects": 409,
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/projects/{owner.project.id}/passages/P03/retroverificacao",
+                {},
+            ),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P03/retroverificacao", {}),
+            "ids": (owner.project.id, absent),
+            #: The owner reaches the file of the passage it recorded, so the refusal beside it
+            #: can only be the scope: without it the stranger would be served that file too.
         },
         {
             "method": "GET",
@@ -376,9 +467,47 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/grain-switches", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/grain-switches", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/mother-tongue-takes", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/mother-tongue-takes", {}),
             "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/takes/downloads", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/takes/downloads", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/takes/whole", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/takes/whole", {}),
+            "ids": (session_id, absent),
+            "owner_expects": 409,
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/re-recorded-sentences", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/re-recorded-sentences", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/re-recorded-sentences/frase-1/audio",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/re-recorded-sentences/frase-1/audio",
+                {},
+            ),
+            "ids": (session_id, absent),
+            "owner_expects": 404,
         },
         {
             "method": "GET",
@@ -388,20 +517,46 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/scene-rehearsals/{absent}/audio",
+                {},
+            ),
+            "ids": (session_id, rehearsal_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals/{rehearsal_id}"
+                f"/frases/{frase_id}/audio",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/scene-rehearsals/{absent}/frases/{absent}"
+                "/audio",
+                {},
+            ),
+            "ids": (session_id, rehearsal_id, frase_id, absent),
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/takes/{take_id}/audio", {}),
             "absent": (f"{IR}/facilitator/takes/{absent}/audio", {}),
             "ids": (take_id, absent),
         },
         {
             "method": "POST",
-            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", {}),
-            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", NEVER_HALTED),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", NEVER_HALTED),
             "ids": (attend_id, absent),
         },
         {
             "method": "DELETE",
-            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", {}),
-            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", NEVER_HALTED),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", NEVER_HALTED),
             "ids": (unattend_id, absent),
         },
         {
@@ -409,16 +564,6 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{session_id}/release", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", {}),
             "ids": (session_id, absent),
-            #: The owner is refused too, and by a different door: 409 with the blockers
-            #: named, because a session this far from finished has no artifact to hand
-            #: over. That is the answer to somebody who *is* the owner — a stranger gets
-            #: 404, the same as for an id that never existed. The two codes differing is
-            #: what scoping means here, and asserting 200 would mean building a
-            #: release-ready session inside a scope audit: comprehension evaluated,
-            #: the floor met, rehearsal audio, a telling-back read by the analyst and a
-            #: report of playback. The audit would then fail whenever any of those changed,
-            #: which is every one of them except scope.
-            "owner_expects": 409,
         },
         {
             "method": "GET",
@@ -434,6 +579,15 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owner_expects": 404,
         },
         {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/releases/1/check", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/releases/1/check", {}),
+            "ids": (session_id, absent),
+            #: As the read of the same version: the owner has approved nothing here, so the
+            #: version is not found, where a stranger is told the session does not exist.
+            "owner_expects": 404,
+        },
+        {
             "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/retroverificacao", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/retroverificacao", {}),
@@ -446,6 +600,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
         },
         {
             "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/external-check/1", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/external-check/1", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/conversation", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/conversation", {}),
             "ids": (session_id, absent),
@@ -454,6 +614,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/coverage", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/coverage", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/retro", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/retro", {}),
             "ids": (session_id, absent),
         },
         {
@@ -483,10 +649,27 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
             "ids": (force_id, absent),
-            #: The owner is refused by the gate, for the reason the read above is: a force
-            #: sets aside two blockers and a session this far from finished stands on the
-            #: others. A stranger is still 404, which is the whole question here.
-            "owner_expects": 409,
+            #: The owner's session holds a rehearsal take, so the force passes every other
+            #: blocker and mints the release (ADR 0075). A stranger is still 404.
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/takes/{take_id}/address", {}),
+            "absent": (f"{IR}/facilitator/takes/{absent}/address", {}),
+            "ids": (take_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (
+                f"{IR}/facilitator/sessions/{session_id}/re-recorded-sentences/frase-1/address",
+                {},
+            ),
+            "absent": (
+                f"{IR}/facilitator/sessions/{absent}/re-recorded-sentences/frase-1/address",
+                {},
+            ),
+            "ids": (session_id, absent),
+            "owner_expects": 404,
         },
     ]
 
@@ -523,7 +706,10 @@ FILTERING_TEMPLATES = {
 #: **An exemption list in a scope audit is the thing that rots it**, so membership here is
 #: not taken on trust — the case below refuses an entry whose route could name a resource.
 #: A route earns this by having no path parameter and asking for nothing but the caller.
-NOTHING_TO_SCOPE = {("GET", f"{DESK}/coverage-legend")}
+NOTHING_TO_SCOPE = {
+    ("GET", f"{DESK}/coverage-legend"),
+    ("GET", f"{IR}/facilitator/canon-pins"),
+}
 
 
 def test_the_audit_is_not_empty() -> None:
@@ -695,3 +881,189 @@ async def test_a_listing_route_leaves_out_the_other_teams_rows(client, db_sessio
     teams = {row["team_id"] for row in listed.json()["teams"]}
     assert a.project.id in teams, "o cenario nao provou nada: o dono nao viu a propria equipe"
     assert b.project.id not in teams, "a lista mostrou a equipe de outro facilitador"
+
+
+# --- ENG-1770: a team that does not exist is nobody's to write on, a platform admin's included
+
+NO_TEAM = "equipe-que-nao-existe"
+TEAM_NOT_FOUND = {"detail": "Team not found", "code": "NOT_FOUND"}
+
+
+class _TheTeamThatDoesNotExist:
+    project = type("Project", (), {"id": NO_TEAM})()
+
+
+async def _a_platform_admin(db: AsyncSession, *, email: str) -> dict[str, str]:
+    from app.services.auth.issue_tokens import issue_tokens
+
+    user = await make_user(db, email=email, is_platform_admin=True)
+    access, _refresh = await issue_tokens(db, user)
+    return {"Authorization": f"Bearer {access}"}
+
+
+def _not_found(what: str, identifier: str) -> dict[str, str]:
+    return {"detail": f"{what} {identifier} not found", "code": "NOT_FOUND"}
+
+
+async def test_a_platform_admin_zerar_on_a_team_that_does_not_exist_answers_404(client, db_session):
+    from sqlalchemy import func, select
+
+    from app.db.models.internalization_room import IRArchive
+
+    admin = await _a_platform_admin(db_session, email="admin-zerar-sem-equipe@example.com")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{NO_TEAM}/passages/P03/archive", headers=admin
+    )
+
+    assert (answer.status_code, answer.json()) == (404, TEAM_NOT_FOUND)
+    assert await db_session.scalar(select(func.count()).select_from(IRArchive)) == 0
+
+
+async def test_a_platform_admin_forcing_a_passage_of_a_team_that_does_not_exist_answers_404(
+    client, db_session
+):
+    from sqlalchemy import func, select
+
+    from app.db.models.internalization_room import IRRelease
+
+    admin = await _a_platform_admin(db_session, email="admin-forca-passagem@example.com")
+    await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "fp")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{NO_TEAM}/passages/P03/release", headers=admin, **FORCE
+    )
+
+    assert (answer.status_code, answer.json()) == (404, TEAM_NOT_FOUND)
+    assert await db_session.scalar(select(func.count()).select_from(IRRelease)) == 0
+
+
+async def test_a_platform_admin_replying_to_a_question_of_a_team_that_does_not_exist_answers_404(
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-responde-pergunta@example.com")
+    question_id = await _a_question_of(db_session, _TheTeamThatDoesNotExist, "rp")
+
+    answer = await client.post(
+        f"{IR}/facilitator/questions/{question_id}/reply", headers=admin, **AUDIO
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Question", question_id),
+    )
+    question = await db_session.get(IRQuestion, question_id)
+    await db_session.refresh(question)
+    assert question.status == IRQuestionStatus.OPEN
+    assert question.reply_audio_key is None
+
+
+async def test_a_platform_admin_resolving_a_question_of_a_team_that_does_not_exist_answers_404(
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-resolve-pergunta@example.com")
+    question_id = await _a_question_of(db_session, _TheTeamThatDoesNotExist, "rs")
+
+    answer = await client.post(f"{IR}/facilitator/questions/{question_id}/resolve", headers=admin)
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Question", question_id),
+    )
+    question = await db_session.get(IRQuestion, question_id)
+    await db_session.refresh(question)
+    assert question.status == IRQuestionStatus.OPEN
+
+
+async def test_a_platform_admin_marking_a_visit_on_a_session_of_a_team_that_does_not_exist_answers_404(  # noqa: E501
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-marca-visita@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "mv")
+
+    answer = await client.post(
+        f"{IR}/facilitator/sessions/{session_id}/attended", headers=admin, **NEVER_HALTED
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Internalization room session", session_id),
+    )
+    session = await db_session.get(IRSession, session_id)
+    await db_session.refresh(session)
+    assert session.attended_at is None
+
+
+async def test_a_platform_admin_undoing_a_visit_on_a_session_of_a_team_that_does_not_exist_answers_404(  # noqa: E501
+    client, db_session
+):
+    admin = await _a_platform_admin(db_session, email="admin-desfaz-visita@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "dv")
+    visited = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    await db_session.execute(
+        update(IRSession).where(IRSession.id == session_id).values(attended_at=visited)
+    )
+    await db_session.commit()
+
+    answer = await client.delete(
+        f"{IR}/facilitator/sessions/{session_id}/attended", headers=admin, **NEVER_HALTED
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Internalization room session", session_id),
+    )
+    session = await db_session.get(IRSession, session_id)
+    await db_session.refresh(session)
+    assert session.attended_at is not None
+
+
+async def test_a_platform_admin_forcing_the_release_of_a_session_of_a_team_that_does_not_exist_answers_404(  # noqa: E501
+    client, db_session
+):
+    from sqlalchemy import func, select
+
+    from app.db.models.internalization_room import IRRelease
+
+    admin = await _a_platform_admin(db_session, email="admin-forca-liberacao@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, _TheTeamThatDoesNotExist, "fl")
+
+    answer = await client.post(
+        f"{IR}/facilitator/sessions/{session_id}/release", headers=admin, **FORCE
+    )
+
+    assert (answer.status_code, answer.json()) == (
+        404,
+        _not_found("Internalization room session", session_id),
+    )
+    assert await db_session.scalar(select(func.count()).select_from(IRRelease)) == 0
+
+
+async def test_a_facilitator_zerar_on_a_real_team_not_theirs_answers_as_today(client, db_session):
+    a = await a_facilitator(db_session, email="zerar-a-equipe-alheia-a@example.com")
+    b = await a_facilitator(db_session, email="zerar-a-equipe-alheia-b@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, b, "ze")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{b.project.id}/passages/P03/archive", headers=a.headers
+    )
+
+    assert (answer.status_code, answer.json()) == (404, TEAM_NOT_FOUND)
+    session = await db_session.get(IRSession, session_id)
+    await db_session.refresh(session)
+    assert session.archive_id is None
+
+
+async def test_a_platform_admin_zerar_on_a_real_team_answers_as_today(client, db_session):
+    admin = await _a_platform_admin(db_session, email="admin-zerar-equipe-real@example.com")
+    owner = await a_facilitator(db_session, email="dona-da-equipe-real@example.com")
+    session_id, _ = await _a_recorded_session_of(db_session, owner, "zr")
+
+    answer = await client.post(
+        f"{IR}/facilitator/projects/{owner.project.id}/passages/P03/archive", headers=admin
+    )
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["archived"] is True
+    assert [entry["session_id"] for entry in body["archive"]["sessions"]] == [session_id]

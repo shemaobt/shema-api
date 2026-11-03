@@ -13,6 +13,7 @@ module keeps its own three-line fixtures and calls what is here.
 from __future__ import annotations
 
 import base64
+import itertools
 from typing import Any
 
 import httpx
@@ -32,16 +33,22 @@ from app.services import internalization_room as full_room
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
-from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM
+from tests.release_harness import judged_packet
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
 DEVICE = "tablet-da-equipe-1"
 P = "P01"
 AUDIO = b"a equipe explicou este trecho em portugues"
+_RECORDINGS = itertools.count(1)
+
+
+def a_new_recording() -> bytes:
+    return AUDIO + b"-%d" % next(_RECORDINGS)
+
 
 #: The stretches the helpers below tell, as slices of the one rehearsal recording.
 SLICES = [(0, 9000), (9000, 18000), (18000, 27000)]
@@ -87,10 +94,15 @@ async def voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
 
 
 class Facilitator:
-    def __init__(self, user_id: str, team_id: str, headers: dict[str, str]) -> None:
+    """Somebody who holds the room's facilitator role and facilitates exactly one team."""
+
+    def __init__(
+        self, user_id: str, team_id: str, headers: dict[str, str], *, team_name: str = ""
+    ) -> None:
         self.id = user_id
         self.team_id = team_id
         self.headers = headers
+        self.team_name = team_name
 
 
 async def a_session(
@@ -137,6 +149,7 @@ async def tell(
     again: bool = False,
     saying: str | None = None,
     queued: bool = True,
+    audio: bytes | None = None,
 ) -> httpx.Response:
     """Tell stretch `stretch` (1-based) back, as a first telling or as one more.
 
@@ -154,7 +167,7 @@ async def tell(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
         headers={"X-Room-Device": DEVICE},
         data=data,
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        files={"file": ("trecho.m4a", audio or a_new_recording(), "audio/mp4")},
     )
 
 
@@ -218,14 +231,8 @@ async def marks(db: AsyncSession, session_id: str) -> list[IRHardStretch]:
     return list(result.scalars().all())
 
 
-async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -> httpx.Response:
-    return await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=who.headers
-    )
-
-
 async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """Everything `build_internalization_release` asks for besides the telling-back itself.
+    """Everything `judged_packet` asks for besides the telling-back itself.
 
     What the caller told back is left exactly as they told it: only coverage and the
     playback report are added here, and none of them is what these cases are about —
@@ -257,4 +264,4 @@ async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, A
         clip_duration_ms=clip_end,
     )
 
-    return await build_internalization_release(db, session)
+    return await judged_packet(db, session)

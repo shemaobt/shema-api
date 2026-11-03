@@ -22,7 +22,6 @@ from tests.device_harness import TABLET_TEAM
 from tests.release_harness import PREFIX, P
 from tests.room_harness import (
     heard_every_part,
-    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -91,7 +90,6 @@ def _served_key(audio_url: str) -> str | None:
 async def _a_verdict_voiced_in_the_retired_voice(
     client: Any, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[str, dict[str, Any], httpx.Response]:
-    nothing_is_read_ahead(monkeypatch)
     the_analyst_reads(monkeypatch)
     the_room_agent_is(monkeypatch, turn=_speaker)
     session, _ = await rehearsed_in_parts(db, 1)

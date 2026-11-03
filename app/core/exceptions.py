@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI, Request, status
@@ -31,11 +32,20 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # current_version these routes do not have, and SESSION_LOCKED promises a holder that no
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
+#: A turn that waited the whole opening wait behind another turn of its session. Its own code
+#: because nothing about this turn is stale and no version reloads it: the server could not
+#: place it after the other reply, so nothing was stored and nothing was voiced (ADR 0079).
+ERROR_CODE_TURN_COLLISION: Final = "TURN_COLLISION"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: A force asked for without the word that makes it one. Its own code because nothing about
 #: the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
+#: Refine's manifest or the team's Checagem externa asked of a passage whose draft is not
+#: approved as it stands. Its own code because there is no version to reload and no blocker to
+#: name: the passage is approved first.
+ERROR_CODE_DRAFT_NOT_APPROVED: Final = "DRAFT_NOT_APPROVED"
+ERROR_CODE_NOT_ALL_WAV: Final = "NOT_ALL_WAV"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: A heard mark on a question nobody has answered. Its own code for the reason above: there is
 #: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
@@ -53,6 +63,12 @@ ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+#: A change that would re-open an approved draft, sent without the team's armed tap (ADR 0081).
+ERROR_CODE_DRAFT_APPROVED: Final = "DRAFT_APPROVED"
+ERROR_CODE_NOTHING_TO_BRING_BACK: Final = "NOTHING_TO_BRING_BACK"
+#: A Bring-back over a part whose bytes are no longer its rehearsal's (ADR 0085). Its own code
+#: because the tablet says to try again for it, and «este ensaio não pode entrar» for the rest.
+ERROR_CODE_PART_NO_LONGER_ITS_REHEARSAL: Final = "PART_NO_LONGER_ITS_REHEARSAL"
 ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 #: A scene frase whose place is not inside its scene recording.
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
@@ -64,12 +80,33 @@ ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
 #: A frase, restart or send for a scene rehearsal another send is still taking to the voice:
 #: retried, since that send may fail and leave the rehearsal open.
 ERROR_CODE_SCENE_REHEARSAL_SENDING: Final = "SCENE_REHEARSAL_SENDING"
+#: A scene label given to a scene rehearsal that is a current part's origin: never accepted.
+ERROR_CODE_REHEARSAL_JOINED: Final = "REHEARSAL_JOINED"
 #: A restart that closes an attempt which is not the current one yet: retried once it is.
 ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
+#: A join chosen over a take that is no longer its part's live one: never stored, never retried.
+ERROR_CODE_TAKE_MOVED: Final = "TAKE_MOVED"
+#: A visit or its undo naming a halt count or a warning that is no longer the room's: the Desk
+#: reads again.
+ERROR_CODE_HALT_MOVED: Final = "HALT_MOVED"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
 ERROR_CODE_OVERLAPS_A_STANDING_FRASE: Final = "OVERLAPS_A_STANDING_FRASE"
+ERROR_CODE_SENTENCE_TOO_LONG: Final = "SENTENCE_TOO_LONG"
+ERROR_CODE_SENTENCE_TOO_SHORT: Final = "SENTENCE_TOO_SHORT"
+ERROR_CODE_SENTENCE_FORMAT_DIFFERS: Final = "SENTENCE_FORMAT_DIFFERS"
+ERROR_CODE_SENTENCE_ID_REUSED: Final = "SENTENCE_ID_REUSED"
+ERROR_CODE_PART_NOT_WAV: Final = "PART_NOT_WAV"
+#: A take or scene rehearsal whose ``sha256`` is not the hash of the bytes sent with it.
+ERROR_CODE_TAKE_FINGERPRINT_DIFFERS: Final = "TAKE_FINGERPRINT_DIFFERS"
+#: A take or scene rehearsal whose ``duration_ms`` is more than the slack from its sound's length.
+ERROR_CODE_TAKE_DURATION_DIFFERS: Final = "TAKE_DURATION_DIFFERS"
+#: A take or scene rehearsal whose bytes measure longer than any recording of the room can last.
+ERROR_CODE_TAKE_TOO_LONG: Final = "TAKE_TOO_LONG"
+ERROR_CODE_ANOTHER_SENTENCE_AWAITS: Final = "ANOTHER_SENTENCE_AWAITS"
+ERROR_CODE_PART_CHANGED: Final = "PART_CHANGED"
+ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION: Final = "FRASE_AWAITS_ITS_TRANSLATION"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -126,6 +163,15 @@ class SessionLockChanged(ConflictError):
     """
 
 
+class TurnCollision(ConflictError):
+    """A turn still waiting, at the end of the opening wait, on another turn of its session.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code promises
+    a version to reload from, and there is none. The turn was neither stored nor voiced, and
+    the tablet that sent it calls a person (ADR 0079).
+    """
+
+
 class ProjectGranularityLocked(ConflictError):
     """The project's bead granularity was asked to move after something was cut at it.
 
@@ -143,6 +189,26 @@ class NothingToForce(ConflictError):
     CONFLICT code promises a blocker or a version to reload from, and there is neither. The
     session was not even looked at — a route whose only purpose is to overrule the gate has
     nothing to say about a caller who did not ask it to.
+    """
+
+
+class DraftNotApproved(ConflictError):
+    """A door that reads an approved draft was asked of a session whose draft is not approved
+    as it stands: the release read serving Refine her manifest, and the team's open of the
+    Checagem externa.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is no version to reload; approve the
+    passage first.
+    """
+
+
+class NotAllWav(ConflictError):
+    """The whole passage asked of takes one of which is no 16 kHz mono 16-bit PCM by its own
+    header, whatever its stored content type says.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code promises
+    a version to reload from, and the way out is another recording, not a reload.
     """
 
 
@@ -172,6 +238,20 @@ class PassageClosed(ConflictError):
     pass
 
 
+class DraftApproved(ConflictError):
+    """A change that would re-open an approved draft, sent without the team's armed tap."""
+
+
+class NothingToBringBack(ConflictError):
+    """A Bring-back over a part whose rehearsal's frases cannot be laid on it: not joined, joined
+    from another session, or no frase to bring."""
+
+
+class PartNoLongerItsRehearsal(ConflictError):
+    """A Bring-back over a part joined from a rehearsal of this session whose bytes are no longer
+    that rehearsal's: a sentence was re-recorded in it since the join."""
+
+
 class CanonNotKept(ConflictError):
     pass
 
@@ -191,11 +271,51 @@ class SceneRehearsalSending(ConflictError):
     """
 
 
+class RehearsalJoined(ConflictError):
+    """A different scene label for a scene rehearsal that is the origin of a current part.
+
+    Its own exception so the tablet can tell it from a conflict worth retrying: the label holds
+    until that part is recorded again.
+    """
+
+
 class RestartOutOfOrder(ConflictError):
     """A restart that closes an attempt which is not the rehearsal's current one.
 
     Its own exception so the tablet's outbox retries it once its predecessor has landed.
     """
+
+
+class TakeMoved(ConflictError):
+    """A join whose part's live take is no longer the one the team chose it over.
+
+    Its own exception so the tablet's outbox gives the join up instead of laying it over a take
+    nobody chose to replace.
+    """
+
+
+class HaltMoved(ConflictError):
+    """A visit or its undo naming a halt the room has moved past (ADR 0091).
+
+    Its own exception because the Desk reads again on it instead of saying it could not, and
+    the body carries the room's halt count and warning so the newer halt is the one drawn.
+    """
+
+    def __init__(self, halts_raised: int, warned_at: datetime | None) -> None:
+        super().__init__("The room halted again since it was read.")
+        self.halts_raised = halts_raised
+        self.warned_at = warned_at
+
+
+class DeviceHaltMoved(ConflictError):
+    """A visit to a tablet or its undo naming a halt the tablet has moved past (ENG-1785)."""
+
+    def __init__(
+        self, needs_person_since: datetime | None, attended_lifted_since: datetime | None
+    ) -> None:
+        super().__init__("The tablet halted again since it was read.")
+        self.needs_person_since = needs_person_since
+        self.attended_lifted_since = attended_lifted_since
 
 
 class RoleError(Exception):
@@ -275,6 +395,31 @@ class OverlapsAStandingFrase(ValidationError):
     pass
 
 
+class SentenceRefused(Exception):
+    def __init__(
+        self, status_code: int, code: str, detail: str, frases: list[int] | None = None
+    ) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.code = code
+        self.frases = frases
+
+
+class RecordingRefused(Exception):
+    """A recording whose bytes contradict what the tablet said of them, or are no recording's.
+
+    Refused rather than corrected: the room keeps nothing the tablet would believe it described.
+    """
+
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
+
+
+class FraseAwaitsItsTranslation(ValidationError):
+    pass
+
+
 class SceneRehearsalUntranslated(ValidationError):
     """A scene rehearsal sent with no live frase: there is nothing in the bridge language to hand
     the voice. A plain 422, with no code of its own: the tablet never offers «terminei» then."""
@@ -292,7 +437,8 @@ class WordlessTelling(ValidationError):
 
 
 class FraseOutOfPlace(ValidationError):
-    """A scene frase that ends before it starts, or past the end of its scene recording."""
+    """A scene frase that ends before it starts, past the end of its scene recording, or over a
+    stretch a current frase of its attempt holds and does not replace."""
 
 
 class UnknownScene(ValidationError):
@@ -316,6 +462,11 @@ class UpstreamServiceError(Exception):
     Kept apart from ValidationError so a provider outage or rate limit does not masquerade
     as a 4xx: a client error page never pages anyone, and the right alert never fires.
     """
+
+
+class ProviderNotConfigured(Exception):
+    """A provider this deploy calls has no key: a mistake of ours, never the provider failing,
+    so it is kept apart from `UpstreamServiceError` and answered as our 500."""
 
 
 def upstream_or_validation_error(status_code: int, message: str) -> Exception:
@@ -439,6 +590,13 @@ async def handle_session_lock_changed(_request: Request, exc: SessionLockChanged
     )
 
 
+async def handle_turn_collision(_request: Request, exc: TurnCollision) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_TURN_COLLISION),
+    )
+
+
 async def handle_project_granularity_locked(
     _request: Request, exc: ProjectGranularityLocked
 ) -> JSONResponse:
@@ -452,6 +610,20 @@ async def handle_nothing_to_force(_request: Request, exc: NothingToForce) -> JSO
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_FORCE),
+    )
+
+
+async def handle_draft_not_approved(_request: Request, exc: DraftNotApproved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_DRAFT_NOT_APPROVED),
+    )
+
+
+async def handle_not_all_wav(_request: Request, exc: NotAllWav) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOT_ALL_WAV),
     )
 
 
@@ -473,6 +645,29 @@ async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONRe
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_PASSAGE_CLOSED),
+    )
+
+
+async def handle_draft_approved(_request: Request, exc: DraftApproved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_DRAFT_APPROVED),
+    )
+
+
+async def handle_nothing_to_bring_back(_request: Request, exc: NothingToBringBack) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_BRING_BACK),
+    )
+
+
+async def handle_part_no_longer_its_rehearsal(
+    _request: Request, exc: PartNoLongerItsRehearsal
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_PART_NO_LONGER_ITS_REHEARSAL),
     )
 
 
@@ -512,6 +707,23 @@ async def handle_pause_cannot_move(_request: Request, exc: PauseCannotMove) -> J
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=_error_body(str(exc), exc.code),
+    )
+
+
+async def handle_sentence_refused(_request: Request, exc: SentenceRefused) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_body(str(exc), exc.code)
+        | ({"frases": exc.frases} if exc.frases is not None else {}),
+    )
+
+
+async def handle_frase_awaits_its_translation(
+    _request: Request, exc: FraseAwaitsItsTranslation
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_FRASE_AWAITS_ITS_TRANSLATION),
     )
 
 
@@ -556,10 +768,47 @@ async def handle_scene_rehearsal_sending(
     )
 
 
+async def handle_rehearsal_joined(_request: Request, exc: RehearsalJoined) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_REHEARSAL_JOINED),
+    )
+
+
 async def handle_restart_out_of_order(_request: Request, exc: RestartOutOfOrder) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_RESTART_OUT_OF_ORDER),
+    )
+
+
+async def handle_take_moved(_request: Request, exc: TakeMoved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_TAKE_MOVED),
+    )
+
+
+async def handle_halt_moved(_request: Request, exc: HaltMoved) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_HALT_MOVED)
+        | {
+            "halts_raised": exc.halts_raised,
+            "warned_at": exc.warned_at.isoformat() if exc.warned_at is not None else None,
+        },
+    )
+
+
+async def handle_device_halt_moved(_request: Request, exc: DeviceHaltMoved) -> JSONResponse:
+    since, lifted = exc.needs_person_since, exc.attended_lifted_since
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_HALT_MOVED)
+        | {
+            "needs_person_since": since.isoformat() if since is not None else None,
+            "attended_lifted_since": lifted.isoformat() if lifted is not None else None,
+        },
     )
 
 
@@ -574,6 +823,13 @@ async def handle_unknown_scene(_request: Request, exc: UnknownScene) -> JSONResp
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=_error_body(str(exc), ERROR_CODE_UNKNOWN_SCENE),
+    )
+
+
+async def handle_recording_refused(_request: Request, exc: RecordingRefused) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), exc.code),
     )
 
 
@@ -717,11 +973,17 @@ def register_exception_handlers(app: FastAPI) -> None:
     # Starlette walks the raised class's MRO, so the subclass wins over ConflictError
     # above regardless of the order these are registered in.
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
+    app.add_exception_handler(TurnCollision, handle_turn_collision)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
+    app.add_exception_handler(DraftNotApproved, handle_draft_not_approved)  # type: ignore[arg-type]
+    app.add_exception_handler(NotAllWav, handle_not_all_wav)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
+    app.add_exception_handler(DraftApproved, handle_draft_approved)  # type: ignore[arg-type]
+    app.add_exception_handler(NothingToBringBack, handle_nothing_to_bring_back)  # type: ignore[arg-type]
+    app.add_exception_handler(PartNoLongerItsRehearsal, handle_part_no_longer_its_rehearsal)  # type: ignore[arg-type]
     app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
@@ -732,12 +994,19 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
+    app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(RehearsalJoined, handle_rehearsal_joined)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSending, handle_scene_rehearsal_sending)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalUntranslated, handle_scene_rehearsal_untranslated)  # type: ignore[arg-type]
     app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
+    app.add_exception_handler(TakeMoved, handle_take_moved)  # type: ignore[arg-type]
+    app.add_exception_handler(HaltMoved, handle_halt_moved)  # type: ignore[arg-type]
+    app.add_exception_handler(DeviceHaltMoved, handle_device_halt_moved)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
+    app.add_exception_handler(SentenceRefused, handle_sentence_refused)  # type: ignore[arg-type]
+    app.add_exception_handler(FraseAwaitsItsTranslation, handle_frase_awaits_its_translation)  # type: ignore[arg-type]
     app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]

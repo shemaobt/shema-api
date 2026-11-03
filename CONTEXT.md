@@ -34,7 +34,7 @@ The group of translators that owns the work. In the schema the column is called 
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
 
 **Desk**:
-The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
+The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and a passage's retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
 **Consultant**:
@@ -50,7 +50,7 @@ A message on a team's stream from the server to the Desk saying that something t
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
 **Attention** (*Atendimento*):
-What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
+What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalização, where it was raised; a finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
 **Reply** (*resposta*):
@@ -58,8 +58,12 @@ The facilitator's voice answer to a team's raised-hand question. It belongs to t
 _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 
 **Phase** (*fase*):
-One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
-_Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
+Where a team stands in Marcia's flow, as the Desk reads it in her words: the Familiarização of the whole passage; for each scene, the Internalização and then the Articulação, closed by the ensaio da cena; the Ensaio Final; the Checagem externa of each **Version**. The Desk draws no rows of phases: the record names the **Moment**, the coverage column the scene in motion, the passage head the check state (ENG-1230, 2026-10-29).
+_Avoid_: Retradução, Retroverificação as a phase (it is the file), step (the tablet's substate of a station), stage, tab, Etapa
+
+**Moment** (*momento*):
+Where a session's conversation stands in Marcia's flow as the voice last said it: the Familiarização, the Internalização or Articulação of scene n of k, or the Ensaio Final. Read from the lines the Guide spoke, kept per session and per turn with what moved it, served to the Desk and the dossier, and never guessed from the screen (her `momentAtTurnStart`). A session has no moment before the Guide's first line, as a Panorama, and when it was kept before the moment was read; the Desk then says so.
+_Avoid_: phase (the facilitator's reading of the whole flow), stage, step, Momento
 
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
@@ -76,8 +80,16 @@ The slice of the passage checked in one reading by the analyst, which can be sma
 _Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
-An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's number is that part; the earlier ones stay as history.
+An audio file recorded by the team, of one of three kinds: a conversation turn's speech (what the room hears and measures against the **Mother-tongue floor**, kept with the turn), a rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or a back-translation (`retro`, a stretch told in the bridge language). The rehearsal take under a part's number that the room accepted last is that part, whatever its pass or its **Recording time**, and the earlier ones stay as history. A part laid in from a Scene rehearsal at a new pass is a new take even when the session already holds those bytes (a swap back to an earlier rehearsal); the two rows share the stored object. The same bytes under the same number and pass are the same take, and so is a join of the rehearsal already standing as that part.
 _Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
+
+**Recording time** (`recorded_at`):
+When a take was recorded. A take recorded on the tablet keeps the tablet's own clock, sent with it, however late the upload lands; a joined or spliced part, and a take sent with no time, keep the server's clock at the moment it arrived. Set once when the take is stored and never moved. Takes stored before ENG-1273 carry their upload time. It is the record for the consultant and Refine and orders nothing (ENG-1760).
+_Avoid_: upload time, created_at (when the upload landed), timestamp
+
+**Clock offset** (`device_clock_offset_ms`):
+How far the tablet's clock was from the server's when it sent a joined part, in milliseconds, negative when behind. Kept only at five minutes or more; the consultant reads it as one line, the team never sees it and the packet never carries it.
+_Avoid_: skew, drift
 
 **Mother tongue**:
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
@@ -96,7 +108,7 @@ The persistent, addressable object of one told slice of the passage: a slice of 
 _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:
-The numbered position of a stretch in the list the analyst receives in one reading, the frase number of the prompts. The server turns the number back into a stretch, and a **Finding** keeps the number it was given beside the stretch it resolved to. The two are not one answer: a **Missing with an address** placed *after* frase N resolves to stretch N+1, so an addition and a missing element are one swap of one frase when they share the number and not when they share the stretch.
+The frase number the analyst names in one reading, the number of the prompts. The list the analyst receives is labelled with the **Frase number** the tablet draws, which counts the stale stretches the analyst is not shown, so the number is the row's and not the stretch's position in that list. The server turns the number back into a stretch through the labels of that reading, and a **Finding** keeps the number it was given beside the stretch it resolved to. The two are not one answer: a **Missing with an address** placed *after* frase N resolves to stretch N+1, so an addition and a missing element are one swap of one frase when they share the number and not when they share the stretch.
 _Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):
@@ -108,7 +120,7 @@ The act of saying, in the bridge language, what a stretch of the mother tongue h
 _Avoid_: translating (in English prose; the room's own English literal does say translated), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
-A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called. A current **Part** with no standing stretch is untold ground as well: the check refuses *terminei* on it, naming the part on `untold_take_ids` before the analyst runs, and it refuses the **Release** as `untold_part`.
+A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called; *terminei* answers `FRASE_AWAITING`. A current **Part** with no standing stretch refuses nothing: the check runs with it once it has been heard, and her analyst names what is missing.
 _Avoid_: missing, pending, Não contado
 
 **Rehearsal** (`ensaio`):
@@ -116,12 +128,32 @@ The recording of the whole passage in the mother tongue, and the station where i
 _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 
 **Part**:
-One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
+One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part, until the team records by scene: then the whole is history, kept but no longer a part. After a **Grain switch** the parts are only the new grain's takes recorded after it, so a whole recorded after a switch to the whole passage is the one part even beside numbered takes. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 
+**Part key** (`key`):
+The name a **Part** goes by in a file name and in what Refine receives: `whole` for the rehearsal told whole, `S<n>` for the part in position n among the session's current parts (Marcia's scene key; part n is scene n), with no cap at the passage's scene count. A superseded take keeps the key of the part it was. A pinned take in the **Packet** carries it as `key`; a frase, and a **Finding** or **Nuance** in the **Check block**, carry the key of the part they stand on as `scene`.
+_Avoid_: clip key, scope (the tablet's `parte-N`), chunk_index, ordinal (the number as stored)
+
+**Superseded take** (`superseded_takes`, `superseded_at`):
+A rehearsal take that a later take under the same part's number replaced. It is kept, listed apart from the current parts, and downloads as `<release>-<key>-substituida-<take id>.<ext>`; its time is when the take that replaced it reached the server. A take a **Grain switch** set aside is listed with them, carrying `set_aside_at`, and its time is the switch's.
+_Avoid_: kept take (kept names a telling kept for the team), replaced take, old take, Substituída (in prose); **Superseded** alone is a telling-back attempt
+
 **Recording grain** (`recording_grain`):
-Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
+Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers. The **Manifest** says it in her words as `grain`: `scene` for parts, `whole`.
 _Avoid_: granularity, mode, shape, Granularidade
+
+**Grain switch** (`POST /sessions/{id}/grain`; `grain`, `grain_switched_at`, `set_aside_at`):
+The team's move between recording the passage whole and scene by scene (`whole`, `scene`). It sets every rehearsal take the session holds aside, stamped with the switch's time, and any take of the other grain that lands after it. The telling-back starts over as «recomeçar a tradução» does, so the passage has no check. From then on the **Parts** are only the takes of the new grain recorded after the switch. Nothing is deleted, and a switch back never restores a take. A switch to the grain in force changes nothing; over an approved draft it takes the team's armed tap (`reopens_the_approved_draft`). A session never switched reads its parts as before. The takes listing's `grain` is the grain in force: the last switch's, else the current parts' as **Recording grain** reads them. A reader lists a session's switches through `GET /facilitator/sessions/{id}/grain-switches`, derived from the stamps: one per distinct `set_aside_at`, so a switch that set nothing aside is not listed.
+_Avoid_: mode change, archive (Zerar's), reset, Troca de gravação (in prose)
+
+**Joined recording** (`origin`):
+A rehearsal with at least one current **Part** the tablet laid in from a **Scene rehearsal**, which the part's `origin` names. On it a part no translated frase stands on refuses *terminei* as `STRETCH_UNTRANSLATED`, and the full listen of one translated through is checked once with no tap. A join names the take it was chosen over (none over an empty scene) and is refused as `TAKE_MOVED` when the part's live take is another. A recording no join touched is checked exactly as any other. A part landing with `origin` from a scene rehearsal of its own session comes with that rehearsal's current frases as its told stretches, each telling the frase's own audio (ENG-1405).
+_Avoid_: assembled recording (the server's old composed takes), merged, Junção (in prose)
+
+**Bring-back** («trazer de volta as traduções do ensaio desta cena»):
+The armed tap on a joined Scene row that lays its Scene rehearsal's frases over the Part again, when none of them stands there: after the translation was restarted, or when they never came. The stretches told here for that scene are kept as history, never deleted. The room says which parts can take it: never a part a sentence was re-recorded in, nor one joined from the other language's session.
+_Avoid_: reimport, restore, undo
 
 **Canon code**:
 The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
@@ -140,8 +172,16 @@ The necklace is the passage's coverage as the tablet draws it: her twelve beads 
 _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
-The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
+The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors. Each **Served book** has its own (`OV-Esther`, `OV-Jonah`, `OV-Ruth`), first in that book's list. `OV` and `panorama` alone still name Ruth's, for tablets that do not name a book.
 _Avoid_: introduction
+
+**Served book** (`SERVED_BOOKS`):
+A book of her pinned canon that the room vendors and offers whole: Esther, Jonah and Ruth at the pin 5b5c8d2, listed in the order of their passage ids. Every published passage of a served book is offered and opens. No readiness test holds one back, and each served book has its own **Panorama** (`OV-<Book>`).
+_Avoid_: walkable book, enabled book, published book (her word for what the compiler publishes, which may hold books the room does not serve)
+
+**Current book**:
+The **Served book** a team is in. It is the book of the team's latest live session, a **Panorama** included, taken in the order the Desk reads a team's sessions (a room the team entered first, then the most recent), while that book still has a passage the team has not closed. Otherwise it is the first of Ruth, Esther and Jonah that has one, so a team with no session is in Ruth and a team that closed Ruth and opened nothing else is in Esther. The team's next passage is the next unclosed passage of its current book and of no other, and only the current book has a current passage. An open that names no passage lands there, unless it follows a session, which names its own book. A team that closed every passage of every served book has no current passage.
+_Avoid_: active book, standing book, livro atual (in prose)
 
 **Prepared opening**:
 The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
@@ -156,7 +196,7 @@ What the Panorama voice reads as its standard of truth for one book: the digest 
 _Avoid_: book context, overview prompt, summary
 
 **Preservation notes**:
-The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)». Ruth has 99 at the pin 5b5c8d2; Esther and Jonah have none, so their Panoramas read «- (none recorded)».
 _Avoid_: do_not_decide (the canon's field name), spoilers, constraints
 
 **Address**:
@@ -165,8 +205,8 @@ that one file.
 _Avoid_: range, offset, position, Endereço
 
 **Frase number** (`frase`):
-The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam). A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English).
-_Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam); the number itself is `index` in the **Check block**'s findings and nuances. A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position among every told stretch of the passage, part by part with the stale ones of a part after its standing ones, which is the number on the row the team sees and the one the analyst's reading is labelled with (ENG-2030). The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English). The tablet reads it from the room and never counts: `frase` on every stretch of the session read and of the answers of a cut, a replacement and a restart, and on the telling answer for the stretch just told, is its position among the told stretches now, null on a piece nobody has told (ADR 0067). A **Finding** keeps the number the voice spoke, and the session read and the check's answer serve it as the stretch it named is numbered now, null once that stretch is no longer told (ENG-1681). A tablet that asks for the stale rows (`include_stale`) gets every told frase numbered by her positional rule, part by part, the standing frases before the stale ones of that part, numbers never repeating (ENG-2001); the check's findings and the voice count them the same way (ENG-2030), and so do the awaiting line, the **Packet**, the **Check block**, the retro and the retroverification file (ENG-2133), and the telling answer for the stretch just told (ENG-2138).
+_Avoid_: ordinal (per sibling group, never per passage), position, index (in prose; `index` is only the **Check block**'s wire key), n (her listener number), Número da frase
 
 **Divided stretch** (`parent_id`, `ordinal`):
 A stretch cut out of another one, numbered among its own siblings rather than among the
@@ -190,6 +230,10 @@ _Avoid_: log, history, audit, Evento de cobertura
 **Finding**:
 The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear. An addition or an unclear always names its **Chunk**; one that names none, or names one outside this reading, is not raised — it is dropped with a log line, the way the retired kind is, and a reply left with no finding at all once every one of them is dropped this way is refused, not read as a clean telling-back.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
+
+**Nuance** (`nuances`):
+A detail the analyst found in a told frase that the story tells another way, and that never blocks. It is never a **Finding**: it is never counted open, and a check whose only findings are nuances is **Checked**. The voice names one at a time, at most once. Each **Check round** keeps the nuances it stood on, with `voiced`: `now` when that round's verdict named it, `before` when an earlier round had, absent when no verdict has. The **Check block** carries the nuances standing at the approval as kind and address with `voiced`, never the quote, the story or the note; the **Retroverification file** keeps the quote and the story.
+_Avoid_: detail, soft finding, nuança (in prose)
 
 **Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
 An element of the Map that is absent and whose place fits an existing chunk: before it, inside it, or after it when a later chunk exists. The team records that stretch again and tells it again.
@@ -250,11 +294,11 @@ One reading of the telling-back and the verdict spoken on it, kept in the passag
 _Avoid_: attempt (a **Superseded** recording), Rodada
 
 **Heard the rehearsal** (`unheard_parts`):
-The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
-_Avoid_: complete playback, Ouviu o ensaio
+The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds and per take, before closing. Played stretches 0.25 s or less apart count as one; a part, and a sentence laid into one, is heard when what is left unplayed adds up to at most 0.75 s and never more than half of it. It is an absolute allowance, never a percentage. Listening reports add up per take, so a later report never takes away a part an earlier one heard; a part recorded again is a new take and unheard until it is played (ADR 0017, ADR 0069, ADR 0074).
+_Avoid_: complete playback, Ouviu o ensaio, coverage with tolerance
 
 **Unheard part** (`unheard_take_ids`):
-A current **Part** of the rehearsal the team's listening report does not cover, named by its take in the refusal the check answers with before the analyst runs. A part recorded again is unheard until it is played through.
+A current **Part** of the rehearsal the team's listening reports do not cover under the rule of **Heard the rehearsal**, named by its take in the refusal the check answers with before the analyst runs, and on every answer of the listen door. A part recorded again is unheard until it is played; a part with a sentence laid in, until that sentence is.
 _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
 
 **Abandoned**:
@@ -279,11 +323,15 @@ the Desk's column and the team's last activity ignore it. The Desk uses the same
 _Avoid_: passage, round, visit, visita, attempt
 
 **Approved passage** (*passagem aprovada*):
-A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
+A passage of a team whose draft stands under its latest live release (ADR 0071): a new take, a re-recorded sentence or a join that re-opened the draft leaves the passage not approved until the next approval, while the release itself stays in the history. The passage menu's «●» and the count the Desk shows a team, per **Served book**, read it; a finished session without a release approves nothing.
 _Avoid_: closed passage (a session done, which may hold no release), fechada, complete
 
+**Draft** (*rascunho*):
+The team's recording of a passage with its frases and telling-back, kept across openings: the live **Session** of that pericope and language holds it, and an approval leaves it open under its version until a new or dropped take un-approves it (ADR 0071). A Zerar archives it, and the next opening starts a new one.
+_Avoid_: rascunho final (the approved version's words on the screen), release (the record of an approval), session (what holds the draft, not the draft)
+
 **Inactive team** (*equipe inativa*):
-A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of the book is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
+A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of every **Served book** is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
 _Avoid_: stalled, parada, idle, dormant
 
 **Opening a session**:
@@ -295,15 +343,15 @@ The Guide's first line of a session, spoken before the team has said anything, d
 _Avoid_: kickoff, abertura, first turn
 
 **Opened** (`opened`):
-A session that holds a Guide line, its **Opening** at least. A room note or a team entry alone does not open it. The session state says so, and the tablet asks a session's Opening only while it is not opened. Not to be confused with **Opening a session**, the open door.
+A session that holds a Guide line, its **Opening** at least. A room note or a team entry alone does not open it. The session state says so, and every reader on the server, the turn door, the Opening's wait and its write, asks this same question; the tablet asks a session's Opening only while it is not opened. Not to be confused with **Opening a session**, the open door.
 _Avoid_: started, begun, aberta
 
-**Opening claim** (`opening_claim_turn_id`, `opening_claimed_at`):
-The mark on a session that one request is drafting its **Opening**, naming the turn id its answer will be stored under. Every other request for the opening answers with that one's, and a claim older than the turn bound plus thirty seconds counts as none (ADR 0053).
-_Avoid_: lease, lock, kickoff lease
+**Turn claim** (`opening_claim_turn_id`, `opening_claimed_at`, `claimed_for_the_opening`; the first two keep the opening's names):
+The mark on a session that one request is answering a turn of it, naming the turn id its answer will be stored under. Every turn that writes the conversation takes it, whether the **Opening**, a **Team turn** or a scene rehearsal's «terminei»; asking for the last line again takes none. A team turn or a «terminei» that finds it held waits for that answer and runs after it. One still waiting 90 s after the claim is refused `TURN_COLLISION`, with nothing stored and nothing voiced, unless what it waits on is the **Opening**: then it runs on the conversation as it stands. Another request for the opening answers with the holder's, and the same turn id sent again joins the answer stored under it. A claim older than the turn bound plus thirty seconds, or whose answer is already stored, counts as none (ADR 0053, ADR 0079).
+_Avoid_: lease, lock, kickoff lease, opening claim
 
 **Team turn**:
-A turn that carries the team's recording: what they said goes in, the Guide's next line comes out. A team turn sent while the **Opening** is being drafted waits for it.
+A turn that carries the team's recording: what they said goes in, the Guide's next line comes out. A team turn sent while another turn of the session is being answered waits for it (the **Turn claim**).
 _Avoid_: audio turn, retell turn
 
 **Attempt**:
@@ -323,11 +371,15 @@ The facilitator's act of giving a team a clean pericope: it creates an **Archive
 _Avoid_: reset, zero, clear, wipe
 
 **Archive** (`ir_archives`, `archive_id`):
-What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id and a reader lists a pericope's archives, newest first. No release is minted on an archived session, by the team or by a facilitator's force. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
 _Avoid_: soft delete, trash, backup, Arquivo
 
+**Kept canon** (`canon/kept/<pin>/`):
+The canon a re-pin replaced. It is kept in the repository under its pin, together with the element labels and Portuguese titles it was read with, so that a **Session** opened under that pin keeps reading it for as long as the Desk shows it, an archived one included. A sync never removes one. Only a prune removes kept trees, and only after it has been given the pins that sessions hold, archived ones included, as production's `canon-pins` read answers them. The prune keeps every one of those pins, the pin production serves and the deployed pin (ADRs 0088 and 0099). Once a pin is pruned, a session that still names it is refused with `CANON_NOT_KEPT` on every read of the canon.
+_Avoid_: old canon, archived canon (an **Archive** is a Zerar's), cache
+
 **Needs a person** (`needs_person`):
-A blocking halt, not an end: it travels beside the status, never inside it.
+A blocking halt, not an end: it travels beside the status, never inside it. It is lifted only by the team's own return: a turn that lands, or a tablet opening the session.
 _Avoid_: error, failure, status, Precisa de pessoa
 
 **Halt**:
@@ -343,8 +395,16 @@ Why the room asked for a person, in one of five families the tablet names when i
 _Avoid_: cause, error, message, detail, Motivo da parada
 
 **Warning**:
-The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
+The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only a Visit does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
 _Avoid_: needs a person, notice, alert, Aviso
+
+**Visit** (`attended_at`):
+A facilitator's mark on the Desk that somebody went to a room. It is a record: it writes nothing on the session's status and lifts no blocking halt. A halted room with a visit leaves the queue, and undoing the visit puts it back. It is the only end of a Warning. A new halt clears it. It names the halt it answers, its **Halt count** and its Warning; one naming an older one is refused and the Desk reads again.
+_Avoid_: attend lifts, resolve, Atendido
+
+**Halt count** (`halts_raised`):
+How many blocking halts a room has raised; a Warning does not move it. A visit and its undo name the count and the Warning the Desk read. A write naming another is refused, so a visit always answers the halt somebody saw.
+_Avoid_: version, revision
 
 **Station**:
 The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. A session the team left keeps the station it stopped in.
@@ -355,7 +415,7 @@ The Internalization's lines between the team and the Guide, as the Desk reads th
 _Avoid_: transcript, chat, history
 
 **Turns** (of a session):
-The Conversation read as pairs, oldest first: the team's side (how the take was heard, whether it cut the voice off, and what the Guide received of it) and the voice's side (how containment ended, the attempts, the times, the model, the line voiced and its clip). The opening has no team side; the telling-back round is not part of it.
+The Conversation read as pairs, oldest first: the team's side (how the take was heard, whether it cut the voice off, and what the Guide received of it) and the voice's side (how containment ended, the attempts, the times, the model, the line voiced and its clip). The Opening's team side is the opening **Room note** the Guide received, empty when the session kept none; the telling-back round is not part of it.
 _Avoid_: transcript, timeline, Transcrição ao vivo
 
 **Boundary turn**:
@@ -369,7 +429,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval over the same takes returns the release that already exists, whatever the telling-back says since, because only a change of takes makes a new draft (ADR 0081); the one exception is a **Forced release**, over which an approval with no **Blocker** standing mints the next version, not forced (ADR 0101). A new draft's approval is refused while any **Blocker** stands, an open finding or an unheard part among them, and records the device that approved; a facilitator's **Forced release** passes them.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
@@ -377,23 +437,39 @@ The number of a release within its pericope and project, from one, never reused.
 _Avoid_: revision, pass (the count of tellings of a stretch), v-number
 
 **Packet**:
-The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
-_Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
+The stored record of one approval: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone. Its frases and pinned takes name their **Part key**. It is never handed to Refine; Refine reads the **Manifest**, and the packet is read back by its **Version**.
+_Avoid_: package, artifact (the code's older name), handoff, Pacote
+
+**Manifest** (`manifesto`):
+The document Refine receives for a passage, approved or still live, named after its release: Marcia's fields in her order (release, passage, reference, language, the room's language, the **Meaning Map** read at the session's pin, the grain, each current **Part** as a clip with its file name and an hour-long link, when and how many times it was approved, the sessions, the audio format, the fingerprint rule, the external check as a pointer (listeners, comments, the facilitator's link), her **Check block**, warnings, when it was read). It never carries a frase's words, a note, a nuance's quote or story, a **Superseded take**, who forced it, an order clock or a **Clock offset**. Before approval it is the live **Draft** under the last release's id, version 1 when none, read as live by an empty finalised time and an empty check. The **Packet** stays the stored record of each approval.
+_Avoid_: packet, export, handoff, artifact, Manifesto (in prose)
 
 **Blocker**:
 One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor is a fact of the ledger, never a blocker). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
 _Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
-**Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
-A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: audio, a telling-back, its reading and an untold stretch are material, not a dispute.
+**Forced release** (`forced_by`, `forced_at`, `forced_open_findings`, `forced_blockers`):
+A **Release** a facilitator minted past the gate, addressed to the passage: every **Blocker** yields to the force but a passage with no rehearsal take, and the row records who forced it, when, the findings open at that moment and the blockers it passed (ADR 0075). The team can never force one. Its **Check block** reads `forcada` when the check was not clean, and `conferida` with `forced` true when only the listening was passed over.
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):
-The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address, and where the retroverification file is. Never the analyst's note.
-_Avoid_: check state, manifest check, conferência
+The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address with the frase's `index` and its **Part key**, the **Nuances** standing at the approval with whether the voice said them, and where the retroverification file is. Beside `forced`, and in our names rather than hers, a **Forced release** says who forced it (`forcedBy`), when (`forcedAt`) and the blockers it passed (`forcedBlockers`), each null when nobody forced. Never the analyst's note. The **Manifest** carries it in her keys only, without `forcedBy`, `forcedAt` and `forcedBlockers`, and with `nuances` absent when none stood.
+_Avoid_: check state, conferência
+
+**Checagem externa** (`ir_external_checks`):
+The record that a team opened the external check of one approved **Version**: one row per **Release**, created by the team's first open and answered to every later one, never closed, locked or deleted. It keeps the version's parts (take id and **Part key**) and frases as the release's packet holds them, copied at the first open. A new version opens a new one; a Zerar stamps it with the passage's **Archive** (ADR 0082; the app's ADR 0111).
+_Avoid_: external review, listener session, gate, Phase 4
+
+**Outside listener** (`ir_external_listeners`, *ouvinte*):
+A person who did not help translate, heard on a **Checagem externa** and known only by a number: the next of that **Version**, from 1, only up, never reused, never given to two tablets at once. The record keeps the number, when the listener started, when they finished (none while unfinished) and whether they completed; never a name, a photo or a sign-in (ADR 0083; the app's ADR 0111).
+_Avoid_: tester, reviewer, participant, user, n (in prose)
+
+**Listener recording** (`ir_external_recordings`):
+One recording an **Outside listener** made, stored in the bucket the moment it arrives and only then attached: a retelling (`retell`), a comment on the whole passage (`whole`) or a comment on one frase (`frase`). It keeps its content type as recorded, its length, size, sha256 and when it was stored, and is never transcribed or handed to a model.
+_Avoid_: clip (her word), take (a take is the team's), comment (a comment is one kind), note, feedback
 
 **Retroverification file** (`retroverificacao`):
-The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
+The facilitator's and the consultant's record of everything the check learned about a passage, one file per passage named after its release identifier, across every session of it: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
 
 ### Process lines
@@ -423,7 +499,7 @@ A fact about the room the app hands the Guide in place of the team's words, brac
 _Avoid_: system message, prompt, instruction, Nota da sala
 
 **Earlier passages**:
-This team's status on each earlier passage of the book (approved, started, or not worked yet), stamped when the session is created and read again after a turn once it is five minutes old, kept on the session and handed to the Guide as a fact, complete or not at all.
+This team's status on each earlier passage of the book (approved, started, or not worked yet), stamped when the session is created and read again after a turn once it is five minutes old, kept on the session and handed to the Guide as a fact, complete or not at all. Each turn also keeps, on its own record, the stamp the room handed it, never read again; the session's for the Desk is its opening turn's.
 _Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
 
 **Scene rehearsals**:
@@ -431,7 +507,7 @@ The scenes whose recorded and translated scene rehearsal has reached the Guide a
 _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
 
 **Scene rehearsal** (`ir_scene_rehearsals`; ensaio da cena):
-One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, a label the passage lacks kept apart as the team sent it, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, frozen once sent but for its scene label, never heard by the recognizer or the voice.
+One scene recorded whole in the mother tongue, with its record: the recording as sent, its **Scene frases**, when it was sent and the turn that answered it, the team's scene label and whether it was said at the recording or later, a label the passage lacks kept apart as the team sent it, and the classifier's guess kept apart from that label. Numbered per session, listed per passage, never heard by the recognizer or the voice, and frozen once sent but for its scene label, which no longer changes while the rehearsal is the `origin` of a current **Part**. Its listing names the fingerprint (sha256) of its bytes, so a join can send exactly them.
 _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
 
 **Rehearsal turn** («terminei»):
@@ -439,8 +515,12 @@ The turn a sent **Scene rehearsal** makes: the **Room note** on it, then the wor
 _Avoid_: checking turn, Team turn
 
 **Scene frase** (`ir_scene_frases`):
-One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase.
+One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase, and so is a frase whose span strictly overlaps a current frase of its attempt unless it replaces that frase (touching edges stand).
 _Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
+
+**Moved pause**:
+A **Scene frase** that replaces the last frase of its attempt from the same start to a new end. It is refused when the frase it names is not that last frase, when it starts elsewhere or would be shorter than 0.2 s, when its new end passes the scene recording, or when the frase was replaced since the tablet read it. A frase over the place of the newest version of the frase it names is that frase translated again, never a moved pause.
+_Avoid_: move-end, cut, split, resize
 
 **Restart** (`ir_scene_restarts`; «recomeçar a tradução»):
 A numbered mark beside a **Scene rehearsal** that sets its frases so far aside, keeping a copy of the record as it was. The rehearsal then has no current frases; a frase recorded before it and sent after it is set aside with the rest. Nothing is deleted.
@@ -454,8 +534,12 @@ _Avoid_: api key, token, password, Chave do runner
 ### Build
 
 **Claim code**:
-The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it, or the demo page while a **Demo team** is configured.
 _Avoid_: código, pairing code, device code, credential
+
+**Demo team** (`is_demo_team`):
+The team a store reviewer's tablet joins through the demo page, so a reviewer alone reaches a passage. Configuration names it by its team id, never by its name, and opens the page; the first time the page serves it, the team is marked for good. A marked team never calls a person (the server stamps a visit on its halts at once, and again when a facilitator undoes one, so none reaches the queue) and never releases to Refine, with or without the configuration.
+_Avoid_: test team, sandbox, reviewer team, equipe demo
 
 **Device credential** (`X-Device-Credential`):
 The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.
@@ -464,6 +548,10 @@ _Avoid_: room key, api key, token, session
 **Build**:
 The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.
 _Avoid_: version (a pericope's release), revision
+
+**Minimum build** (`minimum_app`):
+The oldest app build (the app's Store build) the room accepts, per platform: the iOS build number and the Android version code, the `+N` of `pubspec.yaml` (one number on both platforms, ADR 0110 of the app), served on `/api/version` as `minimum_app: {ios, android}`. 0 means no minimum. It is raised by hand, in the production deploy file, at a release. A tablet whose own build number is below it shows the app's Update screen. A build that carries no number (0, a laptop build) is never below it.
+_Avoid_: minimum version (the `x.y.z` is not compared), app version, forced update
 
 ### Other subsystems
 
