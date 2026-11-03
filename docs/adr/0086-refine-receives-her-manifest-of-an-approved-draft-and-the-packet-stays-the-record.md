@@ -93,7 +93,7 @@ Decided (ENG-1274):
 - The Desk's live read of a ready but unapproved packet is gone as the packet, and returns as the
   live manifest; no client read the earlier 409.
 - After a re-open the live manifest and its clips carry the next version's id, as the take
-  downloads do (ADR 0081); superseded by ADR 0105.
+  downloads do (ADR 0081, ADR 0105).
 - Refine matches clips by `takeId` and `sha256`, never by file name (ADR 0073), and its intake is
   built against this manifest. A finding's `clipKey` is the take id (ADR 0078), not her scene key.
 - A manifest's links last an hour: read it again for fresh ones.

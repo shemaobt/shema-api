@@ -1294,10 +1294,13 @@ async def test_a_zerar_retires_the_approval_until_the_new_session_approves(
     assert kept.status_code == 200, kept.text
 
     again = await ready_p01(db_session, project.id)
+    live = await manifest_of(client, desk, again)
+    assert live["releaseId"] == RUTH_P01_V2
+    assert live["finalizedAt"] is None
     await approved(client, credential, again)
     manifest = await manifest_of(client, desk, again)
 
-    assert manifest["releaseId"] == "internalize-terena-p01-v2"
+    assert manifest["releaseId"] == RUTH_P01_V2
     assert manifest["finalizeCount"] == 2
 
 
