@@ -72,7 +72,7 @@ async def internalization_release(
 
     A facilitator route on purpose: the manifest is the seam between apps, read by the
     person carrying the work into Refine, never by the tablet in front of the team. A draft
-    that is not approved as it stands is read live under the passage's last release's id, with
+    that is not approved as it stands is read live under the next version's id (ADR 0105), with
     no finalised time and no check, and answers 404 when it holds no take. An archived, demo
     or team-less session answers 409 ``DRAFT_NOT_APPROVED``; the stored packet is read back by
     version.

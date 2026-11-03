@@ -33,11 +33,11 @@ from app.services.internalization_room.release import (
     _mother_tongue,
     _recording_grain,
     packet_as_read,
-    release_name,
     released_as,
 )
 from app.services.internalization_room.sessions import back_translation_of
 from app.services.internalization_room.take_downloads import (
+    _release_id,
     download_link,
     file_name,
     part_keys_by_number,
@@ -119,8 +119,8 @@ async def _of_the_approval(db: AsyncSession, session: IRSession, release: IRRele
     )
 
 
-async def _of_the_live_draft(db: AsyncSession, session: IRSession) -> _Reading:
-    """The draft as it stands, named after the passage's last release: version 1 when none."""
+async def _of_the_live_draft(db: AsyncSession, session: IRSession, parts: list[IRTake]) -> _Reading:
+    """The draft as it stands, named as the next version, the name its takes download under."""
     if (
         session.project_id is None
         or session.archive_id is not None
@@ -130,7 +130,7 @@ async def _of_the_live_draft(db: AsyncSession, session: IRSession) -> _Reading:
     language = await _mother_tongue(db, session)
     last = await latest_release(db, session.project_id, session.pericope)
     return _Reading(
-        release_id=released_as(last) if last else release_name(language, session.pericope, 1),
+        release_id=await _release_id(db, session, parts),
         language=language,
         finalized_at=None,
         finalize_count=last.version if last else 0,
@@ -144,8 +144,8 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     """The manifest of this session's draft: the approved one, or the live one before approval.
 
     A draft that stands approved is built from the release it stands under. Any other draft of
-    a live team session is read as it is now, under the passage's last release's id (version 1
-    when none), with an empty finalised time and an empty check, and is ``NotFoundError`` when
+    a live team session is read as it is now, under the next version's id (version 1 when
+    none, ADR 0105), with an empty finalised time and an empty check, and is ``NotFoundError`` when
     it holds no take. An archived, demo or team-less session is ``DraftNotApproved``. Both read
     the session's current parts and the canon at the session's pin. Neither carries a frase's
     words, a note, a superseded take, nobody who forced it, no order clock and no clock offset:
@@ -163,7 +163,7 @@ async def refine_manifest(db: AsyncSession, session: IRSession) -> dict[str, Any
     if release is not None and stands_on(release, parts):
         reading = await _of_the_approval(db, session, release)
     else:
-        reading = await _of_the_live_draft(db, session)
+        reading = await _of_the_live_draft(db, session, parts)
     clips = [part for part in parts if not is_declared(part)]
     if reading.finalized_at is None and not parts:
         raise NotFoundError(f"Internalization room session {session.id} holds no take")
