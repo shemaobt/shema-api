@@ -31,6 +31,7 @@ from app.api.resource_requests._deps import (
 )
 from app.models.resource_request import (
     BoardMemberOut,
+    EvaluationFieldChangeOut,
     EvaluationOut,
     EvaluationTotalOut,
     EvaluationWriteIn,
@@ -71,6 +72,19 @@ async def list_evaluation_totals(user: CanViewEvaluation, db: Db) -> list[Evalua
 async def read_evaluation(request_id: str, user: CanViewEvaluation, db: Db) -> EvaluationOut:
     """The whole aggregate, with the /30 derived on this read and stored nowhere."""
     return EvaluationOut.of(*await service.get_evaluation(db, request_id, user, APP_KEY))
+
+
+@router.get("/requests/{request_id}/evaluation/history")
+async def read_evaluation_history(
+    request_id: str, user: CanViewEvaluation, db: Db
+) -> list[EvaluationFieldChangeOut]:
+    """Every recorded change of the evaluation — scores, decision, comments, ata — oldest first.
+
+    Behind ``view_evaluation`` like the evaluation itself: the trail carries scores and a
+    decision, so the team never reads it (OBT-672). The request's own trail is
+    ``/history`` and answers to ``edit_requests``."""
+    rows = await service.list_evaluation_history(db, request_id, user, APP_KEY)
+    return [EvaluationFieldChangeOut.of(row) for row in rows]
 
 
 @router.put("/requests/{request_id}/evaluation")

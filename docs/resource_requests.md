@@ -155,7 +155,7 @@ for the other's tables should be asked why.
 | `app/api/resource_requests/__init__.py` | BE-01 | The module router. Aggregates the sub-routers once they exist. |
 | `app/api/resource_requests/_deps.py` | BE-00, extended by BE-03 | `APP_KEY`, `Db`, `CurrentUser`, role aliases; §5.4's `require_capability`. |
 | `app/api/resource_requests/requests.py` | BE-04 | Draft, submission, revision routes. |
-| `app/api/resource_requests/evaluations.py` | BE-06 | Evaluation routes. Mesa-gated at the door. |
+| `app/api/resource_requests/evaluations.py` | BE-06 | Evaluation routes, and the evaluation's trail read (OBT-672). Mesa-gated at the door. |
 | `app/api/resource_requests/funds.py` | BE-07 | Fund and balance reads, movement history. |
 | `app/api/resource_requests/allocations.py` | BE-09 | The alocado: the Gestor's write path (`allocate_funds`) and the read FE-26 renders. |
 | `app/api/resource_requests/board.py` | BE-08 | Stage transitions. |
@@ -430,7 +430,7 @@ names this PR in its own text for the same reason.
 
 | Column | Why it is that and not something else |
 |---|---|
-| `field_key` | A string, not a column name. A request's fields live in **three** homes — six promoted columns on the spine, the 45 answers inside `rr_request_sections.content`, the 26 rows of `rr_budget_lines` — and one key space reaches all three where a design keyed on the catalogue reaches only the first. On the evaluation it is a criterion key, or `decision` / `comments`. |
+| `field_key` | A string, not a column name. A request's fields live in **three** homes — six promoted columns on the spine, the 45 answers inside `rr_request_sections.content`, the 26 rows of `rr_budget_lines` — and one key space reaches all three where a design keyed on the catalogue reaches only the first. On the evaluation it is a criterion key, or `decision` / `comments` / `team_note` (the mesa's message to the team, rewritten on every save — the edit D7 audits) / `attendees` (the ata: the ids sorted, as canonical JSON, because the ata is a set). |
 | `old_value`, `new_value` | Nullable text. **Both sides**, because D7's own example is *quem subiu uma nota de 2 para 5*; nullable because a field that had no value has no old side; text because the three homes hold strings, decimals, dates and integers, and a trail that records only some of them is not a trail. |
 | `changed_by` | `NOT NULL`, restricting on delete — the ledger's rule. A record of who changed something is worth nothing if the who can be forgotten, and D1 is what gives it a subject. |
 | `changed_at` | Server-defaulted, like every other stamp here. |
@@ -441,6 +441,20 @@ have. A history whose rows can be edited answers nothing.
 
 The trail follows the **request**, not the snapshot: the thing being audited is the editing,
 and a snapshot is by definition the version that stopped moving.
+
+**The avaliação's half is wired** (OBT-672). `save_evaluation` reads what is stored ahead of any
+write, diffs it against the payload with `evaluation_fields` and adds the rows with
+`record_evaluation_trail` before its one commit, so the trail commits with the edit it
+describes or not at all. A first save starts from the empty state — a criterion scored for the
+first time reads `None` → `n`, which is not a scored zero — and a save that changes nothing adds
+no row. The decision is diffed like any other field: the save that records it writes
+`decision` `None` → `approved`. The read is `GET /api/resource-requests/requests/{id}/evaluation/history`,
+**behind `view_evaluation`** (mesa and Gestor; the team never reads a score, so it never reads who
+changed one), scoped by `get_request` like the evaluation itself. It answers for **one request**,
+oldest change first: a revision is another `rr_requests` row (`revision_of_id`, BE-04) with an
+evaluation and a trail of its own, and the original keeps its trail frozen with the decision that
+asked for the revision — reading both is reading two ids. A request nobody has evaluated answers
+`[]`, not 404. The request's own trail stays at `/history` behind `edit_requests`.
 
 **One column deliberately not added here.** D6 says recording a decision moves the card, and
 `rr_board_transitions` cannot today distinguish a move that came from a decision from a mesa
@@ -537,16 +551,13 @@ superseded-not-deleted rule the fund table set in contract §3.1. `load_evaluati
 reads it that way: a stored key the current list does not carry sorts last and displays,
 because it is history, not an error.
 
-**D7's trail is not instrumented here, and that is written rather than left to be noticed.**
-The evaluation write updates rows and creates none in `rr_evaluation_field_history`; the
-field-by-field diffing — old value, new value, who, when — is BE-15's (OBT-475), and it
-**wraps this write** when it arrives rather than this issue planting half of it. Two
-reasons: a trail written by one caller and not by the next is worse than none, and BE-15
-owns the diffing rule (which of the three homes a key lives in, how a replaced score row
-reads as a change and not as a delete-plus-insert) — planting an ad-hoc version here would
-stand a second design where §4.4 already names one owner. Until BE-15 lands, edits to an
-evaluation are visible only as its `updated_at` moving, and that gap is BE-15's issue by
-name.
+**D7's trail was left out of this write on purpose, and OBT-672 wired it** (§4.4). BE-06 wrote
+the evaluation without the diffing, because a trail written by one caller and not by the next is
+worse than none and BE-15 owned the rule (which of the three homes a key lives in, how a
+replaced score row reads as a change and not as a delete-plus-insert). BE-15 shipped the
+recorder with the request half; OBT-672 threads the same recorder through `save_evaluation`
+rather than standing a second design beside it. Until then an edit to an evaluation was visible
+only as its `updated_at` moving.
 
 ---
 

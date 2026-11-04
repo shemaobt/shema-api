@@ -20,8 +20,8 @@ async def list_request_history(
     the thing D7 asked for. Nothing here needs a capability of its own: the trail carries only
     request fields, which every holder of ``edit_requests`` may already read in their current
     values. The **avaliação's** trail is a different answer — it carries scores and a decision,
-    content ``view_evaluation`` gates — and its read surface arrives with BE-06's evaluation
-    endpoints, not here.
+    content ``view_evaluation`` gates — and its read surface is ``list_evaluation_history``
+    behind that capability (OBT-672), not here.
 
     Ordered by ``changed_at`` then ``field_key``: the writer stamps one instant per save,
     so saves order between themselves and a save's own rows order deterministically —

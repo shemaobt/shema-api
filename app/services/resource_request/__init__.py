@@ -32,6 +32,7 @@ from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_board_members import list_board_members
+from app.services.resource_request.list_evaluation_history import list_evaluation_history
 from app.services.resource_request.list_evaluation_totals import list_evaluation_totals
 from app.services.resource_request.list_fund_options import fund_options
 from app.services.resource_request.list_project_requests import list_project_requests
@@ -137,6 +138,7 @@ __all__ = [
     "link_actor",
     "link_status",
     "list_board_members",
+    "list_evaluation_history",
     "list_evaluation_totals",
     "list_project_requests",
     "list_request_cards",
