@@ -98,6 +98,7 @@ def test_the_sweep_finds_the_shapes_the_issue_names() -> None:
         "ExportedProject",
         "EtenYearSnapshot",
         "ShemaNeedLine",
+        "ShemaNoticePlace",
     } <= names
 
 

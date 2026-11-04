@@ -161,10 +161,11 @@ class ShemaProjectNotice(Base):
 
     **What happened, and never who or where.** The project is a pointer; its language's name, its
     region and its place are read off the project when the panel is read, through the owners of
-    each (``_redaction.language_name_for``, the region key, ``LeavingShape``). So there is no
-    column a name or a place could be stored in and outlive the rule that withholds it: a notice
-    written before its project was flagged sensitive reads the way the project reads now, which
-    is what a row of prose could not do (OBT-556, item 1). The facts columns are each one kind's:
+    each (the region key, and ``LeavingShape`` for the name and the place — one shape since
+    OBT-666). So there is no column a name or a place could be stored in and outlive the rule that
+    withholds it: a notice written before its project was flagged sensitive reads the way the
+    project reads now, which is what a row of prose could not do (OBT-556, item 1). The facts
+    columns are each one kind's:
 
     * ``assessed_on`` — the health notice: the day the reading turned critical;
     * ``need_count``, ``need_categories``, ``need_totals`` — the urgent needs of one save: how
