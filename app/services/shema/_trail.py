@@ -55,6 +55,7 @@ COVERAGE: Final[dict[str, tuple[str, str]]] = {
     "erase_intercessor": (TRAIL, "intercessor erased"),
     "mark_intercessor_reviewed": (TRAIL, "intercessor reviewed"),
     "grant_consent": (TRAIL, "consent recorded"),
+    "grant_directory_by_contact": (TRAIL, "directory consent recorded, member found by contact"),
     "revoke_consent": (TRAIL, "consent withdrawn"),
     "confirm_exit": (TRAIL, "left through an exit link; actor is the person"),
     "add_member": (LEDGER, "shema_project_members: added_by and added_at"),

@@ -228,8 +228,9 @@ SESSION_READS = frozenset(
 #: beside ``sensitiveCountry``) rather than a region key; and ``sensitiveCountry`` itself
 #: is the flag the resource circle sets and reads on the entry, which :class:`LeavingShape`
 #: would exclude. So the shape is not a ``LeavingShape`` and is not unguarded:
-#: ``tests/test_shema/test_people_privacy.py`` is the audit these seven answer to — the
-#: seventh is OBT-531's review, which answers the same entry. Listed by the pair, as above,
+#: ``tests/test_shema/test_people_privacy.py`` is the audit these eight answer to — the
+#: seventh is OBT-531's review and the eighth OBT-681's ``directory`` by contact, which answer
+#: the same entry. Listed by the pair, as above,
 #: so a future project-shaped route on a neighbouring path is still asked.
 PEOPLE_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
@@ -239,6 +240,7 @@ PEOPLE_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/prayer/intercessors"),
         ("PATCH", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}"),
         ("PUT", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}/consents/{{context}}"),
+        ("POST", f"{PREFIX}/prayer/intercessors/consents/directory"),
         ("POST", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}/review"),
     }
 )

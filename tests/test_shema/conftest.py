@@ -348,8 +348,11 @@ def network_routes(person_id: str) -> tuple[list[tuple], list[tuple], list[tuple
 
     OBT-574. The upkeep — the one-year review and the ``directory`` and ``partner-export``
     consents — is what the Resource Circle does beside the coordination (Daniel, 10/out/2026);
-    the writes — add, edit, erase, and either side of ``network``, whose withdrawal erases the
-    person — are the coordination's alone. Each list in the order a single caller can run it.
+    the writes — add, edit, erase, either side of ``network``, whose withdrawal erases the
+    person, and ``directory`` by contact (OBT-681), which reaches the people no list shows — are
+    the coordination's alone. Each list in the order a single caller can run it. The by-contact
+    write names :func:`make_intercessor`'s own contact, so a guard that let it through would
+    find the person rather than miss.
     """
     target = f"{PEOPLE}/{person_id}"
     reads = [("GET", PEOPLE, None), ("GET", f"{target}/contact", None)]
@@ -369,6 +372,11 @@ def network_routes(person_id: str) -> tuple[list[tuple], list[tuple], list[tuple
         ("PATCH", target, {"name": "Outro Nome"}),
         ("PUT", f"{target}/consents/network", {"basis": "yes"}),
         ("DELETE", f"{target}/consents/network", None),
+        (
+            "POST",
+            f"{PEOPLE}/consents/directory",
+            {"contact": "maria.santos@example.org", "basis": "yes"},
+        ),
         ("DELETE", target, None),
     ]
     return reads, upkeep, writes

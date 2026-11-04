@@ -26,7 +26,11 @@ withdrawing its ``network`` consent, whose withdrawal erases the person. **Keepi
 current is the Circle's too** (:data:`~app.api.shema._deps.NetworkKeeper` and
 :data:`~app.api.shema._deps.ConsentWriter`): the one-year review and the ``directory`` and
 ``partner-export`` consents — Daniel, 10/out/2026: *"conta como edição mas o Resource Circle
-precisa ter esse acesso"*. ``obtLab`` reaches nothing here.
+precisa ter esse acesso"*. **Except by contact** (OBT-681): ``directory`` recorded for a member
+found by the contact they were asked through is :data:`~app.api.shema._deps.NetworkWriter`, the
+create's guard, because it reaches the people no list shows — those are held by whoever adds people
+to the network, and the Circle keeps the ``PUT`` by id for the people it can see. ``obtLab``
+reaches nothing here.
 This is the first OR the product asked for, and ``_deps.py`` says why it is two role sets
 rather than a capability map.
 
@@ -40,11 +44,12 @@ that FE-44 §5.5 says a format check would not survive.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 
 from app.api.shema._deps import ConsentWriter, Db, NetworkKeeper, NetworkReader, NetworkWriter
 from app.models.shema_intercessor import (
     ConsentGrant,
+    DirectoryConsentByContact,
     IntercessorContact,
     IntercessorCreate,
     IntercessorDirectory,
@@ -54,6 +59,7 @@ from app.models.shema_intercessor import (
 )
 from app.services.shema import (
     add_intercessor,
+    admit_to_directory,
     list_intercessors,
     remove_intercessor,
     reveal_intercessor_contact,
@@ -145,6 +151,30 @@ async def read_intercessor_contact(
     risk, and a flag on one endpoint makes them look like the same act with an option.
     """
     return await reveal_intercessor_contact(db, intercessor_id, actor=user)
+
+
+@router.post(
+    _PEOPLE + "/consents/directory",
+    response_model=IntercessorEntry,
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_200_OK: {"description": "Already listed: nothing was written"}},
+)
+async def grant_directory_by_contact(
+    payload: DirectoryConsentByContact, user: NetworkWriter, db: Db, response: Response
+) -> IntercessorEntry:
+    """List a member of the network who withheld ``directory`` and has now consented (OBT-681).
+
+    Found by the contact they were asked through and not by an id, because the directory shows
+    nobody who withheld it and the console never holds their id. **The search is the write**: 201
+    with the entry once the consent is recorded, signed and in the change log — nothing about the
+    person is answered before that. 200 with the entry, nothing written, for somebody already
+    listed; 404 for a contact no member is reached at; 409 when two are, and nobody is listed. The
+    body carries the contact so that no URL or access log does.
+    """
+    admitted = await admit_to_directory(db, payload=payload, actor=user)
+    if not admitted.recorded:
+        response.status_code = status.HTTP_200_OK
+    return admitted.entry
 
 
 @router.put(

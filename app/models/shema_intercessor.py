@@ -131,7 +131,9 @@ class IntercessorCreate(BaseModel):
     The other two contexts are not offered here. A person is asked three separate questions
     and answering one is not answering the others, so the ladder is climbed by explicit
     calls to ``PUT .../consents/{context}`` rather than by a create that quietly grants all
-    three.
+    three. ``directory`` has a second door for somebody already held — the person's contact
+    instead of their id (:class:`DirectoryConsentByContact`, OBT-681) — because a person who
+    withheld it is on no screen and the console never holds their id.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
@@ -195,6 +197,24 @@ class ConsentGrant(BaseModel):
 
     basis: str = Field(max_length=300)
 
+    _check_basis = field_validator("basis")(_clean_basis)
+
+
+class DirectoryConsentByContact(BaseModel):
+    """Stating ``directory`` for a member found by their contact, not by their id (OBT-681).
+
+    The contact is the one they were asked through, held to the create's own rule — a channel
+    or a refusal naming the field — and as long as the column holds, since a longer string
+    matches nobody. The basis is this consent's own and not the ``network`` one: being listed
+    is a separate question with its own answer.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    contact: str = Field(max_length=300)
+    basis: str = Field(max_length=300)
+
+    _check_contact = field_validator("contact")(_clean_contact)
     _check_basis = field_validator("basis")(_clean_basis)
 
 

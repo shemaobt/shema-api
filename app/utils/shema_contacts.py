@@ -1,14 +1,14 @@
-"""What counts as a way to reach somebody, and how much of it a list may show.
+"""What counts as a way to reach somebody, how much of it a list may show, and when two are one.
 
-Two pure functions of a string. They are in ``app/utils/`` and not in
+Three pure functions of a string. They are in ``app/utils/`` and not in
 ``app/services/shema/_directory.py`` for the reason ``docs/shema.md`` §3.1 gives about the
 derivations: both halves of the module need them, and one of the halves is
 ``app/models/``, which ``test_no_dto_module_reaches_up_into_the_service_layer`` in
 ``tests/test_app_boots.py`` forbids from importing ``app/services/`` — the inversion that
 closed an import cycle once.
 ``app/models/shema_intercessor.py`` refuses a payload with no usable channel and
-``_directory.py`` masks a stored one, and a second spelling of *what is an e-mail* between
-them is exactly the defect this module keeps refusing elsewhere.
+``_directory.py`` masks a stored one and finds a member by one (OBT-681), and a second spelling
+of *what is an e-mail* between them is exactly the defect this module keeps refusing elsewhere.
 
 The column itself stays ``_directory.py``'s and only ``_directory.py``'s. These functions
 know nothing about a row: **reading a contact out of the database is the guarded act**, not
@@ -74,3 +74,23 @@ def contact_hint(contact: str) -> str:
     if channel == "phone":
         return f"{MASK}{_NON_DIGITS.sub('', value)[-2:]}"
     return MASK
+
+
+def contact_key(contact: str) -> str | None:
+    """What two spellings of one contact share — ``None`` for a string nobody can be reached at.
+
+    The rule ``_directory.member_reached_at`` finds a member of the network by (OBT-681): the
+    same channel, and an e-mail **folded to lower case** or a phone **reduced to its digits** —
+    the digits :func:`contact_channel` counts and :func:`contact_hint` keeps the last two of, so
+    the module has one notion of what a phone number is. ``+55 (11) 98765-4321`` and
+    ``5511987654321`` are one contact; ``11 98765-4321`` is not, because guessing a country code
+    or matching a suffix is how the wrong person gets listed. An e-mail key always holds an
+    ``@`` and a phone key never does, so the two channels cannot meet.
+    """
+    value = contact.strip()
+    channel = contact_channel(value)
+    if channel == "email":
+        return value.lower()
+    if channel == "phone":
+        return _NON_DIGITS.sub("", value)
+    return None

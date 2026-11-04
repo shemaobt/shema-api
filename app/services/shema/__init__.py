@@ -43,6 +43,8 @@ the "Revisado" of the one-year review — the flag itself is ``_directory.review
 ``leave_intercessor.py`` is the exit link: the only file where a raw exit token exists, minting
 one per send for BE-09 and backing the module's second unauthenticated seam, the confirmation
 page's read and the erasure it confirms.
+``admit_to_directory.py`` (OBT-681) lists a member who withheld ``directory`` and later
+consented, found by the contact they were asked through — they are on no screen to be found on.
 
 **BE-08 landed the needs and the money they carry.** ``_needs.py`` is the batch's own
 rules, and it is a step of ``save_project`` rather than an endpoint because a need travels
@@ -294,6 +296,7 @@ from app.services.shema._submission_archive import (
 from app.services.shema._submission_notices import notify_submission
 from app.services.shema.add_intercessor import add_intercessor
 from app.services.shema.add_project_member import add_project_member
+from app.services.shema.admit_to_directory import DirectoryAdmission, admit_to_directory
 from app.services.shema.append_assessment import append_assessment
 from app.services.shema.apply_invited_membership import apply_invited_membership
 from app.services.shema.apply_invited_scope import apply_invited_scope
@@ -407,6 +410,7 @@ __all__ = [
     "Aggregates",
     "AuthorizedRequest",
     "ChangesSince",
+    "DirectoryAdmission",
     "ExportFile",
     "GrantApps",
     "ImportRefused",
@@ -424,6 +428,7 @@ __all__ = [
     "account_grants",
     "add_intercessor",
     "add_project_member",
+    "admit_to_directory",
     "append_assessment",
     "apply_invited_membership",
     "apply_invited_scope",
