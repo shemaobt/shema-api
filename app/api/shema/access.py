@@ -5,7 +5,8 @@ Seven routes and one guard: every handler takes :data:`~app.api.shema._deps.Admi
 router that already refuses anybody with no role here. A Gestor or a mesa stops at that
 router's gate; a coordinator, an OBT Lab or a Resource Circle stops at
 this one. ``tests/test_shema/test_admin_gate.py`` pins the seven paths and that each carries
-the guard, so an eighth route is a deliberate edit.
+the guard, so an eighth route is a deliberate edit. The invitee's two doors share the prefix and
+not the guard — ``invitation.py``, OBT-683.
 
 The handlers are what ADR 0009 asks a router to be: they declare the guard, the session and
 the payload, and call one service each. The two app keys come from ``_deps.py``, where the

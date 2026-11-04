@@ -29,6 +29,11 @@ from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
 # --- the route audits -----------------------------------------------------------------
 
+#: The invitation's two doors (OBT-683), as the route table spells them: the lookup, anonymous,
+#: and the acceptance, for any signed-in account.
+INVITATION = f"{PREFIX}/access/invites/{{token}}"
+ACCEPTANCE = f"{INVITATION}/accept"
+
 #: Paths under ``/api/shema`` that are allowed to carry no authentication.
 #:
 #: **Two paths and two methods each, which are the module's whole hole.** BE-04 expected this
@@ -49,6 +54,12 @@ from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 #: ``tests/test_shema/test_pulse_image.py`` holds the route to the three formats, the ceiling and
 #: the proof by the bytes; a dead link takes no image.
 #:
+#: **The fourth is OBT-683's invitation lookup**, ``GET /api/shema/access/invites/{token}``: the
+#: PME's ``/convite`` reads it before the person has an account. Same shape — the token is the
+#: guard, and ``describe_invite`` is the guard (``test_invite_link.py``). The acceptance beside
+#: it is not here: it asks for a signed-in account, and ``test_access.py``'s ``SIGNED_IN_ROUTES``
+#: is the list it sits on.
+#:
 #: A route that arrives without a line added here fails
 #: ``test_access.py::test_every_shema_route_is_guarded``, which is what makes forgetting a guard
 #: a red build rather than an open endpoint. Keyed by path because that is what the audit
@@ -60,6 +71,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         f"{PREFIX}/intake/{{token}}",
         f"{PREFIX}/intake/{{token}}/image",
         f"{PREFIX}/intercessors/leave/{{token}}",
+        INVITATION,
     }
 )
 

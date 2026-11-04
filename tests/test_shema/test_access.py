@@ -23,7 +23,7 @@ from app.services.authorization import list_roles
 from app.services.shema._scope import ROLE_KEYS, ROLE_PRECEDENCE, SHEMA_APP_ROLES
 from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS, seeded_roles
 from tests.baker import grant_app_role, make_app, make_user
-from tests.shema_harness import UNAUTHENTICATED_PATHS, reaches
+from tests.shema_harness import ACCEPTANCE, UNAUTHENTICATED_PATHS, reaches
 from tests.test_shema.conftest import (
     PREFIX,
     ROLE_PROBES,
@@ -54,6 +54,13 @@ DOOR_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/notifications/read"),
     }
 )
+
+#: Routes that admit **any signed-in account**, holding no role in either app and no membership:
+#: the invitation's acceptance (OBT-683), which is how an invited person comes to hold one. Not
+#: behind the app gate nor the door, and not a hole either — it asks who is calling, and nothing
+#: else. Keyed by method and path, as :data:`DOOR_ROUTES` is; a second is a line somebody adds
+#: here on purpose.
+SIGNED_IN_ROUTES: frozenset[tuple[str, str]] = frozenset({("POST", ACCEPTANCE)})
 
 
 def _pairs(routes, prefix: str = "") -> set[tuple[str, str]]:
@@ -232,6 +239,32 @@ def test_every_shema_route_is_guarded() -> None:
             unguarded.append(f"{sorted(route.methods)} {route.path}")
 
     assert unguarded == [], f"routes under {PREFIX} with no authentication: {unguarded}"
+
+
+def test_only_the_invitation_s_acceptance_admits_an_account_holding_nothing() -> None:
+    """**The third way in, pinned like the other two**, read off the application as built.
+
+    ``test_every_shema_route_is_guarded`` asks only for a sign-in, which the door's routes and
+    the acceptance carry as surely as the app gate's do — so a route hung straight off the outer
+    router with nothing but a sign-in would pass it, open to every account. Here every route
+    under the prefix that is not a hole must pass the app gate or the door, or be listed.
+    """
+    from app.api.shema import authenticated
+    from app.api.shema._deps import DOOR
+
+    app_gate = authenticated.dependencies[0].dependency
+    admits_anyone_signed_in = {
+        (method, route.path)
+        for route in create_app().routes
+        if isinstance(route, APIRoute)
+        and route.path.startswith(PREFIX)
+        and route.path not in UNAUTHENTICATED_PATHS
+        and not reaches(route.dependant, app_gate)
+        and not reaches(route.dependant, DOOR.dependency)
+        for method in sorted(set(route.methods or ()) - {"HEAD", "OPTIONS"})
+    }
+
+    assert admits_anyone_signed_in == SIGNED_IN_ROUTES
 
 
 def test_only_the_listed_paths_sit_behind_the_door() -> None:

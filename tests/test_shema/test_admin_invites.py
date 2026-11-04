@@ -1,10 +1,10 @@
 """The Admin invites somebody with no account — OBT-543's fourth line, end to end.
 
 An invitation to a Shemá regional role carries its regions; the person signs up with the
-invited address and accepts on the form's route, which is generic by token; the role **and**
-the regions land in one commit, authored by whoever invited. Around that: the link lands on
-the PME's ``/convite`` page for every role, the letter is BE-12's template, ``admin`` is not
-granted by link, a week-old invitation cannot rewrite a newer scope or hand back a revoked
+invited address and accepts on the module's own door (OBT-683), which is generic by token; the
+role **and** the regions land in one commit, authored by whoever invited. Around that: the link
+lands on the PME's ``/convite`` page for every role, the letter is BE-12's template, ``admin`` is
+not granted by link, a week-old invitation cannot rewrite a newer scope or hand back a revoked
 role, and the two service packages import each other in a way that holds in either order.
 """
 
@@ -26,7 +26,6 @@ from app.services.shema import set_region_scope
 from tests.email_harness import client_class
 from tests.shema_admin_harness import (
     CHANGES,
-    FORM_INVITES,
     GRANTS,
     INVITES,
     PME_URL,
@@ -95,7 +94,7 @@ async def test_an_invite_accepted_after_signup_applies_the_role_and_the_regions(
         )
         assert sent.status_code == 201, sent.text
         joiner_id, joiner = await _signup(client, "joiner@shema.example")
-        accepted = await client.post(f"{FORM_INVITES}/{_token(sent.json())}/accept", headers=joiner)
+        accepted = await client.post(f"{INVITES}/{_token(sent.json())}/accept", headers=joiner)
         session = await client.get(SESSION, headers=joiner)
         changes = await client.get(CHANGES, headers=headers)
 
@@ -161,7 +160,7 @@ async def test_the_lookup_says_which_regions_the_invite_gives(
             json=_invite("joiner@shema.example", "obtLab", regions=["asia"]),
             headers=headers,
         )
-        lookup = await client.get(f"{FORM_INVITES}/{_token(sent.json())}")
+        lookup = await client.get(f"{INVITES}/{_token(sent.json())}")
 
     assert lookup.status_code == 200
     assert lookup.json()["region_keys"] == ["asia"]
@@ -259,8 +258,8 @@ async def test_accepting_is_refused_when_it_would_change_a_regional_scope(
             },
             headers=headers,
         )
-        refused = await client.post(f"{FORM_INVITES}/{_token(other.json())}/accept", headers=joiner)
-        accepted = await client.post(f"{FORM_INVITES}/{_token(same.json())}/accept", headers=joiner)
+        refused = await client.post(f"{INVITES}/{_token(other.json())}/accept", headers=joiner)
+        accepted = await client.post(f"{INVITES}/{_token(same.json())}/accept", headers=joiner)
 
     assert refused.status_code == 409
     assert "region scope" in refused.json()["detail"]
@@ -286,7 +285,7 @@ async def test_a_direct_revoke_recalls_the_pending_invite(db_session, shema_app,
             headers=headers,
         )
         accept = await client.post(
-            f"{FORM_INVITES}/{_token(sent.json())}/accept",
+            f"{INVITES}/{_token(sent.json())}/accept",
             headers=await auth_header(db_session, person),
         )
 
@@ -345,7 +344,7 @@ async def test_a_withdrawn_invite_cannot_be_accepted(db_session, shema_app, form
         )
         again = await client.post(WITHDRAW, json={"inviteId": sent.json()["id"]}, headers=headers)
         _joiner_id, joiner = await _signup(client, "joiner@shema.example")
-        accept = await client.post(f"{FORM_INVITES}/{_token(sent.json())}/accept", headers=joiner)
+        accept = await client.post(f"{INVITES}/{_token(sent.json())}/accept", headers=joiner)
 
     assert withdrawn.status_code == 200
     assert withdrawn.json()["status"] == "revoked"
@@ -385,7 +384,7 @@ async def test_an_accepted_invite_is_past_withdrawing(db_session, shema_app, for
             headers=headers,
         )
         _joiner_id, joiner = await _signup(client, "joiner@shema.example")
-        await client.post(f"{FORM_INVITES}/{_token(sent.json())}/accept", headers=joiner)
+        await client.post(f"{INVITES}/{_token(sent.json())}/accept", headers=joiner)
         res = await client.post(WITHDRAW, json={"inviteId": sent.json()["id"]}, headers=headers)
 
     assert res.status_code == 409
@@ -402,7 +401,7 @@ async def test_an_accepted_invite_reads_in_changes_as_the_inviters_grant(
             INVITES, json=_invite("joiner@shema.example", "gestor", FORM_APP_KEY), headers=headers
         )
         joiner_id, joiner = await _signup(client, "joiner@shema.example")
-        await client.post(f"{FORM_INVITES}/{_token(sent.json())}/accept", headers=joiner)
+        await client.post(f"{INVITES}/{_token(sent.json())}/accept", headers=joiner)
         changes = await client.get(CHANGES, headers=headers)
 
     [entry] = [e for e in changes.json() if e["userId"] == joiner_id]
@@ -429,7 +428,7 @@ async def test_a_regional_scope_kept_by_an_operator_is_left_to_the_invite_with_n
         )
         joiner_id, joiner = await _signup(client, "joiner@shema.example")
         await set_region_scope(db_session, joiner_id, [ShemaRegionKey.EUROPE])
-        accepted = await client.post(f"{FORM_INVITES}/{_token(sent.json())}/accept", headers=joiner)
+        accepted = await client.post(f"{INVITES}/{_token(sent.json())}/accept", headers=joiner)
 
     assert accepted.status_code == 200, accepted.text
     rows = await db_session.execute(

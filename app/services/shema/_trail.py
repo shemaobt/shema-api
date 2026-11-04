@@ -65,6 +65,7 @@ COVERAGE: Final[dict[str, tuple[str, str]]] = {
     "remove_grant": (LEDGER, "shema_scope_changes and the platform's role grants"),
     "create_invitation": (LEDGER, "access_invites: created_by and created_at"),
     "recall_invitation": (LEDGER, "access_invites: revoked_by and revoked_at"),
+    "accept_invitation": (LEDGER, "access_invites: accepted_by and accepted_at"),
     "put_sensitive_countries": (TRAIL, "sensitive-country list replaced (OBT-616)"),
     # --- meetings, ETEN
     "write_meeting_log": (TRAIL, "meeting logged or replaced"),
