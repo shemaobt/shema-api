@@ -93,7 +93,8 @@ from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
 
 #: The module's outer router. Its one dependency is the cache rule, not a guard: the three holes
-#: below are included straight into it and answer anybody holding a link.
+#: below are included straight into it and answer anybody holding a link — the invitation's
+#: acceptance asks for a signed-in account besides.
 router = ShemaRouter(dependencies=[NO_STORE])
 
 #: Everything in this module that needs a signed-in Shemá account. The guard is declared
