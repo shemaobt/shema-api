@@ -35,12 +35,18 @@ from app.services.shema._grant_rules import (
     require_grantable,
     require_regions,
 )
+from app.services.shema._scope import Readership
 from app.services.shema.find_account import account_grants
 from app.services.shema.set_region_scope import set_region_scope
 
 
 async def grant_role(
-    db: AsyncSession, apps: GrantApps, *, payload: RoleGrantRequest, actor: User
+    db: AsyncSession,
+    apps: GrantApps,
+    *,
+    payload: RoleGrantRequest,
+    actor: User,
+    readership: Readership,
 ) -> AccountGrants:
     """Grant ``payload``'s role to its account, and answer the account as it now stands."""
     role_key = payload.role_key
@@ -69,4 +75,4 @@ async def grant_role(
         await set_region_scope(db, account.id, regions, granted_by=actor.id, commit=False)
     await db.commit()
     invalidate_roles(account.id)
-    return await account_grants(db, apps, account)
+    return await account_grants(db, apps, account, readership=readership)

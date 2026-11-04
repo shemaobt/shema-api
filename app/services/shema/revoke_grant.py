@@ -30,13 +30,18 @@ from app.services.shema._grant_rules import (
     require_admin_in,
     require_grantable,
 )
-from app.services.shema._scope import REGIONAL_ROLES
+from app.services.shema._scope import REGIONAL_ROLES, Readership
 from app.services.shema.find_account import account_grants
 from app.services.shema.set_region_scope import set_region_scope
 
 
 async def revoke_grant(
-    db: AsyncSession, apps: GrantApps, *, payload: RoleRevokeRequest, actor: User
+    db: AsyncSession,
+    apps: GrantApps,
+    *,
+    payload: RoleRevokeRequest,
+    actor: User,
+    readership: Readership,
 ) -> AccountGrants:
     """Revoke ``payload``'s role from its account, and answer the account as it now stands."""
     role_key = payload.role_key
@@ -64,4 +69,4 @@ async def revoke_grant(
             await set_region_scope(db, account.id, [], granted_by=actor.id, commit=False)
     await db.commit()
     invalidate_roles(account.id)
-    return await account_grants(db, apps, account)
+    return await account_grants(db, apps, account, readership=readership)
