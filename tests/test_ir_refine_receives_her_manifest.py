@@ -96,6 +96,7 @@ BUCKET = "balde-de-teste"
 AN_HOUR = 3600
 P01 = "P01"
 RUTH_P01_V1 = "internalize-terena-p01-v1"
+RUTH_P01_V2 = "internalize-terena-p01-v2"
 NEW_PIN = "f" * 40
 P01_MAP_SHA256 = "1852ecb9d42fb2bc084cabd79c09e26ada70d4f4189fc4aa0e584a50c15c8c05"
 KEPT_P01_MAP_SHA256 = "0" * 64
@@ -831,25 +832,55 @@ async def test_a_passage_never_approved_downloads_its_live_manifest_as_version_1
     assert not [w for w in manifest.get("warnings", []) if "approval record" in w]
 
 
-async def test_a_reopened_draft_downloads_its_live_manifest_under_the_last_releases_id(
+async def test_a_reopened_draft_carries_the_next_versions_id_in_every_download(
     client, db_session, room_app
 ):
     project, credential = await a_claimed_device(db_session, language_name="Terena")
     session, _sent = await p01_in_two_wav_parts(client, db_session, project.id, credential)
     parts = current_parts(await takes_of(db_session, session.id))
     await approved(client, credential, session)
-    again = await record_the_part_again(db_session, session, parts[0], sha256="d" * 64)
+    recorded_again = await upload_a_part(
+        client,
+        session.id,
+        part=1,
+        audio=recording(3, 3),
+        content_type="audio/wav",
+        headers=team_headers(credential),
+    )
+    assert recorded_again.status_code == 200, recorded_again.text
+    again = current_parts(await takes_of(db_session, session.id))[0]
+    assert again.id != parts[0].id
     desk, _user = await at_the_desk(db_session, room_app, project)
 
-    manifest = await manifest_of(client, desk, session)
+    read = await client.get(desk_release(session.id), headers=desk)
+    listed = await client.get(
+        f"{PREFIX}/facilitator/sessions/{session.id}/takes/downloads", headers=desk
+    )
+    retro = await session_retro(client, session.id, desk)
 
-    assert manifest["releaseId"] == RUTH_P01_V1
+    assert read.status_code == 200, read.text
+    assert read.headers["content-disposition"] == saves_as(f"{RUTH_P01_V2}.json")
+    manifest = read.json()
+    assert manifest["releaseId"] == RUTH_P01_V2
     assert manifest["finalizedAt"] is None
     assert manifest["check"] is None
     assert manifest["finalizeCount"] == 1
     assert [clip["takeId"] for clip in manifest["clips"]] == [again.id, parts[1].id]
     for clip in manifest["clips"]:
-        assert clip["filename"].startswith(f"{RUTH_P01_V1}-")
+        assert clip["filename"].startswith(f"{RUTH_P01_V2}-")
+    assert manifest["whole"]["filename"] == f"{RUTH_P01_V2}-inteira.wav"
+    assert listed.status_code == 200, listed.text
+    downloads = listed.json()
+    assert downloads["release_id"] == RUTH_P01_V2
+    for each in downloads["takes"]:
+        assert each["filename"].startswith(f"{RUTH_P01_V2}-")
+    assert {each["take_id"]: each["filename"] for each in downloads["takes"]} == {
+        clip["takeId"]: clip["filename"] for clip in manifest["clips"]
+    }
+    assert downloads["whole"]["filename"] == manifest["whole"]["filename"]
+    assert retro.status_code == 200, retro.text
+    assert retro.headers["content-disposition"] == saves_as(f"{RUTH_P01_V2}-retroverificacao.json")
+    assert retro.json()["releaseId"] == RUTH_P01_V2
 
 
 async def test_a_passage_with_no_live_take_and_no_release_has_no_manifest(
@@ -1263,10 +1294,13 @@ async def test_a_zerar_retires_the_approval_until_the_new_session_approves(
     assert kept.status_code == 200, kept.text
 
     again = await ready_p01(db_session, project.id)
+    live = await manifest_of(client, desk, again)
+    assert live["releaseId"] == RUTH_P01_V2
+    assert live["finalizedAt"] is None
     await approved(client, credential, again)
     manifest = await manifest_of(client, desk, again)
 
-    assert manifest["releaseId"] == "internalize-terena-p01-v2"
+    assert manifest["releaseId"] == RUTH_P01_V2
     assert manifest["finalizeCount"] == 2
 
 

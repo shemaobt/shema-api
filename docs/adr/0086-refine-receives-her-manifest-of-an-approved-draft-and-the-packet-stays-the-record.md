@@ -1,5 +1,5 @@
 ---
-status: accepted; amends ADR 0014; amended 28 Oct 2026 by ENG-1292 (the manifest is served live before approval and points to the external check)
+status: accepted; amends ADR 0014; amended 28 Oct 2026 by ENG-1292 (the manifest is served live before approval and points to the external check); superseded in part by ADR 0105: a re-opened draft's live manifest carries the next version's id
 date: 2026-10-22
 ---
 
@@ -22,7 +22,7 @@ Decided (ENG-1274):
   "Approved" is ADR 0071's one answer, and the parts the manifest lists must be the very takes
   that approval judged, fingerprint for fingerprint: a part recorded again between the two reads
   makes the draft unapproved, never read as approved. Any other draft of a live team session is
-  read as it is now under the passage's last release's id (version 1 when none), with
+  read as it is now under the next version's id (version 1 when none, ADR 0105), with
   `finalizedAt` and `check` null and `finalizeCount` the last version (0 when none), as her
   route does; it answers 404 when the draft holds no take. An archived, demo or team-less
   session stays 409 `DRAFT_NOT_APPROVED`, its own code because there is no version to reload and
@@ -92,8 +92,8 @@ Decided (ENG-1274):
 
 - The Desk's live read of a ready but unapproved packet is gone as the packet, and returns as the
   live manifest; no client read the earlier 409.
-- After a re-open the live manifest and its clips keep the last release's id, as hers does, while
-  the take-download list names them for the next version (ADR 0081).
+- After a re-open the live manifest and its clips carry the next version's id, as the take
+  downloads do (ADR 0081, ADR 0105).
 - Refine matches clips by `takeId` and `sha256`, never by file name (ADR 0073), and its intake is
   built against this manifest. A finding's `clipKey` is the take id (ADR 0078), not her scene key.
 - A manifest's links last an hour: read it again for fresh ones.
