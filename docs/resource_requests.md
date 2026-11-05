@@ -911,6 +911,26 @@ draws cards should not have to carry documents to do it.
 - **The route asks for a session and nothing else**, the one route in this module shaped so: the
   module's own gate (`_app_member`) would refuse a regional coordinator who holds no role in the
   form, and that coordinator is exactly who this read is for.
+- **The Painel's cards are a third read, `GET /requests/board`** (OBT-667, RRF-MESA-084 — ours,
+  Daniel, 05/nov/2026). `GET /requests` serves the spine with `document: {}` on purpose, and the
+  Painel's card draws five answers of that document — `reg_name`, `tpp_name` (the solicitante),
+  `lang_name`, `people_name`, `amount_requested` — so the form read `GET /requests/{id}` once per
+  card: 73 cards, 73 calls on the 29/out bench. `BoardCardOut` answers exactly those five plus
+  `id`, `stage`, `currency` and `fund_id` — nothing of the evaluation (the badge stays
+  `GET /evaluation-totals`'s) and nothing of the instance — for every request the caller reaches,
+  `list_requests`' rows, scope and order, in two statements whatever the count: the spine, and
+  the sections of all those ids in one `IN` (`list_board_cards.py`). **Behind `manage_funds`**, the
+  Painel's own door — the mesa and the Gestor (the Admin on his line), never the team — and
+  **nothing new is disclosed**: each of those readers already reads every one of these answers
+  through `GET /requests/{id}`; what changes is the number of calls. `RequestCardOut` is untouched,
+  because a language and a people on the card the team, the tracking list and the PME's
+  coordinators read would have to pass the PME's sensitive-project rule, and this read is not
+  theirs. `fund_id` keeps `RequestOut`'s rule on the shape (set for `manage_funds`, dropped
+  otherwise) although the guard makes every caller a reader of it, so a route reusing the shape
+  cannot leak it by forgetting. An answer the sections do not carry is `""`, never a missing
+  card. `extra="forbid"`, proven on the payload in `test_board_cards.py`. Declared before
+  `/requests/{request_id}`, like `cards`, so `board` is never taken for an id. The
+  `/fund-options` half of the finding is the form's (the selector reads them when it opens).
 
 ### 5.4.4 Who the account is in the form — `GET /me` — **Built** (FE-52, OBT-538, 29/sep/2026)
 
