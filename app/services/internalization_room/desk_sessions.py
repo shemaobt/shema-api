@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,36 +16,30 @@ from sqlalchemy import ColumnElement, and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import SessionState
-from app.core.exceptions import CanonNotKept, NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import (
-    IRRelease,
-    IRSegment,
-    IRSession,
-    IRTake,
-    IRTakeKind,
-)
+from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
-from app.models.internalization_room import MomentView
 from app.models.internalization_room_desk_sessions import (
     DeskSession,
     DeskSessionsPage,
     DeskSessionState,
 )
-from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import served_maps
 from app.services.internalization_room.conversation import guide_turns_of
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
-from app.services.internalization_room.moment import moment_view, phase_reached
 from app.services.internalization_room.session_end import as_utc, end_of
+from app.services.internalization_room.session_phase import (
+    PhaseFacts,
+    phase_facts,
+    phase_from,
+    where_the_room_is,
+)
 from app.services.internalization_room.session_turns import opening_stamp
-from app.services.internalization_room.sessions import back_translation_of, is_panorama
-from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
-from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.project.facilitated_scope import (
     TEAM_NOT_FOUND,
     confined_to,
@@ -129,9 +122,7 @@ async def desk_sessions_page(
     sessions = [session for session, _ in page_rows if session.id in portraits]
 
     ids = [session.id for session in sessions]
-    rehearsals = await _kept_rehearsals(db, ids)
-    released = await _released(db, ids)
-    told = await _with_a_told_stretch(db, ids)
+    facts = await phase_facts(db, ids)
     references = {meaning_map.pericope_num: meaning_map.reference for meaning_map in served_maps()}
 
     return DeskSessionsPage(
@@ -141,9 +132,7 @@ async def desk_sessions_page(
                 team_name=names[session.id],
                 reference=references.get(session.pericope),
                 portrait=portraits[session.id],
-                kept_rehearsals=rehearsals.get(session.id, 0),
-                has_release=session.id in released,
-                has_told_stretch=session.id in told,
+                facts=facts,
             )
             for session in sessions
         ],
@@ -161,20 +150,11 @@ def _item(
     team_name: str,
     reference: str | None,
     portrait: dict[str, str],
-    kept_rehearsals: int,
-    has_release: bool,
-    has_told_stretch: bool,
+    facts: PhaseFacts,
 ) -> DeskSession:
     end = end_of(session)
     beads = beads_of(session, portrait)
-    scene, moment = _where_the_room_is(session)
-    phase = phase_reached(
-        checked_at=back_translation_of(session).checked_at,
-        has_release=has_release,
-        has_told_stretch=has_told_stretch,
-        kept_rehearsals=kept_rehearsals,
-        moment=moment,
-    )
+    scene, moment = where_the_room_is(session)
     return DeskSession(
         session_id=session.id,
         team_id=str(session.project_id),
@@ -187,7 +167,7 @@ def _item(
         last_activity_at=as_utc(session.updated_at),
         scene=scene,
         moment=moment,
-        phase=phase,
+        phase=phase_from(session, facts, moment=moment),
         ended_at=end.ended_at,
         attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
         attended_by=session.attended_by,
@@ -199,23 +179,10 @@ def _item(
         if beads is None
         else sum(1 for bead in beads if bead.status == CoverageStatus.ENGAGED.value),
         total_elements=None if beads is None else len(beads),
-        kept_rehearsals=kept_rehearsals,
-        has_release=has_release,
+        kept_rehearsals=facts.kept_rehearsals.get(session.id, 0),
+        has_release=session.id in facts.released,
         listener_count=None,
     )
-
-
-def _where_the_room_is(session: IRSession) -> tuple[str | None, MomentView | None]:
-    if is_panorama(session.pericope):
-        return None, None
-    try:
-        with reading_the_canon_of(session.canon_pin):
-            scene = current_scene_id(
-                session.coverage_state or {}, session.pericope, session.messages or []
-            )
-            return scene, moment_view(session)
-    except CanonNotKept:
-        return None, None
 
 
 def _state(session: IRSession, state: SessionState) -> DeskSessionState:
@@ -238,44 +205,3 @@ async def _portraits(db: AsyncSession, sessions: Sequence[IRSession]) -> dict[st
         )
     )
     return await necklaces_of(db, list(rows.scalars()))
-
-
-async def _kept_rehearsals(db: AsyncSession, session_ids: list[str]) -> dict[str, int]:
-    if not session_ids:
-        return {}
-    rows = await db.execute(
-        select(IRTake)
-        .where(
-            IRTake.session_id.in_(session_ids),
-            IRTake.kind == IRTakeKind.ENSAIO,
-            live(IRTake),
-        )
-        .order_by(*READING_ORDER)
-    )
-    takes: dict[str, list[IRTake]] = defaultdict(list)
-    for take in rows.scalars():
-        takes[take.session_id].append(take)
-    return {session_id: len(current_parts(held)) for session_id, held in takes.items()}
-
-
-async def _released(db: AsyncSession, session_ids: list[str]) -> set[str]:
-    if not session_ids:
-        return set()
-    rows = await db.execute(
-        select(IRRelease.session_id).where(IRRelease.session_id.in_(session_ids), live(IRRelease))
-    )
-    return set(rows.scalars())
-
-
-async def _with_a_told_stretch(db: AsyncSession, session_ids: list[str]) -> set[str]:
-    if not session_ids:
-        return set()
-    rows = await db.execute(
-        select(IRSegment.session_id).where(
-            IRSegment.session_id.in_(session_ids),
-            live(IRSegment),
-            IRSegment.superseded_at.is_(None),
-            IRSegment.transcript != "",
-        )
-    )
-    return set(rows.scalars())
