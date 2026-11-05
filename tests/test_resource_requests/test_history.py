@@ -371,7 +371,9 @@ async def test_the_names_cost_one_statement_whatever_the_rows(
     from sqlalchemy import event
 
     headers = await as_team(db_session, rrf_app)
-    admin = await make_user(db_session, email="admin-trilha@rr.test", is_platform_admin=True)
+    admin = await make_user(
+        db_session, email="admin-trilha@rr.test", display_name="Admin", is_platform_admin=True
+    )
     admin_headers = await auth_header(db_session, admin)
     created = await create(client, headers)
     await rename_one_field(client, headers, created["id"], "um")
@@ -394,7 +396,11 @@ async def test_the_names_cost_one_statement_whatever_the_rows(
         event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
 
     assert len(one.json()) == 1 and len(three.json()) == 3
-    assert {change["changed_by_name"] for change in three.json()} == {"Test User"}
+    assert [change["changed_by_name"] for change in three.json()] == [
+        "Test User",
+        "Admin",
+        "Test User",
+    ]
     assert len(for_three) == len(for_one), f"a trilha paga por linha: {for_one} -> {for_three}"
 
 
