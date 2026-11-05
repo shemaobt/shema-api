@@ -41,6 +41,7 @@ from tests.resource_request_harness import (
     as_team,
     create,
     draft,
+    holder,
     trail_rows,
 )
 from tests.test_resource_requests.conftest import auth_header, grant
@@ -257,6 +258,144 @@ async def test_the_owner_reads_its_own_trail(db_session, client, rrf_app) -> Non
     assert body[0]["new_value"] == "novo nome"
     assert body[0]["changed_by"]
     assert body[0]["changed_at"]
+    assert set(body[0]) == TRAIL_KEYS
+
+
+#: The wire shape of one trail row — closed, so a column reaching the team by accident
+#: (the author's e-mail, say) fails here before it fails on a screen.
+TRAIL_KEYS = {
+    "field_key",
+    "old_value",
+    "new_value",
+    "changed_by",
+    "changed_by_name",
+    "changed_by_link_id",
+    "changed_at",
+}
+
+
+async def rename_one_field(client, headers, request_id: str, name: str) -> None:
+    changed = draft()
+    changed["fields"]["reg_name"] = name
+    res = await client.patch(f"{REQUESTS}/{request_id}", json=changed, headers=headers)
+    assert res.status_code == 200, res.text
+
+
+async def test_the_author_is_named_beside_the_id(db_session, client, rrf_app) -> None:
+    """*Quem* has to read as a person (OBT-685): the ``display_name``, next to the id the
+    row keeps — never instead of it, because the id is the record and the name is not."""
+    autora = await make_user(db_session, email="ana@rr.test", display_name="Ana Autora")
+    await grant(db_session, autora, rrf_app, "equipe")
+    headers = await auth_header(db_session, autora)
+    created = await create(client, headers)
+    await rename_one_field(client, headers, created["id"], "nome novo")
+
+    res = await client.get(f"{REQUESTS}/{created['id']}/history", headers=headers)
+
+    assert res.status_code == 200, res.text
+    (change,) = res.json()
+    assert change["changed_by"] == autora.id
+    assert change["changed_by_name"] == "Ana Autora"
+    assert change["changed_by_link_id"] is None
+
+
+async def test_a_rename_reads_with_the_new_name_over_the_same_row(
+    db_session, client, rrf_app
+) -> None:
+    """The name is resolved at read time and never written: renamed after the edit, the
+    author reads with the new name while the stored row has not moved by one byte."""
+    autora = await make_user(db_session, email="renomeada@rr.test", display_name="Antes")
+    await grant(db_session, autora, rrf_app, "equipe")
+    headers = await auth_header(db_session, autora)
+    created = await create(client, headers)
+    await rename_one_field(client, headers, created["id"], "nome novo")
+    (before,) = await trail_rows(db_session, created["id"])
+    stored = (before.field_key, before.old_value, before.new_value, before.changed_by)
+    stored_at = before.changed_at
+
+    autora.display_name = "Depois"
+    await db_session.commit()
+    res = await client.get(f"{REQUESTS}/{created['id']}/history", headers=headers)
+
+    assert res.json()[0]["changed_by_name"] == "Depois"
+    (after,) = await trail_rows(db_session, created["id"])
+    assert (after.field_key, after.old_value, after.new_value, after.changed_by) == stored
+    assert after.changed_at == stored_at
+
+
+async def test_no_display_name_answers_null_and_the_email_reaches_nobody(
+    db_session, client, rrf_app
+) -> None:
+    """An account with no ``display_name`` is named ``None`` — the screen says so rather
+    than inventing a name — and the e-mail is in no field of the answer: the team reads
+    this trail, and the address of whoever edited its document is not the team's to read."""
+    sem_nome = await make_user(db_session, email="sem-nome@rr.test", display_name=None)
+    await grant(db_session, sem_nome, rrf_app, "equipe")
+    headers = await auth_header(db_session, sem_nome)
+    created = await create(client, headers)
+    await rename_one_field(client, headers, created["id"], "nome novo")
+
+    res = await client.get(f"{REQUESTS}/{created['id']}/history", headers=headers)
+
+    (change,) = res.json()
+    assert change["changed_by"] == sem_nome.id
+    assert change["changed_by_name"] is None
+    assert set(change) == TRAIL_KEYS
+    assert "sem-nome@rr.test" not in res.text
+    assert not any("@" in value for value in change.values() if isinstance(value, str))
+
+
+async def test_a_links_holder_has_no_account_and_so_no_name(db_session, client, rrf_app) -> None:
+    """The row a link's holder wrote names the link (BE-26) and nobody by name: there is
+    no account to resolve, and the Admin who issued the link must not be named in its place."""
+    admin, link, link_headers = await holder(db_session, client)
+    started = (await client.post(REQUESTS, json=draft(), headers=link_headers)).json()
+    await rename_one_field(client, link_headers, started["id"], "pelo link")
+
+    res = await client.get(
+        f"{REQUESTS}/{started['id']}/history", headers=await auth_header(db_session, admin)
+    )
+
+    assert res.status_code == 200, res.text
+    (change,) = res.json()
+    assert change["changed_by"] is None
+    assert change["changed_by_link_id"] == link["id"]
+    assert change["changed_by_name"] is None
+
+
+async def test_the_names_cost_one_statement_whatever_the_rows(
+    db_session, client, rrf_app, test_engine
+) -> None:
+    """A trail is read on a field connection (RF-NF-07): the authors of every row come from
+    one ``users`` statement, so three rows by two people cost what one row costs."""
+    from sqlalchemy import event
+
+    headers = await as_team(db_session, rrf_app)
+    admin = await make_user(db_session, email="admin-trilha@rr.test", is_platform_admin=True)
+    admin_headers = await auth_header(db_session, admin)
+    created = await create(client, headers)
+    await rename_one_field(client, headers, created["id"], "um")
+    seen: list[str] = []
+
+    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        seen.append(" ".join(statement.split()))
+
+    try:
+        one = await client.get(f"{REQUESTS}/{created['id']}/history", headers=headers)
+        for_one = [statement for statement in seen if "users" in statement]
+
+        await rename_one_field(client, admin_headers, created["id"], "dois")
+        await rename_one_field(client, headers, created["id"], "três")
+        seen.clear()
+        three = await client.get(f"{REQUESTS}/{created['id']}/history", headers=headers)
+        for_three = [statement for statement in seen if "users" in statement]
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
+
+    assert len(one.json()) == 1 and len(three.json()) == 3
+    assert {change["changed_by_name"] for change in three.json()} == {"Test User"}
+    assert len(for_three) == len(for_one), f"a trilha paga por linha: {for_one} -> {for_three}"
 
 
 async def test_another_team_gets_the_same_404_the_document_answers(
