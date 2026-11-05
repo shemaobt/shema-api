@@ -916,10 +916,16 @@ draws cards should not have to carry documents to do it.
   Painel's card draws five answers of that document — `reg_name`, `tpp_name` (the solicitante),
   `lang_name`, `people_name`, `amount_requested` — so the form read `GET /requests/{id}` once per
   card: 73 cards, 73 calls on the 29/out bench. `BoardCardOut` answers exactly those five plus
-  `id`, `stage`, `currency` and `fund_id` — nothing of the evaluation (the badge stays
-  `GET /evaluation-totals`'s) and nothing of the instance — for every request the caller reaches,
-  `list_requests`' rows, scope and order, in two statements whatever the count: the spine, and
-  the sections of all those ids in one `IN` (`list_board_cards.py`). **Behind `manage_funds`**, the
+  `id`, `request_type`, `stage`, `currency` and `fund_id` — nothing of the evaluation (the badge
+  stays `GET /evaluation-totals`'s) and nothing of the instance — for every **submitted** request
+  the caller reaches: `list_requests`' rows **minus the drafts**, in its scope and order, in two
+  statements whatever the count: the spine, and the sections of all those ids in one `IN`
+  (`list_board_cards.py`). `request_type` is there because the card's two doors — *Abrir
+  avaliação* (FE-37) and *Abrir revisão em nome da equipe* (FE-47) — are drawn only with the id
+  and the type, and the type came from the per-card read this route retires. The drafts stay out
+  on the server, not in each reader: a draft is not on the board — `move_request` refuses to move
+  one (§9) and the form already left drafts out of the columns when it read the spine itself — so
+  a card for one could only fail; the team's own lists (`GET /requests`, `/cards`) keep theirs. **Behind `manage_funds`**, the
   Painel's own door — the mesa and the Gestor (the Admin on his line), never the team — and
   **nothing new is disclosed**: each of those readers already reads every one of these answers
   through `GET /requests/{id}`; what changes is the number of calls. `RequestCardOut` is untouched,

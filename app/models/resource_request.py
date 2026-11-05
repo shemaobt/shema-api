@@ -247,10 +247,14 @@ class BoardCardOut(BaseModel):
 
     **Exactly what the card draws, and nothing else**: ``reg_name`` (A0), ``tpp_name`` (the
     solicitante, Part B section 11), ``lang_name`` and ``people_name`` (the two chips),
-    ``amount_requested`` with its ``currency``, ``stage`` (the column) and ``fund_id`` (the fund
-    chip). Nothing of the evaluation — the badge is ``GET /evaluation-totals``'s — and nothing
-    of the instance. The reader already reads every one of these through ``GET /requests/{id}``;
-    this shape only stops the Painel from asking once per card.
+    ``amount_requested`` with its ``currency``, ``stage`` (the column), ``fund_id`` (the fund
+    chip) and ``request_type`` — the two doors on the card, *Abrir avaliação* (FE-37) and
+    *Abrir revisão em nome da equipe* (FE-47), are drawn only with the id **and** the type, and
+    the type used to come from the per-card read this route retires. Nothing of the evaluation —
+    the badge is ``GET /evaluation-totals``'s — and nothing of the instance. Submitted requests
+    only: a draft is not on the board (``list_board_cards``). The reader already reads every
+    one of these through ``GET /requests/{id}``; this shape only stops the Painel from asking
+    once per card.
 
     **Not ``RequestCardOut``**, deliberately: that card is read by the team, the tracking list and
     the PME's coordinators, and a language and a people on it would have to pass the PME's
@@ -266,6 +270,7 @@ class BoardCardOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
+    request_type: RRRequestType
     stage: RRStage
     fund_id: str | None = None
     reg_name: str
@@ -291,6 +296,7 @@ class BoardCardOut(BaseModel):
         fund = {"fund_id": request.fund_id} if reads_funds else {}
         return cls(
             id=request.id,
+            request_type=request.request_type,
             stage=request.stage,
             **fund,
             reg_name=request.reg_name,

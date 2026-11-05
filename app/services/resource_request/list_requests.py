@@ -7,7 +7,9 @@ from app.services.resource_request._membership import member_project_ids
 from app.services.resource_request._scope import reach
 
 
-async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRequest]:
+async def list_requests(
+    db: AsyncSession, user: User, app_key: str, *, submitted_only: bool = False
+) -> list[RRRequest]:
     """The spine of every request this caller reaches, newest first.
 
     The spine and not the documents: this is what the board and the lists read, and §4.2
@@ -21,12 +23,18 @@ async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRe
     **A cancelled instance is not listed, for anyone** (BE-25, OBT-534). It was given up and
     nobody may type into it; listing it would put a dead draft beside the one the project
     actually has open. The row is still read by id (``get_request``) — it is history.
+
+    ``submitted_only`` leaves the drafts out as well — the board's reading (OBT-667): a draft
+    is not on the board, the server refuses to move one, so a card for it could only fail.
+    The team's own lists keep the default and see their drafts.
     """
     stmt = (
         select(RRRequest)
         .where(RRRequest.cancelled_at.is_(None))
         .order_by(RRRequest.created_at.desc())
     )
+    if submitted_only:
+        stmt = stmt.where(RRRequest.submitted_at.is_not(None))
     reaches = await reach(db, user, app_key)
 
     if not reaches.every:

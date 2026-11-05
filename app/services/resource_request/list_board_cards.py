@@ -8,6 +8,12 @@ This is the same five answers for every card the caller reaches, in **two statem
 the number of cards**: the spine through ``list_requests`` — the scope every list in this module
 already applies — and the sections of all those ids in one ``IN``.
 
+**Submitted requests only — ``GET /requests``' rows minus the drafts.** A draft is not on the
+board: ``move_request`` refuses to move one (§9), and the form already left drafts out of the
+columns when it read the spine itself, so serving them here would put cards in *A analisar*
+that can only fail. Filtered on the server rather than left to each reader, so the rule has
+one home; the team's own lists keep their drafts.
+
 **Nothing new is disclosed.** Who reaches this read holds ``manage_funds`` (the route's guard —
 the mesa and the Gestor, the Painel's own readers), and each of them already reads every one of
 these answers through ``GET /requests/{id}``. What changes is the number of calls, not who
@@ -63,8 +69,9 @@ async def _section_answers(db: AsyncSession, ids: Iterable[str]) -> dict[str, tu
 
 
 async def list_board_cards(db: AsyncSession, user: User, app_key: str) -> list[BoardCard]:
-    """Every request this caller reaches, as the Painel's card — ``list_requests``' rows and
-    order, each with its language and people, from one sections statement for all of them."""
-    rows = await list_requests(db, user, app_key)
+    """Every submitted request this caller reaches, as the Painel's card — ``list_requests``'
+    rows minus the drafts, in its order, each with its language and people from one sections
+    statement for all of them."""
+    rows = await list_requests(db, user, app_key, submitted_only=True)
     answers = await _section_answers(db, (row.id for row in rows))
     return [BoardCard(row, *answers.get(row.id, ("", ""))) for row in rows]
