@@ -456,6 +456,20 @@ evaluation and a trail of its own, and the original keeps its trail frozen with 
 asked for the revision — reading both is reading two ids. A request nobody has evaluated answers
 `[]`, not 404. The request's own trail stays at `/history` behind `edit_requests`.
 
+**The author is named at read time, and the name is never stored** (OBT-685; Daniel, 05/nov/2026).
+`FieldChangeOut` carries `changed_by_name` beside `changed_by`: `list_request_history` resolves
+every author of the list in **one** `users` statement (`_names.display_names_of`, the statement
+`_cards` already made for *em preenchimento por X*) and the row keeps only the id — the trail is
+append-only and a name is not, so a user renamed after the edit reads with the new name over the
+same row, and no migration touched the table. What is resolved is the **`display_name` and never
+the e-mail**: the team reads this trail, and the address of whoever on the mesa or the Gestor
+corrected its document is not the team's to read. An account with no `display_name` answers `null`
+— the screen says so rather than inventing a name — and so does a row a link's holder wrote
+(`changed_by_link_id`, below): there is no account to name, and naming the issuing Admin there
+would be the very thing the trail's one-author rule refuses. The avaliação's trail
+(`EvaluationFieldChangeOut`) does not carry the name yet: its readers hold `view_evaluation` and
+the mesa reads its own members' ids today; whoever draws that screen brings the same resolution.
+
 **One column deliberately not added here.** D6 says recording a decision moves the card, and
 `rr_board_transitions` cannot today distinguish a move that came from a decision from a mesa
 member dragging a card — which is precisely the asymmetry D6 insists on. An
@@ -1027,7 +1041,7 @@ What PR C built, and where it met the contract:
   holds exactly one. Writing the issuing Admin's id there would have made D7's trail say the Admin
   typed what the team typed. The evaluation's trail is untouched — the mesa is always a person —
   and the downgrade **refuses** to run over a row a link wrote rather than erase it.
-  `FieldChangeOut` carries both columns.
+  `FieldChangeOut` carries both columns — and, since OBT-685, `changed_by_name`, `null` on a link's row (§4.4).
 - **`created_by` of a link's request is the issuing Admin** — bookkeeping only, because the column
   is `NOT NULL` and a link is no person. Nothing reads it as the team: `notify_decision` tells the
   **link's address** by e-mail and writes no in-app notice for a link request.
