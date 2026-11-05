@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import unicodedata
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from typing import Any, NamedTuple
 
 import regex
 
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import At, Cause, MomentView
+from app.models.internalization_room_desk_sessions import Phase
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.hearing import SentSceneRehearsal
@@ -474,3 +476,22 @@ def moment_view(session: IRSession) -> MomentView | None:
     with reading_the_canon_of(session.canon_pin):
         parts = len(scene_ids_for(session.pericope))
     return MomentView(at=moment.at, part=moment.part, parts=parts)
+
+
+def phase_reached(
+    *,
+    checked_at: datetime | None,
+    has_release: bool,
+    has_told_stretch: bool,
+    kept_rehearsals: int,
+    moment: MomentView | None,
+) -> Phase:
+    """The furthest of the four the session reached, tried from the furthest down, off what the
+    session itself holds. Nothing remembers it: a fact that stops standing lowers it."""
+    if checked_at is not None or has_release:
+        return Phase.CHECK
+    if has_told_stretch:
+        return Phase.TELLING_BACK
+    if kept_rehearsals > 0 or (moment is not None and moment.at == "ensaio_final"):
+        return Phase.REHEARSAL
+    return Phase.CONVERSATION
