@@ -119,21 +119,25 @@ async def test_a_card_carries_the_five_answers_the_painel_draws_and_nothing_else
 
 
 def test_the_shape_is_closed() -> None:
-    """``extra="forbid"`` is the guard that holds when a later change tries to widen it."""
-    with pytest.raises(pydantic.ValidationError):
-        BoardCardOut.model_validate(
-            {
-                "id": "r",
-                "stage": "triagem",
-                "reg_name": "",
-                "tpp_name": "",
-                "lang_name": "",
-                "people_name": "",
-                "amount_requested": None,
-                "currency": "R$",
-                "total": 30,
-            }
-        )
+    """``extra="forbid"`` is the guard that holds when a later change tries to widen it.
+
+    The payload is valid on its own first, so the extra key is the **only** thing wrong with
+    it — a currency outside ``RRCurrency`` would have refused the payload before the key got
+    to speak, and the test would stay green with the guard removed (review of #1014)."""
+    card = {
+        "id": "r",
+        "stage": "triagem",
+        "reg_name": "",
+        "tpp_name": "",
+        "lang_name": "",
+        "people_name": "",
+        "amount_requested": None,
+        "currency": "BRL",
+    }
+    BoardCardOut.model_validate(card)
+
+    with pytest.raises(pydantic.ValidationError, match="total"):
+        BoardCardOut.model_validate({**card, "total": 30})
 
 
 def test_the_fund_is_absent_from_a_caller_who_may_not_read_it() -> None:
