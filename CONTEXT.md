@@ -58,12 +58,12 @@ The facilitator's voice answer to a team's raised-hand question. It belongs to t
 _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 
 **Phase** (*fase*):
-Where a team stands in Marcia's flow, as the Desk reads it in her words: the Familiarização of the whole passage; for each scene, the Internalização and then the Articulação, closed by the ensaio da cena; the Ensaio Final; the Checagem externa of each **Version**. The Desk draws no rows of phases: the record names the **Moment**, the coverage column the scene in motion, the passage head the check state (ENG-1230, 2026-10-29).
-_Avoid_: Retradução, Retroverificação as a phase (it is the file), step (the tablet's substate of a station), stage, tab, Etapa
+How far a session has gone, as the Desk draws it in four cards: the conversation (*Internalização*), the rehearsal (*Ensaio*), the **Telling back** (*Tradução*) and the check (*Retroverificação*, the card that holds the check rounds and the **Version**). The server reads it off what the session itself holds and serves it on the Desk's session row; the Desk opens that card and never works the phase out. It is the furthest the session reached, so it does not walk back: a draft re-opened after an approval stays in the check. A scene rehearsal belongs to the conversation; the rehearsal starts at the Ensaio Final. Inside a card the words stay Marcia's: the **Moment**, «cena», «frase», «traduzir» (ENG-2148, 2026-11-04, which reverses the "no rows of phases" of ENG-1230).
+_Avoid_: Retradução, station (the tablet's stop, which the server is not told), step (the tablet's substate of a station), stage, tab, Etapa
 
 **Moment** (*momento*):
 Where a session's conversation stands in Marcia's flow as the voice last said it: the Familiarização, the Internalização or Articulação of scene n of k, or the Ensaio Final. Read from the lines the Guide spoke, kept per session and per turn with what moved it, served to the Desk and the dossier, and never guessed from the screen (her `momentAtTurnStart`). A session has no moment before the Guide's first line, as a Panorama, and when it was kept before the moment was read; the Desk then says so.
-_Avoid_: phase (the facilitator's reading of the whole flow), stage, step, Momento
+_Avoid_: phase (how far the session has gone, the Desk's four cards), stage, step, Momento
 
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
