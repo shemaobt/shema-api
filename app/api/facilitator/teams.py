@@ -27,7 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, UnknownReferenceError
+from app.core.served_books import SERVED_BOOK_BY_KEY
 from app.models.device import TeamDeviceResponse
 from app.models.internalization_room import (
     ElementCoverage,
@@ -46,6 +47,7 @@ from app.services.project.reads_project import reads_project
 facilitator_teams_router = APIRouter()
 
 TEAM_NOT_FOUND = "Team not found"
+BOOK_NOT_SERVED = "That book is not served"
 
 
 @facilitator_teams_router.get("", response_model=TeamListingResponse)
@@ -153,9 +155,14 @@ async def read_team_coverage_route(
 async def list_team_pericopes_route(
     team_id: str,
     user: ReaderUser,
+    book: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> list[PericopeStanding]:
-    """The current book's passages in the canon's order, each already placed for this team.
+    """The passages of the Served book named by its key, or of the Current book when none is
+    named, in the canon's order, each already placed for this team.
+
+    The key is checked after the team gate and not by the query's type, which would answer a
+    reader who may not read the team with 422 before the gate could answer 404.
 
     It answers positions and not a list. A screen given the passages and the team's active
     passage would have to work out closed from current from future itself, which is a second
@@ -169,7 +176,11 @@ async def list_team_pericopes_route(
     if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
-    return await team_standing(db, team_id)
+    if book is None:
+        return await team_standing(db, team_id)
+    if book not in SERVED_BOOK_BY_KEY:
+        raise UnknownReferenceError(BOOK_NOT_SERVED)
+    return await team_standing(db, team_id, SERVED_BOOK_BY_KEY[book])
 
 
 @facilitator_teams_router.get("/{team_id}/sessions", response_model=list[TeamSessionResponse])
