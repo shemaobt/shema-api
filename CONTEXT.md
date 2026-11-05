@@ -58,8 +58,8 @@ The facilitator's voice answer to a team's raised-hand question. It belongs to t
 _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 
 **Phase** (*fase*):
-How far a session has gone, as the Desk draws it in four cards: the conversation (*Internalização*), the rehearsal (*Ensaio*), the **Telling back** (*Tradução*) and the check (*Retroverificação*, the card that holds the check rounds and the **Version**). The server reads it off what the session itself holds and serves it on the Desk's session row; the Desk opens that card and never works the phase out. It is the furthest the session reached, so it does not walk back: a draft re-opened after an approval stays in the check. A scene rehearsal belongs to the conversation; the rehearsal starts at the Ensaio Final. Inside a card the words stay Marcia's: the **Moment**, «cena», «frase», «traduzir» (ENG-2148, 2026-11-04, which reverses the "no rows of phases" of ENG-1230).
-_Avoid_: Retradução, station (the tablet's stop, which the server is not told), step (the tablet's substate of a station), stage, tab, Etapa
+How far a session has gone, as the Desk draws it in four cards: the conversation (*Internalização*), the rehearsal (*Ensaio*), the **Telling back** (*Tradução*) and the check (*Retroverificação*, the card that holds the check rounds and the **Version**; the card borrows the word, it is not the **Retroverification file**). The server reads it off what the session itself holds and serves it on the Desk's session row; the Desk opens that card and never works the phase out. It is the furthest the session reached, so it does not walk back: a draft re-opened after an approval stays in the check. A scene rehearsal belongs to the conversation; the rehearsal starts at the Ensaio Final. Inside a card the words stay Marcia's: the **Moment**, «cena», «frase», «traduzir» (ENG-2148, 2026-11-04, which reverses the "no rows of phases" of ENG-1230).
+_Avoid_: Retradução, `retroverificacao` as the phase's key (the key is `check`; `retroverificacao` is the **Retroverification file**), Checagem externa as a phase (the listeners' check of a **Version**, which has no card), station (the tablet's stop, which the server is not told), step (the tablet's substate of a station), stage, tab, Etapa
 
 **Moment** (*momento*):
 Where a session's conversation stands in Marcia's flow as the voice last said it: the Familiarização, the Internalização or Articulação of scene n of k, or the Ensaio Final. Read from the lines the Guide spoke, kept per session and per turn with what moved it, served to the Desk and the dossier, and never guessed from the screen (her `momentAtTurnStart`). A session has no moment before the Guide's first line, as a Panorama, and when it was kept before the moment was read; the Desk then says so.
@@ -470,7 +470,7 @@ _Avoid_: clip (her word), take (a take is the team's), comment (a comment is one
 
 **Retroverification file** (`retroverificacao`):
 The facilitator's and the consultant's record of everything the check learned about a passage, one file per passage named after its release identifier, across every session of it: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
-_Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
+_Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose, the Desk's «Retroverificação» card (that is the check **Phase**)
 
 ### Process lines
 
