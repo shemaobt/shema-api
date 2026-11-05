@@ -175,13 +175,12 @@ async def team_standing(
     """The passages of the named Served book, or of the Current book when none is named, as this
     team stands on them, each with its latest release and open findings."""
     whereabouts = (await where_teams_stand(db, project_ids=[project_id]))[project_id]
-    listed = book or whereabouts.book
     releases = await latest_releases(db, project_id)
     findings, drafts = await live_sessions(db, project_id)
     return standing(
         whereabouts.finished,
-        book=listed,
-        here=whereabouts.passage if listed == whereabouts.book else None,
+        book=book or whereabouts.book,
+        here=whereabouts.passage,
         releases=releases,
         approved=await standing_approvals(db, project_id, among=releases),
         findings=findings,

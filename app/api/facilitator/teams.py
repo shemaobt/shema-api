@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.core.exceptions import ConflictError, NotFoundError, UnknownReferenceError
+from app.core.exceptions import BookNotServed, ConflictError, NotFoundError
 from app.core.served_books import SERVED_BOOK_BY_KEY
 from app.models.device import TeamDeviceResponse
 from app.models.internalization_room import (
@@ -179,7 +179,7 @@ async def list_team_pericopes_route(
     if book is None:
         return await team_standing(db, team_id)
     if book not in SERVED_BOOK_BY_KEY:
-        raise UnknownReferenceError(BOOK_NOT_SERVED)
+        raise BookNotServed(BOOK_NOT_SERVED)
     return await team_standing(db, team_id, SERVED_BOOK_BY_KEY[book])
 
 

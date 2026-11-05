@@ -222,6 +222,7 @@ async def test_a_book_the_room_does_not_serve_is_refused_with_422_naming_no_pass
     answered = await the_answer(desk_client, desk, team.id, "genesis")
 
     assert answered.status_code == 422
+    assert answered.json()["code"] == "BOOK_NOT_SERVED"
     named_nowhere = [
         team.id,
         team.name,
@@ -338,7 +339,10 @@ async def test_naming_a_book_writes_nothing(desk_client, db_session, team_at_the
     await having_closed(db_session, team.id, RUTH[0])
     before = await row_counts(db_session)
 
-    for book in ("ruth", "esther", "genesis"):
-        await the_answer(desk_client, desk, team.id, book)
+    statuses = [
+        (await the_answer(desk_client, desk, team.id, book)).status_code
+        for book in ("ruth", "esther", "genesis")
+    ]
 
+    assert statuses == [200, 200, 422]
     assert await row_counts(db_session) == before

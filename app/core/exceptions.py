@@ -74,6 +74,8 @@ ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
 #: A scene label that is not one of the passage's scenes.
 ERROR_CODE_UNKNOWN_SCENE: Final = "UNKNOWN_SCENE"
+#: A book key that names no Served book.
+ERROR_CODE_BOOK_NOT_SERVED: Final = "BOOK_NOT_SERVED"
 #: A frase, restart or send for a scene rehearsal whose send landed: never accepted, never
 #: retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
@@ -443,6 +445,10 @@ class FraseOutOfPlace(ValidationError):
 
 class UnknownScene(ValidationError):
     """A scene label given to a scene rehearsal that is not one of its passage's scenes."""
+
+
+class BookNotServed(ValidationError):
+    """A book key given to the team's pericope listing that names no Served book."""
 
 
 class IdempotencyKeyReused(ValidationError):
@@ -826,6 +832,13 @@ async def handle_unknown_scene(_request: Request, exc: UnknownScene) -> JSONResp
     )
 
 
+async def handle_book_not_served(_request: Request, exc: BookNotServed) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_BOOK_NOT_SERVED),
+    )
+
+
 async def handle_recording_refused(_request: Request, exc: RecordingRefused) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -994,6 +1007,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownScene, handle_unknown_scene)  # type: ignore[arg-type]
+    app.add_exception_handler(BookNotServed, handle_book_not_served)  # type: ignore[arg-type]
     app.add_exception_handler(RecordingRefused, handle_recording_refused)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
     app.add_exception_handler(RehearsalJoined, handle_rehearsal_joined)  # type: ignore[arg-type]
