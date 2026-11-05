@@ -1,9 +1,10 @@
 """The Desk's entry screen and the panels behind it, all addressed by team.
 
 Three reads and no writes. The work queue, the team's necklace for one passage, and the
-passages of the book the team is in with its position on each. Where a team stands is answered
-by one resolution (`services/internalization_room/progression.py`) rather than by each route
-working it out, which is what "one source of truth for where is this team" costs in practice:
+passages of the named Served book, or of the Current book when none is named, with the team's
+position on each. Where a team stands is answered by one resolution
+(`services/internalization_room/progression.py`) rather than by each route working it out,
+which is what "one source of truth for where is this team" costs in practice:
 the queue used to read the most recent session that named a passage and the necklace used to
 make the caller say, and the two could disagree on a team that had worked a passage over two
 evenings.
@@ -16,10 +17,11 @@ act on one device live under ``/api/facilitator/devices`` and this one is addres
 team it belongs to, so the two routers have disjoint prefixes and nothing depends on the
 order they are mounted in.
 
-Every refusal here is a 404 with one message, whether the team does not exist or is not
+Every refusal of a team is a 404 with one message, whether the team does not exist or is not
 the caller's. That is the same rule ENG-443 holds at the claim: a facilitator who could
 tell "not yours" from "no such thing" could map an installation by asking about ids, and
-closing that at one door and leaving it open at another closes nothing.
+closing that at one door and leaving it open at another closes nothing. A book that is not
+served is refused after that gate, with a 422 (`BookNotServed`).
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -27,7 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import BookNotServed, ConflictError, NotFoundError
+from app.core.served_books import SERVED_BOOK_BY_KEY
 from app.models.device import TeamDeviceResponse
 from app.models.internalization_room import (
     ElementCoverage,
@@ -46,6 +49,7 @@ from app.services.project.reads_project import reads_project
 facilitator_teams_router = APIRouter()
 
 TEAM_NOT_FOUND = "Team not found"
+BOOK_NOT_SERVED = "That book is not served"
 
 
 @facilitator_teams_router.get("", response_model=TeamListingResponse)
@@ -153,9 +157,14 @@ async def read_team_coverage_route(
 async def list_team_pericopes_route(
     team_id: str,
     user: ReaderUser,
+    book: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> list[PericopeStanding]:
-    """The current book's passages in the canon's order, each already placed for this team.
+    """The passages of the Served book named by its key, or of the Current book when none is
+    named, in the canon's order, each already placed for this team.
+
+    The key is checked after the team gate and not by the query's type, which would answer a
+    reader who may not read the team with 422 before the gate could answer 404.
 
     It answers positions and not a list. A screen given the passages and the team's active
     passage would have to work out closed from current from future itself, which is a second
@@ -169,7 +178,11 @@ async def list_team_pericopes_route(
     if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
-    return await team_standing(db, team_id)
+    if book is None:
+        return await team_standing(db, team_id)
+    if book not in SERVED_BOOK_BY_KEY:
+        raise BookNotServed(BOOK_NOT_SERVED)
+    return await team_standing(db, team_id, SERVED_BOOK_BY_KEY[book])
 
 
 @facilitator_teams_router.get("/{team_id}/sessions", response_model=list[TeamSessionResponse])

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; amended by ENG-2188: `/pericopes` takes an optional served book's key and still answers the Current book with none
 date: 2026-10-22
 ---
 
@@ -56,3 +56,8 @@ Rejected:
   have no passage to open on, and an open with no passage would answer 409 to a team with work
   left.
 - Approved as the meaning of complete. The glossary keeps the two apart.
+
+**Amended on 5 November 2026 (ENG-2188): `/pericopes` answers the served book the reader names.**
+The route takes an optional `book`, a served book's key, and answers that book's passages, each
+placed for this team. With no `book` it still answers the Current book's passages, with the same
+shape. It answers one book at a time, so the rejected option, every book at once, stands.
