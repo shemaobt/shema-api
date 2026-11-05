@@ -21,9 +21,9 @@ from typing import NamedTuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.auth import User
 from app.db.models.resource_request import RRDecision, RREvaluation, RRRequest, RRSnapshot
 from app.services.resource_request._editing import Edits
+from app.services.resource_request._names import display_names_of
 
 
 class CardFacts(NamedTuple):
@@ -63,18 +63,11 @@ async def _decisions(db: AsyncSession, ids: list[str]) -> dict[str, RRDecision |
     return dict(rows.tuples().all())
 
 
-async def _starter_names(db: AsyncSession, ids: set[str]) -> dict[str, str | None]:
-    if not ids:
-        return {}
-    rows = await db.execute(select(User.id, User.display_name).where(User.id.in_(ids)))
-    return dict(rows.tuples().all())
-
-
 async def cards_of(db: AsyncSession, rows: Sequence[RRRequest], editing: Edits) -> list[CardFacts]:
     """The card facts of ``rows``, in their order, from two statements whatever their count."""
     decisions = await _decisions(db, [row.id for row in rows])
     starters = {row.started_by for row in rows if is_open(row) and row.started_by is not None}
-    names = await _starter_names(db, starters)
+    names = await display_names_of(db, starters)
     facts = []
     for row in rows:
         open_ = is_open(row)
