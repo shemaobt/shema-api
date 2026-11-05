@@ -26,6 +26,7 @@ router = APIRouter(tags=["resource requests"])
 async def read_request_history(
     request_id: str, user: CanEditRequests, db: Db
 ) -> list[FieldChangeOut]:
-    """Every recorded change of this request's fields, oldest first."""
-    rows = await service.list_request_history(db, request_id, user, APP_KEY)
-    return [FieldChangeOut.of(row) for row in rows]
+    """Every recorded change of this request's fields, oldest first — the author named
+    today, by ``display_name`` (OBT-685)."""
+    changes = await service.list_request_history(db, request_id, user, APP_KEY)
+    return [FieldChangeOut.of(change) for change in changes]

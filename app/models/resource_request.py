@@ -54,7 +54,6 @@ from app.db.models.resource_request import (
     RREvaluationScore,
     RRMovementKind,
     RRRequest,
-    RRRequestFieldHistory,
     RRRequestLink,
     RRRequestType,
     RRStage,
@@ -86,6 +85,7 @@ if TYPE_CHECKING:
     # Only for the annotation: a runtime import circles back through the services
     # package's ``__init__``, which imports this module.
     from app.services.resource_request._evaluation import Attendee
+    from app.services.resource_request.list_request_history import AuthoredChange
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)
 
@@ -704,27 +704,33 @@ class FieldChangeOut(BaseModel):
     after — so a client renders them as it renders the document, with no type map on the
     side. ``None`` against ``""`` keeps the contract's distinction: a field that had no
     value at all against one that was asked and left blank. ``changed_by`` is a user id
-    and deliberately not a resolved name: the trail is append-only and a name is not — it
-    is resolved at display time, so a rename does not contradict the record.
+    and deliberately not a resolved name: the trail is append-only and a name is not — so
+    ``changed_by_name`` is resolved at read time, beside the id and never in its place, and
+    a rename does not contradict the record (OBT-685). It is the ``display_name`` and never
+    the e-mail — the team reads this trail — and ``None`` when the account has none.
 
     **Exactly one of ``changed_by`` and ``changed_by_link_id`` is set** (BE-26, OBT-537): a
-    request filled by the Admin's link was typed by the link's holder, who has no account.
+    request filled by the Admin's link was typed by the link's holder, who has no account —
+    and so no ``changed_by_name`` either.
     """
 
     field_key: str
     old_value: str | None
     new_value: str | None
     changed_by: str | None
+    changed_by_name: str | None
     changed_by_link_id: str | None
     changed_at: datetime
 
     @classmethod
-    def of(cls, row: RRRequestFieldHistory) -> Self:
+    def of(cls, change: "AuthoredChange") -> Self:
+        row = change.row
         return cls(
             field_key=row.field_key,
             old_value=row.old_value,
             new_value=row.new_value,
             changed_by=row.changed_by,
+            changed_by_name=change.changed_by_name,
             changed_by_link_id=row.changed_by_link_id,
             changed_at=row.changed_at,
         )
