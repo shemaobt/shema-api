@@ -16,6 +16,13 @@ class DeskSessionState(StrEnum):
     NEEDS_PERSON = "needs_person"
 
 
+class Phase(StrEnum):
+    CONVERSATION = "conversation"
+    REHEARSAL = "rehearsal"
+    TELLING_BACK = "telling_back"
+    CHECK = "check"
+
+
 class DeskSession(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -30,6 +37,7 @@ class DeskSession(BaseModel):
     last_activity_at: datetime
     scene: str | None
     moment: MomentView | None
+    phase: Phase
     ended_at: datetime | None
     attended_at: datetime | None
     attended_by: str | None
