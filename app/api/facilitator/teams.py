@@ -1,9 +1,10 @@
 """The Desk's entry screen and the panels behind it, all addressed by team.
 
 Three reads and no writes. The work queue, the team's necklace for one passage, and the
-passages of the book the team is in with its position on each. Where a team stands is answered
-by one resolution (`services/internalization_room/progression.py`) rather than by each route
-working it out, which is what "one source of truth for where is this team" costs in practice:
+passages of the named Served book, or of the Current book when none is named, with the team's
+position on each. Where a team stands is answered by one resolution
+(`services/internalization_room/progression.py`) rather than by each route working it out,
+which is what "one source of truth for where is this team" costs in practice:
 the queue used to read the most recent session that named a passage and the necklace used to
 make the caller say, and the two could disagree on a team that had worked a passage over two
 evenings.
@@ -16,10 +17,11 @@ act on one device live under ``/api/facilitator/devices`` and this one is addres
 team it belongs to, so the two routers have disjoint prefixes and nothing depends on the
 order they are mounted in.
 
-Every refusal here is a 404 with one message, whether the team does not exist or is not
+Every refusal of a team is a 404 with one message, whether the team does not exist or is not
 the caller's. That is the same rule ENG-443 holds at the claim: a facilitator who could
 tell "not yours" from "no such thing" could map an installation by asking about ids, and
-closing that at one door and leaving it open at another closes nothing.
+closing that at one door and leaving it open at another closes nothing. A book that is not
+served is refused after that gate, with a 422 (`BookNotServed`).
 """
 
 from fastapi import APIRouter, Depends, Query

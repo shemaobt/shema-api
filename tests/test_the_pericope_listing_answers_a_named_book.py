@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import Base
 from app.db.models.internalization_room import IRSession
 from app.services.auth.issue_tokens import issue_tokens
 from app.services.internalization_room.canon.elements import element_keys
@@ -126,8 +127,6 @@ def every_passage(passages: list[str], position: str) -> dict[str, str]:
 
 
 async def row_counts(db: AsyncSession) -> dict[str, int]:
-    from app.core.database import Base
-
     return {
         table.name: (await db.execute(select(func.count()).select_from(table))).scalar_one()
         for table in Base.metadata.sorted_tables
