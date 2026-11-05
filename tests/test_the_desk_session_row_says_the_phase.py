@@ -29,6 +29,7 @@ LOST_CANON = "c" * 40
 FAMILIARIZATION = {"at": "familiarization"}
 ARTICULATION = {"at": "articulation", "part": 1, "fenced": False}
 ENSAIO_FINAL = {"at": "ensaio_final"}
+SEND_OFF = "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
 
 
 @pytest.fixture()
@@ -259,6 +260,41 @@ async def test_a_session_whose_canon_is_not_kept_with_a_told_stretch_reads_telli
     await db_session.commit()
 
     assert await the_phase(client, headers) == "telling_back"
+
+
+async def test_a_session_whose_canon_is_not_kept_with_no_told_stretch_reads_conversation(
+    client, db_session
+):
+    team, headers = await a_facilitated_team(db_session)
+    session = await a_session(db_session, team)
+    await the_moment_is(db_session, session, ENSAIO_FINAL)
+    session.canon_pin = LOST_CANON
+    await db_session.commit()
+
+    assert await the_phase(client, headers) == "conversation"
+
+
+async def test_a_session_with_no_guide_line_reads_conversation(client, db_session):
+    team, headers = await a_facilitated_team(db_session)
+    session = await a_session(db_session, team)
+    session.messages = [line for line in session.messages if line["role"] != "guide"]
+    await db_session.commit()
+
+    assert await the_phase(client, headers) == "conversation"
+
+
+async def test_a_session_kept_before_moments_its_send_off_given_reads_conversation(
+    client, db_session
+):
+    team, headers = await a_facilitated_team(db_session)
+    session = await a_session(db_session, team)
+    session.messages = [
+        *[line for line in session.messages if line["role"] != "guide"],
+        {"role": "guide", "text": SEND_OFF},
+    ]
+    await db_session.commit()
+
+    assert await the_phase(client, headers) == "conversation"
 
 
 async def test_a_session_whose_passage_was_released_by_another_session_reads_its_own_phase(
