@@ -42,8 +42,10 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.resource_requests._deps import (
     APP_KEY,
+    CanManageFunds,
     Db,
     ReaderReadsFunds,
+    ReadsFunds,
     RequestReader,
     TeamWriter,
     WriterReadsFunds,
@@ -52,6 +54,7 @@ from app.api.shema._deps import APP_KEY as SHEMA_APP_KEY
 from app.core.auth_middleware import get_current_user
 from app.db.models.auth import User
 from app.models.resource_request import (
+    BoardCardOut,
     DiscardedOut,
     EndorsementResentOut,
     RequestCardOut,
@@ -148,6 +151,19 @@ async def list_request_cards(reader: RequestReader, db: Db) -> list[RequestCardO
     reads, and the same projection the PME's project page reads. Declared before
     ``/requests/{request_id}`` so ``cards`` is never taken for an id."""
     return _cards(await service.cards_for(db, reader, APP_KEY))
+
+
+@router.get("/requests/board")
+async def list_board_cards(
+    user: CanManageFunds, db: Db, reads_funds: ReadsFunds
+) -> list[BoardCardOut]:
+    """``GET /requests``' rows minus the drafts, drawn as the Painel's cards, with the five
+    answers and the type the card shows — in one read for the whole board (OBT-667). A draft
+    is not on the board, so it gets no card. Behind ``manage_funds``, the Painel's own door:
+    the team never reads the board. Declared before ``/requests/{request_id}`` so ``board``
+    is never taken for an id."""
+    cards = await service.list_board_cards(db, user, APP_KEY)
+    return [BoardCardOut.of(card, reads_funds=reads_funds) for card in cards]
 
 
 @router.get("/projects/{project_id}/requests")

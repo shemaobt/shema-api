@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     # Only for the annotation: a runtime import circles back through the services
     # package's ``__init__``, which imports this module.
     from app.services.resource_request._evaluation import Attendee
+    from app.services.resource_request.list_board_cards import BoardCard
     from app.services.resource_request.list_request_history import AuthoredChange
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)
@@ -239,6 +240,72 @@ class BoardMemberOut(BaseModel):
     id: str
     display_name: str | None
     email: str
+
+
+class BoardCardOut(BaseModel):
+    """A request as the Painel's card — OBT-667 (RRF-MESA-084), read by `GET /requests/board`.
+
+    **Exactly what the card draws, and nothing else**: ``reg_name`` (A0), ``tpp_name`` (the
+    solicitante, Part B section 11), ``lang_name`` and ``people_name`` (the two chips),
+    ``amount_requested`` with its ``currency``, ``stage`` (the column), ``fund_id`` (the fund
+    chip) and ``request_type`` — the two doors on the card, *Abrir avaliação* (FE-37) and
+    *Abrir revisão em nome da equipe* (FE-47), are drawn only with the id **and** the type, and
+    the type used to come from the per-card read this route retires. Nothing of the evaluation —
+    the badge is ``GET /evaluation-totals``'s — and nothing of the instance. Submitted requests
+    only: a draft is not on the board (``list_board_cards``). The reader already reads every
+    one of these through ``GET /requests/{id}``; this shape only stops the Painel from asking
+    once per card.
+
+    **Not ``RequestCardOut``**, deliberately: that card is read by the team, the tracking list and
+    the PME's coordinators, and a language and a people on it would have to pass the PME's
+    sensitive-project rule. This one is read behind ``manage_funds`` alone.
+
+    ``fund_id`` follows ``RequestOut``'s rule byte for byte — set only for a caller holding
+    ``manage_funds`` and dropped from the wire otherwise — even though the route's guard is that
+    same capability: the rule lives on the shape so a route that reuses it later cannot serve the
+    column by forgetting to think about it. ``extra="forbid"`` is the guard that holds when a later
+    change tries to widen it. The field list is ours (Daniel, 05/nov/2026), not the client's.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    request_type: RRRequestType
+    stage: RRStage
+    fund_id: str | None = None
+    reg_name: str
+    tpp_name: str
+    lang_name: str
+    people_name: str
+    amount_requested: Decimal | None
+    currency: RRCurrency
+
+    @model_serializer(mode="wrap")
+    def _the_fund_is_absent_from_who_may_not_read_it(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """``RequestOut``'s serializer, for the same reason: unset and *not yours* are one state."""
+        data: dict[str, Any] = handler(self)
+        if "fund_id" not in self.model_fields_set:
+            data.pop("fund_id", None)
+        return data
+
+    @classmethod
+    def of(cls, card: "BoardCard", *, reads_funds: bool) -> Self:
+        request = card.request
+        fund = {"fund_id": request.fund_id} if reads_funds else {}
+        return cls(
+            id=request.id,
+            request_type=request.request_type,
+            stage=request.stage,
+            **fund,
+            reg_name=request.reg_name,
+            tpp_name=request.tpp_name,
+            lang_name=card.lang_name,
+            people_name=card.people_name,
+            amount_requested=request.amount_requested,
+            currency=request.currency,
+        )
 
 
 class EvaluationTotalOut(BaseModel):
