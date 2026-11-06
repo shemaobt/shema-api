@@ -92,16 +92,24 @@ def matching(
     ]
 
 
-def as_work_queue(teams: list[FacilitatorTeamView]) -> list[FacilitatorTeamView]:
-    """Most open hands first, and among teams level on hands the one that spoke most recently.
+def as_work_queue(teams: list[FacilitatorTeamView], halted: set[str]) -> list[FacilitatorTeamView]:
+    """Teams with an open hand or a halt first, each group by who spoke most recently.
 
-    A team that has never acted sorts last rather than first. It is the least urgent thing on
-    the screen and a null read as "the beginning of time" would put it at the top.
+    How many things wait does not place a team: the list is not a ranking.
+
+    A team that has never acted sorts last in its group rather than first. A null read as "the
+    beginning of time" would put the least urgent thing on the screen at the top.
+
+    Level teams come by name. The id comes last only because names are not unique and the
+    order must hold across reads.
     """
     return sorted(
         teams,
         key=lambda team: (
-            -team.open_raised_hands,
+            not (team.open_raised_hands > 0 or team.team_id in halted),
             -(team.last_activity_at.timestamp() if team.last_activity_at else float("-inf")),
+            folded(team.name),
+            team.name,
+            team.team_id,
         ),
     )

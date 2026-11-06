@@ -447,28 +447,6 @@ async def test_a_hand_raised_since_keeps_a_team_out_of_stalled(client, db_sessio
 # Behaviour 4 — the order is the product decision, so it is served.
 
 
-async def test_the_queue_is_ordered_by_open_hands_then_by_recent_activity(client, db_session):
-    quiet = await a_team(db_session, name="Silenciosa")
-    busy = await a_team(db_session, name="Duas maos")
-    recent = await a_team(db_session, name="Uma mao recente")
-    older = await a_team(db_session, name="Uma mao antiga")
-
-    await a_raised_hand(db_session, busy)
-    await a_raised_hand(db_session, busy)
-    await a_raised_hand(db_session, recent, when=datetime.now(UTC) - timedelta(days=1))
-    await a_raised_hand(db_session, older, when=datetime.now(UTC) - timedelta(days=10))
-    await a_session(db_session, quiet)
-
-    _user, headers = await a_facilitator(db_session, quiet, busy, recent, older)
-
-    assert named((await client.get(TEAMS_URL, headers=headers)).json()) == [
-        "Duas maos",
-        "Uma mao recente",
-        "Uma mao antiga",
-        "Silenciosa",
-    ]
-
-
 async def test_a_team_that_has_never_acted_sorts_last_rather_than_first(client, db_session):
     never = await a_team(db_session, name="Nunca se reuniu")
     long_quiet = await a_team(db_session, name="Calada ha muito")

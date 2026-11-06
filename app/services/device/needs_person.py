@@ -32,7 +32,7 @@ follow-up, and the two halves now drain the same way.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import ColumnElement, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
@@ -131,6 +131,10 @@ async def clear_needs_person(db: AsyncSession, device_id: str) -> None:
     await db.commit()
 
 
+def a_tablet_waits() -> ColumnElement[bool]:
+    return and_(Device.needs_person_since.is_not(None), Device.unlinked_at.is_(None))
+
+
 async def devices_waiting_on_a_person(
     db: AsyncSession, project_ids: list[str] | None
 ) -> list[Device]:
@@ -147,8 +151,7 @@ async def devices_waiting_on_a_person(
     rows = await db.execute(
         select(Device)
         .where(
-            Device.needs_person_since.is_not(None),
-            Device.unlinked_at.is_(None),
+            a_tablet_waits(),
             confined_to(Device.project_id, project_ids),
         )
         .order_by(Device.needs_person_since.desc())

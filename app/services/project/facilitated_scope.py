@@ -5,7 +5,7 @@ them drift is the day one route shows what another hides.
 
 Reads and writes have one scope each. A read reaches ``readable_projects`` and
 ``readable_project_ids``: every team for a platform admin or a consultant (ADR 0058), the
-teams they facilitate for anyone else. ``list_facilitator_teams`` restricts five subqueries
+teams they facilitate for anyone else. ``list_facilitator_teams`` restricts seven subqueries
 with the first; the inbox, the person queue and the Desk's sessions list restrict a page with
 the second. A write reaches the teams ``writable_project_ids`` names — the facilitator role,
 then a facilitator link — and no write calls a ``readable_*``.

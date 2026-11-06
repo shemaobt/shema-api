@@ -28,7 +28,7 @@ facilitates: a hand on a team they only read is not theirs to answer.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, func, select, union_all
+from sqlalchemy import Select, func, select, union, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Subquery
 
@@ -50,9 +50,11 @@ from app.models.team import (
     TeamFilter,
     TeamListingResponse,
 )
+from app.services.device.needs_person import a_tablet_waits
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.halt import a_room_waits
 from app.services.internalization_room.latest_by_passage import drafts_on
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import TeamWhereabouts, where_teams_stand
@@ -127,8 +129,24 @@ def _device_count_subquery(scope: Select | None) -> Subquery:
     )
 
 
+def _halted_teams_subquery(scope: Select | None) -> Subquery:
+    """The teams with a room or a tablet waiting, read as the person queue reads them.
+
+    A ``union`` and not a ``union_all``: one row per team, so the join multiplies no card.
+    """
+    return union(
+        select(IRSession.project_id.label("project_id")).where(
+            a_room_waits(), live(), _within(IRSession.project_id, scope)
+        ),
+        select(Device.project_id.label("project_id")).where(
+            a_tablet_waits(), _within(Device.project_id, scope)
+        ),
+    ).subquery()
+
+
 def team_cards(scope: Select | None) -> Select:
-    """Everything a team's card draws, for as many teams as the scope allows.
+    """Everything a team's card draws and whether a halt places it, for as many teams as the
+    scope allows.
 
     One statement, and **one place**. The queue and the single team's route answer the same
     fields to the same screen, and a second copy of this select would agree with it only for
@@ -145,6 +163,7 @@ def team_cards(scope: Select | None) -> Select:
     activity = _last_activity_subquery(scope)
     hands = _open_hands_subquery(scope)
     devices = _device_count_subquery(scope)
+    halted = _halted_teams_subquery(scope)
 
     query = (
         select(
@@ -154,11 +173,13 @@ def team_cards(scope: Select | None) -> Select:
             func.coalesce(hands.c.open_hands, 0).label("open_hands"),
             func.coalesce(devices.c.device_count, 0).label("device_count"),
             activity.c.last_activity_at,
+            halted.c.project_id.is_not(None).label("has_a_halt"),
         )
         .join(Language, Language.id == Project.language_id)
         .outerjoin(activity, activity.c.project_id == Project.id)
         .outerjoin(hands, hands.c.project_id == Project.id)
         .outerjoin(devices, devices.c.project_id == Project.id)
+        .outerjoin(halted, halted.c.project_id == Project.id)
     )
     if scope is not None:
         query = query.where(Project.id.in_(scope))
@@ -227,7 +248,10 @@ async def list_facilitator_teams(
     ]
 
     return TeamListingResponse(
-        teams=as_work_queue(matching(every_team, search=search, chosen=chosen)),
+        teams=as_work_queue(
+            matching(every_team, search=search, chosen=chosen),
+            halted={row.id for row in rows if row.has_a_halt},
+        ),
         serves_any_team=bool(every_team),
         open_hands_total=sum(team.open_raised_hands for team in every_team if team.facilitates),
     )
