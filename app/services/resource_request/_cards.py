@@ -30,6 +30,11 @@ class CardFacts(NamedTuple):
     """What a card is built from — the row, plus the three answers the row cannot give."""
 
     request: RRRequest
+    #: The A0 as this reader reads it — the row's own, unless the project's place is withheld
+    #: from the reader, when ``list_project_requests`` replaces it by the name the PME prints
+    #: for a sensitive project (OBT-688). Kept beside the row rather than written over it: the
+    #: row is the session's, and a redaction must never reach the database.
+    reg_name: str
     decision: RRDecision | None
     #: Whether this is the instance being filled in — ``is_open``, decided here once, so the
     #: card cannot say *not open* while still naming who is filling it in (PR #574, review).
@@ -74,6 +79,7 @@ async def cards_of(db: AsyncSession, rows: Sequence[RRRequest], editing: Edits) 
         facts.append(
             CardFacts(
                 request=row,
+                reg_name=row.reg_name,
                 decision=decisions.get(row.id),
                 open=open_,
                 can_edit=editing.can_edit(row),

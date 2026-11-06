@@ -912,6 +912,27 @@ draws cards should not have to carry documents to do it.
 - **The route asks for a session and nothing else**, the one route in this module shaped so: the
   module's own gate (`_app_member`) would refuse a regional coordinator who holds no role in the
   form, and that coordinator is exactly who this read is for.
+- **A sensitive project's cards name nothing to whoever reads the project redacted** (OBT-688, A-02
+  of INT-12 — **Daniel, 6/nov/2026: redact, do not refuse**; the Rastro's bench of 6/nov found the
+  OBT Lab reading the A0 and the starter of every request of the Árabe Saídi while the PME's ficha
+  gave it `languageName: "africa"`). `reg_name` is the team's own text and in practice names the
+  language; `started_by_name` is a person. So `list_project_requests` asks the PME's own rule —
+  `Readership.reader_of(project.region_key)` from `readership(...)` and `reads_the_truth`, both
+  imported from `app/services/shema/` and never copied — and hands the cards **whole** to the
+  readers of the truth: the board roles and the platform admin (who read the whole request anyway,
+  OBT-571, OBT-568), a live member of the project, and a PME reader the region makes `coordination`
+  or `trusted` (the coordinator of the region; the Resource Circle, OBT-571). Whoever reaches the
+  project and reads it as `other` — the OBT Lab, by Daniel's decision of 7/oct/2026 — gets every
+  card with the journey and the instance intact (`stage`, `decision`, `amount_requested`, `open`,
+  `can_edit`, …), the A0 replaced by **the name the PME prints that reader for the project** — the
+  public name coordination registered, else *Projeto sensível — África* (`language_name_for` +
+  `printed_name`, in Portuguese like the rest of this module's text) — and `started_by_name` null.
+  A project that is not sensitive changes nothing; `RequestCardOut` gains no field, and the name
+  travels as read in `CardFacts.reg_name`, beside the row and never written over it. The form's
+  own lists (`GET /requests`, `/cards`) are behind the module's door the OBT Lab does not pass, and
+  are untouched. Out of scope, named in the issue: the person's name the PME itself still shows the
+  redacted reader (A-05, `docs/shema.md`). `test_sensitive_project_cards.py` holds the matrix role
+  by role.
 - **The Painel's cards are a third read, `GET /requests/board`** (OBT-667, RRF-MESA-084 — ours,
   Daniel, 05/nov/2026). `GET /requests` serves the spine with `document: {}` on purpose, and the
   Painel's card draws five answers of that document — `reg_name`, `tpp_name` (the solicitante),

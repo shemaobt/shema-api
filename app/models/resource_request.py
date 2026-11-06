@@ -533,6 +533,13 @@ class RequestCardOut(BaseModel):
     No place and no base: a sensitive project's location is the PME's to read, not a request
     card's. ``extra="forbid"`` is the guard that holds, and ``test_cards.py`` proves it on the
     payload rather than on a screen. The choice of fields is ours, not the client's.
+
+    **And no name either, for whoever reads the project redacted** (OBT-688, A-02 of INT-12):
+    ``reg_name`` is the team's own text and in practice names the language, and
+    ``started_by_name`` is a person — so on a sensitive project both leave only to a reader of
+    the truth, and ``GET /projects/{id}/requests`` hands everybody else the PME's generic name
+    and no starter. The shape itself does not decide that: ``list_project_requests`` does, and
+    passes the name as read.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -557,6 +564,7 @@ class RequestCardOut(BaseModel):
         cls,
         request: RRRequest,
         *,
+        reg_name: str,
         decision: RRDecision | None,
         open: bool,
         can_edit: bool,
@@ -566,10 +574,13 @@ class RequestCardOut(BaseModel):
 
         ``open`` arrives decided rather than recomputed here: the service decides it once and
         names the starter from the same answer, so the two cannot disagree (PR #574, review).
+        ``reg_name`` arrives the same way (OBT-688): the service says what this reader may read
+        as the A0 — the row's own, or the PME's generic name for a sensitive project — so the
+        shape cannot reach past the service for the row's text.
         """
         return cls(
             id=request.id,
-            reg_name=request.reg_name,
+            reg_name=reg_name,
             request_type=request.request_type,
             amount_requested=request.amount_requested,
             currency=request.currency,
