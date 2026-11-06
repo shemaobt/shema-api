@@ -109,10 +109,10 @@ async def list_project_requests(
     facts = await cards_of(db, list(rows.scalars().all()), editing)
     if truth or member:
         return facts
-    return as_read_by_other(facts, project, reader)
+    return _as_read_by_other(facts, project, reader)
 
 
-def as_read_by_other(
+def _as_read_by_other(
     facts: list[CardFacts], project: ShemaProject, reader: ShemaReader
 ) -> list[CardFacts]:
     """The cards of a withheld project for a reader of the region rather than the place.

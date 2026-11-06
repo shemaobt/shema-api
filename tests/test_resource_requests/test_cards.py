@@ -16,6 +16,7 @@ from app.db.models.shema_enums import ShemaRegionKey
 from app.models.resource_request import RequestCardOut
 from tests.baker import make_user
 from tests.resource_request_harness import (
+    PROJECT_CARDS_OF,
     REQUESTS,
     as_team,
     decide,
@@ -27,7 +28,7 @@ from tests.resource_request_harness import (
 )
 from tests.test_resource_requests.conftest import auth_header
 
-PROJECT = "kadiweu"
+PROJECT = PROJECT_CARDS_OF
 CARDS = f"{REQUESTS}/cards"
 EVALUATION_KEYS = {"scores", "comments", "evaluator_id", "attendees", "team_note", "total"}
 
