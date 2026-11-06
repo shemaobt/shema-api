@@ -1,38 +1,23 @@
 """``Cache-Control: private, no-store`` on every answer under ``/api/resource-requests`` (OBT-689).
 
-Every answer of this module is built for its reader — the document of the request (names, place,
-team, contacts), the evaluation, the board, a project's cards, the link session — so a body a
-browser or a proxy kept would be served to the next reader of the same URL. The PME's module has
-said so since OBT-555 (``PER_READER_CACHE_CONTROL``, ``app/api/shema/_deps.py``); the adversarial
-pass of INT-12 (A-03, 6/nov/2026) measured this module answering with no ``Cache-Control`` at all.
+Every answer here is built for its reader, so a body a browser or a proxy kept would be served
+to the next reader of the same URL — ``docs/resource_requests.md`` §3 has the finding (A-03 of
+INT-12) and the rule. What the code cannot say for itself:
 
-**Why a middleware and not the ``Depends`` the Shemá module carries.** A router dependency writes
-on the ``Response`` FastAPI builds for a handler that returns a model, and on nothing else: a
-handler that returns a ``Response`` of its own (``endorse.py`` and ``link_public.py`` answer 410
-and 403 that way) is served as it is, and an answer built by an exception handler — the 401 of a
-missing session, the 403 of a missing capability, the 404, the 409 of a second open instance, the
-422 — never passes through the dependency. Those errors say less than a 200, but a 404 that one
-reader got cached over another reader's 200 is still the wrong body at the wrong screen. The
-middleware sits on the ASGI ``send``, where every answer of the application passes, including
-the error envelopes of ``app/core/exceptions.py`` (``ExceptionMiddleware`` is inside it; only the
-500 of ``ServerErrorMiddleware`` is outside, and that one carries no record).
-
-**Scoped, and never overwriting.** ``app/main.py`` is shared by every application in this
-repository, so the middleware answers for this prefix alone and leaves every other path untouched;
-and it adds the header only when the answer carries none, so a route that one day states its own
-freshness — an attachment served through a signed address, say — keeps what it wrote. Today no
-route under the prefix writes one: the attachment's ``GET`` answers metadata plus a short-lived
-signed URL as JSON, and the signed address itself is the bucket's answer, not this server's.
-
-``tests/test_resource_requests/test_cache_control.py`` reads the header off the wire for every
-route the application mounts under the prefix, errors included.
+* **A middleware, not the router ``Depends`` the Shemá module carries**, because a dependency
+  writes only on the ``Response`` FastAPI builds for a handler that returns a model — never on a
+  handler's own ``JSONResponse`` (``endorse.py``, ``link_public.py``) nor on the 401/403/404/409/
+  422 the exception handlers build, and the adversarial pass measured those too. On the ASGI
+  ``send`` every answer passes; only the 500 of ``ServerErrorMiddleware`` sits outside.
+* **Scoped and never overwriting**: ``app/main.py`` is every application's, so the rule holds for
+  this prefix alone, and a route that states its own freshness one day keeps what it wrote.
 """
 
 from __future__ import annotations
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-#: The module's own copy of the rule the PME's module states, so neither file depends on the other.
+#: The module's own copy of the Shemá module's rule, so neither file depends on the other.
 PER_READER_CACHE_CONTROL = "private, no-store"
 
 #: Where ``app/main.py`` mounts the module and its access doors (``/api/resource-requests/access``).

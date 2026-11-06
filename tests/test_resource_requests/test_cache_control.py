@@ -1,25 +1,9 @@
 """No answer of this module is kept by a cache — OBT-689 (A-03 of INT-12), read off the wire.
 
-Every answer under ``/api/resource-requests`` is built for its reader: the request's document,
-the board, a project's cards, the trail, the evaluation, the link session. A body a browser or
-a proxy stored is therefore the next reader's body, so every one of them says
-``private, no-store`` — the errors too, because a 404 one reader got, cached over another's 200,
-is still the wrong body at the wrong screen.
-
-Three nets:
-
-1. **The wiring.** Every route the application mounts under the prefix is one the middleware
-   covers, and the middleware is on the application ``app/main.py`` builds — so a route added
-   tomorrow inherits the header without its author knowing the rule exists.
-2. **The wire, every route.** Every route under the prefix, whatever its method, is called with
-   no session and a made-up id, and whatever answers — 401, 404, 405, 422 — carries the header.
-   This is the sweep that fails the day a route escapes the mechanism.
-3. **The wire, the readers' answers.** The representative 200s the finding named, each read by
-   the account that may read it, and the four refusals the module answers most, each built by
-   an exception handler the Shemá module's ``Depends`` never reaches.
-
-Called through ``create_app()`` and not through the module's test application, so the header is
-the one that leaves the server, after every middleware ``app/main.py`` stacks on it.
+Three nets, through ``create_app()`` so the header is the one that leaves the server: the wiring
+(every route under the prefix is one the middleware covers), the wire for every route (each
+method, no session, a made-up id — the refusals a router ``Depends`` never reaches), and the wire
+for the readers' answers the finding named.
 """
 
 from __future__ import annotations
@@ -86,7 +70,6 @@ async def server(db_session):
 
 
 def test_the_middleware_is_on_the_application_and_covers_every_route_of_the_module() -> None:
-    """The rule is a property of the application, not of each handler remembering it."""
     app = create_app()
     routes = _module_routes(app)
     outside = [route.path for route in routes if not covers(route.path)]
@@ -109,9 +92,6 @@ def test_covers_is_the_prefix_as_a_path_segment_and_not_as_a_string() -> None:
 
 
 async def test_every_route_under_the_prefix_answers_no_store_whatever_the_answer(server) -> None:
-    """The sweep: each route, each method, with no session and ids nobody issued. Nothing here
-    reaches a 200, and that is the point — the refusals are the answers a ``Depends`` on the
-    router would never reach."""
     made_up = str(uuid.uuid4())
     failures = []
     for route in _module_routes(create_app()):
@@ -225,5 +205,4 @@ async def test_a_route_that_states_its_own_freshness_keeps_it(tiny) -> None:
 
 
 async def test_paths_outside_the_prefix_are_left_alone(tiny) -> None:
-    """``app/main.py`` is every application's; the rule is this module's."""
     assert "cache-control" not in (await tiny.get("/api/elsewhere")).headers
