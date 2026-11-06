@@ -14,18 +14,22 @@ from app.db.models.resource_request import RRDecision
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
 from app.models.resource_request import RequestCardOut
-from app.services.shema import set_region_scope
 from tests.baker import make_user
-from tests.resource_request_harness import REQUESTS, as_team, decide, draft
-from tests.test_resource_requests.conftest import auth_header, grant, make_membership
+from tests.resource_request_harness import (
+    REQUESTS,
+    as_team,
+    decide,
+    draft,
+    form_role,
+    member,
+    pme_role,
+    project_cards,
+)
+from tests.test_resource_requests.conftest import auth_header
 
 PROJECT = "kadiweu"
 CARDS = f"{REQUESTS}/cards"
 EVALUATION_KEYS = {"scores", "comments", "evaluator_id", "attendees", "team_note", "total"}
-
-
-def project_cards(project_id: str = PROJECT) -> str:
-    return f"/api/resource-requests/projects/{project_id}/requests"
 
 
 @pytest.fixture()
@@ -34,26 +38,6 @@ async def project(db_session) -> ShemaProject:
     db_session.add(row)
     await db_session.commit()
     return row
-
-
-async def member(db_session, email: str, project_id: str = PROJECT):
-    user = await make_user(db_session, email=email, display_name=email.split("@")[0].title())
-    await make_membership(db_session, user, project_id)
-    return user, await auth_header(db_session, user)
-
-
-async def pme_role(db_session, shema_app, email: str, role: str, regions=None):
-    user = await make_user(db_session, email=email)
-    await grant(db_session, user, shema_app, role)
-    if regions is not None:
-        await set_region_scope(db_session, user.id, regions)
-    return await auth_header(db_session, user)
-
-
-async def form_role(db_session, rrf_app, email: str, role: str):
-    user = await make_user(db_session, email=email)
-    await grant(db_session, user, rrf_app, role)
-    return await auth_header(db_session, user)
 
 
 async def one_sent_one_open(client, db_session):

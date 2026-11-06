@@ -32,7 +32,7 @@ from app.db.models.resource_request import (
 from app.utils import resource_request_vocabularies as v
 from app.utils.jwt import decode_token
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import auth_header, grant
+from tests.test_resource_requests.conftest import auth_header, grant, make_membership
 
 REQUESTS = "/api/resource-requests/requests"
 
@@ -308,3 +308,36 @@ async def holder(db_session, client, email: str = "equipe@fora.org"):
     ).json()
     verified = await client.post(f"{LINK}/{body['token']}/verify", json={"code": body["code"]})
     return admin, body, {"Authorization": f"Bearer {verified.json()['session']}"}
+
+
+# ——— the PME's project page: who reads a project's cards (BE-24, OBT-536; OBT-688) ———————
+
+PROJECT_CARDS_OF = "kadiweu"
+
+
+def project_cards(project_id: str = PROJECT_CARDS_OF) -> str:
+    return f"/api/resource-requests/projects/{project_id}/requests"
+
+
+async def member(db_session, email: str, project_id: str = PROJECT_CARDS_OF):
+    """An account whose only tie to the app is a live membership, named after its address."""
+    user = await make_user(db_session, email=email, display_name=email.split("@")[0].title())
+    await make_membership(db_session, user, project_id)
+    return user, await auth_header(db_session, user)
+
+
+async def pme_role(db_session, shema_app, email: str, role: str, regions=None) -> dict[str, str]:
+    """A PME account holding ``role`` in ``shema_app``, scoped to ``regions`` when given."""
+    from app.services.shema import set_region_scope
+
+    user = await make_user(db_session, email=email)
+    await grant(db_session, user, shema_app, role)
+    if regions is not None:
+        await set_region_scope(db_session, user.id, regions)
+    return await auth_header(db_session, user)
+
+
+async def form_role(db_session, rrf_app, email: str, role: str) -> dict[str, str]:
+    user = await make_user(db_session, email=email)
+    await grant(db_session, user, rrf_app, role)
+    return await auth_header(db_session, user)
