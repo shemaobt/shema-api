@@ -10,13 +10,14 @@ correction of a submitted text is the revision's job, which stays open to her
 (``require_reviser``).
 
 **The Admin is the platform admin or whoever holds this app's ``admin`` role** — the Admin of
-OBT-522, seeded in this app by ``scripts/seed_apps_roles.py``. Both reach the editing routes:
-the platform admin because ``require_capability`` admits it before any table is read, and the
-``admin`` grant because since OBT-568 (Daniel, 6/oct/2026) it carries the Gestor's capabilities
-— ``ADMIN_CAPABILITIES`` **is** ``ROLE_CAPABILITIES["gestor"]``, the same object and never a
-copy, and ``edit_requests`` is in it — so ``CanEditRequests`` lets it through and the pen is
-``require_editor``'s alone, ``started_by`` or the Admin. Until OBT-568 the role carried no
-capability of the frontend's table and only the platform admin got this far.
+OBT-522, seeded in this app by ``scripts/seed_apps_roles.py``. Both reach the editing routes,
+whose guard is ``TeamWriter`` — ``reader_with("edit_requests")`` in ``_deps.py``: the platform
+admin because the resolver admits it before any table is read, and the ``admin`` grant because
+since OBT-568 (Daniel, 6/oct/2026) it carries the Gestor's capabilities — ``ADMIN_CAPABILITIES``
+**is** ``ROLE_CAPABILITIES["gestor"]``, the same object and never a copy, and ``edit_requests``
+is in it, so ``holds_capability`` answers yes. The pen is then ``require_editor``'s alone,
+``started_by`` or the Admin. Until OBT-568 the role carried no capability of the frontend's
+table and only the platform admin got this far.
 
 The refusal is a **403 and not a 404**: the caller can already ``GET`` the instance, so hiding
 its existence here would contradict the read one route over. A cancelled instance answers

@@ -860,10 +860,10 @@ consegue preencher"* — and never Karina's.
   and the attachment. **The mesa and the Gestor read and answer 403 on writing, which revises
   GATE-02 D4 (27/aug/2026)**; the revision is Daniel's, 23/sep/2026. **The `admin` role carries
   the Gestor's capabilities** (OBT-568, 6/oct/2026; `ADMIN_CAPABILITIES` *is*
-  `ROLE_CAPABILITIES["gestor"]`), so `CanEditRequests` lets it through and the pen is
-  `require_editor`'s alone, as the line above says — until OBT-568 the role carried no
-  capability of the frontend's table and only the platform admin reached these routes. Its reach
-  in the **PME** is OBT-593's (Daniel, 19/oct/2026, OBT-592): every region as a
+  `ROLE_CAPABILITIES["gestor"]`), so the writes' guard — `TeamWriter`,
+  `reader_with("edit_requests")` — lets it through and the pen is `require_editor`'s alone, as
+  the line above says — until OBT-568 the role carried no capability of the frontend's table and
+  only the platform admin reached these routes. Its reach in the **PME** is OBT-593's (Daniel, 19/oct/2026, OBT-592): every region as a
   reader, and no project write but access — `docs/shema.md` §6.1.
 - **Submitting** compares the caller with `started_by`, not `created_by` (BE-18 with the right
   subject). The Admin who started an instance for a team submits it; one who did not, does not.
