@@ -52,6 +52,7 @@ from app.api.public import router as public_router
 from app.api.public_requests import router as public_requests_router
 from app.api.rag import router as rag_router
 from app.api.resource_requests import router as resource_requests_router
+from app.api.resource_requests._no_store import NoStoreUnderPrefix
 from app.api.resource_requests.access import router as resource_request_access_router
 from app.api.roles import router as roles_router
 from app.api.shema import router as shema_router
@@ -131,6 +132,10 @@ def create_app() -> FastAPI:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+    # Added first, so it sits innermost: every answer the resource-request module builds passes
+    # through it, the error envelopes included, and the CORS preflight answered outside does not.
+    app.add_middleware(NoStoreUnderPrefix)
 
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")  # type: ignore[arg-type]
 
