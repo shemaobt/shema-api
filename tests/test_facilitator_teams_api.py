@@ -727,6 +727,8 @@ async def test_the_number_of_statements_does_not_grow_with_the_teams(
 
     try:
         small = [await a_team(db_session, name=f"Equipe {n}") for n in range(2)]
+        for team in small:
+            await a_session(db_session, team)
         _user, headers = await a_facilitator(db_session, *small)
         await client.get(TEAMS_URL, headers=headers)
         statements.clear()

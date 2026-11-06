@@ -80,8 +80,8 @@ async def read_team_route(
 ) -> FacilitatorTeamDetail:
     """One team, at the address its three panels already hang off.
 
-    It exists because of the refusal and not because of the cost. The queue answers two
-    statements for fourteen teams and two for one, so a client filtering it would pay the same
+    It exists because of the refusal and not because of the cost. The queue answers the same
+    statements for fourteen teams as for one, so a client filtering it would pay the same
     — what it cannot do is refuse the way ``/devices``, ``/coverage`` and ``/pericopes`` refuse.
     Those answer 404 with an identical body whether the team is absent or merely not the
     caller's, and an empty list answers neither, nor either of them apart from a filter that

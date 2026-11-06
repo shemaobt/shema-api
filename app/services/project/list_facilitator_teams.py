@@ -1,8 +1,9 @@
 """The facilitator's work queue, in one query.
 
 Everything a card draws is answered here: the team, its mother tongue, the passage it is on,
-what state that passage is in, how many hands are waiting, how many devices are linked, and
-when the team last did anything. The client computes none of it.
+the **Phase** of its session there, what state that passage is in, how many hands are waiting,
+how many devices are linked, and when the team last did anything. The client computes none of
+it.
 
 **One statement, whatever the size of the roll.** Counting hands or devices per team would be
 a round trip per row, and a facilitator with fourteen teams would pay for fourteen — on the
@@ -42,6 +43,7 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.language import Language
 from app.db.models.project import Project
+from app.models.internalization_room_desk_sessions import Phase
 from app.models.team import (
     ActivePassageView,
     FacilitatorTeamView,
@@ -51,8 +53,10 @@ from app.models.team import (
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.latest_by_passage import drafts_on
 from app.services.internalization_room.live import live
-from app.services.internalization_room.progression import where_teams_stand
+from app.services.internalization_room.progression import TeamWhereabouts, where_teams_stand
+from app.services.internalization_room.session_phase import phases_of
 from app.services.internalization_room.team_sessions import canon_pins_of
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.facilitated_scope import within as _within
@@ -183,7 +187,9 @@ async def list_facilitator_teams(
     The passage each team is on is resolved in two more statements rather than joined into the
     one above, because whether a passage is finished is the canon's question and not SQL's.
     It is handed the ids these rows already name — why that matters is on ``furthest_by_passage``
-    — and it is two statements for the roll rather than two per card.
+    — and it is two statements for the roll rather than two per card. The **Phase** on each card
+    is the same bargain: one statement to name the sessions on the teams' active passages, four
+    more when one is named, and none when no team stands on a passage.
     """
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
@@ -197,6 +203,7 @@ async def list_facilitator_teams(
             if (pericope := whereabouts[row.id].passage) is not None
         ],
     )
+    phases = await _phases_on_active_passages(db, whereabouts)
     facilitated = await writable_project_ids(db, user)
 
     every_team = [
@@ -205,6 +212,7 @@ async def list_facilitator_teams(
             name=row.name,
             mother_tongue=row.mother_tongue,
             active_passage=_passage(row.id, whereabouts[row.id].passage, pins),
+            phase=phases.get(row.id),
             state=team_state(
                 every_book_closed=whereabouts[row.id].complete,
                 last_activity_at=row.last_activity_at,
@@ -223,6 +231,21 @@ async def list_facilitator_teams(
         serves_any_team=bool(every_team),
         open_hands_total=sum(team.open_raised_hands for team in every_team if team.facilitates),
     )
+
+
+async def _phases_on_active_passages(
+    db: AsyncSession, whereabouts: Mapping[str, TeamWhereabouts]
+) -> dict[str, Phase | None]:
+    drafts = await drafts_on(
+        db,
+        [
+            (team_id, where.passage)
+            for team_id, where in whereabouts.items()
+            if where.passage is not None
+        ],
+    )
+    phases = await phases_of(db, [draft.session_id for draft in drafts.values()])
+    return {team_id: phases.get(draft.session_id) for (team_id, _), draft in drafts.items()}
 
 
 def _passage(

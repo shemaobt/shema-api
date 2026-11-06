@@ -17,6 +17,7 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 from app.models.internalization_room import BookStanding, PericopeStanding
+from app.models.internalization_room_desk_sessions import Phase
 
 
 class TeamState(StrEnum):
@@ -77,6 +78,9 @@ class FacilitatorTeamView(BaseModel):
     #: defined state, not a missing value — ENG-469 draws such a team with its last
     #: passage closed rather than current, which is only expressible if there is no current.
     active_passage: ActivePassageView | None
+    #: How far the session the pericope listing names on the active passage has gone. Null is a
+    #: position, not a missing value: the team is on no passage, or on one with no live session.
+    phase: Phase | None
     state: TeamState
     open_raised_hands: int
     device_count: int

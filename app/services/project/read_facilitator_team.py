@@ -2,10 +2,12 @@
 
 The queue's row and this answer are built from the same subqueries on purpose: a screen that
 draws a team from here and a card that draws the same team from there are not allowed to
-disagree, and the way to guarantee that is one query shape, narrowed.
+disagree, and the way to guarantee that is one query shape, narrowed. The **Phase** is outside
+that shape: the row names its session through ``drafts_on`` and this answer through
+``live_sessions``, which share one rule for the naming, and both read it through ``phases_of``.
 
-**Cost is not why this route exists** — the queue costs two statements for fourteen teams and
-two for one, so a client filtering it would pay the same. What it cannot do is refuse: the
+**Cost is not why this route exists** — the queue costs the same statements for fourteen teams
+as for one, so a client filtering it would pay the same. What it cannot do is refuse: the
 three sibling panels answer 404 with an identical body for "not yours" and for "no such team",
 and an empty list answers neither. See ENG-536.
 """
@@ -22,6 +24,7 @@ from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
 from app.models.internalization_room import PericopePosition, PericopeStanding
+from app.models.internalization_room_desk_sessions import Phase
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
 from app.services.internalization_room.approved_draft import standing_approvals
 from app.services.internalization_room.canon.elements import scene_key, scene_of
@@ -29,13 +32,18 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
-from app.services.internalization_room.latest_by_passage import latest_releases, live_sessions
+from app.services.internalization_room.latest_by_passage import (
+    Draft,
+    latest_releases,
+    live_sessions,
+)
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import (
     book_standings,
     standing,
     where_teams_stand,
 )
+from app.services.internalization_room.session_phase import phases_of
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.list_facilitator_teams import team_cards
 from app.services.project.team_state import team_state
@@ -52,7 +60,8 @@ async def read_facilitator_team(
 
     Six statements and none of them grows: the team's row, the passages it has finished, the
     books of its live sessions, its latest releases, their open findings, and the necklace of
-    the passage it is standing on. The finished passages serve the active passage,
+    the passage it is standing on; four more when a live session stands on that passage, for its
+    **Phase**. The finished passages serve the active passage,
     ``closed_total`` and each book's completeness from one read, and the releases serve both
     ``approved_total`` and ``books``. The standing of the Current book's passages is served
     from that same reading (ENG-1781), so the Desk never draws an active passage from one
@@ -102,6 +111,7 @@ async def read_facilitator_team(
         name=row.name,
         mother_tongue=row.mother_tongue,
         active_passage=active,
+        phase=await _phase_on(db, drafts.get(here) if here is not None else None),
         state=team_state(
             every_book_closed=whereabouts.complete,
             last_activity_at=row.last_activity_at,
@@ -119,6 +129,12 @@ async def read_facilitator_team(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
     )
+
+
+async def _phase_on(db: AsyncSession, draft: Draft | None) -> Phase | None:
+    if draft is None:
+        return None
+    return (await phases_of(db, [draft.session_id])).get(draft.session_id)
 
 
 def _the_canon_pin_on(pericope: str | None) -> Label[str | None]:
