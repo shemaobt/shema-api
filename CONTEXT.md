@@ -50,7 +50,7 @@ A message on a team's stream from the server to the Desk saying that something t
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
 **Attention** (*Atendimento*):
-What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalização, where it was raised; a finished passage waits for nobody there.
+What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalização, where it was raised; a finished passage waits for nobody there. The team listing answers the teams with Attention or an open hand first.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
 **Reply** (*resposta*):

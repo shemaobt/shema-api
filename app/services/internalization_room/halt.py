@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, case, literal
+from sqlalchemy import ColumnElement, and_, case, literal, or_
 
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSession, IRSessionStatus
@@ -84,3 +84,14 @@ def a_lift_restores() -> ColumnElement[IRSessionStatus]:
 def a_warning_stands() -> ColumnElement[bool]:
     """``standing``'s warning, as a clause for the queue that lists the rooms under one."""
     return and_(IRSession.warned_at.is_not(None), IRSession.attended_at.is_(None))
+
+
+def a_room_waits() -> ColumnElement[bool]:
+    """A halted room nobody went to, or a room going on under a standing warning.
+
+    A warning on a finished passage is on the queue's Refine half and waits for nobody here.
+    """
+    return or_(
+        and_(IRSession.status == IRSessionStatus.NEEDS_PERSON, IRSession.attended_at.is_(None)),
+        and_(IRSession.status == IRSessionStatus.IN_PROGRESS, a_warning_stands()),
+    )

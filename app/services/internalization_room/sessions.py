@@ -1016,14 +1016,7 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     result = await db.execute(
         select(IRSession)
         .where(
-            or_(
-                and_(
-                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
-                    IRSession.attended_at.is_(None),
-                ),
-                IRSession.status == IRSessionStatus.DONE,
-                halt.a_warning_stands(),
-            ),
+            or_(halt.a_room_waits(), IRSession.status == IRSessionStatus.DONE),
             live(),
             confined_to(IRSession.project_id, await readable_project_ids(db, user)),
         )
