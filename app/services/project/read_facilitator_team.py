@@ -2,7 +2,9 @@
 
 The queue's row and this answer are built from the same subqueries on purpose: a screen that
 draws a team from here and a card that draws the same team from there are not allowed to
-disagree, and the way to guarantee that is one query shape, narrowed.
+disagree, and the way to guarantee that is one query shape, narrowed. The **Phase** is outside
+that shape: the row names its session through ``drafts_on`` and this answer through
+``live_sessions``, which share one rule for the naming, and both read it through ``phases_of``.
 
 **Cost is not why this route exists** — the queue costs the same statements for fourteen teams
 as for one, so a client filtering it would pay the same. What it cannot do is refuse: the

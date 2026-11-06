@@ -1,8 +1,9 @@
 """The facilitator's work queue, in one query.
 
 Everything a card draws is answered here: the team, its mother tongue, the passage it is on,
-what state that passage is in, how many hands are waiting, how many devices are linked, and
-when the team last did anything. The client computes none of it.
+the **Phase** of its session there, what state that passage is in, how many hands are waiting,
+how many devices are linked, and when the team last did anything. The client computes none of
+it.
 
 **One statement, whatever the size of the roll.** Counting hands or devices per team would be
 a round trip per row, and a facilitator with fourteen teams would pay for fourteen — on the
@@ -187,7 +188,8 @@ async def list_facilitator_teams(
     one above, because whether a passage is finished is the canon's question and not SQL's.
     It is handed the ids these rows already name — why that matters is on ``furthest_by_passage``
     — and it is two statements for the roll rather than two per card. The **Phase** on each card
-    is the same bargain: five statements for the roll, and none without a session to read.
+    is the same bargain: one statement to name the sessions on the teams' active passages, four
+    more when one is named, and none when no team stands on a passage.
     """
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
@@ -233,7 +235,7 @@ async def list_facilitator_teams(
 
 async def _phases_on_active_passages(
     db: AsyncSession, whereabouts: Mapping[str, TeamWhereabouts]
-) -> dict[str, Phase]:
+) -> dict[str, Phase | None]:
     drafts = await drafts_on(
         db,
         [
@@ -243,7 +245,7 @@ async def _phases_on_active_passages(
         ],
     )
     phases = await phases_of(db, [draft.session_id for draft in drafts.values()])
-    return {team_id: phases[draft.session_id] for (team_id, _), draft in drafts.items()}
+    return {team_id: phases.get(draft.session_id) for (team_id, _), draft in drafts.items()}
 
 
 def _passage(

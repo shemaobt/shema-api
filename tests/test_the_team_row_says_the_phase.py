@@ -317,7 +317,7 @@ async def test_a_team_that_has_never_met_reads_no_phase(client, db_session):
     assert (await the_row(client, headers, team))["phase"] is None
 
 
-async def test_an_archived_session_never_counts_a_zeroed_session_with_a_told_stretch_and_a_new_session_with_turns_only_reads_conversation(  # noqa: E501
+async def test_a_zeroed_session_that_reached_check_and_a_new_session_with_turns_only_reads_conversation(  # noqa: E501
     client, db_session
 ):
     team, headers = await a_facilitated_team(db_session)
