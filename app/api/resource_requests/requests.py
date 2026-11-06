@@ -78,6 +78,7 @@ def _cards(facts: list[CardFacts]) -> list[RequestCardOut]:
     return [
         RequestCardOut.of(
             fact.request,
+            reg_name=fact.reg_name,
             decision=fact.decision,
             open=fact.open,
             can_edit=fact.can_edit,
