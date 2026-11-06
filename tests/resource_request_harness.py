@@ -29,6 +29,7 @@ from app.db.models.resource_request import (
     RRSnapshot,
     RRStage,
 )
+from app.services.shema import set_region_scope
 from app.utils import resource_request_vocabularies as v
 from app.utils.jwt import decode_token
 from tests.baker import make_user
@@ -328,8 +329,6 @@ async def member(db_session, email: str, project_id: str = PROJECT_CARDS_OF):
 
 async def pme_role(db_session, shema_app, email: str, role: str, regions=None) -> dict[str, str]:
     """A PME account holding ``role`` in ``shema_app``, scoped to ``regions`` when given."""
-    from app.services.shema import set_region_scope
-
     user = await make_user(db_session, email=email)
     await grant(db_session, user, shema_app, role)
     if regions is not None:

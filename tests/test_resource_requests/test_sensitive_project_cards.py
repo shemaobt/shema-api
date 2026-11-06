@@ -20,6 +20,7 @@ import pytest
 from app.db.models.resource_request import RRDecision
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
+from app.services.shema import set_region_scope
 from tests.baker import make_user
 from tests.resource_request_harness import (
     REQUESTS,
@@ -30,7 +31,7 @@ from tests.resource_request_harness import (
     pme_role,
     project_cards,
 )
-from tests.test_resource_requests.conftest import auth_header
+from tests.test_resource_requests.conftest import auth_header, grant
 
 SAIDI = "saidi"
 GENERIC = "Projeto sensível — África"
@@ -202,9 +203,6 @@ async def test_a_member_who_is_also_the_obt_lab_of_the_region_reads_the_names(
     """Reaching the project by the region does not take away what the membership gives."""
     sent, opened = await two_cards(client, db_session)
     bia, bia_h = await member(db_session, "bia@rr.test", SAIDI)
-    from app.services.shema import set_region_scope
-    from tests.test_resource_requests.conftest import grant
-
     await grant(db_session, bia, shema_app, "obtLab")
     await set_region_scope(db_session, bia.id, AFRICA)
 
